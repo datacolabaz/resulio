@@ -104,3 +104,91 @@ export function PublicExamPage() {
     </Card>
   );
 }
+
+export function PublicTaskPage() {
+  const { shareCode = "" } = useParams<{ shareCode: string }>();
+  const { user, loading } = useAuth();
+  const task = trpc.public.task.useQuery({ shareCode }, { enabled: shareCode.length >= 4, retry: false });
+  const claim = trpc.student.claimTask.useMutation();
+  const a = task.data;
+  const returnTo = `/task/${shareCode}`;
+  return (
+    <Card>
+      {task.isLoading ? <p role="status" className="mt-4 text-sm text-muted-foreground">{t("common.loading")}</p> : !a ? (
+        <p role="alert" className="mt-4 text-sm text-destructive">{t("public.task.notFound")}</p>
+      ) : (
+        <>
+          <h1 className="mt-4 break-words text-2xl font-semibold">{a.title}</h1>
+          {a.description && <p className="mt-3 break-words text-sm text-foreground-secondary">{a.description}</p>}
+          <p className="mt-3 text-sm text-muted-foreground">{t("modules.deadlineValue", { date: fmtDateTime(a.deadline) })}</p>
+          <div className="mt-6">
+            {loading ? null : !user ? (
+              <Button className="w-full" onClick={() => startLogin(returnTo)}>{t("common.signInGoogle")}</Button>
+            ) : claim.isSuccess ? (
+              <div className="space-y-3 text-sm" role="status">
+                <p className="text-success">{t("public.task.claimed")}</p>
+                {canEnter(user, "learning") ? (
+                  <Link href="/student/assignments" className="text-link underline-offset-4 hover:underline">{t("public.task.goToTasks")}</Link>
+                ) : (
+                  <p className="text-foreground-secondary">
+                    {t("public.task.needsLearning")}{" "}
+                    <Link href="/welcome" className="text-link underline-offset-4 hover:underline">{t("public.exam.joinLink")}</Link>
+                  </p>
+                )}
+              </div>
+            ) : (
+              <>
+                <Button className="w-full" disabled={claim.isPending} onClick={() => claim.mutate({ shareCode })}>{t("public.task.claim")}</Button>
+                {claim.error && <p role="alert" className="mt-2 text-sm text-destructive">{errorText(claim.error)}</p>}
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
+export function PublicMaterialPage() {
+  const { shareCode = "" } = useParams<{ shareCode: string }>();
+  const { user, loading } = useAuth();
+  const material = trpc.public.material.useQuery({ shareCode }, { enabled: shareCode.length >= 4, retry: false });
+  const claim = trpc.student.claimMaterial.useMutation();
+  const m = material.data;
+  const returnTo = `/material/${shareCode}`;
+  return (
+    <Card>
+      {material.isLoading ? <p role="status" className="mt-4 text-sm text-muted-foreground">{t("common.loading")}</p> : !m ? (
+        <p role="alert" className="mt-4 text-sm text-destructive">{t("public.material.notFound")}</p>
+      ) : (
+        <>
+          <h1 className="mt-4 break-words text-2xl font-semibold">{m.title}</h1>
+          {m.description && <p className="mt-3 break-words text-sm text-foreground-secondary">{m.description}</p>}
+          <p className="mt-3 text-sm text-muted-foreground">{[m.subject, m.topic, m.fileName].filter(Boolean).join(" · ")}</p>
+          <div className="mt-6">
+            {loading ? null : !user ? (
+              <Button className="w-full" onClick={() => startLogin(returnTo)}>{t("common.signInGoogle")}</Button>
+            ) : claim.isSuccess ? (
+              <div className="space-y-3 text-sm" role="status">
+                <p className="text-success">{t("public.material.claimed")}</p>
+                {canEnter(user, "learning") ? (
+                  <Link href="/student/materials" className="text-link underline-offset-4 hover:underline">{t("public.material.goToMaterials")}</Link>
+                ) : (
+                  <p className="text-foreground-secondary">
+                    {t("public.material.needsLearning")}{" "}
+                    <Link href="/welcome" className="text-link underline-offset-4 hover:underline">{t("public.exam.joinLink")}</Link>
+                  </p>
+                )}
+              </div>
+            ) : (
+              <>
+                <Button className="w-full" disabled={claim.isPending} onClick={() => claim.mutate({ shareCode })}>{t("public.material.claim")}</Button>
+                {claim.error && <p role="alert" className="mt-2 text-sm text-destructive">{errorText(claim.error)}</p>}
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
