@@ -55,6 +55,8 @@ export const app = {
   "share.copyFailed": ["Kopyalamaq alınmadı", "Could not copy", "Не удалось скопировать"],
   "share.downloadQr": ["QR yüklə", "Download QR", "Скачать QR"],
   "share.qrAlt": ["Bu link üçün QR kod", "QR code for this link", "QR-код для этой ссылки"],
+  "share.whatsapp": ["WhatsApp ilə paylaş", "Share via WhatsApp", "Поделиться в WhatsApp"],
+  "share.telegram": ["Telegram ilə paylaş", "Share via Telegram", "Поделиться в Telegram"],
 
   "public.join.title": ["Qrupa qoşul", "Join a group", "Вступить в группу"],
   "public.join.notFound": ["Dəvət kodu tapılmadı.", "Invite code not found.", "Код приглашения не найден."],
@@ -77,6 +79,26 @@ export const app = {
     "The teacher must assign this exam to you. If it is not assigned, join the group first.",
     "Экзамен должен быть назначен вам преподавателем. Если нет — сначала вступите в группу.",
   ],
+
+  "public.task.notFound": ["Tapşırıq tapılmadı.", "Assignment not found.", "Задание не найдено."],
+  "public.task.claim": ["Tapşırığı al", "Get this assignment", "Получить задание"],
+  "public.task.claimed": ["Tapşırıq sizə əlavə olundu.", "This assignment has been added for you.", "Задание добавлено для вас."],
+  "public.task.needsLearning": [
+    "Tələbə bölməsinə giriş üçün əvvəlcə bir qrupa qoşulun (dəvət linki və ya kodu ilə).",
+    "To open the student area, first join a group (with an invite link or code).",
+    "Чтобы открыть раздел ученика, сначала вступите в группу (по ссылке или коду).",
+  ],
+  "public.task.goToTasks": ["Tapşırıqlarım →", "My assignments →", "Мои задания →"],
+
+  "public.material.notFound": ["Material tapılmadı.", "Material not found.", "Материал не найден."],
+  "public.material.claim": ["Materialı al", "Get this material", "Получить материал"],
+  "public.material.claimed": ["Material sizə əlavə olundu.", "This material has been added for you.", "Материал добавлен для вас."],
+  "public.material.needsLearning": [
+    "Tələbə bölməsinə giriş üçün əvvəlcə bir qrupa qoşulun (dəvət linki və ya kodu ilə).",
+    "To open the student area, first join a group (with an invite link or code).",
+    "Чтобы открыть раздел ученика, сначала вступите в группу (по ссылке или коду).",
+  ],
+  "public.material.goToMaterials": ["Materiallarım →", "My materials →", "Мои материалы →"],
 
   "welcome.greeting": ["Xoş gəldiniz", "Welcome", "Добро пожаловать"],
   "welcome.greetingName": ["Xoş gəldiniz, {name}", "Welcome, {name}", "Добро пожаловать, {name}"],
