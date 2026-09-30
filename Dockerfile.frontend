@@ -20,3 +20,4 @@ COPY --from=build /app/dist/frontend.js ./dist/frontend.js
 USER node
 EXPOSE 3000
 CMD ["node", "dist/frontend.js"]
+# build cache bust 2026-09-30
