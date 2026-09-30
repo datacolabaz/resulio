@@ -4,7 +4,16 @@ React / Express / tRPC / Drizzle (MySQL) modular monolith.
 
 ## Setup
 
-1. Copy `.env.example` to `.env` and fill in `DATABASE_URL`, `SESSION_SECRET` (32+ chars) and the Google OAuth client (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`; redirect URI `https://<host>/api/auth/google/callback`).
+1. Copy `.env.example` to `.env` and fill in `DATABASE_URL`, `SESSION_SECRET` (32+ chars) and the Google OAuth client (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`). Without those two Google vars the sign-in button returns **Google login is not configured**. In Google Cloud Console create an OAuth **Web application** client and add:
+   - Authorised JavaScript origins: `http://localhost:3000` (and later `https://<your-domain>`)
+   - Authorised redirect URIs: `http://localhost:3000/api/auth/google/callback` (production: `https://<host>/api/auth/google/callback`)
+   Restart `pnpm dev` after saving `.env`.
+
+   Railway (two services): set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and
+   `GOOGLE_REDIRECT_URI=https://api.resulio.co/api/auth/google/callback` on **resulio-api**,
+   not on the frontend. The public site needs `VITE_API_URL=https://api.resulio.co` at **build**
+   time so the Google button calls the API. Vars on the API alone do not help if the button
+   still hits `https://resulio.co/api/auth/google/start`.
 2. `pnpm install`
 3. `pnpm db:migrate` — apply the checked-in migrations in `drizzle/`.
 4. Optional: `pnpm db:seed` — demo teacher/student, a group and a published assessment (refuses to run in production unless `ALLOW_SEED=1`). In development the home page then shows demo login buttons.

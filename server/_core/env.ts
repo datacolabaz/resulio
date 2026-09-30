@@ -8,14 +8,21 @@ function toOrigin(value: string): string {
   }
 }
 
+/** Trim and strip wrapping quotes so pasted Cloud Console values still work. */
+export function envString(key: string, env: NodeJS.ProcessEnv = process.env): string {
+  const raw = env[key] ?? "";
+  return raw.trim().replace(/^['"]|['"]$/g, "").trim();
+}
+
 // Values are read at use time so tests can stub them.
 export const ENV = {
-  get sessionSecret() { return process.env.SESSION_SECRET ?? ""; },
-  get databaseUrl() { return process.env.DATABASE_URL ?? ""; },
-  get googleClientId() { return process.env.GOOGLE_CLIENT_ID ?? ""; },
-  get googleClientSecret() { return process.env.GOOGLE_CLIENT_SECRET ?? ""; },
+  get sessionSecret() { return envString("SESSION_SECRET"); },
+  get databaseUrl() { return envString("DATABASE_URL"); },
+  get googleClientId() { return envString("GOOGLE_CLIENT_ID"); },
+  get googleClientSecret() { return envString("GOOGLE_CLIENT_SECRET"); },
+  get googleConfigured() { return Boolean(this.googleClientId && this.googleClientSecret); },
   /** Optional explicit callback URL; otherwise derived from the request origin. */
-  get googleRedirectUri() { return process.env.GOOGLE_REDIRECT_URI ?? ""; },
+  get googleRedirectUri() { return envString("GOOGLE_REDIRECT_URI"); },
   /** Optional comma-separated allowlist of emails permitted to create a Provider Workspace. Empty = open. */
   get teacherEmailAllowlist() {
     return (process.env.TEACHER_EMAIL_ALLOWLIST ?? "")

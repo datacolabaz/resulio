@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./_core/loadEnv";
 import { eq } from "drizzle-orm";
 import { groupMembers, providerWorkspaces, users } from "../drizzle/schema";
 import type { QuestionInput } from "../shared/assessment";

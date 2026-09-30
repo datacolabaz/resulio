@@ -5,7 +5,7 @@ import type { Express, Request, Response } from "express";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import * as db from "../db";
 import { recordSecurityEvent } from "../modules/securityEvents";
-import { getSessionCookieOptions } from "./cookies";
+import { getSessionCookieOptions, isSecureRequest } from "./cookies";
 import { ENV } from "./env";
 import { hashIp } from "./requestMeta";
 import { sdk } from "./sdk";
@@ -28,9 +28,11 @@ export function safeReturnTo(value: unknown): string {
   return value.slice(0, 512);
 }
 
-function redirectUri(req: Request) {
+export function redirectUri(req: Request) {
   if (ENV.googleRedirectUri) return ENV.googleRedirectUri;
-  return `${req.protocol}://${req.get("host")}/api/auth/google/callback`;
+  const proto = isSecureRequest(req) ? "https" : "http";
+  const host = req.get("host") || "localhost:3000";
+  return `${proto}://${host}/api/auth/google/callback`;
 }
 
 function sameString(a: string, b: string) {
@@ -55,8 +57,18 @@ function readState(req: Request): OAuthState | null {
 
 export function registerGoogleAuthRoutes(app: Express) {
   app.get("/api/auth/google/start", (req: Request, res: Response) => {
-    if (!ENV.googleClientId || !ENV.googleClientSecret) {
-      res.status(503).send("Google login is not configured");
+    if (!ENV.googleConfigured) {
+      console.warn("[GoogleAuth] Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET. Copy .env.example to .env and add a Web OAuth client from Google Cloud Console.");
+      res
+        .status(503)
+        .type("text/plain")
+        .send(
+          "Google login is not configured\n\n" +
+            "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in the project-root .env (see .env.example), then restart the server.\n" +
+            "Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client (Web application).\n" +
+            "Authorised JavaScript origin: http://localhost:3000\n" +
+            `Authorised redirect URI: ${redirectUri(req)}\n`,
+        );
       return;
     }
     const state: OAuthState = {

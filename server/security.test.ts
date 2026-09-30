@@ -7,7 +7,7 @@ import type { TrpcContext } from "./_core/context";
 import { isCrossSiteWrite } from "./_core/csrf";
 import { safeReturnTo } from "./_core/googleAuth";
 import { apiCors } from "./_core/cors";
-import { ENV } from "./_core/env";
+import { ENV, envString } from "./_core/env";
 import { canonicalRedirect, frontendRedirect } from "./_core/hostRedirect";
 import { hitRateLimit, resetRateLimits } from "./_core/rateLimit";
 import { isRevoked, sdk } from "./_core/sdk";
@@ -472,6 +472,22 @@ describe("two-service CORS", () => {
     expect(run("GET", "/exam/ABC123?ref=p1")).toEqual({ status: 301, location: "https://resulio.co/exam/ABC123?ref=p1" });
     expect(run("GET", "/api/nope")).toEqual({ status: 404 });
     expect(run("POST", "/teacher")).toEqual({ status: 404 });
+  });
+});
+
+describe("Google OAuth env", () => {
+  it("treats quoted or padded Cloud Console values as configured", () => {
+    expect(envString("GOOGLE_CLIENT_ID", { GOOGLE_CLIENT_ID: '  "abc.apps.googleusercontent.com"  ' })).toBe("abc.apps.googleusercontent.com");
+    expect(envString("GOOGLE_CLIENT_SECRET", { GOOGLE_CLIENT_SECRET: "   " })).toBe("");
+  });
+});
+
+describe("API base", () => {
+  it("sends the public site to api.resulio.co when VITE_API_URL is empty", async () => {
+    const { getApiBase } = await import("../client/src/const");
+    expect(getApiBase("resulio.co")).toBe("https://api.resulio.co");
+    expect(getApiBase("www.resulio.co")).toBe("https://api.resulio.co");
+    expect(getApiBase("localhost")).toBe("");
   });
 });
 

@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./loadEnv";
 import express from "express";
 import { createServer } from "http";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
@@ -77,7 +77,12 @@ async function startServer() {
     console.error("Server failed:", error.message);
     process.exit(1);
   });
-  server.listen(port, "0.0.0.0", () => console.log(`Server listening on port ${port}`));
+  server.listen(port, "0.0.0.0", () => {
+    console.log(`Server listening on port ${port}`);
+    if (!ENV.googleConfigured) {
+      console.warn("[GoogleAuth] Google login is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env, then restart.");
+    }
+  });
 }
 
 startServer().catch((error) => {
