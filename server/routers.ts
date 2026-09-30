@@ -466,6 +466,28 @@ const studentRouter = router({
   materials: studentProcedure.query(async ({ ctx }) =>
     store.studentMaterials(ctx.user.id, await groups.activeGroupIdsOfStudent(ctx.user.id)),
   ),
+  /** Self-enrolling via a teacher's share link: adds the student as an individual recipient. */
+  claimTask: studentProcedure
+    .use(rateLimit("claimTask", 20, MINUTE))
+    .input(z.object({ shareCode: z.string().trim().min(4).max(32) }))
+    .mutation(({ ctx, input }) => {
+      const asg = store.assignments.find((row) => row.shareCode === input.shareCode);
+      if (!asg) throw new AppError("NOT_FOUND");
+      if (!asg.studentIds.includes(ctx.user.id)) {
+        asg.studentIds = [...asg.studentIds, ctx.user.id];
+        store.notify(asg.createdBy, "Qoşuldu", `${ctx.user.name ?? "Tələbə"} → ${asg.title}`);
+      }
+      return { id: asg.id };
+    }),
+  claimMaterial: studentProcedure
+    .use(rateLimit("claimMaterial", 20, MINUTE))
+    .input(z.object({ shareCode: z.string().trim().min(4).max(32) }))
+    .mutation(({ ctx, input }) => {
+      const m = store.materials.find((row) => row.shareCode === input.shareCode);
+      if (!m) throw new AppError("NOT_FOUND");
+      if (!m.studentIds.includes(ctx.user.id)) m.studentIds = [...m.studentIds, ctx.user.id];
+      return { id: m.id };
+    }),
 });
 
 // ---------------------------------------------------------------------------
@@ -477,6 +499,20 @@ const publicRouter = router({
     .use(rateLimit("publicExam", 60, MINUTE))
     .input(z.object({ shareCode: z.string().trim().min(4).max(32) }))
     .query(({ input }) => assessments.publicByShareCode(input.shareCode)),
+  task: publicProcedure
+    .use(rateLimit("publicTask", 60, MINUTE))
+    .input(z.object({ shareCode: z.string().trim().min(4).max(32) }))
+    .query(({ input }) => {
+      const a = store.assignments.find((row) => row.shareCode === input.shareCode);
+      return a ? { id: a.id, title: a.title, description: a.description, deadline: a.deadline } : null;
+    }),
+  material: publicProcedure
+    .use(rateLimit("publicMaterial", 60, MINUTE))
+    .input(z.object({ shareCode: z.string().trim().min(4).max(32) }))
+    .query(({ input }) => {
+      const m = store.materials.find((row) => row.shareCode === input.shareCode);
+      return m ? { id: m.id, title: m.title, description: m.description, subject: m.subject, topic: m.topic, fileName: m.fileName } : null;
+    }),
   invite: publicProcedure
     .use(rateLimit("publicInvite", 60, MINUTE))
     .input(z.object({ inviteCode: z.string().trim().min(4).max(32) }))
