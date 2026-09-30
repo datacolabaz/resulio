@@ -1,3 +1,4 @@
+import { API_BASE } from "@/const";
 import { getActiveWorkspaceId } from "@/lib/contexts";
 import { trpc } from "@/lib/trpc";
 import { UNAUTHED_ERR_MSG, WORKSPACE_HEADER } from '@shared/const';
@@ -42,7 +43,7 @@ queryClient.getMutationCache().subscribe(event => {
 const trpcClient = trpc.createClient({
   links: [
     httpBatchLink({
-      url: "/api/trpc",
+      url: `${API_BASE}/api/trpc`,
       transformer: superjson,
       headers() {
         const ws = getActiveWorkspaceId();

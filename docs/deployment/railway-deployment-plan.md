@@ -103,41 +103,50 @@ The push report for each branch is part of the change record, not this file.
 
 ## 4. Frontend service plan — `resulio-frontend`
 
-- Source: same repository, same `Dockerfile` pattern but a **separate image**, e.g. `Dockerfile.frontend`
-  (to be added in the split task): `pnpm install` → `pnpm build:static` → serve `dist/public`.
-- Server: a small static server that does three things only:
-  1. serve files from `dist/public` with long-cache headers for hashed `assets/*` and `no-cache` for `index.html`;
-  2. SPA fallback (section 6);
-  3. host redirects: `www.resulio.co` → `https://resulio.co{path}{query}` (301); `mentorix.io` and
-     `www.mentorix.io` → `https://resulio.co{path}{query}` (301) — or a separate tiny `resulio-redirects` service.
-  Railway has no built-in redirect rules, so the redirect must live in this process (Caddy
-  `redir https://resulio.co{uri} permanent`, or ~30 lines of Node).
-- Build-time variables (Railway service variables are available to `vite build` in the Docker build):
-  `VITE_APP_NAME=Resulio`, `VITE_APP_URL=https://resulio.co`, `VITE_API_URL=https://api.resulio.co`,
-  `VITE_LEGACY_DOMAIN=https://mentorix.io`. Only public values; everything prefixed `VITE_` is in the bundle.
-- The UI must never show the `*.up.railway.app` host; all API calls go to `VITE_API_URL`.
-- Health check: `GET /` (or a static `/healthz`).
+Implemented:
+
+- Railway config: `railway.frontend.json` (set as the service's config-as-code path) → `Dockerfile.frontend`,
+  health check `/healthz`.
+- Image: `pnpm build:frontend` (`vite build` + `scripts/build-frontend.mjs`, which bundles `server/frontend.ts`
+  into one file); the runtime stage holds only `dist/public` and `dist/frontend.js`, no `node_modules`.
+- Server (`server/frontend.ts`):
+  1. hashed `assets/*` cached for 1 year, `index.html` `no-cache`, missing assets 404;
+  2. SPA fallback (section 6), `/api/*` 404;
+  3. host redirects (`server/_core/hostRedirect.ts`): `www.resulio.co`, `mentorix.io`, `www.mentorix.io` →
+     `https://resulio.co{path}{query}` (301, 308 for non-GET).
+- Build-time variable: `VITE_API_URL`, default `https://api.resulio.co` in `Dockerfile.frontend`; override it
+  per environment (e.g. staging) with a service variable of the same name.
 
 ## 5. Backend service plan — `resulio-api`
 
-Keeps the current `Dockerfile` and `railway.json` (healthcheck `/api/health`). Code changes required for the
-split (separate, reviewed task — none made yet):
+Keeps the current `Dockerfile` and `railway.json` (health check `/api/health`). The split is switched on by
+one variable, `FRONTEND_URL`; without it the API still serves the web app itself (single service, as staging
+uses today).
 
-1. **API base URL in the client**: tRPC `url: \`${import.meta.env.VITE_API_URL ?? ""}/api/trpc\``, login
-   redirect to `${VITE_API_URL}/api/auth/google/start`; `credentials: "include"` is already set.
-2. **CORS** middleware on `/api/*`: allow-list from `CORS_ALLOWED_ORIGINS`, `Access-Control-Allow-Credentials:
-   true`, allow headers `content-type, x-resulio-workspace, trpc-accept`, methods `GET, POST, OPTIONS`; never `*`.
-3. **CSRF guard**: accept `Origin` in the same allow-list (today it requires Origin host = API host, which would
-   reject every call from `resulio.co`).
-4. **Post-login redirects** to the frontend: `FRONTEND_URL + returnTo` and `FRONTEND_URL + "/?login=cancelled"`
-   (today relative, which would land on `api.resulio.co`). `safeReturnTo` stays path-only.
-5. **Cookie**: keep host-only on `api.resulio.co` (recommended). `resulio.co` and `api.resulio.co` are
-   same-site, so a `SameSite=Lax` cookie is sent on the SPA's credentialed fetches without `Domain`. Setting
-   `COOKIE_DOMAIN=.resulio.co` would hand the session cookie to every subdomain, which nothing needs.
-6. `/api/platform/config.js`: the frontend build already emits a static copy; no API call needed.
-7. Readiness: `/api/health` adds a DB ping (or a second `/api/ready`) so Railway does not route to an API
-   that cannot reach MySQL.
-8. Stop serving the SPA from the API in production (API returns 404 JSON for non-`/api` paths).
+Implemented:
+
+1. **API base URL in the client**: `API_BASE` from `VITE_API_URL` (`client/src/const.ts`) for tRPC and the
+   Google login start; `credentials: "include"` was already set.
+2. **CORS** (`server/_core/cors.ts`) on `/api/*`: origins = `FRONTEND_URL` + optional `CORS_ALLOWED_ORIGINS`,
+   credentials allowed, headers `content-type, x-resulio-workspace, trpc-accept`, methods `GET, POST, OPTIONS`;
+   unlisted origins get no CORS headers.
+3. **CSRF guard** accepts the same allowlisted origins; everything else is still rejected.
+4. **Post-login redirects** go to `FRONTEND_URL + returnTo` and `FRONTEND_URL + "/?login=cancelled"`;
+   `safeReturnTo` stays path-only.
+5. **Cookie** stays host-only on `api.resulio.co`. `resulio.co` and `api.resulio.co` are same-site, so the
+   `SameSite=Lax` cookie is sent on the SPA's credentialed requests. No `COOKIE_DOMAIN`.
+6. `/api/platform/config.js` is served as a static file by the frontend.
+7. With `FRONTEND_URL` set, page URLs on the API host 301 to the frontend; unknown `/api/*` paths are 404.
+
+Verified locally with the frontend on :3001 and the API on :3000 (separate origins, local MySQL): signed-in
+dashboard loads through the API, a cross-origin mutation passes preflight and CSRF, the login button targets
+the API host, foreign origins get no CORS grant and are rejected by CSRF.
+
+Still open: a readiness check (`/api/health` does not ping MySQL).
+
+**Staging note:** two `*.up.railway.app` hosts are different sites (the suffix is on the Public Suffix List),
+so browsers do not send the `SameSite=Lax` cookie between them. A split staging needs custom subdomains under
+one site (e.g. `staging.resulio.co` + `api-staging.resulio.co`); otherwise keep staging single-service.
 
 Responsibilities unchanged: all authorization stays server-side; the `x-resulio-workspace` header is only a
 hint that the server re-validates.
@@ -167,7 +176,7 @@ redirects (e.g. `/exams/:code` → `/exam/:code`, `/invite/:token` → `/join/:t
 |---|---|---|
 | `VITE_APP_NAME` | `Resulio` | |
 | `VITE_APP_URL` | `https://resulio.co` | |
-| `VITE_API_URL` | `https://api.resulio.co` | needs code change 5.1 |
+| `VITE_API_URL` | `https://api.resulio.co` | used; default in `Dockerfile.frontend` |
 | `VITE_LEGACY_DOMAIN` | `https://mentorix.io` | informational |
 
 ### `resulio-api` (runtime, secret where marked)
@@ -185,10 +194,10 @@ redirects (e.g. `/exams/:code` → `/exam/:code`, `/invite/:token` → `/join/:t
 | `SUPER_ADMIN_EMAILS` | owner e-mails | yes |
 | `TEACHER_EMAIL_ALLOWLIST` | empty or list | yes |
 | `APP_NAME` | `Resulio` | no (unused) |
-| `FRONTEND_URL` | `https://resulio.co` | no — code change 5.4 |
+| `FRONTEND_URL` | `https://resulio.co` | yes — turns on the split |
 | `API_PUBLIC_URL` | `https://api.resulio.co` | no |
 | `LEGACY_FRONTEND_URL` | `https://mentorix.io` | no |
-| `CORS_ALLOWED_ORIGINS` | `https://resulio.co,https://www.resulio.co` | no — code change 5.2 |
+| `CORS_ALLOWED_ORIGINS` | not needed (`FRONTEND_URL` is always allowed) | yes — extra origins only |
 | `CORS_ALLOW_CREDENTIALS` | `true` | no (would be fixed in code) |
 | `COOKIE_SECURE` | `true` | no (already forced in production) |
 | `COOKIE_SAME_SITE` | `lax` | no (already fixed) |

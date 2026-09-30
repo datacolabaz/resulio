@@ -1,3 +1,13 @@
+function toOrigin(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  try {
+    return new URL(trimmed).origin;
+  } catch {
+    return "";
+  }
+}
+
 // Values are read at use time so tests can stub them.
 export const ENV = {
   get sessionSecret() { return process.env.SESSION_SECRET ?? ""; },
@@ -28,6 +38,13 @@ export const ENV = {
   },
   /** Key for hashing IP addresses in audit and security records. */
   get auditHashSecret() { return process.env.AUDIT_HASH_SECRET || process.env.SESSION_SECRET || ""; },
+  /** Origin of the separately deployed frontend (e.g. https://resulio.co). Empty = this server also serves the SPA. */
+  get frontendUrl() { return toOrigin(process.env.FRONTEND_URL ?? ""); },
+  /** Browser origins allowed to call the API with credentials: FRONTEND_URL plus optional CORS_ALLOWED_ORIGINS. */
+  get corsAllowedOrigins(): string[] {
+    const extra = (process.env.CORS_ALLOWED_ORIGINS ?? "").split(",").map(toOrigin);
+    return Array.from(new Set([this.frontendUrl, ...extra].filter(Boolean)));
+  },
   get isProduction() { return process.env.NODE_ENV === "production"; },
   get enableDemoLogin() { return process.env.NODE_ENV !== "production" && process.env.DISABLE_DEMO_LOGIN !== "1"; },
   get forgeApiUrl() { return process.env.MANUS_API_URL ?? ""; },

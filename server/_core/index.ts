@@ -2,9 +2,12 @@ import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
+import { apiCors } from "./cors";
 import { csrfGuard } from "./csrf";
+import { ENV } from "./env";
 import { registerGoogleAuthRoutes } from "./googleAuth";
-import { hostRedirect } from "./hostRedirect";
+import { frontendRedirect, hostRedirect } from "./hostRedirect";
+import { securityHeaders } from "./spa";
 import { publicPlatformScript } from "./publicConfig";
 import { requestIdMiddleware } from "./requestMeta";
 import { appRouter } from "../routers";
@@ -40,13 +43,9 @@ async function startServer() {
   app.set("trust proxy", 1);
   app.disable("x-powered-by");
   app.use(hostRedirect);
-  app.use((_req, res, next) => {
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-    res.setHeader("X-Frame-Options", "DENY");
-    next();
-  });
+  app.use(securityHeaders);
   app.use(requestIdMiddleware);
+  app.use(apiCors);
   app.use(csrfGuard);
   app.use(express.json({ limit: "2mb" }));
   app.use(express.urlencoded({ limit: "2mb", extended: true }));
@@ -64,6 +63,8 @@ async function startServer() {
   );
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);
+  } else if (ENV.frontendUrl) {
+    app.use(frontendRedirect(ENV.frontendUrl));
   } else {
     serveStatic(app);
   }

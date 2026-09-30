@@ -86,7 +86,7 @@ export function registerGoogleAuthRoutes(app: Express) {
     const code = typeof req.query.code === "string" ? req.query.code : "";
     const nonce = typeof req.query.state === "string" ? req.query.state : "";
     if (req.query.error) {
-      res.redirect(302, "/?login=cancelled");
+      res.redirect(302, `${ENV.frontendUrl}/?login=cancelled`);
       return;
     }
     if (!state || !code || !nonce || !sameString(nonce, state.nonce)) {
@@ -133,7 +133,7 @@ export function registerGoogleAuthRoutes(app: Express) {
       const token = await sdk.createSessionToken(user.openId, { name: user.name ?? "", expiresInMs: ONE_YEAR_MS });
       res.cookie(COOKIE_NAME, token, { ...getSessionCookieOptions(req), maxAge: ONE_YEAR_MS });
 
-      res.redirect(302, state.returnTo);
+      res.redirect(302, `${ENV.frontendUrl}${state.returnTo}`);
     } catch (error) {
       console.error("[GoogleAuth] Callback failed:", error instanceof Error ? error.message : error);
       res.status(500).send("Google login failed");

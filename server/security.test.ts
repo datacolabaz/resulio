@@ -6,7 +6,9 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import type { TrpcContext } from "./_core/context";
 import { isCrossSiteWrite } from "./_core/csrf";
 import { safeReturnTo } from "./_core/googleAuth";
-import { canonicalRedirect } from "./_core/hostRedirect";
+import { apiCors } from "./_core/cors";
+import { ENV } from "./_core/env";
+import { canonicalRedirect, frontendRedirect } from "./_core/hostRedirect";
 import { hitRateLimit, resetRateLimits } from "./_core/rateLimit";
 import { isRevoked, sdk } from "./_core/sdk";
 import { WORKSPACE_HEADER } from "../shared/const";
@@ -393,6 +395,83 @@ describe("CSRF guard", () => {
     expect(isCrossSiteWrite(req("POST", { referer: "https://evil.example/x", "content-type": "application/json" }), "resulio.co")).toBe(true);
     expect(isCrossSiteWrite(req("POST", { origin: "null", "content-type": "application/json" }), "resulio.co")).toBe(true);
     expect(isCrossSiteWrite(req("POST", { origin: "https://resulio.co", "content-type": "text/plain" }), "resulio.co")).toBe(true);
+  });
+
+  it("accepts the allowlisted frontend origin on the API host only", () => {
+    const json = { "content-type": "application/json" };
+    const allow = ["https://resulio.co"];
+    expect(isCrossSiteWrite(req("POST", { origin: "https://resulio.co", ...json }), "api.resulio.co", allow)).toBe(false);
+    expect(isCrossSiteWrite(req("POST", { origin: "https://resulio.co", ...json }), "api.resulio.co")).toBe(true);
+    expect(isCrossSiteWrite(req("POST", { origin: "http://resulio.co", ...json }), "api.resulio.co", allow)).toBe(true);
+    expect(isCrossSiteWrite(req("POST", { origin: "https://evil.example", ...json }), "api.resulio.co", allow)).toBe(true);
+    expect(isCrossSiteWrite(req("POST", { origin: "https://resulio.co", "content-type": "text/plain" }), "api.resulio.co", allow)).toBe(true);
+  });
+});
+
+describe("two-service CORS", () => {
+  function call(method: string, path: string, origin?: string) {
+    const headers: Record<string, string> = {};
+    let status = 0;
+    let nextCalled = false;
+    const req = { method, path, get: (name: string) => (name.toLowerCase() === "origin" ? origin : undefined) } as never;
+    const res = {
+      setHeader: (k: string, v: string) => void (headers[k.toLowerCase()] = v),
+      append: (k: string, v: string) => void (headers[k.toLowerCase()] = v),
+      status(code: number) {
+        status = code;
+        return this;
+      },
+      end: () => undefined,
+    } as never;
+    apiCors(req, res, () => void (nextCalled = true));
+    return { headers, status, nextCalled };
+  }
+
+  it("normalises the allowed origins", () => {
+    vi.stubEnv("FRONTEND_URL", "https://resulio.co/");
+    vi.stubEnv("CORS_ALLOWED_ORIGINS", " https://staging.resulio.co , not a url, https://resulio.co");
+    expect(ENV.frontendUrl).toBe("https://resulio.co");
+    expect(ENV.corsAllowedOrigins).toEqual(["https://resulio.co", "https://staging.resulio.co"]);
+  });
+
+  it("allows credentials for the frontend origin and answers its preflight", () => {
+    vi.stubEnv("FRONTEND_URL", "https://resulio.co");
+    const get = call("POST", "/api/trpc/x", "https://resulio.co");
+    expect(get.nextCalled).toBe(true);
+    expect(get.headers["access-control-allow-origin"]).toBe("https://resulio.co");
+    expect(get.headers["access-control-allow-credentials"]).toBe("true");
+    const pre = call("OPTIONS", "/api/trpc/x", "https://resulio.co");
+    expect(pre.nextCalled).toBe(false);
+    expect(pre.status).toBe(204);
+    expect(pre.headers["access-control-allow-headers"]).toContain(WORKSPACE_HEADER);
+  });
+
+  it("gives other origins, non-API paths and single-service mode no CORS headers", () => {
+    vi.stubEnv("FRONTEND_URL", "https://resulio.co");
+    expect(call("POST", "/api/trpc/x", "https://evil.example").headers["access-control-allow-origin"]).toBeUndefined();
+    expect(call("GET", "/assets/a.js", "https://resulio.co").headers["access-control-allow-origin"]).toBeUndefined();
+    vi.stubEnv("FRONTEND_URL", "");
+    expect(call("OPTIONS", "/api/trpc/x", "https://resulio.co").nextCalled).toBe(true);
+  });
+
+  it("sends page URLs on the API host to the frontend and keeps unknown API paths as 404", () => {
+    const handler = frontendRedirect("https://resulio.co");
+    const run = (method: string, originalUrl: string) => {
+      const out: { status?: number; location?: string } = {};
+      const res = {
+        redirect: (s: number, l: string) => Object.assign(out, { status: s, location: l }),
+        status(s: number) {
+          out.status = s;
+          return this;
+        },
+        json: () => undefined,
+      } as never;
+      handler({ method, originalUrl, path: originalUrl.split("?")[0] } as never, res);
+      return out;
+    };
+    expect(run("GET", "/exam/ABC123?ref=p1")).toEqual({ status: 301, location: "https://resulio.co/exam/ABC123?ref=p1" });
+    expect(run("GET", "/api/nope")).toEqual({ status: 404 });
+    expect(run("POST", "/teacher")).toEqual({ status: 404 });
   });
 });
 

@@ -19,6 +19,18 @@ export function canonicalRedirect(
   return { status: BODYLESS_METHODS.has(method.toUpperCase()) ? 301 : 308, location: `${CANONICAL_ORIGIN}${path}` };
 }
 
+/** On the API host, page URLs belong to the separately deployed frontend. */
+export function frontendRedirect(frontendUrl: string) {
+  return (req: Request, res: Response) => {
+    if (req.path.startsWith("/api/") || (req.method !== "GET" && req.method !== "HEAD")) {
+      res.status(404).json({ error: "NOT_FOUND" });
+      return;
+    }
+    const path = req.originalUrl.startsWith("/") ? req.originalUrl : "/";
+    res.redirect(301, `${frontendUrl}${path}`);
+  };
+}
+
 export function hostRedirect(req: Request, res: Response, next: NextFunction) {
   const host = req.get("x-forwarded-host")?.split(",")[0]?.trim() || req.get("host");
   const target = canonicalRedirect(host, req.method, req.originalUrl);
