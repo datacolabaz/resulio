@@ -6,6 +6,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import type { TrpcContext } from "./_core/context";
 import { isCrossSiteWrite } from "./_core/csrf";
 import { safeReturnTo } from "./_core/googleAuth";
+import { canonicalRedirect } from "./_core/hostRedirect";
 import { hitRateLimit, resetRateLimits } from "./_core/rateLimit";
 import { isRevoked, sdk } from "./_core/sdk";
 import { WORKSPACE_HEADER } from "../shared/const";
@@ -433,5 +434,33 @@ describe("AI question validation", () => {
   it("returns nothing for malformed output", () => {
     expect(validateAiQuestions(null, input)).toEqual([]);
     expect(validateAiQuestions({ questions: "no" }, input)).toEqual([]);
+  });
+});
+
+describe("canonical host redirect", () => {
+  it("sends www and legacy hosts to resulio.co with path and query intact", () => {
+    expect(canonicalRedirect("www.resulio.co", "GET", "/")).toEqual({ status: 301, location: "https://resulio.co/" });
+    expect(canonicalRedirect("mentorix.io", "GET", "/login")).toEqual({ status: 301, location: "https://resulio.co/login" });
+    expect(canonicalRedirect("www.mentorix.io", "GET", "/exams/abc123")?.location).toBe("https://resulio.co/exams/abc123");
+    expect(canonicalRedirect("mentorix.io", "GET", "/invite/token-123?ref=partner1&utm_source=x")?.location).toBe(
+      "https://resulio.co/invite/token-123?ref=partner1&utm_source=x",
+    );
+    expect(canonicalRedirect("MENTORIX.IO:443", "HEAD", "/results/result-123")?.location).toBe("https://resulio.co/results/result-123");
+  });
+
+  it("keeps the method for writes", () => {
+    expect(canonicalRedirect("www.resulio.co", "POST", "/api/trpc/x")?.status).toBe(308);
+  });
+
+  it("leaves the canonical, staging and unknown hosts alone", () => {
+    for (const host of ["resulio.co", "api.resulio.co", "backend-staging-c31a.up.railway.app", "evil-mentorix.io", undefined]) {
+      expect(canonicalRedirect(host, "GET", "/")).toBeNull();
+    }
+  });
+
+  it("never lets the request line change the target host", () => {
+    expect(canonicalRedirect("mentorix.io", "GET", "//evil.example/x")?.location).toBe("https://resulio.co//evil.example/x");
+    expect(new URL(canonicalRedirect("mentorix.io", "GET", "//evil.example/x")!.location).host).toBe("resulio.co");
+    expect(canonicalRedirect("mentorix.io", "GET", "http://evil.example/")?.location).toBe("https://resulio.co/");
   });
 });

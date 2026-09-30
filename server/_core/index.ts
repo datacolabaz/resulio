@@ -4,6 +4,7 @@ import { createServer } from "http";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { csrfGuard } from "./csrf";
 import { registerGoogleAuthRoutes } from "./googleAuth";
+import { hostRedirect } from "./hostRedirect";
 import { publicPlatformScript } from "./publicConfig";
 import { requestIdMiddleware } from "./requestMeta";
 import { appRouter } from "../routers";
@@ -38,6 +39,7 @@ async function startServer() {
   const server = createServer(app);
   app.set("trust proxy", 1);
   app.disable("x-powered-by");
+  app.use(hostRedirect);
   app.use((_req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
