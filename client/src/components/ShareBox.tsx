@@ -35,6 +35,12 @@ export function ShareBox({ path, fileName = "resulio-qr" }: { path: string; file
         <div className="break-all rounded-lg border bg-muted px-3 py-2 font-mono text-xs">{url}</div>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" onClick={() => void copy()}>{t("common.copyLink")}</Button>
+          <Button asChild size="sm" variant="outline">
+            <a href={`https://wa.me/?text=${encodeURIComponent(url)}`} target="_blank" rel="noopener noreferrer">{t("share.whatsapp")}</a>
+          </Button>
+          <Button asChild size="sm" variant="outline">
+            <a href={`https://t.me/share/url?url=${encodeURIComponent(url)}`} target="_blank" rel="noopener noreferrer">{t("share.telegram")}</a>
+          </Button>
           {qr && (
             <Button asChild size="sm" variant="outline">
               <a href={qr} download={`${fileName}.png`}>{t("share.downloadQr")}</a>
