@@ -2,12 +2,71 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { LanguageSwitch } from "@/components/AppShell";
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { startLogin } from "@/const";
 import { t } from "@/i18n/messages";
 import { canEnter } from "@/lib/contexts";
 import { errorText, fmtDateTime, fmtDuration, liveLabel, typeLabel } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
+import { useState } from "react";
 import { Link, useParams } from "wouter";
+
+const TARGET_EXAM_CODES = ["IELTS", "GOETHE", "TELC", "TESTDAF", "DUOLINGO", "SAT", "AP", "IB", "PMP", "SCHOOL", "OTHER"] as const;
+
+/**
+ * Shown once, right after a student's first successful group join — optional and skippable, per
+ * spec. `onDone` fires whether the student saved something or skipped; either way the server
+ * stamps `studentOnboardedAt` so this never appears again for that user.
+ */
+function StudentOnboarding({ onDone }: { onDone: () => void }) {
+  const [targetExam, setTargetExam] = useState("");
+  const [targetScore, setTargetScore] = useState("");
+  const [targetExamDate, setTargetExamDate] = useState("");
+  const complete = trpc.auth.completeStudentOnboarding.useMutation({ onSuccess: onDone });
+  const save = () => {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    complete.mutate({
+      timezone,
+      targetExam: targetExam || undefined,
+      targetScore: targetScore.trim() || undefined,
+      targetExamDate: targetExamDate ? new Date(targetExamDate).toISOString() : undefined,
+    });
+  };
+  return (
+    <div className="mt-6 border-t pt-5 text-left">
+      <h2 className="text-sm font-semibold">{t("public.onboarding.title")}</h2>
+      <p className="mt-1 text-xs text-muted-foreground">{t("public.onboarding.lead")}</p>
+      <div className="mt-3 grid gap-3">
+        <label className="text-sm">
+          <span className="text-foreground-secondary">{t("public.onboarding.examLabel")}</span>
+          <select
+            className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground"
+            value={targetExam}
+            onChange={(e) => setTargetExam(e.target.value)}
+          >
+            <option value="">{t("public.onboarding.examUnset")}</option>
+            {TARGET_EXAM_CODES.map((code) => (
+              <option key={code} value={code}>{t(`public.onboarding.targetExam.${code}`)}</option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm">
+          <span className="text-foreground-secondary">{t("public.onboarding.scoreLabel")}</span>
+          <Input value={targetScore} maxLength={32} onChange={(e) => setTargetScore(e.target.value)} placeholder={t("public.onboarding.scorePlaceholder")} />
+        </label>
+        <label className="text-sm">
+          <span className="text-foreground-secondary">{t("public.onboarding.dateLabel")}</span>
+          <Input type="date" value={targetExamDate} onChange={(e) => setTargetExamDate(e.target.value)} />
+        </label>
+      </div>
+      <div className="mt-4 flex gap-2">
+        <Button size="sm" disabled={complete.isPending} onClick={save}>{t("public.onboarding.save")}</Button>
+        <Button size="sm" variant="ghost" disabled={complete.isPending} onClick={onDone}>{t("public.onboarding.skip")}</Button>
+      </div>
+      {complete.error && <p role="alert" className="mt-2 text-sm text-destructive">{errorText(complete.error)}</p>}
+    </div>
+  );
+}
 
 function Card({ children }: { children: React.ReactNode }) {
   return (
@@ -29,6 +88,7 @@ export function JoinGroupPage() {
   const invite = trpc.public.invite.useQuery({ inviteCode }, { enabled: inviteCode.length >= 4, retry: false });
   const utils = trpc.useUtils();
   const join = trpc.student.join.useMutation({ onSuccess: () => utils.auth.me.invalidate() });
+  const [onboardingDone, setOnboardingDone] = useState(false);
   const g = invite.data;
   return (
     <Card>
@@ -46,6 +106,7 @@ export function JoinGroupPage() {
               <div className="space-y-3 text-sm" role="status">
                 <p className="text-success">{t("public.join.sent")}</p>
                 <Link href="/student/groups" className="text-link underline-offset-4 hover:underline">{t("public.myGroups")}</Link>
+                {user && !user.studentOnboardedAt && !onboardingDone && <StudentOnboarding onDone={() => setOnboardingDone(true)} />}
               </div>
             ) : (
               <>
@@ -66,6 +127,7 @@ export function PublicEmailInvitePage() {
   const invite = trpc.public.emailInvite.useQuery({ token }, { enabled: token.length >= 16, retry: false });
   const utils = trpc.useUtils();
   const accept = trpc.student.acceptEmailInvite.useMutation({ onSuccess: () => utils.auth.me.invalidate() });
+  const [onboardingDone, setOnboardingDone] = useState(false);
   const g = invite.data;
   const returnTo = `/invite/${token}`;
   return (
@@ -85,6 +147,7 @@ export function PublicEmailInvitePage() {
               <div className="space-y-3 text-sm" role="status">
                 <p className="text-success">{t("public.invite.joined")}</p>
                 <Link href="/student/groups" className="text-link underline-offset-4 hover:underline">{t("public.myGroups")}</Link>
+                {user && !user.studentOnboardedAt && !onboardingDone && <StudentOnboarding onDone={() => setOnboardingDone(true)} />}
               </div>
             ) : (
               <>

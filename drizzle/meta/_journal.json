@@ -43,6 +43,13 @@
       "when": 1790793935489,
       "tag": "0005_group_invites_v2",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1790796052932,
+      "tag": "0006_student_onboarding_fields",
+      "breakpoints": true
     }
   ]
 }

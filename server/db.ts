@@ -158,3 +158,24 @@ export async function setLastActiveContext(userId: number, context: UiContext) {
 export async function setPreferredLocale(userId: number, locale: string) {
   await requireDb().update(users).set({ preferredLocale: locale }).where(eq(users.id, userId));
 }
+
+/**
+ * Saves the optional student onboarding fields and marks onboarding as done, whether the
+ * student filled anything in or skipped outright — either way it must not be asked again.
+ * Every field is optional: an omitted field is left untouched, never cleared.
+ */
+export async function completeStudentOnboarding(
+  userId: number,
+  input: { timezone?: string; targetExam?: string; targetScore?: string; targetExamDate?: Date | null },
+) {
+  await requireDb()
+    .update(users)
+    .set({
+      ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
+      ...(input.targetExam !== undefined ? { targetExam: input.targetExam } : {}),
+      ...(input.targetScore !== undefined ? { targetScore: input.targetScore } : {}),
+      ...(input.targetExamDate !== undefined ? { targetExamDate: input.targetExamDate } : {}),
+      studentOnboardedAt: new Date(),
+    })
+    .where(eq(users.id, userId));
+}
