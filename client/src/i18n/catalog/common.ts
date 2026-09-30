@@ -43,7 +43,7 @@ export const common = {
   "common.status": ["Status", "Status", "Статус"],
   "common.type": ["Növ", "Type", "Тип"],
   "common.date": ["Tarix", "Date", "Дата"],
-  "common.duration": ["Mýddət", "Duration", "Длительность"],
+  "common.duration": ["Müddət", "Duration", "Длительность"],
   "common.result": ["Nəticə", "Result", "Результат"],
   "common.attempt": ["Cəhd", "Attempt", "Попытка"],
   "common.question": ["Sual", "Question", "Вопрос"],
