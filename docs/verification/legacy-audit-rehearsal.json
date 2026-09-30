@@ -1,0 +1,1046 @@
+{
+  "1 legacy users, before 0002": {
+    "P0": {
+      "rows": 1,
+      "result": [
+        {
+          "mysql_version": "8.4.11",
+          "global_tz": "SYSTEM",
+          "session_tz": "+00:00",
+          "system_tz": "Azerbaijan Standard Time",
+          "now_session": "2026-09-30T05:59:31.000Z",
+          "now_utc": "2026-09-30T05:59:31.000Z",
+          "session_offset_min": 0,
+          "sql_mode": "IGNORE_SPACE,ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION",
+          "charset": "utf8mb4",
+          "collation_db": "utf8mb4_0900_ai_ci",
+          "db": "resulio_rh_main_test",
+          "db_user": "root@localhost"
+        }
+      ]
+    },
+    "P1": {
+      "rows": 3,
+      "result": [
+        {
+          "Grants for root@localhost": "GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, RELOAD, SHUTDOWN, PROCESS, FILE, REFERENCES, INDEX, ALTER, SHOW DATABASES, SUPER, CREATE TEMPORARY TABLES, LOCK TABLES, EXECUTE, REPLICATION SLAVE, REPLICATION CLIENT, CREATE VIEW, SHOW VIEW, CREATE ROUTINE, ALTER ROUTINE, CREATE USER, EVENT, TRIGGER, CREATE TABLESPACE, CREATE ROLE, DROP ROLE ON *.* TO `root`@`localhost` WITH GRANT OPTION"
+        },
+        {
+          "Grants for root@localhost": "GRANT ALLOW_NONEXISTENT_DEFINER,APPLICATION_PASSWORD_ADMIN,AUDIT_ABORT_EXEMPT,AUDIT_ADMIN,AUTHENTICATION_POLICY_ADMIN,BACKUP_ADMIN,BINLOG_ADMIN,BINLOG_ENCRYPTION_ADMIN,CLONE_ADMIN,CONNECTION_ADMIN,ENCRYPTION_KEY_ADMIN,FIREWALL_EXEMPT,FLUSH_OPTIMIZER_COSTS,FLUSH_PRIVILEGES,FLUSH_STATUS,FLUSH_TABLES,FLUSH_USER_RESOURCES,GROUP_REPLICATION_ADMIN,GROUP_REPLICATION_STREAM,INNODB_REDO_LOG_ARCHIVE,INNODB_REDO_LOG_ENABLE,OPTIMIZE_LOCAL_TABLE,PASSWORDLESS_USER_ADMIN,PERSIST_RO_VARIABLES_ADMIN,REPLICATION_APPLIER,REPLICATION_SLAVE_ADMIN,RESOURCE_GROUP_ADMIN,RESOURCE_GROUP_USER,ROLE_ADMIN,SENSITIVE_VARIABLES_OBSERVER,SERVICE_CONNECTION_ADMIN,SESSION_VARIABLES_ADMIN,SET_ANY_DEFINER,SHOW_ROUTINE,SYSTEM_USER,SYSTEM_VARIABLES_ADMIN,TABLE_ENCRYPTION_ADMIN,TELEMETRY_LOG_ADMIN,TRANSACTION_GTID_TAG,XA_RECOVER_ADMIN ON *.* TO `root`@`localhost` WITH GRANT OPTION"
+        },
+        {
+          "Grants for root@localhost": "GRANT PROXY ON ``@`` TO `root`@`localhost` WITH GRANT OPTION"
+        }
+      ]
+    },
+    "L1": {
+      "rows": 2,
+      "result": [
+        {
+          "table_name": "__drizzle_migrations",
+          "approx_rows": 2
+        },
+        {
+          "table_name": "users",
+          "approx_rows": 12
+        }
+      ]
+    },
+    "L2": {
+      "rows": 2,
+      "result": [
+        {
+          "id": 1,
+          "hash": "96168d50097c6d417b7449651a2e617a98e7ffd93dbc832e9cf1d2a0c237a0ec",
+          "created_at": 1788785580464
+        },
+        {
+          "id": 2,
+          "hash": "850b2d45ee4b9d52c62166e7301ec1beb0a1a1c9b0294362505f69b2c4591151",
+          "created_at": 1788785590000
+        }
+      ]
+    },
+    "L3": {
+      "rows": 1,
+      "result": [
+        {
+          "total_users": 12,
+          "admins": "2",
+          "teachers": "6",
+          "students": "4",
+          "without_app_role": "2",
+          "without_email": "1",
+          "max_user_id": 12
+        }
+      ]
+    },
+    "L4": {
+      "rows": 4,
+      "result": [
+        {
+          "category": "T1 appRole TEACHER -> ws_legacy_<id> workspace + teaching context",
+          "users": 6,
+          "also_admin": "1",
+          "without_email": "1",
+          "demo_logins": "1",
+          "first_seen": "2026-09-30T05:59:31.000Z",
+          "last_seen": "2026-09-30T05:59:31.000Z"
+        },
+        {
+          "category": "T2 admin without TEACHER -> platform ADMIN only, no workspace",
+          "users": 1,
+          "also_admin": "1",
+          "without_email": "0",
+          "demo_logins": "0",
+          "first_seen": "2026-09-30T05:59:31.000Z",
+          "last_seen": "2026-09-30T05:59:31.000Z"
+        },
+        {
+          "category": "T3 no appRole -> no workspace, onboarding on next login",
+          "users": 1,
+          "also_admin": "0",
+          "without_email": "0",
+          "demo_logins": "0",
+          "first_seen": "2026-09-30T05:59:31.000Z",
+          "last_seen": "2026-09-30T05:59:31.000Z"
+        },
+        {
+          "category": "T4 appRole STUDENT -> no workspace, learning context after joining a group",
+          "users": 4,
+          "also_admin": "0",
+          "without_email": "0",
+          "demo_logins": "0",
+          "first_seen": "2026-09-30T05:59:31.000Z",
+          "last_seen": "2026-09-30T05:59:31.000Z"
+        }
+      ]
+    },
+    "L5": {
+      "rows": 2,
+      "result": [
+        {
+          "id": 4,
+          "openId": "legacy_4",
+          "name": "Admin",
+          "email": "admin@example.test",
+          "role": "admin",
+          "appRole": null,
+          "loginMethod": "google",
+          "createdAt": "2026-09-30T05:59:31.000Z",
+          "lastSignedIn": "2026-09-30T05:59:31.000Z"
+        },
+        {
+          "id": 10,
+          "openId": "legacy_10",
+          "name": "Dup Upper",
+          "email": "Dup@Example.test",
+          "role": "user",
+          "appRole": null,
+          "loginMethod": "manus",
+          "createdAt": "2026-09-30T05:59:31.000Z",
+          "lastSignedIn": "2026-09-30T05:59:31.000Z"
+        }
+      ]
+    },
+    "L6": {
+      "rows": 0,
+      "result": []
+    },
+    "L7": {
+      "rows": 0,
+      "result": []
+    },
+    "L9": {
+      "rows": 1,
+      "result": [
+        {
+          "email_norm": "dup@example.test",
+          "accounts": 2,
+          "user_ids": "10,11",
+          "app_roles": "-,STUDENT",
+          "login_methods": "manus,google",
+          "teacher_accounts": "0"
+        }
+      ]
+    },
+    "L10": {
+      "rows": 3,
+      "result": [
+        {
+          "id": 2,
+          "email": "empty-name@example.test",
+          "name_length": 0,
+          "title_rule": "e-mail as title"
+        },
+        {
+          "id": 3,
+          "email": null,
+          "name_length": null,
+          "title_rule": "fallback title"
+        },
+        {
+          "id": 8,
+          "email": "long@example.test",
+          "name_length": 400,
+          "title_rule": "truncated to 255"
+        }
+      ]
+    },
+    "L11": {
+      "rows": 11,
+      "result": [
+        {
+          "id": 1,
+          "openId": "legacy_1",
+          "email": "aysel@example.test",
+          "role": "user",
+          "appRole": "TEACHER",
+          "loginMethod": "google",
+          "lastSignedIn": "2026-09-30T05:59:31.000Z"
+        },
+        {
+          "id": 2,
+          "openId": "legacy_2",
+          "email": "empty-name@example.test",
+          "role": "user",
+          "appRole": "TEACHER",
+          "loginMethod": "google",
+          "lastSignedIn": "2026-09-30T05:59:31.000Z"
+        },
+        {
+          "id": 4,
+          "openId": "legacy_4",
+          "email": "admin@example.test",
+          "role": "admin",
+          "appRole": null,
+          "loginMethod": "google",
+          "lastSignedIn": "2026-09-30T05:59:31.000Z"
+        },
+        {
+          "id": 5,
+          "openId": "legacy_5",
+          "email": "s1@example.test",
+          "role": "user",
+          "appRole": "STUDENT",
+          "loginMethod": "google",
+          "lastSignedIn": "2026-09-30T05:59:31.000Z"
+        },
+        {
+          "id": 6,
+          "openId": "legacy_6",
+          "email": "s2@example.test",
+          "role": "user",
+          "appRole": "STUDENT",
+          "loginMethod": "google",
+          "lastSignedIn": "2026-09-30T05:59:31.000Z"
+        },
+        {
+          "id": 7,
+          "openId": "legacy_7",
+          "email": "admin-teacher@example.test",
+          "role": "admin",
+          "appRole": "TEACHER",
+          "loginMethod": "google",
+          "lastSignedIn": "2026-09-30T05:59:31.000Z"
+        },
+        {
+          "id": 8,
+          "openId": "legacy_8",
+          "email": "long@example.test",
+          "role": "user",
+          "appRole": "TEACHER",
+          "loginMethod": "google",
+          "lastSignedIn": "2026-09-30T05:59:31.000Z"
+        },
+        {
+          "id": 9,
+          "openId": "legacy_9",
+          "email": "s3@example.test",
+          "role": "user",
+          "appRole": "STUDENT",
+          "loginMethod": "google",
+          "lastSignedIn": "2026-09-30T05:59:31.000Z"
+        },
+        {
+          "id": 10,
+          "openId": "legacy_10",
+          "email": "Dup@Example.test",
+          "role": "user",
+          "appRole": null,
+          "loginMethod": "manus",
+          "lastSignedIn": "2026-09-30T05:59:31.000Z"
+        },
+        {
+          "id": 11,
+          "openId": "legacy_11",
+          "email": "dup@example.test",
+          "role": "user",
+          "appRole": "STUDENT",
+          "loginMethod": "google",
+          "lastSignedIn": "2026-09-30T05:59:31.000Z"
+        },
+        {
+          "id": 12,
+          "openId": "legacy_12",
+          "email": "demo@example.test",
+          "role": "user",
+          "appRole": "TEACHER",
+          "loginMethod": "demo",
+          "lastSignedIn": "2026-09-30T05:59:31.000Z"
+        }
+      ]
+    },
+    "L12": {
+      "rows": 1,
+      "result": [
+        {
+          "max_workspace_id_length": 12,
+          "teachers": 6
+        }
+      ]
+    }
+  },
+  "3 0002-era data, before 0003": {
+    "M1": {
+      "rows": 1,
+      "result": [
+        {
+          "journal_rows": 3,
+          "last_created_at": 1788785600000
+        }
+      ]
+    },
+    "M2": {
+      "rows": 0,
+      "result": []
+    },
+    "M3": {
+      "rows": 0,
+      "result": []
+    },
+    "M4": {
+      "rows": 0,
+      "result": []
+    },
+    "M5": {
+      "rows": 0,
+      "result": []
+    },
+    "M6": {
+      "rows": 0,
+      "result": []
+    },
+    "M7": {
+      "rows": 0,
+      "result": []
+    },
+    "M8": {
+      "rows": 0,
+      "result": []
+    },
+    "M9": {
+      "rows": 0,
+      "result": []
+    },
+    "M10": {
+      "rows": 0,
+      "result": []
+    },
+    "M11": {
+      "rows": 4,
+      "result": [
+        {
+          "col": "assessments.startAt",
+          "near_limit": 0
+        },
+        {
+          "col": "assessments.endAt",
+          "near_limit": 0
+        },
+        {
+          "col": "assessment_assignments.availableUntil",
+          "near_limit": 0
+        },
+        {
+          "col": "attempts.deadlineAt",
+          "near_limit": 2
+        }
+      ]
+    },
+    "Q1": {
+      "rows": 1,
+      "result": [
+        {
+          "users": 12,
+          "workspaces": 6,
+          "study_groups": 1,
+          "group_members": 3,
+          "assessments": 1,
+          "assignments": 1,
+          "attempts": 4,
+          "student_answers": 8,
+          "results": 2,
+          "result_items": 0
+        }
+      ]
+    },
+    "Q2": {
+      "rows": 3,
+      "result": [
+        {
+          "status": "IN_PROGRESS",
+          "attempts": 2
+        },
+        {
+          "status": "SUBMITTED",
+          "attempts": 1
+        },
+        {
+          "status": "AUTO_SUBMITTED",
+          "attempts": 1
+        }
+      ]
+    },
+    "Q3": {
+      "rows": 1,
+      "result": [
+        {
+          "stale_open_attempts": 0,
+          "oldest_deadline": null,
+          "will_auto_submit": null
+        }
+      ]
+    },
+    "Q4": {
+      "rows": 1,
+      "result": [
+        {
+          "sql_null": "1",
+          "json_null": "1",
+          "empty_string": "1",
+          "empty_array": "1",
+          "empty_object": "1",
+          "total_answers": 8
+        }
+      ]
+    },
+    "Q5": {
+      "rows": 0,
+      "result": []
+    }
+  },
+  "5 right after 0003": {
+    "M1": {
+      "rows": 1,
+      "result": [
+        {
+          "journal_rows": 4,
+          "last_created_at": 1790701222563
+        }
+      ]
+    },
+    "M2": {
+      "rows": 0,
+      "result": []
+    },
+    "M3": {
+      "rows": 0,
+      "result": []
+    },
+    "M4": {
+      "rows": 0,
+      "result": []
+    },
+    "M5": {
+      "rows": 0,
+      "result": []
+    },
+    "M6": {
+      "rows": 0,
+      "result": []
+    },
+    "M7": {
+      "rows": 0,
+      "result": []
+    },
+    "M8": {
+      "rows": 0,
+      "result": []
+    },
+    "M9": {
+      "rows": 0,
+      "result": []
+    },
+    "M10": {
+      "rows": 0,
+      "result": []
+    },
+    "M11": {
+      "rows": 4,
+      "result": [
+        {
+          "col": "assessments.startAt",
+          "near_limit": 0
+        },
+        {
+          "col": "assessments.endAt",
+          "near_limit": 0
+        },
+        {
+          "col": "assessment_assignments.availableUntil",
+          "near_limit": 0
+        },
+        {
+          "col": "attempts.deadlineAt",
+          "near_limit": 2
+        }
+      ]
+    },
+    "R1": {
+      "rows": 1,
+      "result": [
+        {
+          "journal_rows": 4,
+          "last_created_at": 1790701222563
+        }
+      ]
+    },
+    "R2": {
+      "rows": 1,
+      "result": [
+        {
+          "users": 12,
+          "workspaces": 6,
+          "study_groups": 1,
+          "group_members": 3,
+          "assessments": 1,
+          "assignments": 1,
+          "attempts": 4,
+          "student_answers": 8,
+          "results": 2,
+          "result_items": 0
+        }
+      ]
+    },
+    "R3": {
+      "rows": 1,
+      "result": [
+        {
+          "total_question_mismatch": "0",
+          "answered_mismatch": "0",
+          "missing_last_activity": "0",
+          "auto_submitted_without_time": "0",
+          "unexpected_auto_submit_time": "0",
+          "attempts": 4
+        }
+      ]
+    },
+    "R4": {
+      "rows": 1,
+      "result": [
+        {
+          "student_assessment_pairs": 3,
+          "progress_rows": 3,
+          "attempt_count_mismatch": 0,
+          "bad_active_attempt": 0,
+          "open_attempt_not_tracked": 0,
+          "attempts_without_progress": 0
+        }
+      ]
+    },
+    "R5": {
+      "rows": 1,
+      "result": [
+        {
+          "nonzero_revisions": 0,
+          "non_default_threshold": 0
+        }
+      ]
+    },
+    "R6": {
+      "rows": 1,
+      "result": [
+        {
+          "attempts_status_type": "enum('IN_PROGRESS','SUBMITTED','AUTO_SUBMITTED','EXPIRED_NO_ANSWERS','VOIDED')"
+        }
+      ]
+    },
+    "R7": {
+      "rows": 5,
+      "result": [
+        {
+          "table_name": "assessment_student_progress",
+          "index_name": "assessment_progress_activity_idx",
+          "non_unique": 1,
+          "columns_in_index": "assessmentId,latestActivityAt"
+        },
+        {
+          "table_name": "assessment_student_progress",
+          "index_name": "assessment_progress_student_unique",
+          "non_unique": 0,
+          "columns_in_index": "assessmentId,studentId"
+        },
+        {
+          "table_name": "attempts",
+          "index_name": "attempts_assessment_status_idx",
+          "non_unique": 1,
+          "columns_in_index": "assessmentId,status"
+        },
+        {
+          "table_name": "student_activity_events",
+          "index_name": "activity_entity_idx",
+          "non_unique": 1,
+          "columns_in_index": "providerWorkspaceId,entityType,entityId,createdAt"
+        },
+        {
+          "table_name": "student_activity_events",
+          "index_name": "activity_user_idx",
+          "non_unique": 1,
+          "columns_in_index": "userId,createdAt"
+        }
+      ]
+    },
+    "R8": {
+      "rows": 0,
+      "result": []
+    },
+    "R9": {
+      "rows": 1,
+      "result": [
+        {
+          "db_now": "2026-09-30T05:59:32.000Z",
+          "newest_sign_in": "2026-09-30T05:59:31.000Z",
+          "sign_in_minutes_ago": 0,
+          "newest_event": null,
+          "event_minutes_ago": null
+        }
+      ]
+    }
+  },
+  "9 planted defects": {
+    "M1": {
+      "rows": 1,
+      "result": [
+        {
+          "journal_rows": 4,
+          "last_created_at": 1790701222563
+        }
+      ]
+    },
+    "M2": {
+      "rows": 0,
+      "result": []
+    },
+    "M3": {
+      "rows": 1,
+      "result": [
+        {
+          "src": "assessments.createdBy",
+          "user_id": 6,
+          "rows_owned": 1
+        }
+      ]
+    },
+    "M4": {
+      "rows": 1,
+      "result": [
+        {
+          "kind": "assessment",
+          "id": "as_x",
+          "author": 6,
+          "workspace_id": "ws_legacy_1",
+          "ownerUserId": 1
+        }
+      ]
+    },
+    "M5": {
+      "rows": 1,
+      "result": [
+        {
+          "attempt_id": "t3",
+          "studentId": 9,
+          "assessmentId": "as1",
+          "status": "AUTO_SUBMITTED",
+          "assignmentId": 1,
+          "groupId": "g1",
+          "assigned_student": null,
+          "assignment_status": "ACTIVE",
+          "membership_status": null,
+          "finding": "LEFT GROUP: no membership now"
+        }
+      ]
+    },
+    "M6": {
+      "rows": 2,
+      "result": [
+        {
+          "id": "ws_legacy_1",
+          "ownerUserId": 1,
+          "title": "Aysel Müəllim",
+          "finding": "more than one ws_legacy for owner"
+        },
+        {
+          "id": "ws_legacy_77",
+          "ownerUserId": 1,
+          "title": "Stray copy",
+          "finding": "id does not match owner"
+        }
+      ]
+    },
+    "M7": {
+      "rows": 1,
+      "result": [
+        {
+          "email_norm": "dup@example.test",
+          "accounts": 2,
+          "workspaces": 2,
+          "user_ids": "10,11",
+          "workspace_ids": "ws_dup_10,ws_dup_11"
+        }
+      ]
+    },
+    "M8": {
+      "rows": 1,
+      "result": [
+        {
+          "relation": "group_members.userId -> users",
+          "orphans": 1
+        }
+      ]
+    },
+    "M9": {
+      "rows": 0,
+      "result": []
+    },
+    "M10": {
+      "rows": 1,
+      "result": [
+        {
+          "finding": "finished attempt without result",
+          "result_id": null,
+          "attempt_id": "t4",
+          "status": "AUTO_SUBMITTED"
+        }
+      ]
+    },
+    "M11": {
+      "rows": 4,
+      "result": [
+        {
+          "col": "assessments.startAt",
+          "near_limit": 0
+        },
+        {
+          "col": "assessments.endAt",
+          "near_limit": 0
+        },
+        {
+          "col": "assessment_assignments.availableUntil",
+          "near_limit": 0
+        },
+        {
+          "col": "attempts.deadlineAt",
+          "near_limit": 2
+        }
+      ]
+    },
+    "R1": {
+      "rows": 1,
+      "result": [
+        {
+          "journal_rows": 4,
+          "last_created_at": 1790701222563
+        }
+      ]
+    },
+    "R2": {
+      "rows": 1,
+      "result": [
+        {
+          "users": 12,
+          "workspaces": 9,
+          "study_groups": 1,
+          "group_members": 3,
+          "assessments": 2,
+          "assignments": 1,
+          "attempts": 4,
+          "student_answers": 8,
+          "results": 2,
+          "result_items": 0
+        }
+      ]
+    },
+    "R3": {
+      "rows": 1,
+      "result": [
+        {
+          "total_question_mismatch": "0",
+          "answered_mismatch": "0",
+          "missing_last_activity": "0",
+          "auto_submitted_without_time": "1",
+          "unexpected_auto_submit_time": "0",
+          "attempts": 4
+        }
+      ]
+    },
+    "R4": {
+      "rows": 1,
+      "result": [
+        {
+          "student_assessment_pairs": 3,
+          "progress_rows": 3,
+          "attempt_count_mismatch": 0,
+          "bad_active_attempt": 0,
+          "open_attempt_not_tracked": 0,
+          "attempts_without_progress": 0
+        }
+      ]
+    },
+    "R5": {
+      "rows": 1,
+      "result": [
+        {
+          "nonzero_revisions": 0,
+          "non_default_threshold": 0
+        }
+      ]
+    },
+    "R6": {
+      "rows": 1,
+      "result": [
+        {
+          "attempts_status_type": "enum('IN_PROGRESS','SUBMITTED','AUTO_SUBMITTED','EXPIRED_NO_ANSWERS','VOIDED')"
+        }
+      ]
+    },
+    "R7": {
+      "rows": 9,
+      "result": [
+        {
+          "table_name": "_rollback_0003_assessment_student_progress",
+          "index_name": "assessment_progress_activity_idx",
+          "non_unique": 1,
+          "columns_in_index": "assessmentId,latestActivityAt"
+        },
+        {
+          "table_name": "_rollback_0003_assessment_student_progress",
+          "index_name": "assessment_progress_student_unique",
+          "non_unique": 0,
+          "columns_in_index": "assessmentId,studentId"
+        },
+        {
+          "table_name": "_rollback_0003_student_activity_events",
+          "index_name": "activity_entity_idx",
+          "non_unique": 1,
+          "columns_in_index": "providerWorkspaceId,entityType,entityId,createdAt"
+        },
+        {
+          "table_name": "_rollback_0003_student_activity_events",
+          "index_name": "activity_user_idx",
+          "non_unique": 1,
+          "columns_in_index": "userId,createdAt"
+        },
+        {
+          "table_name": "assessment_student_progress",
+          "index_name": "assessment_progress_activity_idx",
+          "non_unique": 1,
+          "columns_in_index": "assessmentId,latestActivityAt"
+        },
+        {
+          "table_name": "assessment_student_progress",
+          "index_name": "assessment_progress_student_unique",
+          "non_unique": 0,
+          "columns_in_index": "assessmentId,studentId"
+        },
+        {
+          "table_name": "attempts",
+          "index_name": "attempts_assessment_status_idx",
+          "non_unique": 1,
+          "columns_in_index": "assessmentId,status"
+        },
+        {
+          "table_name": "student_activity_events",
+          "index_name": "activity_entity_idx",
+          "non_unique": 1,
+          "columns_in_index": "providerWorkspaceId,entityType,entityId,createdAt"
+        },
+        {
+          "table_name": "student_activity_events",
+          "index_name": "activity_user_idx",
+          "non_unique": 1,
+          "columns_in_index": "userId,createdAt"
+        }
+      ]
+    },
+    "R8": {
+      "rows": 0,
+      "result": []
+    },
+    "R9": {
+      "rows": 1,
+      "result": [
+        {
+          "db_now": "2026-09-30T05:59:38.000Z",
+          "newest_sign_in": "2026-09-30T05:59:31.000Z",
+          "sign_in_minutes_ago": 0,
+          "newest_event": null,
+          "event_minutes_ago": null
+        }
+      ]
+    }
+  },
+  "10 after 0004": {
+    "S1": {
+      "rows": 1,
+      "result": [
+        {
+          "journal_rows": 5,
+          "last_created_at": 1790707991583
+        }
+      ]
+    },
+    "S2": {
+      "rows": 2,
+      "result": [
+        {
+          "role": "SUPER_ADMIN",
+          "users": 2
+        },
+        {
+          "role": "SUPPORT_ADMIN",
+          "users": 1
+        }
+      ]
+    },
+    "S3": {
+      "rows": 1,
+      "result": [
+        {
+          "role_type": "enum('SUPER_ADMIN','SUPPORT_ADMIN','PARTNER_ADMIN','FINANCE_ADMIN','CONTENT_REVIEWER')",
+          "sessions_valid_after_precision": 3
+        }
+      ]
+    },
+    "S4": {
+      "rows": 1,
+      "result": [
+        {
+          "not_active": "0",
+          "revoked": "0",
+          "suspended_at_set": "0"
+        }
+      ]
+    },
+    "S5": {
+      "rows": 3,
+      "result": [
+        {
+          "id": 4,
+          "email": "admin@example.test",
+          "role": "SUPER_ADMIN",
+          "createdAt": "2026-09-30T05:59:31.000Z"
+        },
+        {
+          "id": 7,
+          "email": "admin-teacher@example.test",
+          "role": "SUPER_ADMIN",
+          "createdAt": "2026-09-30T05:59:31.000Z"
+        },
+        {
+          "id": 5,
+          "email": "s1@example.test",
+          "role": "SUPPORT_ADMIN",
+          "createdAt": "2026-09-30T05:59:38.000Z"
+        }
+      ]
+    },
+    "S6": {
+      "rows": 0,
+      "result": []
+    }
+  },
+  "10 after trigger ops step": {
+    "S1": {
+      "rows": 1,
+      "result": [
+        {
+          "journal_rows": 5,
+          "last_created_at": 1790707991583
+        }
+      ]
+    },
+    "S2": {
+      "rows": 3,
+      "result": [
+        {
+          "role": "SUPER_ADMIN",
+          "users": 2
+        },
+        {
+          "role": "SUPPORT_ADMIN",
+          "users": 1
+        },
+        {
+          "role": "PARTNER_ADMIN",
+          "users": 1
+        }
+      ]
+    },
+    "S3": {
+      "rows": 1,
+      "result": [
+        {
+          "role_type": "enum('SUPER_ADMIN','SUPPORT_ADMIN','PARTNER_ADMIN','FINANCE_ADMIN','CONTENT_REVIEWER')",
+          "sessions_valid_after_precision": 3
+        }
+      ]
+    },
+    "S4": {
+      "rows": 1,
+      "result": [
+        {
+          "not_active": "1",
+          "revoked": "1",
+          "suspended_at_set": "1"
+        }
+      ]
+    },
+    "S5": {
+      "rows": 3,
+      "result": [
+        {
+          "id": 4,
+          "email": "admin@example.test",
+          "role": "SUPER_ADMIN",
+          "createdAt": "2026-09-30T05:59:31.000Z"
+        },
+        {
+          "id": 7,
+          "email": "admin-teacher@example.test",
+          "role": "SUPER_ADMIN",
+          "createdAt": "2026-09-30T05:59:31.000Z"
+        },
+        {
+          "id": 5,
+          "email": "s1@example.test",
+          "role": "SUPPORT_ADMIN",
+          "createdAt": "2026-09-30T05:59:38.000Z"
+        }
+      ]
+    },
+    "S6": {
+      "rows": 2,
+      "result": [
+        {
+          "trigger_name": "audit_logs_no_delete",
+          "event": "DELETE"
+        },
+        {
+          "trigger_name": "audit_logs_no_update",
+          "event": "UPDATE"
+        }
+      ]
+    }
+  }
+}

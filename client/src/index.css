@@ -1,0 +1,314 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Resulio semantic design tokens.
+ *
+ * Single source of truth for colour. Components use the Tailwind utilities generated below
+ * (bg-card, text-muted-foreground, text-success, border-input, …) and never raw hex values or
+ * palette utilities. Every value is derived from the existing brand palette:
+ * navy #0B1220, cyan #00C2D7, orange #F4A261, coral #E85D4C, slate neutrals, page #F7F8FB.
+ * Contrast is verified by `pnpm contrast` (scripts/check-contrast.mjs), which parses this file.
+ */
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-foreground-secondary: var(--foreground-secondary);
+  --color-inverse-foreground: var(--inverse-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-overlay: var(--overlay);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-hover: var(--secondary-hover);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-link: var(--link);
+  --color-link-foreground: var(--link-foreground);
+
+  --color-border: var(--border);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-surface: var(--success-surface);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-surface: var(--warning-surface);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-danger: var(--destructive);
+  --color-danger-foreground: var(--destructive-foreground);
+  --color-danger-surface: var(--danger-surface);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-surface: var(--info-surface);
+  --color-neutral: var(--neutral);
+  --color-neutral-surface: var(--neutral-surface);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-grid: var(--chart-grid);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --shadow-card: var(--elevation-card);
+  --shadow-overlay: var(--elevation-overlay);
+}
+
+/* Light mode ------------------------------------------------------------------------------ */
+:root {
+  color-scheme: light;
+  --radius: 0.65rem;
+
+  /* Surfaces */
+  --background: #F7F8FB;          /* page background */
+  --card: #FFFFFF;                /* cards, panels, tables, inputs */
+  --popover: #FFFFFF;             /* raised: dropdowns, popovers, tooltips, modals */
+  --muted: #F1F5F9;               /* table header, row hover, skeleton, disabled fill */
+  --overlay: rgb(11 18 32 / 0.55); /* modal/drawer backdrop */
+
+  /* Text */
+  --foreground: #111827;          /* primary text */
+  --card-foreground: #111827;
+  --popover-foreground: #111827;
+  --foreground-secondary: #475569;/* secondary text */
+  --muted-foreground: #5B677B;    /* metadata, timestamps, helper text, placeholder */
+  --inverse-foreground: #F7F8FB;  /* text on inverse (navy) surfaces */
+
+  /* Actions */
+  --primary: #0B1220;             /* primary button */
+  --primary-hover: #1E293B;
+  --primary-foreground: #F7F8FB;
+  --secondary: #F1F5F9;           /* secondary action */
+  --secondary-hover: #E2E8F0;
+  --secondary-foreground: #111827;
+  --accent: #F1F5F9;              /* menu item hover/highlight */
+  --accent-foreground: #111827;
+  --brand: #00C2D7;               /* brand cyan: fills and indicators only, never text on light */
+  --brand-foreground: #0B1220;
+  --link: #0E7490;                /* links, cyan labels, selected state */
+  --link-foreground: #FFFFFF;
+
+  /* Borders */
+  --border: #CBD5E1;              /* card and table borders */
+  --border-subtle: #E2E8F0;       /* decorative dividers */
+  --border-strong: #8391A7;       /* emphasised borders (3:1) */
+  --input: #8391A7;               /* input/select/checkbox borders (3:1) */
+  --ring: #0E7490;                /* keyboard focus */
+
+  /* Status */
+  --success: #047857;
+  --success-foreground: #FFFFFF;
+  --success-surface: #ECFDF5;
+  --warning: #B45309;
+  --warning-foreground: #FFFFFF;
+  --warning-surface: #FFFBEB;
+  --destructive: #B93A2B;         /* danger / error text and fills */
+  --destructive-foreground: #FFFFFF;
+  --danger-surface: #FEF2F2;
+  --info: #0E7490;
+  --info-foreground: #FFFFFF;
+  --info-surface: #ECFEFF;
+  --neutral: #475569;             /* draft, archived, not opened */
+  --neutral-surface: #F1F5F9;
+
+  /* Charts */
+  --chart-1: #0891B2;
+  --chart-2: #C2692A;
+  --chart-3: #0B1220;
+  --chart-4: #E85D4C;
+  --chart-5: #64748B;
+  --chart-grid: #E2E8F0;
+
+  /* Sidebar (brand navy in both modes) */
+  --sidebar: #0B1220;
+  --sidebar-foreground: #CBD5E1;
+  --sidebar-muted: #94A3B8;
+  --sidebar-primary: #00C2D7;
+  --sidebar-primary-foreground: #0B1220;
+  --sidebar-accent: #1A2540;
+  --sidebar-accent-foreground: #F1F5F9;
+  --sidebar-border: #1F2A44;
+  --sidebar-ring: #00C2D7;
+
+  /* Elevation */
+  --elevation-card: 0 1px 2px rgb(15 23 42 / 0.06);
+  --elevation-overlay: 0 12px 32px rgb(15 23 42 / 0.18);
+}
+
+/* Dark mode ------------------------------------------------------------------------------- */
+.dark {
+  color-scheme: dark;
+
+  --background: #0B1220;
+  --card: #131C2E;
+  --popover: #1A2540;
+  --muted: #1E2A45;
+  --overlay: rgb(2 6 15 / 0.7);
+
+  --foreground: #F1F5F9;
+  --card-foreground: #F1F5F9;
+  --popover-foreground: #F1F5F9;
+  --foreground-secondary: #CBD5E1;
+  --muted-foreground: #94A3B8;
+  --inverse-foreground: #0B1220;
+
+  --primary: #00C2D7;
+  --primary-hover: #33CFE0;
+  --primary-foreground: #0B1220;
+  --secondary: #1E2A45;
+  --secondary-hover: #2B3A5A;
+  --secondary-foreground: #F1F5F9;
+  --accent: #1E2A45;
+  --accent-foreground: #F1F5F9;
+  --brand: #00C2D7;
+  --brand-foreground: #0B1220;
+  --link: #67E8F9;
+  --link-foreground: #0B1220;
+
+  --border: #2B3A5A;
+  --border-subtle: #1F2A44;
+  --border-strong: #6B7A99;
+  --input: #6B7A99;
+  --ring: #00C2D7;
+
+  --success: #34D399;
+  --success-foreground: #0B1220;
+  --success-surface: #0F2E2A;
+  --warning: #FCD34D;
+  --warning-foreground: #0B1220;
+  --warning-surface: #33290F;
+  --destructive: #F4877A;
+  --destructive-foreground: #0B1220;
+  --danger-surface: #3A1D1F;
+  --info: #67E8F9;
+  --info-foreground: #0B1220;
+  --info-surface: #0F2A33;
+  --neutral: #CBD5E1;
+  --neutral-surface: #1E2A45;
+
+  --chart-1: #00C2D7;
+  --chart-2: #F4A261;
+  --chart-3: #E2E8F0;
+  --chart-4: #F4877A;
+  --chart-5: #94A3B8;
+  --chart-grid: #2B3A5A;
+
+  --sidebar: #0B1220;
+  --sidebar-foreground: #CBD5E1;
+  --sidebar-muted: #94A3B8;
+  --sidebar-primary: #00C2D7;
+  --sidebar-primary-foreground: #0B1220;
+  --sidebar-accent: #1A2540;
+  --sidebar-accent-foreground: #F1F5F9;
+  --sidebar-border: #2B3A5A;
+  --sidebar-ring: #00C2D7;
+
+  --elevation-card: 0 1px 2px rgb(0 0 0 / 0.4);
+  --elevation-overlay: 0 12px 32px rgb(0 0 0 / 0.55);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+    --font-display: "Space Grotesk", Inter, sans-serif;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  ::placeholder {
+    color: var(--muted-foreground);
+    opacity: 1;
+  }
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [type="button"]:not(:disabled),
+  [type="submit"]:not(:disabled),
+  [type="reset"]:not(:disabled),
+  a[href],
+  select:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled) {
+    @apply cursor-pointer;
+  }
+}
+
+@layer components {
+  /**
+   * Custom container utility that centers content and adds responsive padding.
+   *
+   * This overrides Tailwind's default container behavior to:
+   * - Auto-center content (mx-auto)
+   * - Add responsive horizontal padding
+   * - Set max-width for large screens
+   *
+   * Usage: <div className="container">...</div>
+   *
+   * For custom widths, use max-w-* utilities directly:
+   * <div className="max-w-6xl mx-auto px-4">...</div>
+   */
+  .container {
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1rem; /* 16px - mobile padding */
+    padding-right: 1rem;
+  }
+
+  .flex {
+    min-height: 0;
+    min-width: 0;
+  }
+
+  @media (min-width: 640px) {
+    .container {
+      padding-left: 1.5rem; /* 24px - tablet padding */
+      padding-right: 1.5rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .container {
+      padding-left: 2rem; /* 32px - desktop padding */
+      padding-right: 2rem;
+      max-width: 1280px; /* Standard content width */
+    }
+  }
+}

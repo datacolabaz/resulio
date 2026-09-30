@@ -1,0 +1,97 @@
+import { TRPCError } from "@trpc/server";
+
+export type AppErrorCode =
+  | "NOT_FOUND"
+  | "FORBIDDEN"
+  | "INVITE_NOT_FOUND"
+  | "STUDENT_NOT_FOUND"
+  | "ALREADY_MEMBER"
+  | "NO_QUESTIONS"
+  | "INVALID_QUESTION"
+  | "NOT_DRAFT"
+  | "NOT_PUBLISHED"
+  | "NO_ACCESS"
+  | "NOT_STARTED"
+  | "CLOSED"
+  | "NO_ATTEMPTS_LEFT"
+  | "ATTEMPT_CLOSED"
+  | "UNKNOWN_QUESTION"
+  | "NOT_REVIEWABLE"
+  | "POINTS_OUT_OF_RANGE"
+  | "RATE_LIMITED"
+  | "DATABASE_UNAVAILABLE"
+  | "AI_UNAVAILABLE"
+  | "AI_INVALID_OUTPUT"
+  | "AI_USAGE_LIMIT_REACHED"
+  | "DEMO_DISABLED"
+  | "CANNOT_JOIN_OWN_GROUP"
+  | "NO_WORKSPACE"
+  | "WORKSPACE_LIMIT"
+  | "WORKSPACE_NOT_ALLOWED"
+  | "CONTEXT_UNAVAILABLE"
+  | "PARTNER_EXISTS"
+  | "ACCOUNT_SUSPENDED"
+  | "CANNOT_TARGET_SELF"
+  | "TARGET_IS_SUPER_ADMIN"
+  | "ALREADY_SUSPENDED"
+  | "NOT_SUSPENDED"
+  | "ROLE_NOT_GRANTABLE"
+  | "ALREADY_HAS_ROLE"
+  | "LAST_SUPER_ADMIN"
+  | "INVALID_TRANSITION"
+  | "AUDIT_UNSAFE_METADATA";
+
+export class AppError extends Error {
+  constructor(public readonly code: AppErrorCode) {
+    super(code);
+  }
+}
+
+const HTTP: Partial<Record<AppErrorCode, TRPCError["code"]>> = {
+  NOT_FOUND: "NOT_FOUND",
+  INVITE_NOT_FOUND: "NOT_FOUND",
+  STUDENT_NOT_FOUND: "NOT_FOUND",
+  UNKNOWN_QUESTION: "NOT_FOUND",
+  FORBIDDEN: "FORBIDDEN",
+  NO_ACCESS: "FORBIDDEN",
+  NOT_STARTED: "PRECONDITION_FAILED",
+  CLOSED: "PRECONDITION_FAILED",
+  NOT_PUBLISHED: "PRECONDITION_FAILED",
+  NO_ATTEMPTS_LEFT: "PRECONDITION_FAILED",
+  ATTEMPT_CLOSED: "PRECONDITION_FAILED",
+  NOT_DRAFT: "PRECONDITION_FAILED",
+  ALREADY_MEMBER: "CONFLICT",
+  RATE_LIMITED: "TOO_MANY_REQUESTS",
+  DATABASE_UNAVAILABLE: "INTERNAL_SERVER_ERROR",
+  AI_UNAVAILABLE: "PRECONDITION_FAILED",
+  AI_INVALID_OUTPUT: "INTERNAL_SERVER_ERROR",
+  AI_USAGE_LIMIT_REACHED: "TOO_MANY_REQUESTS",
+  DEMO_DISABLED: "FORBIDDEN",
+  CANNOT_JOIN_OWN_GROUP: "CONFLICT",
+  NO_WORKSPACE: "FORBIDDEN",
+  WORKSPACE_LIMIT: "CONFLICT",
+  WORKSPACE_NOT_ALLOWED: "FORBIDDEN",
+  CONTEXT_UNAVAILABLE: "FORBIDDEN",
+  PARTNER_EXISTS: "CONFLICT",
+  ACCOUNT_SUSPENDED: "FORBIDDEN",
+  CANNOT_TARGET_SELF: "FORBIDDEN",
+  TARGET_IS_SUPER_ADMIN: "FORBIDDEN",
+  ALREADY_SUSPENDED: "CONFLICT",
+  NOT_SUSPENDED: "CONFLICT",
+  ROLE_NOT_GRANTABLE: "FORBIDDEN",
+  ALREADY_HAS_ROLE: "CONFLICT",
+  LAST_SUPER_ADMIN: "CONFLICT",
+  INVALID_TRANSITION: "PRECONDITION_FAILED",
+  AUDIT_UNSAFE_METADATA: "INTERNAL_SERVER_ERROR",
+};
+
+/** Convert domain errors into tRPC errors; the message stays a stable machine code. */
+export function toTrpcError(error: unknown): TRPCError {
+  if (error instanceof TRPCError) return error;
+  const code = error instanceof AppError ? error.code : error instanceof Error ? error.message : "UNKNOWN";
+  const mapped = HTTP[code as AppErrorCode];
+  if (mapped) return new TRPCError({ code: mapped, message: code });
+  if (error instanceof AppError) return new TRPCError({ code: "BAD_REQUEST", message: code });
+  console.error("[Resulio] Unexpected error", error);
+  return new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "INTERNAL_ERROR" });
+}
