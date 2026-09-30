@@ -12,7 +12,7 @@ import {
   studentAnswerSchema,
   targetsSchema,
 } from "../shared/assessment";
-import { getSessionCookieOptions } from "./_core/cookies";
+import { clearNamedCookie, getSessionCookieOptions } from "./_core/cookies";
 import { ENV } from "./_core/env";
 import { requestMeta } from "./_core/requestMeta";
 import { sdk } from "./_core/sdk";
@@ -97,8 +97,7 @@ const authRouter = router({
   me: publicProcedure.query(({ ctx }) => (ctx.user ? me(ctx.user) : null)),
 
   logout: publicProcedure.mutation(({ ctx }) => {
-    const cookieOptions = getSessionCookieOptions(ctx.req);
-    ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+    clearNamedCookie(ctx.res, COOKIE_NAME, ctx.req);
     return { success: true } as const;
   }),
 

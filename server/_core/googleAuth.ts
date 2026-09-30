@@ -1,11 +1,11 @@
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import { parse as parseCookieHeader } from "cookie";
-import { createHash, randomBytes, timingSafeEqual } from "crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
 import type { Express, Request, Response } from "express";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import * as db from "../db";
 import { recordSecurityEvent } from "../modules/securityEvents";
-import { getSessionCookieOptions, isSecureRequest } from "./cookies";
+import { clearNamedCookie, getSessionCookieOptions, isSecureRequest } from "./cookies";
 import { ENV } from "./env";
 import { hashIp } from "./requestMeta";
 import { sdk } from "./sdk";
@@ -35,24 +35,75 @@ export function redirectUri(req: Request) {
   return `${proto}://${host}/api/auth/google/callback`;
 }
 
-function sameString(a: string, b: string) {
-  const x = Buffer.from(a);
-  const y = Buffer.from(b);
-  return x.length === y.length && timingSafeEqual(x, y);
+function hmacKey() {
+  const secret = ENV.sessionSecret;
+  if (!secret || secret.length < 32) throw new Error("SESSION_SECRET must be set (min 32 chars)");
+  return secret;
 }
 
-function readState(req: Request): OAuthState | null {
+/** PKCE + return path travel with Google's `state` so Safari bounce-tracking cannot drop them. */
+export function encodeOAuthState(state: OAuthState, now = Date.now()): string {
+  const body = b64url(Buffer.from(JSON.stringify({ n: state.nonce, v: state.verifier, r: state.returnTo, e: now + STATE_MAX_AGE_MS })));
+  const sig = createHmac("sha256", hmacKey()).update(body).digest("base64url");
+  return `${body}.${sig}`;
+}
+
+export function decodeOAuthState(raw: string, now = Date.now()): OAuthState | null {
+  const dot = raw.lastIndexOf(".");
+  if (dot < 1) return null;
+  const body = raw.slice(0, dot);
+  const sig = raw.slice(dot + 1);
+  let expected: string;
+  try {
+    expected = createHmac("sha256", hmacKey()).update(body).digest("base64url");
+  } catch {
+    return null;
+  }
+  if (sig.length !== expected.length || !timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as { n?: unknown; v?: unknown; r?: unknown; e?: unknown };
+    if (typeof parsed.n !== "string" || typeof parsed.v !== "string" || typeof parsed.e !== "number") return null;
+    if (parsed.e < now) return null;
+    return { nonce: parsed.n, verifier: parsed.v, returnTo: safeReturnTo(parsed.r) };
+  } catch {
+    return null;
+  }
+}
+
+function readCookieState(req: Request): OAuthState | null {
   const raw = parseCookieHeader(req.headers.cookie ?? "")[STATE_COOKIE];
   if (!raw) return null;
+  return decodeOAuthState(raw) ?? legacyCookieState(raw);
+}
+
+function legacyCookieState(raw: string): OAuthState | null {
   try {
     const parsed = JSON.parse(Buffer.from(raw, "base64url").toString("utf8"));
     if (typeof parsed?.nonce === "string" && typeof parsed?.verifier === "string") {
       return { nonce: parsed.nonce, verifier: parsed.verifier, returnTo: safeReturnTo(parsed.returnTo) };
     }
   } catch {
-    // fall through
+    // ignore
   }
   return null;
+}
+
+function publicReason(value: string) {
+  return /^[a-z0-9_]{1,64}$/i.test(value) ? value : "unknown";
+}
+
+function loginPage(params: Record<string, string>) {
+  const origin = ENV.frontendUrl;
+  const dest = new URL(origin || "http://127.0.0.1");
+  dest.pathname = "/";
+  dest.search = "";
+  dest.hash = "";
+  for (const [key, value] of Object.entries(params)) dest.searchParams.set(key, value);
+  return origin ? dest.toString() : `/?${dest.searchParams.toString()}`;
+}
+
+function failLogin(res: Response, reason: string) {
+  res.redirect(302, loginPage({ login: "failed", reason: publicReason(reason) }));
 }
 
 export function registerGoogleAuthRoutes(app: Express) {
@@ -71,12 +122,18 @@ export function registerGoogleAuthRoutes(app: Express) {
         );
       return;
     }
+    if (!ENV.sessionSecret || ENV.sessionSecret.length < 32) {
+      console.warn("[GoogleAuth] SESSION_SECRET is missing or shorter than 32 characters.");
+      res.status(503).type("text/plain").send("Google login is not configured\n\nSESSION_SECRET must be at least 32 characters.\n");
+      return;
+    }
     const state: OAuthState = {
       nonce: b64url(randomBytes(24)),
       verifier: b64url(randomBytes(48)),
       returnTo: safeReturnTo(req.query.returnTo),
     };
-    res.cookie(STATE_COOKIE, Buffer.from(JSON.stringify(state)).toString("base64url"), {
+    const packed = encodeOAuthState(state);
+    res.cookie(STATE_COOKIE, packed, {
       ...getSessionCookieOptions(req),
       maxAge: STATE_MAX_AGE_MS,
     });
@@ -85,7 +142,7 @@ export function registerGoogleAuthRoutes(app: Express) {
     url.searchParams.set("redirect_uri", redirectUri(req));
     url.searchParams.set("response_type", "code");
     url.searchParams.set("scope", "openid email profile");
-    url.searchParams.set("state", state.nonce);
+    url.searchParams.set("state", packed);
     url.searchParams.set("code_challenge", b64url(createHash("sha256").update(state.verifier).digest()));
     url.searchParams.set("code_challenge_method", "S256");
     url.searchParams.set("prompt", "select_account");
@@ -93,17 +150,18 @@ export function registerGoogleAuthRoutes(app: Express) {
   });
 
   app.get("/api/auth/google/callback", async (req: Request, res: Response) => {
-    const state = readState(req);
-    res.clearCookie(STATE_COOKIE, getSessionCookieOptions(req));
+    const packed = typeof req.query.state === "string" ? req.query.state : "";
+    const state = decodeOAuthState(packed) ?? readCookieState(req);
+    clearNamedCookie(res, STATE_COOKIE, req);
     const code = typeof req.query.code === "string" ? req.query.code : "";
-    const nonce = typeof req.query.state === "string" ? req.query.state : "";
     if (req.query.error) {
-      res.redirect(302, `${ENV.frontendUrl}/?login=cancelled`);
+      const googleError = typeof req.query.error === "string" ? req.query.error : "cancelled";
+      res.redirect(302, loginPage({ login: googleError === "access_denied" ? "cancelled" : "failed", reason: publicReason(googleError) }));
       return;
     }
-    if (!state || !code || !nonce || !sameString(nonce, state.nonce)) {
+    if (!state || !code) {
       recordSecurityEvent({ type: "OAUTH_STATE_INVALID", severity: "MEDIUM", ipHash: hashIp(req.ip), details: { hasState: !!state, hasCode: !!code } });
-      res.status(403).send("Invalid OAuth state");
+      failLogin(res, state ? "missing_code" : "state");
       return;
     }
 
@@ -120,9 +178,17 @@ export function registerGoogleAuthRoutes(app: Express) {
           code_verifier: state.verifier,
         }),
       });
-      if (!tokenRes.ok) throw new Error(`token exchange failed (${tokenRes.status})`);
-      const tokens = (await tokenRes.json()) as { id_token?: string };
-      if (!tokens.id_token) throw new Error("id_token missing");
+      const tokens = (await tokenRes.json()) as { id_token?: string; error?: string };
+      if (!tokenRes.ok) {
+        const reason = publicReason(tokens.error || "token");
+        console.error("[GoogleAuth] token exchange failed:", tokenRes.status, reason);
+        failLogin(res, reason);
+        return;
+      }
+      if (!tokens.id_token) {
+        failLogin(res, "id_token");
+        return;
+      }
 
       const { payload } = await jwtVerify(tokens.id_token, GOOGLE_JWKS, {
         issuer: ["https://accounts.google.com", "accounts.google.com"],
@@ -130,7 +196,7 @@ export function registerGoogleAuthRoutes(app: Express) {
       });
       if (typeof payload.sub !== "string" || !payload.sub) throw new Error("sub missing");
       if (payload.email_verified !== true) {
-        res.status(403).send("Google email is not verified");
+        failLogin(res, "unverified");
         return;
       }
 
@@ -145,10 +211,13 @@ export function registerGoogleAuthRoutes(app: Express) {
       const token = await sdk.createSessionToken(user.openId, { name: user.name ?? "", expiresInMs: ONE_YEAR_MS });
       res.cookie(COOKIE_NAME, token, { ...getSessionCookieOptions(req), maxAge: ONE_YEAR_MS });
 
-      res.redirect(302, `${ENV.frontendUrl}${state.returnTo}`);
+      const origin = ENV.frontendUrl;
+      res.redirect(302, origin ? `${origin}${state.returnTo}` : state.returnTo);
     } catch (error) {
-      console.error("[GoogleAuth] Callback failed:", error instanceof Error ? error.message : error);
-      res.status(500).send("Google login failed");
+      const message = error instanceof Error ? error.message : "unknown";
+      console.error("[GoogleAuth] Callback failed:", message);
+      const reason = message.includes("SESSION_SECRET") ? "session" : "server";
+      failLogin(res, reason);
     }
   });
 }

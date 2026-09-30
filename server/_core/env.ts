@@ -8,6 +8,42 @@ function toOrigin(value: string): string {
   }
 }
 
+/** Apex ↔ www so CORS and cookies still work if the user lands on the other hostname. */
+export function withWwwAliases(origins: string[]): string[] {
+  const out = new Set(origins.filter(Boolean));
+  for (const origin of [...out]) {
+    try {
+      const url = new URL(origin);
+      if (url.hostname.startsWith("www.")) {
+        url.hostname = url.hostname.slice(4);
+        out.add(url.origin);
+      } else if (url.hostname.split(".").length === 2) {
+        url.hostname = `www.${url.hostname}`;
+        out.add(url.origin);
+      }
+    } catch {
+      // skip
+    }
+  }
+  return [...out];
+}
+
+/** Parent cookie domain for split frontend/API hosts (e.g. .resulio.co). Empty = host-only. */
+export function cookieDomainFromEnv(env: NodeJS.ProcessEnv = process.env): string {
+  const explicit = envString("COOKIE_DOMAIN", env);
+  if (explicit === "none" || explicit === "off") return "";
+  if (explicit) return explicit.startsWith(".") ? explicit : `.${explicit}`;
+  const front = toOrigin(env.FRONTEND_URL ?? "");
+  if (!front) return "";
+  try {
+    const host = new URL(front).hostname.replace(/^www\./i, "").toLowerCase();
+    if (!host || host === "localhost" || host.endsWith(".localhost") || /^\d+\.\d+\.\d+\.\d+$/.test(host)) return "";
+    return `.${host}`;
+  } catch {
+    return "";
+  }
+}
+
 /** Trim and strip wrapping quotes so pasted Cloud Console values still work. */
 export function envString(key: string, env: NodeJS.ProcessEnv = process.env): string {
   const raw = env[key] ?? "";
@@ -22,7 +58,7 @@ export const ENV = {
   get googleClientSecret() { return envString("GOOGLE_CLIENT_SECRET"); },
   get googleConfigured() { return Boolean(this.googleClientId && this.googleClientSecret); },
   /** Optional explicit callback URL; otherwise derived from the request origin. */
-  get googleRedirectUri() { return envString("GOOGLE_REDIRECT_URI"); },
+  get googleRedirectUri() { return envString("GOOGLE_REDIRECT_URI").replace(/\/+$/, ""); },
   /** Optional comma-separated allowlist of emails permitted to create a Provider Workspace. Empty = open. */
   get teacherEmailAllowlist() {
     return (process.env.TEACHER_EMAIL_ALLOWLIST ?? "")
@@ -47,10 +83,12 @@ export const ENV = {
   get auditHashSecret() { return process.env.AUDIT_HASH_SECRET || process.env.SESSION_SECRET || ""; },
   /** Origin of the separately deployed frontend (e.g. https://resulio.co). Empty = this server also serves the SPA. */
   get frontendUrl() { return toOrigin(process.env.FRONTEND_URL ?? ""); },
+  /** Shared parent domain for session cookies when the SPA and API are on sibling hosts. */
+  get cookieDomain() { return cookieDomainFromEnv(); },
   /** Browser origins allowed to call the API with credentials: FRONTEND_URL plus optional CORS_ALLOWED_ORIGINS. */
   get corsAllowedOrigins(): string[] {
     const extra = (process.env.CORS_ALLOWED_ORIGINS ?? "").split(",").map(toOrigin);
-    return Array.from(new Set([this.frontendUrl, ...extra].filter(Boolean)));
+    return withWwwAliases(Array.from(new Set([this.frontendUrl, ...extra].filter(Boolean))));
   },
   get isProduction() { return process.env.NODE_ENV === "production"; },
   get enableDemoLogin() { return process.env.NODE_ENV !== "production" && process.env.DISABLE_DEMO_LOGIN !== "1"; },

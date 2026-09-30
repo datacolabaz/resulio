@@ -5,9 +5,9 @@ import type { User } from "../drizzle/schema";
 import { getSessionCookieOptions } from "./_core/cookies";
 import type { TrpcContext } from "./_core/context";
 import { isCrossSiteWrite } from "./_core/csrf";
-import { safeReturnTo } from "./_core/googleAuth";
+import { safeReturnTo, encodeOAuthState, decodeOAuthState } from "./_core/googleAuth";
 import { apiCors } from "./_core/cors";
-import { ENV, envString } from "./_core/env";
+import { ENV, envString, cookieDomainFromEnv, withWwwAliases } from "./_core/env";
 import { canonicalRedirect, frontendRedirect } from "./_core/hostRedirect";
 import { hitRateLimit, resetRateLimits } from "./_core/rateLimit";
 import { isRevoked, sdk } from "./_core/sdk";
@@ -377,8 +377,15 @@ describe("sessions and cookies", () => {
   it("issues httpOnly SameSite=Lax cookies, secure in production", () => {
     const http = { protocol: "http", headers: {} } as never;
     expect(getSessionCookieOptions(http)).toMatchObject({ httpOnly: true, sameSite: "lax", path: "/" });
+    expect(getSessionCookieOptions(http).domain).toBeUndefined();
     vi.stubEnv("NODE_ENV", "production");
     expect(getSessionCookieOptions(http).secure).toBe(true);
+  });
+
+  it("shares the session cookie across resulio.co and api.resulio.co", () => {
+    vi.stubEnv("FRONTEND_URL", "https://resulio.co");
+    const https = { protocol: "https", headers: {} } as never;
+    expect(getSessionCookieOptions(https).domain).toBe(".resulio.co");
   });
 });
 
@@ -431,7 +438,7 @@ describe("two-service CORS", () => {
     vi.stubEnv("FRONTEND_URL", "https://resulio.co/");
     vi.stubEnv("CORS_ALLOWED_ORIGINS", " https://staging.resulio.co , not a url, https://resulio.co");
     expect(ENV.frontendUrl).toBe("https://resulio.co");
-    expect(ENV.corsAllowedOrigins).toEqual(["https://resulio.co", "https://staging.resulio.co"]);
+    expect(ENV.corsAllowedOrigins).toEqual(["https://resulio.co", "https://staging.resulio.co", "https://www.resulio.co"]);
   });
 
   it("allows credentials for the frontend origin and answers its preflight", () => {
@@ -479,6 +486,21 @@ describe("Google OAuth env", () => {
   it("treats quoted or padded Cloud Console values as configured", () => {
     expect(envString("GOOGLE_CLIENT_ID", { GOOGLE_CLIENT_ID: '  "abc.apps.googleusercontent.com"  ' })).toBe("abc.apps.googleusercontent.com");
     expect(envString("GOOGLE_CLIENT_SECRET", { GOOGLE_CLIENT_SECRET: "   " })).toBe("");
+  });
+
+  it("adds www aliases and infers the parent cookie domain", () => {
+    expect(withWwwAliases(["https://resulio.co"])).toEqual(["https://resulio.co", "https://www.resulio.co"]);
+    expect(cookieDomainFromEnv({ FRONTEND_URL: "https://www.resulio.co" })).toBe(".resulio.co");
+    expect(cookieDomainFromEnv({ COOKIE_DOMAIN: "none", FRONTEND_URL: "https://resulio.co" })).toBe("");
+  });
+});
+
+describe("OAuth state", () => {
+  it("round-trips PKCE material without relying on a cookie", () => {
+    vi.stubEnv("SESSION_SECRET", SECRET);
+    const packed = encodeOAuthState({ nonce: "n1", verifier: "v1", returnTo: "/teacher" });
+    expect(decodeOAuthState(packed)).toEqual({ nonce: "n1", verifier: "v1", returnTo: "/teacher" });
+    expect(decodeOAuthState(packed.slice(0, -2) + "ab")).toBeNull();
   });
 });
 

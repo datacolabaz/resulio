@@ -34,6 +34,11 @@ export const app = {
     "Простая и быстрая экзаменационная платформа с аналитикой для преподавателей и студентов.",
   ],
   "landing.cancelled": ["Giriş ləğv edildi.", "Sign-in was cancelled.", "Вход отменён."],
+  "landing.loginFailed": [
+    "Google ilə giriş alınmadı ({reason}). Yenidən cəhd edin.",
+    "Google sign-in failed ({reason}). Please try again.",
+    "Вход через Google не удался ({reason}). Попробуйте ещё раз.",
+  ],
   "landing.demoTeacher": ["Demo müəllim", "Demo teacher", "Демо-преподаватель"],
   "landing.demoStudent": ["Demo tələbə", "Demo student", "Демо-студент"],
   "landing.demoMissing": ["Demo hesab tapılmadı. Əvvəlcə {command} işə salın.", "Demo account not found. Run {command} first.", "Демо-аккаунт не найден. Сначала выполните {command}."],

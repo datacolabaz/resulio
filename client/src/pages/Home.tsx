@@ -18,8 +18,11 @@ const FEATURES: { title: MessageKey; body: MessageKey }[] = [
 export default function Home() {
   const { user, loading } = useAuth();
   const search = useSearch();
-  const returnTo = safeReturnTo(new URLSearchParams(search).get("returnTo"));
-  const cancelled = new URLSearchParams(search).get("login") === "cancelled";
+  const loginParams = new URLSearchParams(search);
+  const returnTo = safeReturnTo(loginParams.get("returnTo"));
+  const cancelled = loginParams.get("login") === "cancelled";
+  const loginFailed = loginParams.get("login") === "failed";
+  const loginReason = loginParams.get("reason") || "unknown";
   const demoAvailable = trpc.auth.demoAvailable.useQuery();
   const demo = trpc.auth.demoLogin.useMutation();
   const [, nav] = useLocation();
@@ -52,6 +55,11 @@ export default function Home() {
           <h1 className="mt-4 break-words text-3xl font-semibold leading-tight sm:text-5xl">{t("landing.headline")}</h1>
           <p className="mt-5 max-w-xl text-lg text-foreground-secondary">{t("landing.lead")}</p>
           {cancelled && <p role="status" className="mt-4 text-sm text-warning">{t("landing.cancelled")}</p>}
+          {loginFailed && (
+            <p role="alert" className="mt-4 text-sm text-destructive">
+              {t("landing.loginFailed", { reason: loginReason })}
+            </p>
+          )}
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Button size="lg" onClick={() => startLogin(returnTo)}>{t("common.signInGoogle")}</Button>
             {demoAvailable.data && (
