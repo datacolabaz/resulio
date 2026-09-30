@@ -14,6 +14,13 @@ export const format = {
   "error.INVITE_NOT_FOUND": ["Dəvət kodu tapılmadı.", "Invite code not found.", "Код приглашения не найден."],
   "error.STUDENT_NOT_FOUND": ["Bu e-poçtla hesab tapılmadı. İstifadəçi əvvəlcə Resulio-ya daxil olmalıdır.", "No account found for this email. The user must sign in to Resulio first.", "Аккаунт с этим адресом не найден. Пользователь должен сначала войти в Resulio."],
   "error.ALREADY_MEMBER": ["Artıq qrupun üzvüdür.", "Already a member of the group.", "Уже состоит в группе."],
+  "error.EMAIL_INVITE_NOT_FOUND": ["Bu dəvət linki etibarlı deyil və ya artıq ləğv edilib.", "This invite link is not valid, or it has already been revoked.", "Эта ссылка-приглашение недействительна или уже отозвана."],
+  "error.EMAIL_INVITE_EXPIRED": ["Bu dəvət linkinin vaxtı bitib. Müəllimdən yeni link istəyin.", "This invite link has expired. Ask the teacher for a new one.", "Срок действия ссылки истёк. Попросите у преподавателя новую."],
+  "error.EMAIL_INVITE_MISMATCH": [
+    "Bu dəvət başqa bir e-poçt ünvanı üçün yaradılıb. Zəhmət olmasa müəlliminizin dəvət göndərdiyi Google hesabı ilə daxil olun.",
+    "This invite was created for a different email address. Please sign in with the Google account your teacher invited.",
+    "Это приглашение создано для другого адреса эл. почты. Войдите с аккаунтом Google, на который отправлено приглашение.",
+  ],
   "error.NO_QUESTIONS": ["Dərc etmək üçün ən azı bir sual əlavə edin.", "Add at least one question before publishing.", "Добавьте хотя бы один вопрос перед публикацией."],
   "error.INVALID_QUESTION": ["Sual düzgün doldurulmayıb.", "The question is not filled in correctly.", "Вопрос заполнен неверно."],
   "error.NOT_PUBLISHED": ["İmtahan hələ dərc olunmayıb.", "The exam has not been published yet.", "Экзамен ещё не опубликован."],

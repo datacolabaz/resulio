@@ -73,7 +73,7 @@ export async function groupMembersList(scope: TeacherScope, groupId: string) {
     .orderBy(groupMembers.status, users.name);
 }
 
-async function workspaceOwnerOf(workspaceId: string, db: DbOrTx) {
+export async function workspaceOwnerOf(workspaceId: string, db: DbOrTx) {
   const [ws] = await db.select().from(providerWorkspaces).where(eq(providerWorkspaces.id, workspaceId)).limit(1);
   if (!ws) throw new AppError("NOT_FOUND");
   return ws;
@@ -114,8 +114,24 @@ export async function joinByInvite(userId: number, inviteCode: string) {
     .where(and(eq(groupMembers.groupId, group.id), eq(groupMembers.userId, userId)))
     .limit(1);
   if (existing) throw new AppError("ALREADY_MEMBER");
-  await db.insert(groupMembers).values({ groupId: group.id, userId, membershipRole: "STUDENT", status: "PENDING" });
-  return { groupId: group.id, groupName: group.name, ownerUserId: ws.ownerUserId, status: "PENDING" as const };
+  const status = group.autoJoinEnabled ? ("ACTIVE" as const) : ("PENDING" as const);
+  await db.insert(groupMembers).values({ groupId: group.id, userId, membershipRole: "STUDENT", status });
+  return { groupId: group.id, groupName: group.name, ownerUserId: ws.ownerUserId, status };
+}
+
+/** Teacher toggles whether `joinByInvite` needs their approval or activates membership immediately. */
+export async function setAutoJoin(scope: TeacherScope, groupId: string, enabled: boolean) {
+  await assertGroupOwner(scope, groupId);
+  await requireDb().update(groups).set({ autoJoinEnabled: enabled }).where(eq(groups.id, groupId));
+  return { ok: true, autoJoinEnabled: enabled };
+}
+
+/** Old code stops working the instant a new one is issued — the simplest form of revoke. */
+export async function regenerateInviteCode(scope: TeacherScope, groupId: string) {
+  await assertGroupOwner(scope, groupId);
+  const inviteCode = nanoid(10).toUpperCase();
+  await requireDb().update(groups).set({ inviteCode }).where(eq(groups.id, groupId));
+  return { inviteCode };
 }
 
 export async function publicInvite(inviteCode: string) {
