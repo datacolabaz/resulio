@@ -33,6 +33,21 @@ export function requireDb(): Db {
   return db;
 }
 
+/** Google login writes `auth_accounts` (migration 0002). Missing tables surface as login reason=db. */
+export async function warnIfGoogleAuthSchemaMissing() {
+  const db = getDb();
+  if (!db) {
+    console.warn("[GoogleAuth] DATABASE_URL is not set; sign-in cannot create users.");
+    return;
+  }
+  try {
+    await db.select({ id: authAccounts.id }).from(authAccounts).limit(1);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown";
+    console.error("[GoogleAuth] Table auth_accounts is missing or unreadable:", message, "Apply drizzle migrations 0002–0004 (pnpm db:migrate). Google login will fail with reason=db.");
+  }
+}
+
 export async function getUserByOpenId(openId: string): Promise<User | undefined> {
   const db = getDb();
   if (!db) return undefined;

@@ -106,6 +106,56 @@ function failLogin(res: Response, reason: string) {
   res.redirect(302, loginPage({ login: "failed", reason: publicReason(reason) }));
 }
 
+/** Flatten mysql2 / drizzle / jose error chains without leaking secrets into the redirect URL. */
+export function loginCatchReason(error: unknown): string {
+  const codes: string[] = [];
+  const errnos: number[] = [];
+  const messages: string[] = [];
+  let cur: unknown = error;
+  for (let i = 0; i < 8 && cur; i++) {
+    if (cur instanceof Error) messages.push(cur.message);
+    if (typeof cur !== "object" || !cur) break;
+    const o = cur as { code?: unknown; errno?: unknown; cause?: unknown; name?: unknown };
+    if (typeof o.code === "string") codes.push(o.code);
+    if (typeof o.errno === "number") errnos.push(o.errno);
+    if (typeof o.name === "string") messages.push(o.name);
+    cur = o.cause;
+  }
+  const blob = `${codes.join(" ")} ${messages.join(" ")}`.toLowerCase();
+  if (blob.includes("session_secret")) return "session";
+  if (
+    blob.includes("database_unavailable") ||
+    blob.includes("account_user_missing") ||
+    codes.includes("ER_NO_SUCH_TABLE") ||
+    codes.includes("ER_BAD_FIELD_ERROR") ||
+    codes.includes("ER_DUP_ENTRY") ||
+    errnos.includes(1146) ||
+    errnos.includes(1054) ||
+    errnos.includes(1062) ||
+    blob.includes("doesn't exist") ||
+    blob.includes("does not exist") ||
+    blob.includes("unknown column")
+  ) {
+    return "db";
+  }
+  if (
+    blob.includes("jwks") ||
+    blob.includes("jose") ||
+    blob.includes("jwtexpired") ||
+    blob.includes("jwtclaim") ||
+    blob.includes("jws") ||
+    blob.includes("jsonwebtokenerror") ||
+    /\bjwt\b/.test(blob)
+  ) {
+    return "jwt";
+  }
+  if (blob.includes("fetch") || blob.includes("network") || blob.includes("econn") || blob.includes("enotfound") || blob.includes("invalid json")) {
+    return "token";
+  }
+  if (blob.includes("sub missing")) return "sub";
+  return "server";
+}
+
 export function registerGoogleAuthRoutes(app: Express) {
   app.get("/api/auth/google/start", (req: Request, res: Response) => {
     if (!ENV.googleConfigured) {
@@ -178,7 +228,14 @@ export function registerGoogleAuthRoutes(app: Express) {
           code_verifier: state.verifier,
         }),
       });
-      const tokens = (await tokenRes.json()) as { id_token?: string; error?: string };
+      let tokens: { id_token?: string; error?: string } = {};
+      try {
+        tokens = JSON.parse(await tokenRes.text()) as { id_token?: string; error?: string };
+      } catch {
+        console.error("[GoogleAuth] token exchange returned non-JSON:", tokenRes.status);
+        failLogin(res, "token");
+        return;
+      }
       if (!tokenRes.ok) {
         const reason = publicReason(tokens.error || "token");
         console.error("[GoogleAuth] token exchange failed:", tokenRes.status, reason);
@@ -193,9 +250,14 @@ export function registerGoogleAuthRoutes(app: Express) {
       const { payload } = await jwtVerify(tokens.id_token, GOOGLE_JWKS, {
         issuer: ["https://accounts.google.com", "accounts.google.com"],
         audience: ENV.googleClientId,
+        clockTolerance: 120,
       });
-      if (typeof payload.sub !== "string" || !payload.sub) throw new Error("sub missing");
-      if (payload.email_verified !== true) {
+      if (typeof payload.sub !== "string" || !payload.sub) {
+        failLogin(res, "sub");
+        return;
+      }
+      const emailVerified = payload.email_verified === true || payload.email_verified === "true";
+      if (!emailVerified) {
         failLogin(res, "unverified");
         return;
       }
@@ -214,9 +276,9 @@ export function registerGoogleAuthRoutes(app: Express) {
       const origin = ENV.frontendUrl;
       res.redirect(302, origin ? `${origin}${state.returnTo}` : state.returnTo);
     } catch (error) {
+      const reason = loginCatchReason(error);
       const message = error instanceof Error ? error.message : "unknown";
-      console.error("[GoogleAuth] Callback failed:", message);
-      const reason = message.includes("SESSION_SECRET") ? "session" : "server";
+      console.error("[GoogleAuth] Callback failed:", reason, message);
       failLogin(res, reason);
     }
   });

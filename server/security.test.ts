@@ -5,7 +5,7 @@ import type { User } from "../drizzle/schema";
 import { getSessionCookieOptions } from "./_core/cookies";
 import type { TrpcContext } from "./_core/context";
 import { isCrossSiteWrite } from "./_core/csrf";
-import { safeReturnTo, encodeOAuthState, decodeOAuthState } from "./_core/googleAuth";
+import { safeReturnTo, encodeOAuthState, decodeOAuthState, loginCatchReason } from "./_core/googleAuth";
 import { apiCors } from "./_core/cors";
 import { ENV, envString, cookieDomainFromEnv, withWwwAliases } from "./_core/env";
 import { canonicalRedirect, frontendRedirect } from "./_core/hostRedirect";
@@ -501,6 +501,19 @@ describe("OAuth state", () => {
     const packed = encodeOAuthState({ nonce: "n1", verifier: "v1", returnTo: "/teacher" });
     expect(decodeOAuthState(packed)).toEqual({ nonce: "n1", verifier: "v1", returnTo: "/teacher" });
     expect(decodeOAuthState(packed.slice(0, -2) + "ab")).toBeNull();
+  });
+});
+
+describe("Google callback catch-all reasons", () => {
+  it("maps schema and JWT failures instead of collapsing everything to server", () => {
+    expect(loginCatchReason(new Error("SESSION_SECRET must be set (min 32 chars)"))).toBe("session");
+    expect(loginCatchReason(new Error("DATABASE_UNAVAILABLE"))).toBe("db");
+    expect(loginCatchReason(Object.assign(new Error("Table 'app.auth_accounts' doesn't exist"), { code: "ER_NO_SUCH_TABLE", errno: 1146 }))).toBe("db");
+    expect(loginCatchReason(Object.assign(new Error("Unknown column 'avatarUrl'"), { code: "ER_BAD_FIELD_ERROR", errno: 1054 }))).toBe("db");
+    expect(loginCatchReason(Object.assign(new Error("wrapped"), { cause: Object.assign(new Error("jwt expired"), { name: "JWTExpired" }) }))).toBe("jwt");
+    expect(loginCatchReason(new TypeError("fetch failed"))).toBe("token");
+    expect(loginCatchReason(new Error("sub missing"))).toBe("sub");
+    expect(loginCatchReason(new Error("boom"))).toBe("server");
   });
 });
 

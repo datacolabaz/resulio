@@ -13,7 +13,7 @@ import { requestIdMiddleware } from "./requestMeta";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { getDb } from "../db";
+import { getDb, warnIfGoogleAuthSchemaMissing } from "../db";
 import { sweepExpiredAttempts } from "../modules/attempts";
 
 const SWEEP_INTERVAL_MS = 30_000;
@@ -82,6 +82,7 @@ async function startServer() {
     if (!ENV.googleConfigured) {
       console.warn("[GoogleAuth] Google login is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env, then restart.");
     }
+    void warnIfGoogleAuthSchemaMissing();
   });
 }
 
