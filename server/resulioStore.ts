@@ -14,6 +14,7 @@ export type AssignmentRecord = {
   id: string;
   workspaceId: string;
   createdBy: number;
+  shareCode: string;
   title: string;
   description: string;
   instructions: string;
@@ -37,6 +38,7 @@ export type MaterialRecord = {
   id: string;
   workspaceId: string;
   createdBy: number;
+  shareCode: string;
   title: string;
   description: string;
   subject: string;
@@ -63,6 +65,7 @@ export type AiDraft = {
 };
 
 const nowIso = () => new Date().toISOString();
+const newShareCode = () => nanoid(10).replace(/[-_]/g, "x").toUpperCase();
 
 class ResulioStore {
   assignments: AssignmentRecord[] = [];
@@ -112,10 +115,10 @@ class ResulioStore {
 
   createAssignment(
     scope: TeacherScope,
-    input: Omit<AssignmentRecord, "id" | "workspaceId" | "createdBy">,
+    input: Omit<AssignmentRecord, "id" | "workspaceId" | "createdBy" | "shareCode">,
     recipientIds: number[],
   ) {
-    const row: AssignmentRecord = { id: nanoid(), workspaceId: scope.workspaceId, createdBy: scope.userId, ...input };
+    const row: AssignmentRecord = { id: nanoid(), workspaceId: scope.workspaceId, createdBy: scope.userId, shareCode: newShareCode(), ...input };
     this.assignments.push(row);
     for (const sid of new Set(recipientIds)) this.notify(sid, "Yeni tapşırıq", row.title);
     return row;
@@ -125,11 +128,12 @@ class ResulioStore {
     return this.materials.filter((m) => m.workspaceId === workspaceId);
   }
 
-  createMaterial(scope: TeacherScope, input: Omit<MaterialRecord, "id" | "workspaceId" | "createdBy" | "uploadedAt">) {
+  createMaterial(scope: TeacherScope, input: Omit<MaterialRecord, "id" | "workspaceId" | "createdBy" | "uploadedAt" | "shareCode">) {
     const row: MaterialRecord = {
       id: nanoid(),
       workspaceId: scope.workspaceId,
       createdBy: scope.userId,
+      shareCode: newShareCode(),
       uploadedAt: nowIso(),
       ...input,
     };
