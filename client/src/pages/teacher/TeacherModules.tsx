@@ -1,6 +1,7 @@
 import { AppShell, EmptyState, Loading, Panel, Pill } from "@/components/AppShell";
 import { draftFromQuestion, QuestionEditor } from "@/components/QuestionEditor";
 import { StatusBadge } from "@/components/StatusBadge";
+import { ShareBox } from "@/components/ShareBox";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -63,6 +64,7 @@ export function AssignmentsPage() {
   const utils = trpc.useUtils();
   const list = trpc.teacher.tasks.list.useQuery();
   const [open, setOpen] = useState(false);
+  const [shareId, setShareId] = useState<string | null>(null);
   const [f, setF] = useState({ title: "", description: "", instructions: "", deadline: "", groupIds: [] as string[], studentIds: [] as number[] });
   const create = trpc.teacher.tasks.create.useMutation({
     onSuccess: () => { setOpen(false); setF({ title: "", description: "", instructions: "", deadline: "", groupIds: [], studentIds: [] }); void utils.teacher.tasks.list.invalidate(); },
@@ -84,6 +86,14 @@ export function AssignmentsPage() {
               <Panel key={a.id} title={a.title} action={<Pill>{t("modules.submissions", { count: a.submissions.length })}</Pill>}>
                 <p className="break-words text-sm text-foreground-secondary">{a.description}</p>
                 <p className="mt-2 text-xs text-muted-foreground">{t("modules.deadlineValue", { date: fmtDateTime(a.deadline) })}</p>
+                <div className="mt-3">
+                  <Button size="sm" variant="outline" onClick={() => setShareId(shareId === a.id ? null : a.id)}>{t("common.share")}</Button>
+                  {shareId === a.id && (
+                    <div className="mt-3">
+                      <ShareBox path={`/task/${a.shareCode}`} fileName={`resulio-task-${a.shareCode}`} />
+                    </div>
+                  )}
+                </div>
               </Panel>
             ))}
           </div>
@@ -101,7 +111,7 @@ export function AssignmentsPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>{t("common.cancel")}</Button>
             <Button
-              disabled={f.title.trim().length < 2 || !deadline || (!f.groupIds.length && !f.studentIds.length) || create.isPending}
+              disabled={f.title.trim().length < 2 || !deadline || create.isPending}
               onClick={() => deadline && create.mutate({ title: f.title, description: f.description, instructions: f.instructions, deadline, groupIds: f.groupIds, studentIds: f.studentIds, attachments: [] })}
             >
               {t("common.send")}
@@ -189,6 +199,7 @@ function MaterialsTab() {
   const utils = trpc.useUtils();
   const list = trpc.teacher.tasks.materials.useQuery();
   const [open, setOpen] = useState(false);
+  const [shareId, setShareId] = useState<string | null>(null);
   const [f, setF] = useState({ title: "", description: "", subject: "", topic: "", fileName: "", groupIds: [] as string[], studentIds: [] as number[] });
   const create = trpc.teacher.tasks.createMaterial.useMutation({
     onSuccess: () => { setOpen(false); void utils.teacher.tasks.materials.invalidate(); },
@@ -206,6 +217,14 @@ function MaterialsTab() {
             <Panel key={m.id} title={m.title}>
               <p className="break-words text-sm text-foreground-secondary">{m.description}</p>
               <p className="mt-2 break-words text-xs text-muted-foreground">{[m.subject, m.topic, m.fileName].filter(Boolean).join(" · ")}</p>
+              <div className="mt-3">
+                <Button size="sm" variant="outline" onClick={() => setShareId(shareId === m.id ? null : m.id)}>{t("common.share")}</Button>
+                {shareId === m.id && (
+                  <div className="mt-3">
+                    <ShareBox path={`/material/${m.shareCode}`} fileName={`resulio-material-${m.shareCode}`} />
+                  </div>
+                )}
+              </div>
             </Panel>
           ))}
         </div>
