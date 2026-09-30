@@ -60,6 +60,45 @@ export function JoinGroupPage() {
   );
 }
 
+export function PublicEmailInvitePage() {
+  const { token = "" } = useParams<{ token: string }>();
+  const { user, loading } = useAuth();
+  const invite = trpc.public.emailInvite.useQuery({ token }, { enabled: token.length >= 16, retry: false });
+  const utils = trpc.useUtils();
+  const accept = trpc.student.acceptEmailInvite.useMutation({ onSuccess: () => utils.auth.me.invalidate() });
+  const g = invite.data;
+  const returnTo = `/invite/${token}`;
+  return (
+    <Card>
+      <h1 className="mt-4 text-xl font-semibold">{t("public.join.title")}</h1>
+      {invite.isLoading ? <p role="status" className="mt-3 text-sm text-muted-foreground">{t("common.loading")}</p> : !g ? (
+        <p role="alert" className="mt-3 text-sm text-destructive">{t("public.invite.notFound")}</p>
+      ) : (
+        <>
+          <div className="mt-3 break-words text-lg">{g.name}</div>
+          <p className="text-sm text-muted-foreground">{[g.subject, g.grade, g.teacherName].filter(Boolean).join(" · ")}</p>
+          <p className="mt-3 text-xs text-muted-foreground">{t("public.invite.emailNote")}</p>
+          <div className="mt-6">
+            {loading ? null : !user ? (
+              <Button className="w-full" onClick={() => startLogin(returnTo)}>{t("common.signInGoogle")}</Button>
+            ) : accept.isSuccess ? (
+              <div className="space-y-3 text-sm" role="status">
+                <p className="text-success">{t("public.invite.joined")}</p>
+                <Link href="/student/groups" className="text-link underline-offset-4 hover:underline">{t("public.myGroups")}</Link>
+              </div>
+            ) : (
+              <>
+                <Button className="w-full" disabled={accept.isPending} onClick={() => accept.mutate({ token })}>{t("public.join.request")}</Button>
+                {accept.error && <p role="alert" className="mt-2 text-sm text-destructive">{errorText(accept.error)}</p>}
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
 export function PublicExamPage() {
   const { shareCode = "" } = useParams<{ shareCode: string }>();
   const { user, loading } = useAuth();

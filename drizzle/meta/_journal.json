@@ -36,6 +36,13 @@
       "when": 1790707991583,
       "tag": "0004_admin_console",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1790793935489,
+      "tag": "0005_group_invites_v2",
+      "breakpoints": true
     }
   ]
 }

@@ -5,6 +5,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { t } from "@/i18n/messages";
@@ -90,11 +91,95 @@ function GroupFormDialog({ open, onOpenChange, initial }: { open: boolean; onOpe
   );
 }
 
-function InviteDialog({ open, onOpenChange, groupId, inviteCode }: { open: boolean; onOpenChange: (v: boolean) => void; groupId: string; inviteCode: string }) {
+function EmailInviteStatusBadge({ status }: { status: "PENDING" | "ACCEPTED" | "REVOKED" | "EXPIRED" }) {
+  const tone = status === "ACCEPTED" ? "success" : status === "PENDING" ? "warning" : "neutral";
+  return <StatusBadge tone={tone}>{t(`groups.emailInviteStatus.${status}`)}</StatusBadge>;
+}
+
+function EmailInviteSection({ groupId }: { groupId: string }) {
   const utils = trpc.useUtils();
   const [email, setEmail] = useState("");
+  const [freshLink, setFreshLink] = useState<{ token: string; email: string } | null>(null);
+  const list = trpc.teacher.groups.emailInviteList.useQuery({ groupId });
+  const refresh = () => { void utils.teacher.groups.emailInviteList.invalidate({ groupId }); };
+  const create = trpc.teacher.groups.emailInviteCreate.useMutation({
+    onSuccess: (res) => { setFreshLink({ token: res.token, email }); setEmail(""); refresh(); },
+    onError: (e) => toast.error(errorText(e)),
+  });
+  const revoke = trpc.teacher.groups.emailInviteRevoke.useMutation({ onSuccess: refresh, onError: (e) => toast.error(errorText(e)) });
+  const resend = trpc.teacher.groups.emailInviteResend.useMutation({
+    onSuccess: (res, vars) => {
+      const invitedEmail = list.data?.find((i) => i.id === vars.inviteId)?.email ?? "";
+      setFreshLink({ token: res.token, email: invitedEmail });
+      refresh();
+    },
+    onError: (e) => toast.error(errorText(e)),
+  });
+
+  return (
+    <section aria-labelledby="invite-email-token">
+      <h3 id="invite-email-token" className="mb-2 text-sm font-medium">{t("groups.inviteByEmailLink")}</h3>
+      <div className="flex gap-2">
+        <Input
+          type="email"
+          aria-labelledby="invite-email-token"
+          placeholder={t("groups.emailPlaceholder")}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <Button disabled={!email.includes("@") || create.isPending} onClick={() => create.mutate({ groupId, email })}>
+          {t("groups.sendInvite")}
+        </Button>
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">{t("groups.emailLinkNote")}</p>
+
+      {freshLink && (
+        <div className="mt-3 rounded-xl border bg-muted/40 p-3">
+          <p className="mb-2 text-xs text-foreground-secondary">{t("groups.emailLinkReady", { email: freshLink.email })}</p>
+          <ShareBox path={`/invite/${freshLink.token}`} fileName={`resulio-invite-${freshLink.token.slice(0, 8)}`} />
+        </div>
+      )}
+
+      {!!list.data?.length && (
+        <ul className="mt-4 divide-y text-sm">
+          {list.data.map((inv) => (
+            <li key={inv.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+              <div className="min-w-0">
+                <div className="break-all">{inv.email}</div>
+                <div className="text-xs text-muted-foreground">{fmtDateTime(inv.createdAt)}</div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <EmailInviteStatusBadge status={inv.displayStatus} />
+                {(inv.displayStatus === "PENDING" || inv.displayStatus === "EXPIRED") && (
+                  <Button size="sm" variant="outline" disabled={resend.isPending} onClick={() => resend.mutate({ groupId, inviteId: inv.id })}>
+                    {t("groups.resendInvite")}
+                  </Button>
+                )}
+                {inv.displayStatus === "PENDING" && (
+                  <Button size="sm" variant="ghost" className="text-destructive" disabled={revoke.isPending} onClick={() => revoke.mutate({ groupId, inviteId: inv.id })}>
+                    {t("groups.revokeInvite")}
+                  </Button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function InviteDialog({ open, onOpenChange, groupId, inviteCode, autoJoinEnabled }: { open: boolean; onOpenChange: (v: boolean) => void; groupId: string; inviteCode: string; autoJoinEnabled: boolean }) {
+  const utils = trpc.useUtils();
+  const [email, setEmail] = useState("");
+  const onGroupChange = () => void utils.teacher.groups.invalidate();
   const add = trpc.teacher.groups.addMember.useMutation({
-    onSuccess: () => { toast.success(t("groups.studentAdded")); setEmail(""); void utils.teacher.groups.invalidate(); },
+    onSuccess: () => { toast.success(t("groups.studentAdded")); setEmail(""); onGroupChange(); },
+    onError: (e) => toast.error(errorText(e)),
+  });
+  const setAutoJoin = trpc.teacher.groups.setAutoJoin.useMutation({ onSuccess: onGroupChange, onError: (e) => toast.error(errorText(e)) });
+  const regenerate = trpc.teacher.groups.regenerateInviteCode.useMutation({
+    onSuccess: () => { toast.success(t("groups.codeRegenerated")); onGroupChange(); },
     onError: (e) => toast.error(errorText(e)),
   });
   return (
@@ -105,7 +190,25 @@ function InviteDialog({ open, onOpenChange, groupId, inviteCode }: { open: boole
           <section aria-labelledby="invite-link">
             <h3 id="invite-link" className="mb-2 text-sm font-medium">{t("groups.inviteByLink")}</h3>
             <ShareBox path={`/join/${inviteCode}`} fileName={`resulio-group-${inviteCode}`} />
-            <p className="mt-2 text-xs text-muted-foreground">{t("groups.inviteLinkNote", { code: inviteCode })}</p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {t(autoJoinEnabled ? "groups.inviteLinkNoteAuto" : "groups.inviteLinkNoteApproval", { code: inviteCode })}
+            </p>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3">
+              <label htmlFor="auto-join" className="flex-1 text-sm">
+                <span className="block font-medium">{t("groups.autoJoinLabel")}</span>
+                <span className="block text-xs text-muted-foreground">{t("groups.autoJoinHint")}</span>
+              </label>
+              <Switch id="auto-join" checked={autoJoinEnabled} disabled={setAutoJoin.isPending} onCheckedChange={(v) => setAutoJoin.mutate({ groupId, enabled: v })} />
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2"
+              disabled={regenerate.isPending}
+              onClick={() => confirm(t("groups.regenerateConfirm")) && regenerate.mutate({ groupId })}
+            >
+              {t("groups.regenerateCode")}
+            </Button>
           </section>
           <section aria-labelledby="invite-email">
             <h3 id="invite-email" className="mb-2 text-sm font-medium">{t("groups.inviteByEmail")}</h3>
@@ -115,6 +218,7 @@ function InviteDialog({ open, onOpenChange, groupId, inviteCode }: { open: boole
             </div>
             <p className="mt-2 text-xs text-muted-foreground">{t("groups.emailNote")}</p>
           </section>
+          <EmailInviteSection groupId={groupId} />
         </div>
       </DialogContent>
     </Dialog>
@@ -280,7 +384,7 @@ export function GroupDetailPage() {
               )}
             </TabsContent>
           </Tabs>
-          <InviteDialog open={inviteOpen} onOpenChange={setInviteOpen} groupId={id} inviteCode={g.inviteCode} />
+          <InviteDialog open={inviteOpen} onOpenChange={setInviteOpen} groupId={id} inviteCode={g.inviteCode} autoJoinEnabled={g.autoJoinEnabled} />
           {editOpen && <GroupFormDialog open={editOpen} onOpenChange={setEditOpen} initial={g} />}
         </div>
       )}

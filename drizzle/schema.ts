@@ -118,6 +118,8 @@ export const groups = mysqlTable(
     grade: varchar("grade", { length: 32 }).notNull().default(""),
     description: text("description"),
     inviteCode: varchar("inviteCode", { length: 32 }).notNull().unique(),
+    /** When true, `joinByInvite` activates membership immediately instead of leaving it PENDING for teacher approval. */
+    autoJoinEnabled: boolean("autoJoinEnabled").notNull().default(false),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   (t) => [index("groups_workspace_idx").on(t.providerWorkspaceId)],
@@ -139,6 +141,34 @@ export const groupMembers = mysqlTable(
   (t) => [
     uniqueIndex("group_members_group_user_unique").on(t.groupId, t.userId),
     index("group_members_user_idx").on(t.userId),
+  ],
+);
+
+export const EMAIL_INVITE_STATUSES = ["PENDING", "ACCEPTED", "REVOKED"] as const;
+
+/**
+ * A one-time, email-restricted group invite. The raw token is shown to the teacher exactly once
+ * at creation (or resend) and is never persisted — only its SHA-256 hash is stored, so a leaked
+ * database row cannot be used to join a group. Expiry is enforced on top of `status` so a PENDING
+ * row still refuses to accept once `expiresAt` has passed.
+ */
+export const groupEmailInvites = mysqlTable(
+  "group_email_invites",
+  {
+    id: id("id").primaryKey(),
+    groupId: id("groupId").notNull(),
+    invitedByUserId: int("invitedByUserId").notNull(),
+    email: varchar("email", { length: 320 }).notNull(),
+    tokenHash: varchar("tokenHash", { length: 64 }).notNull().unique(),
+    status: mysqlEnum("status", EMAIL_INVITE_STATUSES).notNull().default("PENDING"),
+    expiresAt: timestamp("expiresAt").notNull(),
+    acceptedAt: timestamp("acceptedAt"),
+    revokedAt: timestamp("revokedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [
+    index("group_email_invites_group_idx").on(t.groupId),
+    index("group_email_invites_email_idx").on(t.email),
   ],
 );
 
@@ -514,6 +544,7 @@ export const featureFlagOverrides = mysqlTable(
 export type ProviderWorkspace = typeof providerWorkspaces.$inferSelect;
 export type PartnerProfile = typeof partnerProfiles.$inferSelect;
 export type Group = typeof groups.$inferSelect;
+export type GroupEmailInvite = typeof groupEmailInvites.$inferSelect;
 export type QuestionRow = typeof questions.$inferSelect;
 export type Assessment = typeof assessments.$inferSelect;
 export type AssessmentVersion = typeof assessmentVersions.$inferSelect;

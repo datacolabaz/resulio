@@ -67,6 +67,14 @@ export const app = {
   ],
   "public.join.request": ["Qoşulmaq üçün sorğu göndər", "Send a join request", "Отправить запрос на вступление"],
   "public.myGroups": ["Qruplarım →", "My groups →", "Мои группы →"],
+  "public.invite.notFound": ["Dəvət linki tapılmadı, vaxtı bitib və ya ləğv edilib.", "Invite link not found, expired, or revoked.", "Ссылка-приглашение не найдена, истекла или отозвана."],
+  "public.invite.emailNote": [
+    "Bu dəvət konkret bir e-poçt ünvanı üçün yaradılıb. Google ilə daxil olarkən eyni hesabı istifadə edin.",
+    "This invite was created for one specific email address. Sign in with that same Google account.",
+    "Это приглашение создано для одного конкретного адреса эл. почты. Войдите с тем же аккаунтом Google.",
+  ],
+  "public.invite.joined": ["Qrupa qoşuldunuz.", "You have joined the group.", "Вы вступили в группу."],
+
   "public.exam.notFound": ["İmtahan tapılmadı.", "Exam not found.", "Экзамен не найден."],
   "public.exam.joinFirst": [
     "İmtahanı yazmaq üçün əvvəlcə müəllimin qrupuna qoşulun (dəvət linki və ya kodu ilə).",

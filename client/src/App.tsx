@@ -9,7 +9,7 @@ import Home from "@/pages/Home";
 import NotFound from "@/pages/NotFound";
 import PartnerPage from "@/pages/PartnerPage";
 import WelcomePage from "@/pages/WelcomePage";
-import { JoinGroupPage, PublicExamPage, PublicMaterialPage, PublicTaskPage } from "@/pages/PublicFlows";
+import { JoinGroupPage, PublicEmailInvitePage, PublicExamPage, PublicMaterialPage, PublicTaskPage } from "@/pages/PublicFlows";
 import SettingsPage from "@/pages/SettingsPage";
 import {
   StudentAssessmentDetail,
@@ -115,6 +115,7 @@ function Router() {
       <Route path="/welcome" component={WelcomePage} />
       <Route path="/choose-role">{() => <Redirect to={`/welcome${window.location.search}`} />}</Route>
       <Route path="/join/:inviteCode" component={JoinGroupPage} />
+      <Route path="/invite/:token" component={PublicEmailInvitePage} />
       <Route path="/exam/:shareCode" component={PublicExamPage} />
       <Route path="/task/:shareCode" component={PublicTaskPage} />
       <Route path="/material/:shareCode" component={PublicMaterialPage} />

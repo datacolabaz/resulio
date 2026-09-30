@@ -37,6 +37,7 @@ import * as analytics from "./modules/analytics";
 import * as assessments from "./modules/assessments";
 import * as attempts from "./modules/attempts";
 import { AppError } from "./modules/errors";
+import * as groupEmailInvites from "./modules/groupEmailInvites";
 import * as groups from "./modules/groups";
 import * as partners from "./modules/partners";
 import * as workspaces from "./modules/workspaces";
@@ -175,6 +176,27 @@ const teacherGroupsRouter = router({
   analytics: teacherProcedure
     .input(z.object({ id: entityId }))
     .query(({ ctx, input }) => analytics.groupAnalytics(ctx.scope, input.id)),
+  setAutoJoin: teacherProcedure
+    .input(z.object({ groupId: entityId, enabled: z.boolean() }))
+    .mutation(({ ctx, input }) => groups.setAutoJoin(ctx.scope, input.groupId, input.enabled)),
+  regenerateInviteCode: teacherProcedure
+    .use(rateLimit("regenerateInviteCode", 10, MINUTE))
+    .input(z.object({ groupId: entityId }))
+    .mutation(({ ctx, input }) => groups.regenerateInviteCode(ctx.scope, input.groupId)),
+  emailInviteList: teacherProcedure
+    .input(z.object({ groupId: entityId }))
+    .query(({ ctx, input }) => groupEmailInvites.listEmailInvites(ctx.scope, input.groupId)),
+  emailInviteCreate: teacherProcedure
+    .use(rateLimit("emailInviteCreate", 30, MINUTE))
+    .input(z.object({ groupId: entityId, email: z.string().trim().email().max(320) }))
+    .mutation(({ ctx, input }) => groupEmailInvites.createEmailInvite(ctx.scope, input.groupId, input.email)),
+  emailInviteRevoke: teacherProcedure
+    .input(z.object({ groupId: entityId, inviteId: entityId }))
+    .mutation(({ ctx, input }) => groupEmailInvites.revokeEmailInvite(ctx.scope, input.groupId, input.inviteId)),
+  emailInviteResend: teacherProcedure
+    .use(rateLimit("emailInviteResend", 20, MINUTE))
+    .input(z.object({ groupId: entityId, inviteId: entityId }))
+    .mutation(({ ctx, input }) => groupEmailInvites.resendEmailInvite(ctx.scope, input.groupId, input.inviteId)),
 });
 
 const questionBankFilter = z
@@ -444,9 +466,14 @@ const studentRouter = router({
     .input(z.object({ inviteCode: z.string().trim().min(4).max(32) }))
     .mutation(async ({ ctx, input }) => {
       const joined = await groups.joinByInvite(ctx.user.id, input.inviteCode.toUpperCase());
-      store.notify(joined.ownerUserId, "Qoşulma sorğusu", `${ctx.user.name ?? "Tələbə"} → ${joined.groupName}`);
+      const verb = joined.status === "ACTIVE" ? "Yeni tələbə qoşuldu" : "Qoşulma sorğusu";
+      store.notify(joined.ownerUserId, verb, `${ctx.user.name ?? "Tələbə"} → ${joined.groupName}`);
       return { groupId: joined.groupId, groupName: joined.groupName, status: joined.status };
     }),
+  acceptEmailInvite: studentProcedure
+    .use(rateLimit("acceptEmailInvite", 10, MINUTE))
+    .input(z.object({ token: z.string().trim().min(16).max(128) }))
+    .mutation(({ ctx, input }) => groupEmailInvites.acceptEmailInvite(ctx.user.id, ctx.user.email ?? "", input.token)),
   tasks: studentProcedure.query(async ({ ctx }) =>
     store.studentAssignments(ctx.user.id, await groups.activeGroupIdsOfStudent(ctx.user.id)),
   ),
@@ -517,6 +544,10 @@ const publicRouter = router({
     .use(rateLimit("publicInvite", 60, MINUTE))
     .input(z.object({ inviteCode: z.string().trim().min(4).max(32) }))
     .query(({ input }) => groups.publicInvite(input.inviteCode.toUpperCase())),
+  emailInvite: publicProcedure
+    .use(rateLimit("publicEmailInvite", 60, MINUTE))
+    .input(z.object({ token: z.string().trim().min(16).max(128) }))
+    .query(({ input }) => groupEmailInvites.publicEmailInvitePreview(input.token)),
 });
 
 const inboxRouter = router({
