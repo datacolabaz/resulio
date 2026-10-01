@@ -1,0 +1,4238 @@
+From f6ee5c6bafdb00d9097ee4c5b6ceee56120e62dd Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 1 Oct 2026 20:03:24 +0400
+Subject: [PATCH 1/3] Add logout button to the welcome/role-chooser screen
+
+WelcomePage had no way to sign out: only BrandMark + LanguageSwitch in
+its header. A user landing there (fresh Google sign-in, no role chosen
+yet) had no way back to the login screen without clearing cookies.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01AdQkr4Q6EZdksQ1t4R55We
+---
+ client/src/pages/WelcomePage.tsx | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/client/src/pages/WelcomePage.tsx b/client/src/pages/WelcomePage.tsx
+index fe168bd..d0ba17b 100644
+--- a/client/src/pages/WelcomePage.tsx
++++ b/client/src/pages/WelcomePage.tsx
+@@ -8,7 +8,7 @@ import { t } from "@/i18n/messages";
+ import { availableContexts, CONTEXT_HOME, contextLabel, setActiveWorkspaceId } from "@/lib/contexts";
+ import { errorText, providerLabel } from "@/lib/format";
+ import { trpc } from "@/lib/trpc";
+-import { GraduationCap, Presentation } from "lucide-react";
++import { GraduationCap, LogOut, Presentation } from "lucide-react";
+ import { useState } from "react";
+ import { Link, Redirect, useLocation, useSearch } from "wouter";
+ 
+@@ -65,7 +65,7 @@ export function WorkspaceForm({ onCreated }: { onCreated?: () => void }) {
+ }
+ 
+ export default function WelcomePage() {
+-  const { user, loading } = useAuth();
++  const { user, loading, logout } = useAuth();
+   const [, nav] = useLocation();
+   const search = new URLSearchParams(useSearch());
+   const returnTo = safeReturnTo(search.get("returnTo"));
+@@ -89,7 +89,13 @@ export default function WelcomePage() {
+               <p className="text-sm text-muted-foreground">{t("welcome.lead")}</p>
+             </div>
+           </div>
+-          <LanguageSwitch />
++          <div className="flex items-center gap-2">
++            <LanguageSwitch />
++            <Button variant="outline" size="sm" onClick={() => void logout()}>
++              <LogOut className="h-4 w-4" aria-hidden />
++              {t("common.logout")}
++            </Button>
++          </div>
+         </div>
+ 
+         {onlyPending && (
+-- 
+2.43.0
+
+
+From 2f34f8e4bd414bb09ee4b0fa514a8919256fa797 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 1 Oct 2026 21:26:06 +0400
+Subject: [PATCH 2/3] Add group schedule/metadata, 4-state join policy, and
+ invite lifecycle UX
+
+Groups now carry subject/grade/language/format/schedule fields and a
+join policy (AUTO / APPROVAL / MANUAL) replacing the old binary
+auto-join toggle; migration 0007 backfills existing groups from
+autoJoinEnabled. Invite codes gain independent activate/deactivate and
+expiry controls alongside regenerate. Join flows (code entry, /join/:code,
+/invite/:token, and the student dashboard's inline join form) now share
+a richer group preview before confirming, with live code normalization
+and new error states for inactive/expired codes and MANUAL groups that
+don't accept self-join.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01AdQkr4Q6EZdksQ1t4R55We
+---
+ client/src/i18n/catalog/app.ts                |    6 +
+ client/src/i18n/catalog/format.ts             |    5 +-
+ client/src/i18n/catalog/student.ts            |    1 +
+ client/src/i18n/catalog/teacher.ts            |   41 +-
+ client/src/lib/format.ts                      |    2 +
+ client/src/pages/PublicFlows.tsx              |   33 +-
+ client/src/pages/WelcomePage.tsx              |    9 +-
+ client/src/pages/student/StudentPages.tsx     |   23 +-
+ client/src/pages/teacher/Groups.tsx           |  178 +-
+ ...007_add_group_schedule_and_join_policy.sql |   11 +
+ drizzle/meta/0007_snapshot.json               | 2667 +++++++++++++++++
+ drizzle/meta/_journal.json                    |    7 +
+ drizzle/schema.ts                             |   24 +-
+ server/integration/studentRegistration.it.ts  |   50 +-
+ server/modules/errors.ts                      |    6 +
+ server/modules/groupEmailInvites.ts           |   20 +-
+ server/modules/groups.ts                      |   90 +-
+ server/routers.ts                             |   29 +-
+ 18 files changed, 3141 insertions(+), 61 deletions(-)
+ create mode 100644 drizzle/0007_add_group_schedule_and_join_policy.sql
+ create mode 100644 drizzle/meta/0007_snapshot.json
+
+diff --git a/client/src/i18n/catalog/app.ts b/client/src/i18n/catalog/app.ts
+index 767c8bd..00661b3 100644
+--- a/client/src/i18n/catalog/app.ts
++++ b/client/src/i18n/catalog/app.ts
+@@ -66,6 +66,8 @@ export const app = {
+     "Запрос отправлен. Экзамены группы появятся после одобрения преподавателем.",
+   ],
+   "public.join.request": ["Qoşulmaq üçün sorğu göndər", "Send a join request", "Отправить запрос на вступление"],
++  "public.join.joinNow": ["Qrupa qoşul", "Join group", "Вступить в группу"],
++  "public.join.notAccepting": ["Bu qrup hazırda yeni tələbə qəbul etmir. Qoşulmaq üçün müəlliminizdən dəvət alın.", "This group isn't accepting new students right now. Ask your teacher to add you directly.", "Эта группа сейчас не принимает новых студентов. Попросите преподавателя добавить вас напрямую."],
+   "public.myGroups": ["Qruplarım →", "My groups →", "Мои группы →"],
+   "public.invite.notFound": ["Dəvət linki tapılmadı, vaxtı bitib və ya ləğv edilib.", "Invite link not found, expired, or revoked.", "Ссылка-приглашение не найдена, истекла или отозвана."],
+   "public.invite.emailNote": [
+@@ -74,6 +76,10 @@ export const app = {
+     "Это приглашение создано для одного конкретного адреса эл. почты. Войдите с тем же аккаунтом Google.",
+   ],
+   "public.invite.joined": ["Qrupa qoşuldunuz.", "You have joined the group.", "Вы вступили в группу."],
++  "public.preview.language": ["Dil", "Language", "Язык"],
++  "public.preview.format": ["Format", "Format", "Формат"],
++  "public.preview.schedule": ["Cədvəl", "Schedule", "Расписание"],
++  "public.preview.startsOn": ["Başlama: {date}", "Starts: {date}", "Начало: {date}"],
+ 
+   "public.onboarding.title": ["Öyrənmə hədəfinizi seçin", "Set your learning goal", "Укажите свою цель обучения"],
+   "public.onboarding.lead": [
+diff --git a/client/src/i18n/catalog/format.ts b/client/src/i18n/catalog/format.ts
+index a0e23b3..c979f68 100644
+--- a/client/src/i18n/catalog/format.ts
++++ b/client/src/i18n/catalog/format.ts
+@@ -11,7 +11,10 @@ export const format = {
+   "error.CANNOT_JOIN_OWN_GROUP": ["Öz tədris məkanınızın qrupuna tələbə kimi qoşula bilməzsiniz.", "You cannot join a group in your own teaching space as a student.", "Нельзя вступить в группу своего пространства как студент."],
+   "error.PARTNER_ONLY": ["Partner paneli yalnız təsdiqlənmiş partnerlər üçündür.", "The partner panel is only for approved partners.", "Панель партнёра доступна только одобренным партнёрам."],
+   "error.PARTNER_EXISTS": ["Partner müraciətiniz artıq mövcuddur.", "Your partner application already exists.", "Ваша заявка партнёра уже существует."],
+-  "error.INVITE_NOT_FOUND": ["Dəvət kodu tapılmadı.", "Invite code not found.", "Код приглашения не найден."],
++  "error.INVITE_NOT_FOUND": ["Bu kodla aktiv qrup tapılmadı.", "No active group was found for this code.", "По этому коду активная группа не найдена."],
++  "error.INVITE_CODE_INACTIVE": ["Bu dəvət kodu artıq aktiv deyil.", "This invite code is no longer active.", "Этот код приглашения больше не активен."],
++  "error.INVITE_CODE_EXPIRED": ["Bu dəvət kodunun müddəti bitib.", "This invite code has expired.", "Срок действия этого кода истёк."],
++  "error.GROUP_NOT_ACCEPTING": ["Bu qrup hazırda yeni tələbə qəbul etmir.", "This group is not accepting new students right now.", "Эта группа сейчас не принимает новых студентов."],
+   "error.STUDENT_NOT_FOUND": ["Bu e-poçtla hesab tapılmadı. İstifadəçi əvvəlcə Resulio-ya daxil olmalıdır.", "No account found for this email. The user must sign in to Resulio first.", "Аккаунт с этим адресом не найден. Пользователь должен сначала войти в Resulio."],
+   "error.ALREADY_MEMBER": ["Artıq qrupun üzvüdür.", "Already a member of the group.", "Уже состоит в группе."],
+   "error.EMAIL_INVITE_NOT_FOUND": ["Bu dəvət linki etibarlı deyil və ya artıq ləğv edilib.", "This invite link is not valid, or it has already been revoked.", "Эта ссылка-приглашение недействительна или уже отозвана."],
+diff --git a/client/src/i18n/catalog/student.ts b/client/src/i18n/catalog/student.ts
+index 667eb2f..d6df598 100644
+--- a/client/src/i18n/catalog/student.ts
++++ b/client/src/i18n/catalog/student.ts
+@@ -61,6 +61,7 @@ export const student = {
+   "student.trend": ["Nəticələrin dinamikası", "Results over time", "Динамика результатов"],
+   "student.joinRequested": ["{group}: sorğu göndərildi", "{group}: request sent", "{group}: запрос отправлен"],
+   "student.joinGroup": ["Qrupa qoşul", "Join a group", "Вступить в группу"],
++  "student.joinGroupHint": ["Kodu müəlliminizdən və ya tədris mərkəzinizdən alın.", "Get the code from your teacher or learning centre.", "Получите код у преподавателя или учебного центра."],
+   "student.join": ["Qoşul", "Join", "Вступить"],
+   "student.myGroups": ["Qruplarım", "My groups", "Мои группы"],
+   "student.noGroups": ["Hələ heç bir qrupa qoşulmamısınız.", "You have not joined any groups yet.", "Вы пока не состоите ни в одной группе."],
+diff --git a/client/src/i18n/catalog/teacher.ts b/client/src/i18n/catalog/teacher.ts
+index aee7402..cfaefed 100644
+--- a/client/src/i18n/catalog/teacher.ts
++++ b/client/src/i18n/catalog/teacher.ts
+@@ -175,14 +175,22 @@ export const teacher = {
+   "groups.studentAdded": ["Tələbə əlavə olundu", "Student added", "Студент добавлен"],
+   "groups.inviteTitle": ["Tələbə dəvət et", "Invite students", "Пригласить студентов"],
+   "groups.inviteByLink": ["Link və ya QR ilə", "By link or QR", "По ссылке или QR"],
+-  "groups.inviteLinkNoteApproval": ["Linklə qoşulan tələbələr sizin təsdiqinizi gözləyir. Kod: {code}", "Students joining by link wait for your approval. Code: {code}", "Вступившие по ссылке ждут вашего одобрения. Код: {code}"],
+-  "groups.inviteLinkNoteAuto": ["Linklə qoşulan tələbələr dərhal aktiv olur (təsdiq tələb olunmur). Kod: {code}", "Students joining by link become active immediately (no approval needed). Code: {code}", "Вступившие по ссылке активируются сразу (без одобрения). Код: {code}"],
+-  "groups.autoJoinLabel": ["Avtomatik qoşulmağa icazə ver", "Allow automatic joining", "Разрешить автоматическое вступление"],
+-  "groups.autoJoinHint": [
+-    "Aktiv olduqda link/koddan qoşulan tələbələr təsdiqsiz dərhal aktiv olur.",
+-    "When on, students joining by link or code become active without your approval.",
+-    "Когда включено, студенты, вступившие по ссылке или коду, становятся активными без вашего одобрения.",
+-  ],
++  "groups.inviteCodeLabel": ["Dəvət kodu", "Invite code", "Код приглашения"],
++  "groups.copyCode": ["Kodu kopyala", "Copy code", "Копировать код"],
++  "groups.codeCopied": ["Kod kopyalandı", "Code copied", "Код скопирован"],
++  "groups.joinPolicyLabel": ["Qoşulma qaydası", "Join policy", "Правило вступления"],
++  "groups.joinPolicy.AUTO": ["Avtomatik qoşulma", "Join automatically", "Автоматическое вступление"],
++  "groups.joinPolicy.APPROVAL": ["Müəllim təsdiqi ilə qoşulma", "Join with teacher approval", "Вступление с одобрением преподавателя"],
++  "groups.joinPolicy.MANUAL": ["Yalnız müəllimin manual əlavə etdiyi tələbələr", "Only students the teacher adds manually", "Только студенты, добавленные преподавателем вручную"],
++  "groups.joinPolicyHint.AUTO": ["Kod/linklə qoşulan tələbələr təsdiqsiz dərhal aktiv olur.", "Students joining by code/link become active without approval.", "Вступившие по коду/ссылке становятся активными без одобрения."],
++  "groups.joinPolicyHint.APPROVAL": ["Kod/linklə qoşulan tələbələr sizin təsdiqinizi gözləyir.", "Students joining by code/link wait for your approval.", "Вступившие по коду/ссылке ждут вашего одобрения."],
++  "groups.joinPolicyHint.MANUAL": ["Kod/link ilə özbaşına qoşulma bağlıdır — tələbələri yalnız siz əlavə edə bilərsiniz.", "Self-join by code/link is turned off — only you can add students.", "Самостоятельное вступление по коду/ссылке отключено — добавлять студентов можете только вы."],
++  "groups.codeActiveLabel": ["Kod/link aktivdir", "Code/link is active", "Код/ссылка активны"],
++  "groups.codeActiveHint": ["Söndürsəniz, kod və link dərhal işləməyi dayandırır (dəyəri dəyişmədən).", "Turning this off stops the code and link working immediately, without changing their value.", "Если выключить, код и ссылка сразу перестают работать (без изменения значения)."],
++  "groups.codeExpiryLabel": ["Kodun/linkin son istifadə tarixi", "Code/link expiry", "Срок действия кода/ссылки"],
++  "groups.codeExpiryNone": ["Müddət qoyulmayıb", "No expiry set", "Срок не установлен"],
++  "groups.codeExpirySet": ["Təyin et", "Set", "Установить"],
++  "groups.codeExpiryClear": ["Müddəti sil", "Clear expiry", "Убрать срок"],
+   "groups.regenerateCode": ["Yeni kod yarat", "Generate new code", "Создать новый код"],
+   "groups.regenerateConfirm": [
+     "Yeni kod yaradılacaq və köhnə link/kod dərhal işləməyi dayandıracaq. Davam edək?",
+@@ -190,6 +198,23 @@ export const teacher = {
+     "Будет создан новый код, а старая ссылка/код сразу перестанут работать. Продолжить?",
+   ],
+   "groups.codeRegenerated": ["Yeni kod yaradıldı", "New code generated", "Создан новый код"],
++  "common.language": ["Tədris dili", "Teaching language", "Язык преподавания"],
++  "common.languagePlaceholder": ["Məs. Azərbaycan dili", "e.g. Azerbaijani", "напр. азербайджанский"],
++  "groups.format.ONLINE": ["Onlayn", "Online", "Онлайн"],
++  "groups.format.IN_PERSON": ["Əyani", "In person", "Очно"],
++  "groups.format.HYBRID": ["Hibrid", "Hybrid", "Гибрид"],
++  "common.format": ["Dərs formatı", "Class format", "Формат занятий"],
++  "common.startDate": ["Başlama tarixi", "Start date", "Дата начала"],
++  "common.classDays": ["Dərs günləri", "Class days", "Дни занятий"],
++  "common.classDaysPlaceholder": ["Məs. Bazar ertəsi, Çərşənbə", "e.g. Mon, Wed", "напр. пн, ср"],
++  "common.classTime": ["Dərs saatı", "Class time", "Время занятий"],
++  "common.classTimePlaceholder": ["Məs. 18:00", "e.g. 18:00", "напр. 18:00"],
++  "groups.scheduleVisibleLabel": ["Cədvəli tələbələrə göstər", "Show schedule to students", "Показывать расписание студентам"],
++  "groups.scheduleVisibleHint": [
++    "Aktiv olduqda başlama tarixi, dərs günləri və saatı qoşulma preview-ündə görünür.",
++    "When on, the start date, class days and time appear on the join-preview screen.",
++    "Когда включено, дата начала, дни и время занятий видны на экране предпросмотра вступления.",
++  ],
+   "groups.inviteByEmail": ["E-poçt ilə birbaşa əlavə et", "Add directly by email", "Добавить по эл. почте"],
+   "groups.emailPlaceholder": ["tələbə@gmail.com", "student@gmail.com", "student@gmail.com"],
+   "groups.emailNote": [
+diff --git a/client/src/lib/format.ts b/client/src/lib/format.ts
+index d2f0f76..b6bdb4e 100644
+--- a/client/src/lib/format.ts
++++ b/client/src/lib/format.ts
+@@ -58,6 +58,8 @@ export const reviewLabel = (v: string | null | undefined) => label("review", v);
+ export const difficultyLabel = (v: string | null | undefined) => label("common.difficulty", v);
+ export const subscriptionLabel = (v: string | null | undefined) => label("subscription", v);
+ export const providerLabel = (v: string | null | undefined) => label("provider", v);
++export const groupFormatLabel = (v: string | null | undefined) => label("groups.format", v);
++export const joinPolicyLabel = (v: string | null | undefined) => label("groups.joinPolicy", v);
+ export const partnerStatusLabel = (v: string | null | undefined) => label("partnerStatus", v);
+ export const heldLabel = (v: string | null | undefined) => {
+   const key = `held.${v ?? ""}`;
+diff --git a/client/src/pages/PublicFlows.tsx b/client/src/pages/PublicFlows.tsx
+index 2b63762..7c910b4 100644
+--- a/client/src/pages/PublicFlows.tsx
++++ b/client/src/pages/PublicFlows.tsx
+@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
+ import { startLogin } from "@/const";
+ import { t } from "@/i18n/messages";
+ import { canEnter } from "@/lib/contexts";
+-import { errorText, fmtDateTime, fmtDuration, liveLabel, typeLabel } from "@/lib/format";
++import { errorText, fmtDateTime, fmtDay, fmtDuration, groupFormatLabel, liveLabel, typeLabel } from "@/lib/format";
+ import { trpc } from "@/lib/trpc";
+ import { useState } from "react";
+ import { Link, useParams } from "wouter";
+@@ -68,6 +68,25 @@ function StudentOnboarding({ onDone }: { onDone: () => void }) {
+   );
+ }
+ 
++/** Extra group facts shown on a join-preview screen, only for the fields the teacher chose to share. */
++function GroupPreviewDetails({ g }: { g: { language?: string; format?: string; startDate?: string | Date | null; classDays?: string | null; classTime?: string | null } }) {
++  const schedule = [g.classDays, g.classTime].filter(Boolean).join(" · ");
++  return (
++    <dl className="mt-3 space-y-1 text-xs text-muted-foreground">
++      {!!g.language && (
++        <div className="flex gap-1"><dt className="font-medium text-foreground-secondary">{t("public.preview.language")}:</dt><dd>{g.language}</dd></div>
++      )}
++      {!!g.format && (
++        <div className="flex gap-1"><dt className="font-medium text-foreground-secondary">{t("public.preview.format")}:</dt><dd>{groupFormatLabel(g.format)}</dd></div>
++      )}
++      {!!schedule && (
++        <div className="flex gap-1"><dt className="font-medium text-foreground-secondary">{t("public.preview.schedule")}:</dt><dd>{schedule}</dd></div>
++      )}
++      {!!g.startDate && <div>{t("public.preview.startsOn", { date: fmtDay(g.startDate) })}</div>}
++    </dl>
++  );
++}
++
+ function Card({ children }: { children: React.ReactNode }) {
+   return (
+     <main className="flex min-h-screen items-center justify-center bg-background p-4 sm:p-6">
+@@ -99,18 +118,24 @@ export function JoinGroupPage() {
+         <>
+           <div className="mt-3 break-words text-lg">{g.name}</div>
+           <p className="text-sm text-muted-foreground">{[g.subject, g.grade, g.teacherName].filter(Boolean).join(" · ")}</p>
++          <GroupPreviewDetails g={g} />
++          {!!g.description && <p className="mt-3 text-sm">{g.description}</p>}
+           <div className="mt-6">
+             {loading ? null : !user ? (
+               <Button className="w-full" onClick={() => startLogin(`/join/${inviteCode}`)}>{t("common.signInGoogle")}</Button>
+             ) : join.isSuccess ? (
+               <div className="space-y-3 text-sm" role="status">
+-                <p className="text-success">{t("public.join.sent")}</p>
++                <p className="text-success">{join.data.status === "ACTIVE" ? t("public.invite.joined") : t("public.join.sent")}</p>
+                 <Link href="/student/groups" className="text-link underline-offset-4 hover:underline">{t("public.myGroups")}</Link>
+                 {user && !user.studentOnboardedAt && !onboardingDone && <StudentOnboarding onDone={() => setOnboardingDone(true)} />}
+               </div>
++            ) : g.joinPolicy === "MANUAL" ? (
++              <p role="alert" className="text-sm text-muted-foreground">{t("public.join.notAccepting")}</p>
+             ) : (
+               <>
+-                <Button className="w-full" disabled={join.isPending} onClick={() => join.mutate({ inviteCode })}>{t("public.join.request")}</Button>
++                <Button className="w-full" disabled={join.isPending} onClick={() => join.mutate({ inviteCode })}>
++                  {g.joinPolicy === "AUTO" ? t("public.join.joinNow") : t("public.join.request")}
++                </Button>
+                 {join.error && <p role="alert" className="mt-2 text-sm text-destructive">{errorText(join.error)}</p>}
+               </>
+             )}
+@@ -139,6 +164,8 @@ export function PublicEmailInvitePage() {
+         <>
+           <div className="mt-3 break-words text-lg">{g.name}</div>
+           <p className="text-sm text-muted-foreground">{[g.subject, g.grade, g.teacherName].filter(Boolean).join(" · ")}</p>
++          <GroupPreviewDetails g={g} />
++          {!!g.description && <p className="mt-3 text-sm">{g.description}</p>}
+           <p className="mt-3 text-xs text-muted-foreground">{t("public.invite.emailNote")}</p>
+           <div className="mt-6">
+             {loading ? null : !user ? (
+diff --git a/client/src/pages/WelcomePage.tsx b/client/src/pages/WelcomePage.tsx
+index d0ba17b..a86aa40 100644
+--- a/client/src/pages/WelcomePage.tsx
++++ b/client/src/pages/WelcomePage.tsx
+@@ -136,12 +136,17 @@ export default function WelcomePage() {
+               className="mt-5 grid gap-3"
+               onSubmit={(e) => {
+                 e.preventDefault();
+-                if (code.trim().length >= 4) nav(`/join/${encodeURIComponent(code.trim().toUpperCase())}`);
++                if (code.trim().length >= 4) nav(`/join/${encodeURIComponent(code.trim())}`);
+               }}
+             >
+               <label className="text-sm">
+                 <span className="text-foreground-secondary">{t("welcome.inviteCode")}</span>
+-                <Input value={code} maxLength={32} onChange={(e) => setCode(e.target.value)} placeholder={t("welcome.inviteCodePlaceholder")} />
++                <Input
++                  value={code}
++                  maxLength={32}
++                  onChange={(e) => setCode(e.target.value.toUpperCase().replace(/\s+/g, ""))}
++                  placeholder={t("welcome.inviteCodePlaceholder")}
++                />
+               </label>
+               <Button type="submit" variant="secondary" disabled={code.trim().length < 4}>{t("welcome.joinGroup")}</Button>
+             </form>
+diff --git a/client/src/pages/student/StudentPages.tsx b/client/src/pages/student/StudentPages.tsx
+index e0f37e9..62fa759 100644
+--- a/client/src/pages/student/StudentPages.tsx
++++ b/client/src/pages/student/StudentPages.tsx
+@@ -349,21 +349,30 @@ export function StudentProgress() {
+   );
+ }
+ 
++/** Keeps a code input clean as the user types: upper-case, no spaces — matches the server's own normalization. */
++function normalizeCode(raw: string): string {
++  return raw.toUpperCase().replace(/\s+/g, "");
++}
++
+ export function StudentGroups() {
+-  const utils = trpc.useUtils();
+   const list = trpc.student.groups.useQuery();
+   const [code, setCode] = useState("");
+-  const join = trpc.student.join.useMutation({
+-    onSuccess: (r) => { setCode(""); toast.success(t("student.joinRequested", { group: r.groupName })); void utils.student.groups.invalidate(); },
+-    onError: (e) => toast.error(errorText(e)),
+-  });
++  const [, nav] = useLocation();
+   return (
+     <AppShell area="learning">
+       <div className="grid max-w-3xl gap-5">
+         <Panel title={t("student.joinGroup")}>
++          <p className="mb-2 text-xs text-muted-foreground">{t("student.joinGroupHint")}</p>
+           <div className="flex gap-2">
+-            <Input placeholder={t("welcome.inviteCode")} aria-label={t("welcome.inviteCode")} value={code} onChange={(e) => setCode(e.target.value)} />
+-            <Button disabled={code.trim().length < 4 || join.isPending} onClick={() => join.mutate({ inviteCode: code.trim() })}>{t("student.join")}</Button>
++            <Input
++              placeholder={t("welcome.inviteCodePlaceholder")}
++              aria-label={t("welcome.inviteCode")}
++              value={code}
++              onChange={(e) => setCode(normalizeCode(e.target.value))}
++            />
++            {/* Navigating to the preview page (not joining directly) so the student always sees the
++                group's details and confirms before membership is created or requested. */}
++            <Button disabled={code.trim().length < 4} onClick={() => nav(`/join/${encodeURIComponent(code.trim())}`)}>{t("student.join")}</Button>
+           </div>
+         </Panel>
+         <Panel title={t("student.myGroups")}>
+diff --git a/client/src/pages/teacher/Groups.tsx b/client/src/pages/teacher/Groups.tsx
+index f6ca099..eafcee2 100644
+--- a/client/src/pages/teacher/Groups.tsx
++++ b/client/src/pages/teacher/Groups.tsx
+@@ -17,6 +17,9 @@ import { toast } from "sonner";
+ import { Link, useParams } from "wouter";
+ 
+ const fieldLabel = "text-foreground-secondary";
++const GROUP_FORMATS = ["ONLINE", "IN_PERSON", "HYBRID"] as const;
++const JOIN_POLICIES = ["AUTO", "APPROVAL", "MANUAL"] as const;
++type JoinPolicy = (typeof JOIN_POLICIES)[number];
+ 
+ export function GroupsPage() {
+   const groups = trpc.teacher.groups.list.useQuery();
+@@ -59,15 +62,48 @@ export function GroupsPage() {
+   );
+ }
+ 
+-function GroupFormDialog({ open, onOpenChange, initial }: { open: boolean; onOpenChange: (v: boolean) => void; initial?: { id: string; name: string; subject: string; grade: string; description: string | null } }) {
++interface GroupFormInitial {
++  id: string;
++  name: string;
++  subject: string;
++  grade: string;
++  description: string | null;
++  language: string;
++  format: (typeof GROUP_FORMATS)[number];
++  startDate: string | Date | null;
++  classDays: string | null;
++  classTime: string | null;
++  scheduleVisible: boolean;
++}
++
++/** `startDate` ↔ a bare YYYY-MM-DD for <input type="date">; the server stores it as a timestamp. */
++function dateOnly(value: string | Date | null | undefined): string {
++  if (!value) return "";
++  const d = new Date(value);
++  return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
++}
++
++function GroupFormDialog({ open, onOpenChange, initial }: { open: boolean; onOpenChange: (v: boolean) => void; initial?: GroupFormInitial }) {
+   const utils = trpc.useUtils();
+-  const [f, setF] = useState({ name: initial?.name ?? "", subject: initial?.subject ?? "", grade: initial?.grade ?? "", description: initial?.description ?? "" });
++  const [f, setF] = useState({
++    name: initial?.name ?? "",
++    subject: initial?.subject ?? "",
++    grade: initial?.grade ?? "",
++    description: initial?.description ?? "",
++    language: initial?.language ?? "",
++    format: initial?.format ?? ("ONLINE" as (typeof GROUP_FORMATS)[number]),
++    startDate: dateOnly(initial?.startDate),
++    classDays: initial?.classDays ?? "",
++    classTime: initial?.classTime ?? "",
++    scheduleVisible: initial?.scheduleVisible ?? false,
++  });
+   const done = () => { void utils.teacher.groups.invalidate(); onOpenChange(false); };
+   const create = trpc.teacher.groups.create.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
+   const update = trpc.teacher.groups.update.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
++  const payload = () => ({ ...f, startDate: f.startDate ? new Date(f.startDate).toISOString() : null });
+   return (
+     <Dialog open={open} onOpenChange={onOpenChange}>
+-      <DialogContent>
++      <DialogContent className="max-h-[90vh] overflow-y-auto">
+         <DialogHeader><DialogTitle>{initial ? t("groups.editTitle") : t("groups.newTitle")}</DialogTitle></DialogHeader>
+         <div className="grid gap-3">
+           <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("common.name") })}</span><Input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
+@@ -75,13 +111,42 @@ function GroupFormDialog({ open, onOpenChange, initial }: { open: boolean; onOpe
+             <label className="text-sm"><span className={fieldLabel}>{t("common.subject")}</span><Input value={f.subject} onChange={(e) => setF({ ...f, subject: e.target.value })} /></label>
+             <label className="text-sm"><span className={fieldLabel}>{t("common.gradeLevel")}</span><Input value={f.grade} onChange={(e) => setF({ ...f, grade: e.target.value })} /></label>
+           </div>
++          <div className="grid grid-cols-2 gap-3">
++            <label className="text-sm"><span className={fieldLabel}>{t("common.language")}</span><Input value={f.language} onChange={(e) => setF({ ...f, language: e.target.value })} placeholder={t("common.languagePlaceholder")} /></label>
++            <label className="text-sm">
++              <span className={fieldLabel}>{t("common.format")}</span>
++              <select
++                className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground"
++                value={f.format}
++                onChange={(e) => setF({ ...f, format: e.target.value as (typeof GROUP_FORMATS)[number] })}
++              >
++                {GROUP_FORMATS.map((v) => (
++                  <option key={v} value={v}>{t(`groups.format.${v}`)}</option>
++                ))}
++              </select>
++            </label>
++          </div>
+           <label className="text-sm"><span className={fieldLabel}>{t("common.description")}</span><Textarea rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
++          <div className="rounded-xl border p-3">
++            <div className="grid grid-cols-3 gap-3">
++              <label className="text-sm"><span className={fieldLabel}>{t("common.startDate")}</span><Input type="date" value={f.startDate} onChange={(e) => setF({ ...f, startDate: e.target.value })} /></label>
++              <label className="text-sm"><span className={fieldLabel}>{t("common.classDays")}</span><Input value={f.classDays} onChange={(e) => setF({ ...f, classDays: e.target.value })} placeholder={t("common.classDaysPlaceholder")} /></label>
++              <label className="text-sm"><span className={fieldLabel}>{t("common.classTime")}</span><Input value={f.classTime} onChange={(e) => setF({ ...f, classTime: e.target.value })} placeholder={t("common.classTimePlaceholder")} /></label>
++            </div>
++            <div className="mt-3 flex items-center justify-between gap-3">
++              <label htmlFor="schedule-visible" className="flex-1 text-sm">
++                <span className="block font-medium">{t("groups.scheduleVisibleLabel")}</span>
++                <span className="block text-xs text-muted-foreground">{t("groups.scheduleVisibleHint")}</span>
++              </label>
++              <Switch id="schedule-visible" checked={f.scheduleVisible} onCheckedChange={(v) => setF({ ...f, scheduleVisible: v })} />
++            </div>
++          </div>
+         </div>
+         <DialogFooter>
+           <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
+           <Button
+             disabled={f.name.trim().length < 2 || create.isPending || update.isPending}
+-            onClick={() => (initial ? update.mutate({ id: initial.id, patch: f }) : create.mutate(f))}
++            onClick={() => (initial ? update.mutate({ id: initial.id, patch: payload() }) : create.mutate(payload()))}
+           >
+             {t("common.save")}
+           </Button>
+@@ -169,37 +234,110 @@ function EmailInviteSection({ groupId }: { groupId: string }) {
+   );
+ }
+ 
+-function InviteDialog({ open, onOpenChange, groupId, inviteCode, autoJoinEnabled }: { open: boolean; onOpenChange: (v: boolean) => void; groupId: string; inviteCode: string; autoJoinEnabled: boolean }) {
++function InviteDialog({
++  open,
++  onOpenChange,
++  groupId,
++  inviteCode,
++  joinPolicy,
++  codeActive,
++  codeExpiresAt,
++}: {
++  open: boolean;
++  onOpenChange: (v: boolean) => void;
++  groupId: string;
++  inviteCode: string;
++  joinPolicy: JoinPolicy;
++  codeActive: boolean;
++  codeExpiresAt: string | Date | null;
++}) {
+   const utils = trpc.useUtils();
+   const [email, setEmail] = useState("");
++  const [expiryInput, setExpiryInput] = useState(() => (codeExpiresAt ? new Date(codeExpiresAt).toISOString().slice(0, 10) : ""));
+   const onGroupChange = () => void utils.teacher.groups.invalidate();
+   const add = trpc.teacher.groups.addMember.useMutation({
+     onSuccess: () => { toast.success(t("groups.studentAdded")); setEmail(""); onGroupChange(); },
+     onError: (e) => toast.error(errorText(e)),
+   });
+-  const setAutoJoin = trpc.teacher.groups.setAutoJoin.useMutation({ onSuccess: onGroupChange, onError: (e) => toast.error(errorText(e)) });
++  const setPolicy = trpc.teacher.groups.setJoinPolicy.useMutation({ onSuccess: onGroupChange, onError: (e) => toast.error(errorText(e)) });
++  const setActive = trpc.teacher.groups.setInviteCodeActive.useMutation({ onSuccess: onGroupChange, onError: (e) => toast.error(errorText(e)) });
++  const setExpiry = trpc.teacher.groups.setInviteCodeExpiry.useMutation({ onSuccess: onGroupChange, onError: (e) => toast.error(errorText(e)) });
+   const regenerate = trpc.teacher.groups.regenerateInviteCode.useMutation({
+-    onSuccess: () => { toast.success(t("groups.codeRegenerated")); onGroupChange(); },
++    onSuccess: () => { toast.success(t("groups.codeRegenerated")); setExpiryInput(""); onGroupChange(); },
+     onError: (e) => toast.error(errorText(e)),
+   });
++  const copyCode = async () => {
++    try {
++      await navigator.clipboard.writeText(inviteCode);
++      toast.success(t("groups.codeCopied"));
++    } catch {
++      toast.error(t("share.copyFailed"));
++    }
++  };
+   return (
+     <Dialog open={open} onOpenChange={onOpenChange}>
+-      <DialogContent className="max-w-lg">
++      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+         <DialogHeader><DialogTitle>{t("groups.inviteTitle")}</DialogTitle></DialogHeader>
+         <div className="space-y-5">
+           <section aria-labelledby="invite-link">
+             <h3 id="invite-link" className="mb-2 text-sm font-medium">{t("groups.inviteByLink")}</h3>
+             <ShareBox path={`/join/${inviteCode}`} fileName={`resulio-group-${inviteCode}`} />
+-            <p className="mt-2 text-xs text-muted-foreground">
+-              {t(autoJoinEnabled ? "groups.inviteLinkNoteAuto" : "groups.inviteLinkNoteApproval", { code: inviteCode })}
+-            </p>
++            <div className="mt-3 flex items-center gap-2">
++              <span className="text-xs text-foreground-secondary">{t("groups.inviteCodeLabel")}:</span>
++              <code className="rounded bg-muted px-2 py-1 font-mono text-sm">{inviteCode}</code>
++              <Button variant="outline" size="sm" onClick={() => void copyCode()}>{t("groups.copyCode")}</Button>
++            </div>
++
++            <div className="mt-3 rounded-xl border p-3">
++              <label className="text-sm">
++                <span className={fieldLabel}>{t("groups.joinPolicyLabel")}</span>
++                <select
++                  className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground"
++                  value={joinPolicy}
++                  disabled={setPolicy.isPending}
++                  onChange={(e) => setPolicy.mutate({ groupId, joinPolicy: e.target.value as JoinPolicy })}
++                >
++                  {JOIN_POLICIES.map((p) => (
++                    <option key={p} value={p}>{t(`groups.joinPolicy.${p}`)}</option>
++                  ))}
++                </select>
++              </label>
++              <p className="mt-2 text-xs text-muted-foreground">{t(`groups.joinPolicyHint.${joinPolicy}`)}</p>
++            </div>
++
+             <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3">
+-              <label htmlFor="auto-join" className="flex-1 text-sm">
+-                <span className="block font-medium">{t("groups.autoJoinLabel")}</span>
+-                <span className="block text-xs text-muted-foreground">{t("groups.autoJoinHint")}</span>
++              <label htmlFor="code-active" className="flex-1 text-sm">
++                <span className="block font-medium">{t("groups.codeActiveLabel")}</span>
++                <span className="block text-xs text-muted-foreground">{t("groups.codeActiveHint")}</span>
+               </label>
+-              <Switch id="auto-join" checked={autoJoinEnabled} disabled={setAutoJoin.isPending} onCheckedChange={(v) => setAutoJoin.mutate({ groupId, enabled: v })} />
++              <Switch id="code-active" checked={codeActive} disabled={setActive.isPending} onCheckedChange={(v) => setActive.mutate({ groupId, active: v })} />
+             </div>
++
++            <div className="mt-3 flex flex-wrap items-end gap-2 rounded-xl border p-3">
++              <label className="flex-1 text-sm">
++                <span className={fieldLabel}>{t("groups.codeExpiryLabel")}</span>
++                <Input type="date" value={expiryInput} onChange={(e) => setExpiryInput(e.target.value)} />
++              </label>
++              <Button
++                variant="outline"
++                size="sm"
++                disabled={setExpiry.isPending || !expiryInput}
++                onClick={() => setExpiry.mutate({ groupId, expiresAt: new Date(expiryInput).toISOString() })}
++              >
++                {t("groups.codeExpirySet")}
++              </Button>
++              {!!codeExpiresAt && (
++                <Button
++                  variant="ghost"
++                  size="sm"
++                  disabled={setExpiry.isPending}
++                  onClick={() => { setExpiryInput(""); setExpiry.mutate({ groupId, expiresAt: null }); }}
++                >
++                  {t("groups.codeExpiryClear")}
++                </Button>
++              )}
++            </div>
++
+             <Button
+               variant="outline"
+               size="sm"
+@@ -384,7 +522,15 @@ export function GroupDetailPage() {
+               )}
+             </TabsContent>
+           </Tabs>
+-          <InviteDialog open={inviteOpen} onOpenChange={setInviteOpen} groupId={id} inviteCode={g.inviteCode} autoJoinEnabled={g.autoJoinEnabled} />
++          <InviteDialog
++            open={inviteOpen}
++            onOpenChange={setInviteOpen}
++            groupId={id}
++            inviteCode={g.inviteCode}
++            joinPolicy={g.joinPolicy}
++            codeActive={g.codeActive}
++            codeExpiresAt={g.codeExpiresAt}
++          />
+           {editOpen && <GroupFormDialog open={editOpen} onOpenChange={setEditOpen} initial={g} />}
+         </div>
+       )}
+diff --git a/drizzle/0007_add_group_schedule_and_join_policy.sql b/drizzle/0007_add_group_schedule_and_join_policy.sql
+new file mode 100644
+index 0000000..2fdb0ae
+--- /dev/null
++++ b/drizzle/0007_add_group_schedule_and_join_policy.sql
+@@ -0,0 +1,11 @@
++ALTER TABLE `study_groups` ADD `language` varchar(64) DEFAULT '' NOT NULL;--> statement-breakpoint
++ALTER TABLE `study_groups` ADD `format` enum('ONLINE','IN_PERSON','HYBRID') DEFAULT 'ONLINE' NOT NULL;--> statement-breakpoint
++ALTER TABLE `study_groups` ADD `startDate` timestamp;--> statement-breakpoint
++ALTER TABLE `study_groups` ADD `classDays` varchar(64);--> statement-breakpoint
++ALTER TABLE `study_groups` ADD `classTime` varchar(32);--> statement-breakpoint
++ALTER TABLE `study_groups` ADD `scheduleVisible` boolean DEFAULT false NOT NULL;--> statement-breakpoint
++ALTER TABLE `study_groups` ADD `joinPolicy` enum('AUTO','APPROVAL','MANUAL') DEFAULT 'APPROVAL' NOT NULL;--> statement-breakpoint
++ALTER TABLE `study_groups` ADD `codeActive` boolean DEFAULT true NOT NULL;--> statement-breakpoint
++ALTER TABLE `study_groups` ADD `codeExpiresAt` timestamp;--> statement-breakpoint
++UPDATE `study_groups` SET `joinPolicy` = 'AUTO' WHERE `autoJoinEnabled` = 1;--> statement-breakpoint
++ALTER TABLE `study_groups` DROP COLUMN `autoJoinEnabled`;
+\ No newline at end of file
+diff --git a/drizzle/meta/0007_snapshot.json b/drizzle/meta/0007_snapshot.json
+new file mode 100644
+index 0000000..4df8444
+--- /dev/null
++++ b/drizzle/meta/0007_snapshot.json
+@@ -0,0 +1,2667 @@
++{
++  "version": "5",
++  "dialect": "mysql",
++  "id": "371f8b82-4b12-41b4-a149-cec481cda50f",
++  "prevId": "940f6925-6522-4a94-b9e7-7069296b1987",
++  "tables": {
++    "assessment_assignments": {
++      "name": "assessment_assignments",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": true
++        },
++        "assessmentId": {
++          "name": "assessmentId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "assessmentVersionId": {
++          "name": "assessmentVersionId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "groupId": {
++          "name": "groupId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "studentId": {
++          "name": "studentId",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "availableFrom": {
++          "name": "availableFrom",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "availableUntil": {
++          "name": "availableUntil",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "durationOverrideSeconds": {
++          "name": "durationOverrideSeconds",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "attemptLimitOverride": {
++          "name": "attemptLimitOverride",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "status": {
++          "name": "status",
++          "type": "enum('ACTIVE','REVOKED')",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "'ACTIVE'"
++        },
++        "assignedBy": {
++          "name": "assignedBy",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "assignedAt": {
++          "name": "assignedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "(now())"
++        }
++      },
++      "indexes": {
++        "assessment_assignments_assessment_idx": {
++          "name": "assessment_assignments_assessment_idx",
++          "columns": [
++            "assessmentId"
++          ],
++          "isUnique": false
++        },
++        "assessment_assignments_group_idx": {
++          "name": "assessment_assignments_group_idx",
++          "columns": [
++            "groupId"
++          ],
++          "isUnique": false
++        },
++        "assessment_assignments_student_idx": {
++          "name": "assessment_assignments_student_idx",
++          "columns": [
++            "studentId"
++          ],
++          "isUnique": false
++        }
++      },
++      "foreignKeys": {},
++      "compositePrimaryKeys": {
++        "assessment_assignments_id": {
++          "name": "assessment_assignments_id",
++          "columns": [
++            "id"
++          ]
++        }
++      },
++      "uniqueConstraints": {},
++      "checkConstraint": {}
++    },
++    "assessment_questions": {
++      "name": "assessment_questions",
++      "columns": {
++        "assessmentId": {
++          "name": "assessmentId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "questionId": {
++          "name": "questionId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "position": {
++          "name": "position",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {},
++      "compositePrimaryKeys": {
++        "assessment_questions_assessmentId_questionId_pk": {
++          "name": "assessment_questions_assessmentId_questionId_pk",
++          "columns": [
++            "assessmentId",
++            "questionId"
++          ]
++        }
++      },
++      "uniqueConstraints": {},
++      "checkConstraint": {}
++    },
++    "assessment_student_progress": {
++      "name": "assessment_student_progress",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": true
++        },
++        "assessmentId": {
++          "name": "assessmentId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "assignmentId": {
++          "name": "assignmentId",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "versionId": {
++          "name": "versionId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "studentId": {
++          "name": "studentId",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "viewedAt": {
++          "name": "viewedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "startedAt": {
++          "name": "startedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "completedAt": {
++          "name": "completedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "expiredAt": {
++          "name": "expiredAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "resultReleasedAt": {
++          "name": "resultReleasedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "latestActivityAt": {
++          "name": "latestActivityAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "attemptCount": {
++          "name": "attemptCount",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": 0
++        },
++        "activeAttemptId": {
++          "name": "activeAttemptId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "createdAt": {
++          "name": "createdAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "(now())"
++        },
++        "updatedAt": {
++          "name": "updatedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "onUpdate": true,
++          "default": "(now())"
++        }
++      },
++      "indexes": {
++        "assessment_progress_student_unique": {
++          "name": "assessment_progress_student_unique",
++          "columns": [
++            "assessmentId",
++            "studentId"
++          ],
++          "isUnique": true
++        },
++        "assessment_progress_activity_idx": {
++          "name": "assessment_progress_activity_idx",
++          "columns": [
++            "assessmentId",
++            "latestActivityAt"
++          ],
++          "isUnique": false
++        }
++      },
++      "foreignKeys": {},
++      "compositePrimaryKeys": {
++        "assessment_student_progress_id": {
++          "name": "assessment_student_progress_id",
++          "columns": [
++            "id"
++          ]
++        }
++      },
++      "uniqueConstraints": {},
++      "checkConstraint": {}
++    },
++    "assessment_versions": {
++      "name": "assessment_versions",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "assessmentId": {
++          "name": "assessmentId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "versionNo": {
++          "name": "versionNo",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "status": {
++          "name": "status",
++          "type": "enum('PUBLISHED','ARCHIVED')",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "'PUBLISHED'"
++        },
++        "settings": {
++          "name": "settings",
++          "type": "json",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "publishedBy": {
++          "name": "publishedBy",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "publishedAt": {
++          "name": "publishedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "(now())"
++        }
++      },
++      "indexes": {
++        "assessment_versions_no_unique": {
++          "name": "assessment_versions_no_unique",
++          "columns": [
++            "assessmentId",
++            "versionNo"
++          ],
++          "isUnique": true
++        }
++      },
++      "foreignKeys": {},
++      "compositePrimaryKeys": {
++        "assessment_versions_id": {
++          "name": "assessment_versions_id",
++          "columns": [
++            "id"
++          ]
++        }
++      },
++      "uniqueConstraints": {},
++      "checkConstraint": {}
++    },
++    "assessments": {
++      "name": "assessments",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "providerWorkspaceId": {
++          "name": "providerWorkspaceId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "createdBy": {
++          "name": "createdBy",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "type": {
++          "name": "type",
++          "type": "enum('EXAM','KSQ','BSQ')",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "status": {
++          "name": "status",
++          "type": "enum('DRAFT','PUBLISHED','CLOSED')",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "'DRAFT'"
++        },
++        "settings": {
++          "name": "settings",
++          "type": "json",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "startAt": {
++          "name": "startAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "endAt": {
++          "name": "endAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "timezone": {
++          "name": "timezone",
++          "type": "varchar(64)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "'Asia/Baku'"
++        },
++        "shareCode": {
++          "name": "shareCode",
++          "type": "varchar(16)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "currentVersionId": {
++          "name": "currentVersionId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "hasDraftChanges": {
++          "name": "hasDraftChanges",
++          "type": "boolean",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": true
++        },
++        "inactivityThresholdMinutes": {
++          "name": "inactivityThresholdMinutes",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false,
++          "default": 10
++        },
++        "createdAt": {
++          "name": "createdAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "(now())"
++        },
++        "updatedAt": {
++          "name": "updatedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "onUpdate": true,
++          "default": "(now())"
++        }
++      },
++      "indexes": {
++        "assessments_workspace_idx": {
++          "name": "assessments_workspace_idx",
++          "columns": [
++            "providerWorkspaceId",
++            "type"
++          ],
++          "isUnique": false
++        }
++      },
++      "foreignKeys": {},
++      "compositePrimaryKeys": {
++        "assessments_id": {
++          "name": "assessments_id",
++          "columns": [
++            "id"
++          ]
++        }
++      },
++      "uniqueConstraints": {
++        "assessments_shareCode_unique": {
++          "name": "assessments_shareCode_unique",
++          "columns": [
++            "shareCode"
++          ]
++        }
++      },
++      "checkConstraint": {}
++    },
++    "attempts": {
++      "name": "attempts",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "assessmentId": {
++          "name": "assessmentId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "versionId": {
++          "name": "versionId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "assignmentId": {
++          "name": "assignmentId",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "studentId": {
++          "name": "studentId",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "attemptNo": {
++          "name": "attemptNo",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "status": {
++          "name": "status",
++          "type": "enum('IN_PROGRESS','SUBMITTED','AUTO_SUBMITTED','EXPIRED_NO_ANSWERS','VOIDED')",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "'IN_PROGRESS'"
++        },
++        "questionOrder": {
++          "name": "questionOrder",
++          "type": "json",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "startedAt": {
++          "name": "startedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "deadlineAt": {
++          "name": "deadlineAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "submittedAt": {
++          "name": "submittedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "lastActivityAt": {
++          "name": "lastActivityAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "lastAutosaveAt": {
++          "name": "lastAutosaveAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "lastHeartbeatAt": {
++          "name": "lastHeartbeatAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "answeredCount": {
++          "name": "answeredCount",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": 0
++        },
++        "totalQuestionCount": {
++          "name": "totalQuestionCount",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": 0
++        },
++        "autoSubmittedAt": {
++          "name": "autoSubmittedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "voidedBy": {
++          "name": "voidedBy",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "voidedAt": {
++          "name": "voidedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        }
++      },
++      "indexes": {
++        "attempts_student_no_unique": {
++          "name": "attempts_student_no_unique",
++          "columns": [
++            "assessmentId",
++            "studentId",
++            "attemptNo"
++          ],
++          "isUnique": true
++        },
++        "attempts_status_deadline_idx": {
++          "name": "attempts_status_deadline_idx",
++          "columns": [
++            "status",
++            "deadlineAt"
++          ],
++          "isUnique": false
++        },
++        "attempts_student_idx": {
++          "name": "attempts_student_idx",
++          "columns": [
++            "studentId"
++          ],
++          "isUnique": false
++        },
++        "attempts_assessment_status_idx": {
++          "name": "attempts_assessment_status_idx",
++          "columns": [
++            "assessmentId",
++            "status"
++          ],
++          "isUnique": false
++        }
++      },
++      "foreignKeys": {},
++      "compositePrimaryKeys": {
++        "attempts_id": {
++          "name": "attempts_id",
++          "columns": [
++            "id"
++          ]
++        }
++      },
++      "uniqueConstraints": {},
++      "checkConstraint": {}
++    },
++    "audit_logs": {
++      "name": "audit_logs",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "bigint",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": true
++        },
++        "actorUserId": {
++          "name": "actorUserId",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "actorAdminRole": {
++          "name": "actorAdminRole",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "action": {
++          "name": "action",
++          "type": "varchar(64)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "targetType": {
++          "name": "targetType",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "targetId": {
++          "name": "targetId",
++          "type": "varchar(64)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "workspaceId": {
++          "name": "workspaceId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "userId": {
++          "name": "userId",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "beforeJson": {
++          "name": "beforeJson",
++          "type": "json",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "afterJson": {
++          "name": "afterJson",
++          "type": "json",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "reason": {
++          "name": "reason",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "requestId": {
++          "name": "requestId",
++          "type": "varchar(36)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "ipHash": {
++          "name": "ipHash",
++          "type": "varchar(64)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "userAgentSummary": {
++          "name": "userAgentSummary",
++          "type": "varchar(120)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "createdAt": {
++          "name": "createdAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "(now())"
++        }
++      },
++      "indexes": {
++        "audit_created_idx": {
++          "name": "audit_created_idx",
++          "columns": [
++            "createdAt"
++          ],
++          "isUnique": false
++        },
++        "audit_actor_idx": {
++          "name": "audit_actor_idx",
++          "columns": [
++            "actorUserId",
++            "createdAt"
++          ],
++          "isUnique": false
++        },
++        "audit_target_idx": {
++          "name": "audit_target_idx",
++          "columns": [
++            "targetType",
++            "targetId",
++            "createdAt"
++          ],
++          "isUnique": false
++        },
++        "audit_user_idx": {
++          "name": "audit_user_idx",
++          "columns": [
++            "userId",
++            "createdAt"
++          ],
++          "isUnique": false
++        },
++        "audit_workspace_idx": {
++          "name": "audit_workspace_idx",
++          "columns": [
++            "workspaceId",
++            "createdAt"
++          ],
++          "isUnique": false
++        },
++        "audit_action_idx": {
++          "name": "audit_action_idx",
++          "columns": [
++            "action",
++            "createdAt"
++          ],
++          "isUnique": false
++        }
++      },
++      "foreignKeys": {},
++      "compositePrimaryKeys": {
++        "audit_logs_id": {
++          "name": "audit_logs_id",
++          "columns": [
++            "id"
++          ]
++        }
++      },
++      "uniqueConstraints": {},
++      "checkConstraint": {}
++    },
++    "auth_accounts": {
++      "name": "auth_accounts",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": true
++        },
++        "userId": {
++          "name": "userId",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "provider": {
++          "name": "provider",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "providerAccountId": {
++          "name": "providerAccountId",
++          "type": "varchar(191)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "providerEmail": {
++          "name": "providerEmail",
++          "type": "varchar(320)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "createdAt": {
++          "name": "createdAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "(now())"
++        }
++      },
++      "indexes": {
++        "auth_accounts_provider_account_unique": {
++          "name": "auth_accounts_provider_account_unique",
++          "columns": [
++            "provider",
++            "providerAccountId"
++          ],
++          "isUnique": true
++        },
++        "auth_accounts_user_idx": {
++          "name": "auth_accounts_user_idx",
++          "columns": [
++            "userId"
++          ],
++          "isUnique": false
++        }
++      },
++      "foreignKeys": {},
++      "compositePrimaryKeys": {
++        "auth_accounts_id": {
++          "name": "auth_accounts_id",
++          "columns": [
++            "id"
++          ]
++        }
++      },
++      "uniqueConstraints": {},
++      "checkConstraint": {}
++    },
++    "feature_flag_overrides": {
++      "name": "feature_flag_overrides",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": true
++        },
++        "flagKey": {
++          "name": "flagKey",
++          "type": "varchar(64)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "scopeType": {
++          "name": "scopeType",
++          "type": "enum('USER','WORKSPACE')",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "scopeId": {
++          "name": "scopeId",
++          "type": "varchar(64)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "enabled": {
++          "name": "enabled",
++          "type": "boolean",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "createdBy": {
++          "name": "createdBy",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "createdAt": {
++          "name": "createdAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "(now())"
++        }
++      },
++      "indexes": {
++        "feature_flag_override_scope_unique": {
++          "name": "feature_flag_override_scope_unique",
++          "columns": [
++            "flagKey",
++            "scopeType",
++            "scopeId"
++          ],
++          "isUnique": true
++        }
++      },
++      "foreignKeys": {},
++      "compositePrimaryKeys": {
++        "feature_flag_overrides_id": {
++          "name": "feature_flag_overrides_id",
++          "columns": [
++            "id"
++          ]
++        }
++      },
++      "uniqueConstraints": {},
++      "checkConstraint": {}
++    },
++    "feature_flags": {
++      "name": "feature_flags",
++      "columns": {
++        "key": {
++          "name": "key",
++          "type": "varchar(64)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "enabled": {
++          "name": "enabled",
++          "type": "boolean",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "updatedBy": {
++          "name": "updatedBy",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "updatedAt": {
++          "name": "updatedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "onUpdate": true,
++          "default": "(now())"
++        },
++        "createdAt": {
++          "name": "createdAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "(now())"
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {},
++      "compositePrimaryKeys": {
++        "feature_flags_key": {
++          "name": "feature_flags_key",
++          "columns": [
++            "key"
++          ]
++        }
++      },
++      "uniqueConstraints": {},
++      "checkConstraint": {}
++    },
++    "group_email_invites": {
++      "name": "group_email_invites",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "groupId": {
++          "name": "groupId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "invitedByUserId": {
++          "name": "invitedByUserId",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "email": {
++          "name": "email",
++          "type": "varchar(320)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "tokenHash": {
++          "name": "tokenHash",
++          "type": "varchar(64)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "status": {
++          "name": "status",
++          "type": "enum('PENDING','ACCEPTED','REVOKED')",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "'PENDING'"
++        },
++        "expiresAt": {
++          "name": "expiresAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "acceptedAt": {
++          "name": "acceptedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "revokedAt": {
++          "name": "revokedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "createdAt": {
++          "name": "createdAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "(now())"
++        }
++      },
++      "indexes": {
++        "group_email_invites_group_idx": {
++          "name": "group_email_invites_group_idx",
++          "columns": [
++            "groupId"
++          ],
++          "isUnique": false
++        },
++        "group_email_invites_email_idx": {
++          "name": "group_email_invites_email_idx",
++          "columns": [
++            "email"
++          ],
++          "isUnique": false
++        }
++      },
++      "foreignKeys": {},
++      "compositePrimaryKeys": {
++        "group_email_invites_id": {
++          "name": "group_email_invites_id",
++          "columns": [
++            "id"
++          ]
++        }
++      },
++      "uniqueConstraints": {
++        "group_email_invites_tokenHash_unique": {
++          "name": "group_email_invites_tokenHash_unique",
++          "columns": [
++            "tokenHash"
++          ]
++        }
++      },
++      "checkConstraint": {}
++    },
++    "group_members": {
++      "name": "group_members",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": true
++        },
++        "groupId": {
++          "name": "groupId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "userId": {
++          "name": "userId",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "membershipRole": {
++          "name": "membershipRole",
++          "type": "enum('STUDENT')",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "'STUDENT'"
++        },
++        "status": {
++          "name": "status",
++          "type": "enum('PENDING','ACTIVE')",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "'PENDING'"
++        },
++        "joinedAt": {
++          "name": "joinedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "(now())"
++        }
++      },
++      "indexes": {
++        "group_members_group_user_unique": {
++          "name": "group_members_group_user_unique",
++          "columns": [
++            "groupId",
++            "userId"
++          ],
++          "isUnique": true
++        },
++        "group_members_user_idx": {
++          "name": "group_members_user_idx",
++          "columns": [
++            "userId"
++          ],
++          "isUnique": false
++        }
++      },
++      "foreignKeys": {},
++      "compositePrimaryKeys": {
++        "group_members_id": {
++          "name": "group_members_id",
++          "columns": [
++            "id"
++          ]
++        }
++      },
++      "uniqueConstraints": {},
++      "checkConstraint": {}
++    },
++    "study_groups": {
++      "name": "study_groups",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "providerWorkspaceId": {
++          "name": "providerWorkspaceId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "name": {
++          "name": "name",
++          "type": "varchar(255)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "subject": {
++          "name": "subject",
++          "type": "varchar(120)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "''"
++        },
++        "grade": {
++          "name": "grade",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "''"
++        },
++        "description": {
++          "name": "description",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "language": {
++          "name": "language",
++          "type": "varchar(64)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "''"
++        },
++        "format": {
++          "name": "format",
++          "type": "enum('ONLINE','IN_PERSON','HYBRID')",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "'ONLINE'"
++        },
++        "startDate": {
++          "name": "startDate",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "classDays": {
++          "name": "classDays",
++          "type": "varchar(64)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "classTime": {
++          "name": "classTime",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "scheduleVisible": {
++          "name": "scheduleVisible",
++          "type": "boolean",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": false
++        },
++        "inviteCode": {
++          "name": "inviteCode",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "joinPolicy": {
++          "name": "joinPolicy",
++          "type": "enum('AUTO','APPROVAL','MANUAL')",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "'APPROVAL'"
++        },
++        "codeActive": {
++          "name": "codeActive",
++          "type": "boolean",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": true
++        },
++        "codeExpiresAt": {
++          "name": "codeExpiresAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "createdAt": {
++          "name": "createdAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "(now())"
++        }
++      },
++      "indexes": {
++        "groups_workspace_idx": {
++          "name": "groups_workspace_idx",
++          "columns": [
++            "providerWorkspaceId"
++          ],
++          "isUnique": false
++        }
++      },
++      "foreignKeys": {},
++      "compositePrimaryKeys": {
++        "study_groups_id": {
++          "name": "study_groups_id",
++          "columns": [
++            "id"
++          ]
++        }
++      },
++      "uniqueConstraints": {
++        "study_groups_inviteCode_unique": {
++          "name": "study_groups_inviteCode_unique",
++          "columns": [
++            "inviteCode"
++          ]
++        }
++      },
++      "checkConstraint": {}
++    },
++    "partner_profiles": {
++      "name": "partner_profiles",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": true
++        },
++        "userId": {
++          "name": "userId",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "status": {
++          "name": "status",
++          "type": "enum('PENDING','APPROVED','REJECTED','SUSPENDED','INFO_REQUESTED')",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "'PENDING'"
++        },
++        "referralCode": {
++          "name": "referralCode",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "approvedAt": {
++          "name": "approvedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "createdAt": {
++          "name": "createdAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "(now())"
++        },
++        "applicationAnswers": {
++          "name": "applicationAnswers",
++          "type": "json",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "decidedBy": {
++          "name": "decidedBy",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "decidedAt": {
++          "name": "decidedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {},
++      "compositePrimaryKeys": {
++        "partner_profiles_id": {
++          "name": "partner_profiles_id",
++          "columns": [
++            "id"
++          ]
++        }
++      },
++      "uniqueConstraints": {
++        "partner_profiles_userId_unique": {
++          "name": "partner_profiles_userId_unique",
++          "columns": [
++            "userId"
++          ]
++        },
++        "partner_profiles_referralCode_unique": {
++          "name": "partner_profiles_referralCode_unique",
++          "columns": [
++            "referralCode"
++          ]
++        }
++      },
++      "checkConstraint": {}
++    },
++    "platform_roles": {
++      "name": "platform_roles",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": true
++        },
++        "userId": {
++          "name": "userId",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "role": {
++          "name": "role",
++          "type": "enum('SUPER_ADMIN','SUPPORT_ADMIN','PARTNER_ADMIN','FINANCE_ADMIN','CONTENT_REVIEWER')",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "createdAt": {
++          "name": "createdAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "(now())"
++        },
++        "createdBy": {
++          "name": "createdBy",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        }
++      },
++      "indexes": {
++        "platform_roles_user_role_unique": {
++          "name": "platform_roles_user_role_unique",
++          "columns": [
++            "userId",
++            "role"
++          ],
++          "isUnique": true
++        }
++      },
++      "foreignKeys": {},
++      "compositePrimaryKeys": {
++        "platform_roles_id": {
++          "name": "platform_roles_id",
++          "columns": [
++            "id"
++          ]
++        }
++      },
++      "uniqueConstraints": {},
++      "checkConstraint": {}
++    },
++    "provider_workspaces": {
++      "name": "provider_workspaces",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "ownerUserId": {
++          "name": "ownerUserId",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "title": {
++          "name": "title",
++          "type": "varchar(255)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "publicDisplayName": {
++          "name": "publicDisplayName",
++          "type": "varchar(255)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "''"
++        },
++        "providerType": {
++          "name": "providerType",
++          "type": "enum('TEACHER','TRAINER','CENTER','SCHOOL')",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "'TEACHER'"
++        },
++        "subscriptionStatus": {
++          "name": "subscriptionStatus",
++          "type": "enum('BETA','TRIAL','ACTIVE','PAST_DUE','CANCELED')",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "'BETA'"
++        },
++        "createdAt": {
++          "name": "createdAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "(now())"
++        }
++      },
++      "indexes": {
++        "provider_workspaces_owner_idx": {
++          "name": "provider_workspaces_owner_idx",
++          "columns": [
++            "ownerUserId"
++          ],
++          "isUnique": false
++        }
++      },
++      "foreignKeys": {},
++      "compositePrimaryKeys": {
++        "provider_workspaces_id": {
++          "name": "provider_workspaces_id",
++          "columns": [
++            "id"
++          ]
++        }
++      },
++      "uniqueConstraints": {},
++      "checkConstraint": {}
++    },
++    "questions": {
++      "name": "questions",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "providerWorkspaceId": {
++          "name": "providerWorkspaceId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "createdBy": {
++          "name": "createdBy",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "type": {
++          "name": "type",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "text": {
++          "name": "text",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "points": {
++          "name": "points",
++          "type": "double",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": 1
++        },
++        "difficulty": {
++          "name": "difficulty",
++          "type": "enum('EASY','MEDIUM','HARD')",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "'MEDIUM'"
++        },
++        "topic": {
++          "name": "topic",
++          "type": "varchar(120)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "''"
++        },
++        "skill": {
++          "name": "skill",
++          "type": "varchar(120)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "''"
++        },
++        "tags": {
++          "name": "tags",
++          "type": "json",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "explanation": {
++          "name": "explanation",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "imageUrl": {
++          "name": "imageUrl",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "content": {
++          "name": "content",
++          "type": "json",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "answerKey": {
++          "name": "answerKey",
++          "type": "json",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "source": {
++          "name": "source",
++          "type": "enum('MANUAL','AI')",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "'MANUAL'"
++        },
++        "createdAt": {
++          "name": "createdAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "(now())"
++        },
++        "updatedAt": {
++          "name": "updatedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "onUpdate": true,
++          "default": "(now())"
++        }
++      },
++      "indexes": {
++        "questions_workspace_idx": {
++          "name": "questions_workspace_idx",
++          "columns": [
++            "providerWorkspaceId"
++          ],
++          "isUnique": false
++        },
++        "questions_topic_idx": {
++          "name": "questions_topic_idx",
++          "columns": [
++            "providerWorkspaceId",
++            "topic"
++          ],
++          "isUnique": false
++        }
++      },
++      "foreignKeys": {},
++      "compositePrimaryKeys": {
++        "questions_id": {
++          "name": "questions_id",
++          "columns": [
++            "id"
++          ]
++        }
++      },
++      "uniqueConstraints": {},
++      "checkConstraint": {}
++    },
++    "result_items": {
++      "name": "result_items",
++      "columns": {
++        "resultId": {
++          "name": "resultId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "versionQuestionId": {
++          "name": "versionQuestionId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "status": {
++          "name": "status",
++          "type": "enum('CORRECT','WRONG','UNANSWERED','PENDING_REVIEW')",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "earned": {
++          "name": "earned",
++          "type": "double",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "topic": {
++          "name": "topic",
++          "type": "varchar(120)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "''"
++        },
++        "skill": {
++          "name": "skill",
++          "type": "varchar(120)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "''"
++        }
++      },
++      "indexes": {
++        "result_items_question_idx": {
++          "name": "result_items_question_idx",
++          "columns": [
++            "versionQuestionId"
++          ],
++          "isUnique": false
++        }
++      },
++      "foreignKeys": {},
++      "compositePrimaryKeys": {
++        "result_items_resultId_versionQuestionId_pk": {
++          "name": "result_items_resultId_versionQuestionId_pk",
++          "columns": [
++            "resultId",
++            "versionQuestionId"
++          ]
++        }
++      },
++      "uniqueConstraints": {},
++      "checkConstraint": {}
++    },
++    "results": {
++      "name": "results",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "attemptId": {
++          "name": "attemptId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "assessmentId": {
++          "name": "assessmentId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "versionId": {
++          "name": "versionId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "studentId": {
++          "name": "studentId",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "totalPoints": {
++          "name": "totalPoints",
++          "type": "double",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "earnedPoints": {
++          "name": "earnedPoints",
++          "type": "double",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "percentage": {
++          "name": "percentage",
++          "type": "double",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "correctCount": {
++          "name": "correctCount",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "wrongCount": {
++          "name": "wrongCount",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "unansweredCount": {
++          "name": "unansweredCount",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "pendingReviewCount": {
++          "name": "pendingReviewCount",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": 0
++        },
++        "durationSeconds": {
++          "name": "durationSeconds",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "completedAt": {
++          "name": "completedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        }
++      },
++      "indexes": {
++        "results_assessment_idx": {
++          "name": "results_assessment_idx",
++          "columns": [
++            "assessmentId"
++          ],
++          "isUnique": false
++        },
++        "results_student_idx": {
++          "name": "results_student_idx",
++          "columns": [
++            "studentId"
++          ],
++          "isUnique": false
++        }
++      },
++      "foreignKeys": {},
++      "compositePrimaryKeys": {
++        "results_id": {
++          "name": "results_id",
++          "columns": [
++            "id"
++          ]
++        }
++      },
++      "uniqueConstraints": {
++        "results_attemptId_unique": {
++          "name": "results_attemptId_unique",
++          "columns": [
++            "attemptId"
++          ]
++        }
++      },
++      "checkConstraint": {}
++    },
++    "security_events": {
++      "name": "security_events",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "bigint",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": true
++        },
++        "type": {
++          "name": "type",
++          "type": "varchar(40)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "severity": {
++          "name": "severity",
++          "type": "enum('LOW','MEDIUM','HIGH')",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "status": {
++          "name": "status",
++          "type": "enum('REVIEW_REQUIRED','REVIEWED','DISMISSED')",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "'REVIEW_REQUIRED'"
++        },
++        "userId": {
++          "name": "userId",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "workspaceId": {
++          "name": "workspaceId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "ipHash": {
++          "name": "ipHash",
++          "type": "varchar(64)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "details": {
++          "name": "details",
++          "type": "json",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "occurrences": {
++          "name": "occurrences",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": 1
++        },
++        "firstSeenAt": {
++          "name": "firstSeenAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "(now())"
++        },
++        "lastSeenAt": {
++          "name": "lastSeenAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "(now())"
++        },
++        "reviewedBy": {
++          "name": "reviewedBy",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "reviewedAt": {
++          "name": "reviewedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        }
++      },
++      "indexes": {
++        "security_status_idx": {
++          "name": "security_status_idx",
++          "columns": [
++            "status",
++            "lastSeenAt"
++          ],
++          "isUnique": false
++        },
++        "security_type_idx": {
++          "name": "security_type_idx",
++          "columns": [
++            "type",
++            "lastSeenAt"
++          ],
++          "isUnique": false
++        },
++        "security_user_idx": {
++          "name": "security_user_idx",
++          "columns": [
++            "userId"
++          ],
++          "isUnique": false
++        }
++      },
++      "foreignKeys": {},
++      "compositePrimaryKeys": {
++        "security_events_id": {
++          "name": "security_events_id",
++          "columns": [
++            "id"
++          ]
++        }
++      },
++      "uniqueConstraints": {},
++      "checkConstraint": {}
++    },
++    "student_activity_events": {
++      "name": "student_activity_events",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "bigint",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": true
++        },
++        "userId": {
++          "name": "userId",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "providerWorkspaceId": {
++          "name": "providerWorkspaceId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "groupId": {
++          "name": "groupId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "entityType": {
++          "name": "entityType",
++          "type": "enum('ASSESSMENT','ASSIGNMENT','MATERIAL','FILE')",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "entityId": {
++          "name": "entityId",
++          "type": "varchar(64)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "eventType": {
++          "name": "eventType",
++          "type": "varchar(40)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "metadata": {
++          "name": "metadata",
++          "type": "json",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "createdAt": {
++          "name": "createdAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "(now())"
++        }
++      },
++      "indexes": {
++        "activity_entity_idx": {
++          "name": "activity_entity_idx",
++          "columns": [
++            "providerWorkspaceId",
++            "entityType",
++            "entityId",
++            "createdAt"
++          ],
++          "isUnique": false
++        },
++        "activity_user_idx": {
++          "name": "activity_user_idx",
++          "columns": [
++            "userId",
++            "createdAt"
++          ],
++          "isUnique": false
++        }
++      },
++      "foreignKeys": {},
++      "compositePrimaryKeys": {
++        "student_activity_events_id": {
++          "name": "student_activity_events_id",
++          "columns": [
++            "id"
++          ]
++        }
++      },
++      "uniqueConstraints": {},
++      "checkConstraint": {}
++    },
++    "student_answers": {
++      "name": "student_answers",
++      "columns": {
++        "attemptId": {
++          "name": "attemptId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "versionQuestionId": {
++          "name": "versionQuestionId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "answer": {
++          "name": "answer",
++          "type": "json",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "revision": {
++          "name": "revision",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": 0
++        },
++        "updatedAt": {
++          "name": "updatedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "onUpdate": true,
++          "default": "(now())"
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {},
++      "compositePrimaryKeys": {
++        "student_answers_attemptId_versionQuestionId_pk": {
++          "name": "student_answers_attemptId_versionQuestionId_pk",
++          "columns": [
++            "attemptId",
++            "versionQuestionId"
++          ]
++        }
++      },
++      "uniqueConstraints": {},
++      "checkConstraint": {}
++    },
++    "users": {
++      "name": "users",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": true
++        },
++        "openId": {
++          "name": "openId",
++          "type": "varchar(64)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "name": {
++          "name": "name",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "email": {
++          "name": "email",
++          "type": "varchar(320)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "avatarUrl": {
++          "name": "avatarUrl",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "loginMethod": {
++          "name": "loginMethod",
++          "type": "varchar(64)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "createdAt": {
++          "name": "createdAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "(now())"
++        },
++        "updatedAt": {
++          "name": "updatedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "onUpdate": true,
++          "default": "(now())"
++        },
++        "lastSignedIn": {
++          "name": "lastSignedIn",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "(now())"
++        },
++        "preferredLocale": {
++          "name": "preferredLocale",
++          "type": "varchar(8)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false,
++          "default": "'az'"
++        },
++        "lastActiveContext": {
++          "name": "lastActiveContext",
++          "type": "enum('learning','teaching','partner')",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "accountStatus": {
++          "name": "accountStatus",
++          "type": "enum('ACTIVE','SUSPENDED')",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "'ACTIVE'"
++        },
++        "suspendedAt": {
++          "name": "suspendedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "sessionsValidAfter": {
++          "name": "sessionsValidAfter",
++          "type": "timestamp(3)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "lastSeenAt": {
++          "name": "lastSeenAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "timezone": {
++          "name": "timezone",
++          "type": "varchar(64)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "targetExam": {
++          "name": "targetExam",
++          "type": "varchar(64)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "targetScore": {
++          "name": "targetScore",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "targetExamDate": {
++          "name": "targetExamDate",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "studentOnboardedAt": {
++          "name": "studentOnboardedAt",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        }
++      },
++      "indexes": {
++        "users_account_status_idx": {
++          "name": "users_account_status_idx",
++          "columns": [
++            "accountStatus"
++          ],
++          "isUnique": false
++        },
++        "users_last_seen_idx": {
++          "name": "users_last_seen_idx",
++          "columns": [
++            "lastSeenAt"
++          ],
++          "isUnique": false
++        }
++      },
++      "foreignKeys": {},
++      "compositePrimaryKeys": {
++        "users_id": {
++          "name": "users_id",
++          "columns": [
++            "id"
++          ]
++        }
++      },
++      "uniqueConstraints": {
++        "users_openId_unique": {
++          "name": "users_openId_unique",
++          "columns": [
++            "openId"
++          ]
++        }
++      },
++      "checkConstraint": {}
++    },
++    "version_questions": {
++      "name": "version_questions",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "versionId": {
++          "name": "versionId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "sourceQuestionId": {
++          "name": "sourceQuestionId",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "position": {
++          "name": "position",
++          "type": "int",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "type": {
++          "name": "type",
++          "type": "varchar(32)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "text": {
++          "name": "text",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "points": {
++          "name": "points",
++          "type": "double",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "difficulty": {
++          "name": "difficulty",
++          "type": "enum('EASY','MEDIUM','HARD')",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "topic": {
++          "name": "topic",
++          "type": "varchar(120)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "''"
++        },
++        "skill": {
++          "name": "skill",
++          "type": "varchar(120)",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false,
++          "default": "''"
++        },
++        "explanation": {
++          "name": "explanation",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "imageUrl": {
++          "name": "imageUrl",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "content": {
++          "name": "content",
++          "type": "json",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "answerKey": {
++          "name": "answerKey",
++          "type": "json",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        }
++      },
++      "indexes": {
++        "version_questions_version_idx": {
++          "name": "version_questions_version_idx",
++          "columns": [
++            "versionId",
++            "position"
++          ],
++          "isUnique": false
++        }
++      },
++      "foreignKeys": {},
++      "compositePrimaryKeys": {
++        "version_questions_id": {
++          "name": "version_questions_id",
++          "columns": [
++            "id"
++          ]
++        }
++      },
++      "uniqueConstraints": {},
++      "checkConstraint": {}
++    }
++  },
++  "views": {},
++  "_meta": {
++    "schemas": {},
++    "tables": {},
++    "columns": {}
++  },
++  "internal": {
++    "tables": {},
++    "indexes": {}
++  }
++}
+\ No newline at end of file
+diff --git a/drizzle/meta/_journal.json b/drizzle/meta/_journal.json
+index 7f67ad6..3dca14c 100644
+--- a/drizzle/meta/_journal.json
++++ b/drizzle/meta/_journal.json
+@@ -50,6 +50,13 @@
+       "when": 1790796052932,
+       "tag": "0006_student_onboarding_fields",
+       "breakpoints": true
++    },
++    {
++      "idx": 7,
++      "version": "5",
++      "when": 1790874638713,
++      "tag": "0007_add_group_schedule_and_join_policy",
++      "breakpoints": true
+     }
+   ]
+ }
+\ No newline at end of file
+diff --git a/drizzle/schema.ts b/drizzle/schema.ts
+index 9d28b07..f37d279 100644
+--- a/drizzle/schema.ts
++++ b/drizzle/schema.ts
+@@ -117,6 +117,15 @@ export const providerWorkspaces = mysqlTable(
+   (t) => [index("provider_workspaces_owner_idx").on(t.ownerUserId)],
+ );
+ 
++export const GROUP_FORMATS = ["ONLINE", "IN_PERSON", "HYBRID"] as const;
++/**
++ * AUTO: `joinByInvite` activates membership immediately. APPROVAL: membership starts PENDING,
++ * the teacher approves it. MANUAL: self-join is refused outright — the teacher must add every
++ * student with `addMemberByEmail`. The invite code/link is the same value for both AUTO and
++ * APPROVAL; Resulio does not keep a separate token per channel (see groups.ts).
++ */
++export const GROUP_JOIN_POLICIES = ["AUTO", "APPROVAL", "MANUAL"] as const;
++
+ export const groups = mysqlTable(
+   "study_groups",
+   {
+@@ -126,9 +135,20 @@ export const groups = mysqlTable(
+     subject: varchar("subject", { length: 120 }).notNull().default(""),
+     grade: varchar("grade", { length: 32 }).notNull().default(""),
+     description: text("description"),
++    /** Free text so the list of teaching languages never needs a migration to extend. */
++    language: varchar("language", { length: 64 }).notNull().default(""),
++    format: mysqlEnum("format", GROUP_FORMATS).notNull().default("ONLINE"),
++    startDate: timestamp("startDate"),
++    /** e.g. "Mon,Wed,Fri" — free text, not a fixed day-of-week enum, to allow irregular schedules. */
++    classDays: varchar("classDays", { length: 64 }),
++    classTime: varchar("classTime", { length: 32 }),
++    /** Whether classDays/classTime/startDate are shown on the public join-preview screen. */
++    scheduleVisible: boolean("scheduleVisible").notNull().default(false),
+     inviteCode: varchar("inviteCode", { length: 32 }).notNull().unique(),
+-    /** When true, `joinByInvite` activates membership immediately instead of leaving it PENDING for teacher approval. */
+-    autoJoinEnabled: boolean("autoJoinEnabled").notNull().default(false),
++    joinPolicy: mysqlEnum("joinPolicy", GROUP_JOIN_POLICIES).notNull().default("APPROVAL"),
++    /** Deactivating stops new joins without burning the code value the way regenerating does. */
++    codeActive: boolean("codeActive").notNull().default(true),
++    codeExpiresAt: timestamp("codeExpiresAt"),
+     createdAt: timestamp("createdAt").defaultNow().notNull(),
+   },
+   (t) => [index("groups_workspace_idx").on(t.providerWorkspaceId)],
+diff --git a/server/integration/studentRegistration.it.ts b/server/integration/studentRegistration.it.ts
+index f4d6170..6f71d98 100644
+--- a/server/integration/studentRegistration.it.ts
++++ b/server/integration/studentRegistration.it.ts
+@@ -57,7 +57,7 @@ describe("student entry via group code", () => {
+     const teacher = await makeTeacher("Kod müəllimi");
+     const off = await groups.createGroup(teacher.scope, { name: "Auto-join off", subject: "", grade: "", description: "" });
+     const on = await groups.createGroup(teacher.scope, { name: "Auto-join on", subject: "", grade: "", description: "" });
+-    await groups.setAutoJoin(teacher.scope, on.id, true);
++    await groups.setJoinPolicy(teacher.scope, on.id, "AUTO");
+ 
+     const s1 = await makeUser("Tələbə off");
+     const joined1 = await groups.joinByInvite(s1.id, off.inviteCode);
+@@ -92,6 +92,50 @@ describe("student entry via group code", () => {
+     for (let i = 0; i < 10; i++) expect(await outcome(s.join({ inviteCode: "NOPE-NOPE" }))).toBe("NOT_FOUND:INVITE_NOT_FOUND");
+     expect(await outcome(s.join({ inviteCode: "NOPE-NOPE" }))).toBe("TOO_MANY_REQUESTS:RATE_LIMITED");
+   });
++
++  it("MANUAL join policy refuses self-join by code even for a brand-new student", async () => {
++    const teacher = await makeTeacher("Manual müəllimi");
++    const group = await groups.createGroup(teacher.scope, { name: "Manual only", subject: "", grade: "", description: "" });
++    await groups.setJoinPolicy(teacher.scope, group.id, "MANUAL");
++    const student = await makeUser("Manual tələbə");
++    await expect(groups.joinByInvite(student.id, group.inviteCode)).rejects.toThrow("GROUP_NOT_ACCEPTING");
++    // The teacher can still add the same student directly — MANUAL only blocks self-join.
++    const added = await groups.addMemberByEmail(teacher.scope, group.id, student.email ?? "");
++    expect(added.status).toBe("ACTIVE");
++  });
++
++  it("a deactivated code refuses new joins without changing its value", async () => {
++    const teacher = await makeTeacher("Deaktiv müəllimi");
++    const group = await groups.createGroup(teacher.scope, { name: "Deactivated", subject: "", grade: "", description: "" });
++    await groups.setInviteCodeActive(teacher.scope, group.id, false);
++    const student = await makeUser("Deaktiv koda gələn");
++    await expect(groups.joinByInvite(student.id, group.inviteCode)).rejects.toThrow("INVITE_CODE_INACTIVE");
++    await groups.setInviteCodeActive(teacher.scope, group.id, true);
++    const joined = await groups.joinByInvite(student.id, group.inviteCode);
++    expect(joined.status).toBe("PENDING");
++  });
++
++  it("an expired code refuses joins; clearing the expiry lets them through again", async () => {
++    const teacher = await makeTeacher("Son tarix müəllimi");
++    const group = await groups.createGroup(teacher.scope, { name: "Expiring", subject: "", grade: "", description: "" });
++    await groups.setInviteCodeExpiry(teacher.scope, group.id, new Date(Date.now() - 1000));
++    const student = await makeUser("Vaxtı bitmiş koda gələn");
++    await expect(groups.joinByInvite(student.id, group.inviteCode)).rejects.toThrow("INVITE_CODE_EXPIRED");
++    await groups.setInviteCodeExpiry(teacher.scope, group.id, null);
++    const joined = await groups.joinByInvite(student.id, group.inviteCode);
++    expect(joined.status).toBe("PENDING");
++  });
++
++  it("regenerating the code resets it to active with no expiry", async () => {
++    const teacher = await makeTeacher("Regenerate-reset müəllimi");
++    const group = await groups.createGroup(teacher.scope, { name: "Regenerate reset", subject: "", grade: "", description: "" });
++    await groups.setInviteCodeActive(teacher.scope, group.id, false);
++    await groups.setInviteCodeExpiry(teacher.scope, group.id, new Date(Date.now() + 1000 * 3600));
++    await groups.regenerateInviteCode(teacher.scope, group.id);
++    const refreshed = await groups.assertGroupOwner(teacher.scope, group.id);
++    expect(refreshed.codeActive).toBe(true);
++    expect(refreshed.codeExpiresAt).toBeNull();
++  });
+ });
+ 
+ // ---------------------------------------------------------------------------
+@@ -102,7 +146,7 @@ describe("student entry via email invite", () => {
+   it("activates membership immediately even when the group requires approval, because the email already proves the target", async () => {
+     const teacher = await makeTeacher("Email müəllimi");
+     const group = await groups.createGroup(teacher.scope, { name: "Email group", subject: "", grade: "", description: "" });
+-    expect(group.autoJoinEnabled).toBe(false);
++    expect(group.joinPolicy).toBe("APPROVAL");
+     const { token } = await emailInvites.createEmailInvite(teacher.scope, group.id, "matching@example.test");
+     const student = await makeUser("Email uyğun tələbə");
+     await testDb().update(users).set({ email: "matching@example.test" }).where(eq(users.id, student.id));
+@@ -194,7 +238,7 @@ describe("student-to-teacher transition", () => {
+   it("creating a Provider Workspace never touches the user's existing group membership", async () => {
+     const otherTeacher = await makeTeacher("Digər müəllim");
+     const group = await groups.createGroup(otherTeacher.scope, { name: "Öyrənmə qrupu", subject: "", grade: "", description: "" });
+-    await groups.setAutoJoin(otherTeacher.scope, group.id, true);
++    await groups.setJoinPolicy(otherTeacher.scope, group.id, "AUTO");
+     const student = await makeUser("İkili istifadəçi");
+     await groups.joinByInvite(student.id, group.inviteCode);
+ 
+diff --git a/server/modules/errors.ts b/server/modules/errors.ts
+index b6ce604..ddf68e2 100644
+--- a/server/modules/errors.ts
++++ b/server/modules/errors.ts
+@@ -4,6 +4,9 @@ export type AppErrorCode =
+   | "NOT_FOUND"
+   | "FORBIDDEN"
+   | "INVITE_NOT_FOUND"
++  | "INVITE_CODE_INACTIVE"
++  | "INVITE_CODE_EXPIRED"
++  | "GROUP_NOT_ACCEPTING"
+   | "STUDENT_NOT_FOUND"
+   | "ALREADY_MEMBER"
+   | "EMAIL_INVITE_NOT_FOUND"
+@@ -53,6 +56,9 @@ export class AppError extends Error {
+ const HTTP: Partial<Record<AppErrorCode, TRPCError["code"]>> = {
+   NOT_FOUND: "NOT_FOUND",
+   INVITE_NOT_FOUND: "NOT_FOUND",
++  INVITE_CODE_INACTIVE: "PRECONDITION_FAILED",
++  INVITE_CODE_EXPIRED: "PRECONDITION_FAILED",
++  GROUP_NOT_ACCEPTING: "FORBIDDEN",
+   STUDENT_NOT_FOUND: "NOT_FOUND",
+   EMAIL_INVITE_NOT_FOUND: "NOT_FOUND",
+   EMAIL_INVITE_EXPIRED: "PRECONDITION_FAILED",
+diff --git a/server/modules/groupEmailInvites.ts b/server/modules/groupEmailInvites.ts
+index e4dab0a..6a2b77c 100644
+--- a/server/modules/groupEmailInvites.ts
++++ b/server/modules/groupEmailInvites.ts
+@@ -101,6 +101,13 @@ export async function publicEmailInvitePreview(token: string) {
+       name: groups.name,
+       subject: groups.subject,
+       grade: groups.grade,
++      description: groups.description,
++      language: groups.language,
++      format: groups.format,
++      startDate: groups.startDate,
++      classDays: groups.classDays,
++      classTime: groups.classTime,
++      scheduleVisible: groups.scheduleVisible,
+       providerName: providerWorkspaces.publicDisplayName,
+       providerTitle: providerWorkspaces.title,
+     })
+@@ -109,7 +116,18 @@ export async function publicEmailInvitePreview(token: string) {
+     .where(eq(groups.id, invite.groupId))
+     .limit(1);
+   if (!group) return null;
+-  return { name: group.name, subject: group.subject, grade: group.grade, teacherName: group.providerName || group.providerTitle };
++  return {
++    name: group.name,
++    subject: group.subject,
++    grade: group.grade,
++    teacherName: group.providerName || group.providerTitle,
++    language: group.language,
++    format: group.format,
++    description: group.description,
++    startDate: group.scheduleVisible ? group.startDate : null,
++    classDays: group.scheduleVisible ? group.classDays : null,
++    classTime: group.scheduleVisible ? group.classTime : null,
++  };
+ }
+ 
+ /**
+diff --git a/server/modules/groups.ts b/server/modules/groups.ts
+index a9ff9a2..c4ee846 100644
+--- a/server/modules/groups.ts
++++ b/server/modules/groups.ts
+@@ -1,10 +1,13 @@
+ import { and, eq, inArray, sql } from "drizzle-orm";
+ import { nanoid } from "nanoid";
+-import { groupMembers, groups, providerWorkspaces, users } from "../../drizzle/schema";
++import { GROUP_FORMATS, GROUP_JOIN_POLICIES, groupMembers, groups, providerWorkspaces, users } from "../../drizzle/schema";
+ import { requireDb, type DbOrTx } from "../db";
+ import type { TeacherScope } from "./access";
+ import { AppError } from "./errors";
+ 
++export type GroupFormat = (typeof GROUP_FORMATS)[number];
++export type GroupJoinPolicy = (typeof GROUP_JOIN_POLICIES)[number];
++
+ export async function assertGroupOwner(scope: TeacherScope, groupId: string, db: DbOrTx = requireDb()) {
+   const [group] = await db
+     .select()
+@@ -40,9 +43,18 @@ export async function teacherGroups(scope: TeacherScope) {
+   }));
+ }
+ 
++export interface GroupScheduleInput {
++  language: string;
++  format: GroupFormat;
++  startDate: Date | null;
++  classDays: string | null;
++  classTime: string | null;
++  scheduleVisible: boolean;
++}
++
+ export async function createGroup(
+   scope: TeacherScope,
+-  data: { name: string; subject: string; grade: string; description: string },
++  data: { name: string; subject: string; grade: string; description: string } & Partial<GroupScheduleInput>,
+ ) {
+   const db = requireDb();
+   const id = nanoid();
+@@ -50,7 +62,11 @@ export async function createGroup(
+   return assertGroupOwner(scope, id);
+ }
+ 
+-export async function renameGroup(scope: TeacherScope, groupId: string, patch: { name?: string; subject?: string; grade?: string; description?: string }) {
++export async function renameGroup(
++  scope: TeacherScope,
++  groupId: string,
++  patch: Partial<{ name: string; subject: string; grade: string; description: string } & GroupScheduleInput>,
++) {
+   await assertGroupOwner(scope, groupId);
+   await requireDb().update(groups).set(patch).where(eq(groups.id, groupId));
+   return assertGroupOwner(scope, groupId);
+@@ -106,6 +122,9 @@ export async function joinByInvite(userId: number, inviteCode: string) {
+   const db = requireDb();
+   const [group] = await db.select().from(groups).where(eq(groups.inviteCode, inviteCode)).limit(1);
+   if (!group) throw new AppError("INVITE_NOT_FOUND");
++  if (!group.codeActive) throw new AppError("INVITE_CODE_INACTIVE");
++  if (group.codeExpiresAt && group.codeExpiresAt.getTime() <= Date.now()) throw new AppError("INVITE_CODE_EXPIRED");
++  if (group.joinPolicy === "MANUAL") throw new AppError("GROUP_NOT_ACCEPTING");
+   const ws = await workspaceOwnerOf(group.providerWorkspaceId, db);
+   if (ws.ownerUserId === userId) throw new AppError("CANNOT_JOIN_OWN_GROUP");
+   const [existing] = await db
+@@ -114,32 +133,67 @@ export async function joinByInvite(userId: number, inviteCode: string) {
+     .where(and(eq(groupMembers.groupId, group.id), eq(groupMembers.userId, userId)))
+     .limit(1);
+   if (existing) throw new AppError("ALREADY_MEMBER");
+-  const status = group.autoJoinEnabled ? ("ACTIVE" as const) : ("PENDING" as const);
++  const status = group.joinPolicy === "AUTO" ? ("ACTIVE" as const) : ("PENDING" as const);
+   await db.insert(groupMembers).values({ groupId: group.id, userId, membershipRole: "STUDENT", status });
+   return { groupId: group.id, groupName: group.name, ownerUserId: ws.ownerUserId, status };
+ }
+ 
+-/** Teacher toggles whether `joinByInvite` needs their approval or activates membership immediately. */
+-export async function setAutoJoin(scope: TeacherScope, groupId: string, enabled: boolean) {
++/** Teacher sets whether `joinByInvite` activates immediately, needs approval, or is refused outright. */
++export async function setJoinPolicy(scope: TeacherScope, groupId: string, joinPolicy: GroupJoinPolicy) {
+   await assertGroupOwner(scope, groupId);
+-  await requireDb().update(groups).set({ autoJoinEnabled: enabled }).where(eq(groups.id, groupId));
+-  return { ok: true, autoJoinEnabled: enabled };
++  await requireDb().update(groups).set({ joinPolicy }).where(eq(groups.id, groupId));
++  return { ok: true, joinPolicy };
+ }
+ 
+-/** Old code stops working the instant a new one is issued — the simplest form of revoke. */
++/** Old code stops working the instant a new one is issued — the simplest form of revoke. Reactivates and clears any expiry. */
+ export async function regenerateInviteCode(scope: TeacherScope, groupId: string) {
+   await assertGroupOwner(scope, groupId);
+   const inviteCode = nanoid(10).toUpperCase();
+-  await requireDb().update(groups).set({ inviteCode }).where(eq(groups.id, groupId));
++  await requireDb().update(groups).set({ inviteCode, codeActive: true, codeExpiresAt: null }).where(eq(groups.id, groupId));
+   return { inviteCode };
+ }
+ 
+-export async function publicInvite(inviteCode: string) {
++/** Disables the current code/link without changing its value — distinct from regenerating. */
++export async function setInviteCodeActive(scope: TeacherScope, groupId: string, active: boolean) {
++  await assertGroupOwner(scope, groupId);
++  await requireDb().update(groups).set({ codeActive: active }).where(eq(groups.id, groupId));
++  return { ok: true, codeActive: active };
++}
++
++export async function setInviteCodeExpiry(scope: TeacherScope, groupId: string, expiresAt: Date | null) {
++  await assertGroupOwner(scope, groupId);
++  await requireDb().update(groups).set({ codeExpiresAt: expiresAt }).where(eq(groups.id, groupId));
++  return { ok: true, codeExpiresAt: expiresAt };
++}
++
++export interface PublicGroupPreview {
++  name: string;
++  subject: string;
++  grade: string;
++  teacherName: string;
++  language: string;
++  format: GroupFormat;
++  joinPolicy: GroupJoinPolicy;
++  description: string | null;
++  startDate: Date | null;
++  classDays: string | null;
++  classTime: string | null;
++}
++
++export async function publicInvite(inviteCode: string): Promise<PublicGroupPreview | null> {
+   const [group] = await requireDb()
+     .select({
+       name: groups.name,
+       subject: groups.subject,
+       grade: groups.grade,
++      description: groups.description,
++      language: groups.language,
++      format: groups.format,
++      joinPolicy: groups.joinPolicy,
++      startDate: groups.startDate,
++      classDays: groups.classDays,
++      classTime: groups.classTime,
++      scheduleVisible: groups.scheduleVisible,
+       providerName: providerWorkspaces.publicDisplayName,
+       providerTitle: providerWorkspaces.title,
+     })
+@@ -148,7 +202,19 @@ export async function publicInvite(inviteCode: string) {
+     .where(eq(groups.inviteCode, inviteCode))
+     .limit(1);
+   if (!group) return null;
+-  return { name: group.name, subject: group.subject, grade: group.grade, teacherName: group.providerName || group.providerTitle };
++  return {
++    name: group.name,
++    subject: group.subject,
++    grade: group.grade,
++    teacherName: group.providerName || group.providerTitle,
++    language: group.language,
++    format: group.format,
++    joinPolicy: group.joinPolicy,
++    description: group.description,
++    startDate: group.scheduleVisible ? group.startDate : null,
++    classDays: group.scheduleVisible ? group.classDays : null,
++    classTime: group.scheduleVisible ? group.classTime : null,
++  };
+ }
+ 
+ export async function approveMember(scope: TeacherScope, groupId: string, studentId: number) {
+diff --git a/server/routers.ts b/server/routers.ts
+index 18141a9..b2efc9e 100644
+--- a/server/routers.ts
++++ b/server/routers.ts
+@@ -17,7 +17,7 @@ import { ENV } from "./_core/env";
+ import { requestMeta } from "./_core/requestMeta";
+ import { sdk } from "./_core/sdk";
+ import { systemRouter } from "./_core/systemRouter";
+-import { PROVIDER_TYPES, UI_CONTEXTS } from "../drizzle/schema";
++import { GROUP_FORMATS, GROUP_JOIN_POLICIES, PROVIDER_TYPES, UI_CONTEXTS } from "../drizzle/schema";
+ import { adminRouter } from "./adminRouter";
+ import {
+   partnerProcedure,
+@@ -178,15 +178,26 @@ const groupInput = z.object({
+   subject: z.string().trim().max(120).default(""),
+   grade: z.string().trim().max(40).default(""),
+   description: z.string().trim().max(2000).default(""),
++  language: z.string().trim().max(64).default(""),
++  format: z.enum(GROUP_FORMATS).default("ONLINE"),
++  startDate: z.string().datetime().optional().nullable(),
++  classDays: z.string().trim().max(64).optional().nullable(),
++  classTime: z.string().trim().max(32).optional().nullable(),
++  scheduleVisible: z.boolean().default(false),
+ });
+ 
++/** Turns the wire-format ISO string into a Date for Drizzle, passing through null/undefined untouched. */
++function groupPatchForDb<T extends { startDate?: string | null }>({ startDate, ...rest }: T) {
++  return { ...rest, ...(startDate === undefined ? {} : { startDate: startDate === null ? null : new Date(startDate) }) };
++}
++
+ const teacherGroupsRouter = router({
+   list: teacherProcedure.query(({ ctx }) => groups.teacherGroups(ctx.scope)),
+   overview: teacherProcedure.query(({ ctx }) => analytics.groupsOverview(ctx.scope)),
+-  create: teacherProcedure.input(groupInput).mutation(({ ctx, input }) => groups.createGroup(ctx.scope, input)),
++  create: teacherProcedure.input(groupInput).mutation(({ ctx, input }) => groups.createGroup(ctx.scope, groupPatchForDb(input))),
+   update: teacherProcedure
+     .input(z.object({ id: entityId, patch: groupInput.partial() }))
+-    .mutation(({ ctx, input }) => groups.renameGroup(ctx.scope, input.id, input.patch)),
++    .mutation(({ ctx, input }) => groups.renameGroup(ctx.scope, input.id, groupPatchForDb(input.patch))),
+   detail: teacherProcedure.input(z.object({ id: entityId })).query(async ({ ctx, input }) => {
+     const group = await groups.assertGroupOwner(ctx.scope, input.id);
+     const members = await groups.groupMembersList(ctx.scope, input.id);
+@@ -205,13 +216,19 @@ const teacherGroupsRouter = router({
+   analytics: teacherProcedure
+     .input(z.object({ id: entityId }))
+     .query(({ ctx, input }) => analytics.groupAnalytics(ctx.scope, input.id)),
+-  setAutoJoin: teacherProcedure
+-    .input(z.object({ groupId: entityId, enabled: z.boolean() }))
+-    .mutation(({ ctx, input }) => groups.setAutoJoin(ctx.scope, input.groupId, input.enabled)),
++  setJoinPolicy: teacherProcedure
++    .input(z.object({ groupId: entityId, joinPolicy: z.enum(GROUP_JOIN_POLICIES) }))
++    .mutation(({ ctx, input }) => groups.setJoinPolicy(ctx.scope, input.groupId, input.joinPolicy)),
+   regenerateInviteCode: teacherProcedure
+     .use(rateLimit("regenerateInviteCode", 10, MINUTE))
+     .input(z.object({ groupId: entityId }))
+     .mutation(({ ctx, input }) => groups.regenerateInviteCode(ctx.scope, input.groupId)),
++  setInviteCodeActive: teacherProcedure
++    .input(z.object({ groupId: entityId, active: z.boolean() }))
++    .mutation(({ ctx, input }) => groups.setInviteCodeActive(ctx.scope, input.groupId, input.active)),
++  setInviteCodeExpiry: teacherProcedure
++    .input(z.object({ groupId: entityId, expiresAt: z.string().datetime().nullable() }))
++    .mutation(({ ctx, input }) => groups.setInviteCodeExpiry(ctx.scope, input.groupId, input.expiresAt === null ? null : new Date(input.expiresAt))),
+   emailInviteList: teacherProcedure
+     .input(z.object({ groupId: entityId }))
+     .query(({ ctx, input }) => groupEmailInvites.listEmailInvites(ctx.scope, input.groupId)),
+-- 
+2.43.0
+
+
+From 3a04d6fb9cf1fa3ce42949bf69339bbe94dcb087 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 1 Oct 2026 21:26:13 +0400
+Subject: [PATCH 3/3] Add minimal admin console UI
+
+The admin backend (suspend/unsuspend/revoke-sessions, audit log,
+security events) existed with no client to drive it, and the
+users.search/users.view permissions were declared but had no backing
+procedures. Adds searchUsers/getUser to server/modules/admin/users.ts
+and wires them into adminRouter.ts, then a functional /admin console
+(users search + detail + suspend/unsuspend/revoke via a reason-required
+dialog, audit log table, security events list with review action) with
+a Shield icon entry point in the account menu, shown only to admins.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01AdQkr4Q6EZdksQ1t4R55We
+---
+ client/src/App.tsx                 |   3 +
+ client/src/components/AppShell.tsx |   7 +
+ client/src/i18n/catalog/admin.ts   |  32 ++++
+ client/src/i18n/catalog/common.ts  |   1 +
+ client/src/i18n/catalog/index.ts   |   5 +-
+ client/src/pages/admin/Admin.tsx   | 290 +++++++++++++++++++++++++++++
+ server/adminRouter.ts              |   6 +
+ server/modules/admin/users.ts      |  27 ++-
+ 8 files changed, 368 insertions(+), 3 deletions(-)
+ create mode 100644 client/src/i18n/catalog/admin.ts
+ create mode 100644 client/src/pages/admin/Admin.tsx
+
+diff --git a/client/src/App.tsx b/client/src/App.tsx
+index 7e3154f..ecb3051 100644
+--- a/client/src/App.tsx
++++ b/client/src/App.tsx
+@@ -5,6 +5,7 @@ import { LocaleProvider, useI18n } from "@/i18n/locale";
+ import { t } from "@/i18n/messages";
+ import { canEnter, entryPath, getActiveWorkspaceId, setActiveWorkspaceId, type UiContext } from "@/lib/contexts";
+ import { trpc } from "@/lib/trpc";
++import AdminRoutes from "@/pages/admin/Admin";
+ import Home from "@/pages/Home";
+ import NotFound from "@/pages/NotFound";
+ import PartnerPage from "@/pages/PartnerPage";
+@@ -122,6 +123,8 @@ function Router() {
+       <Route path="/app">{() => <AppRedirect />}</Route>
+       <Route path="/settings" component={SettingsPage} />
+       <Route path="/partner">{partner(<PartnerPage />)}</Route>
++      <Route path="/admin/:rest*" component={AdminRoutes} />
++      <Route path="/admin" component={AdminRoutes} />
+ 
+       <Route path="/teacher">{teacher(<TeacherHome />)}</Route>
+       <Route path="/teacher/assessments">{teacher(<AssessmentsPage />)}</Route>
+diff --git a/client/src/components/AppShell.tsx b/client/src/components/AppShell.tsx
+index 0f648c3..c79305b 100644
+--- a/client/src/components/AppShell.tsx
++++ b/client/src/components/AppShell.tsx
+@@ -35,6 +35,7 @@ import {
+   Plus,
+   Presentation,
+   Settings,
++  Shield,
+   Sun,
+   TrendingUp,
+   Users,
+@@ -358,6 +359,12 @@ export function AppShell({
+                     <Settings className="h-4 w-4" aria-hidden />
+                     {t("nav.settings")}
+                   </DropdownMenuItem>
++                  {user?.isAdmin && (
++                    <DropdownMenuItem onSelect={() => nav("/admin/users")}>
++                      <Shield className="h-4 w-4" aria-hidden />
++                      {t("nav.admin")}
++                    </DropdownMenuItem>
++                  )}
+                   <DropdownMenuItem onSelect={() => void logout()}>
+                     <LogOut className="h-4 w-4" aria-hidden />
+                     {t("common.logout")}
+diff --git a/client/src/i18n/catalog/admin.ts b/client/src/i18n/catalog/admin.ts
+new file mode 100644
+index 0000000..32417e7
+--- /dev/null
++++ b/client/src/i18n/catalog/admin.ts
+@@ -0,0 +1,32 @@
++import type { Entry } from "../types";
++
++/** Platform admin console: user lookup/suspend, audit log, security events. Tuple order: [az, en, ru]. */
++export const admin = {
++  "nav.admin": ["Admin panel", "Admin panel", "Панель администратора"],
++  "admin.title": ["Admin panel", "Admin panel", "Панель администратора"],
++  "admin.backToApp": ["Tətbiqə qayıt", "Back to app", "Назад в приложение"],
++  "admin.noAccess": ["Bu bölmə üçün icazəniz yoxdur.", "You do not have access to this section.", "У вас нет доступа к этому разделу."],
++  "admin.reasonLabel": ["Səbəb", "Reason", "Причина"],
++  "admin.reasonPlaceholder": ["Bu əməliyyatın səbəbini qeyd edin (minimum 10 simvol)", "Note the reason for this action (10 characters minimum)", "Укажите причину этого действия (минимум 10 символов)"],
++  "admin.nav.users": ["İstifadəçilər", "Users", "Пользователи"],
++  "admin.nav.audit": ["Audit jurnalı", "Audit log", "Журнал аудита"],
++  "admin.nav.security": ["Təhlükəsizlik", "Security", "Безопасность"],
++  "admin.users.searchPlaceholder": ["Ad və ya e-poçt üzrə axtar", "Search by name or email", "Поиск по имени или эл. почте"],
++  "admin.users.noResults": ["Nəticə yoxdur.", "No results.", "Нет результатов."],
++  "admin.users.detailTitle": ["İstifadəçi", "User", "Пользователь"],
++  "admin.users.roles": ["Rollar", "Roles", "Роли"],
++  "admin.users.suspend": ["Hesabı dayandır", "Suspend account", "Приостановить аккаунт"],
++  "admin.users.unsuspend": ["Dayandırmanı ləğv et", "Unsuspend account", "Снять приостановку"],
++  "admin.users.revokeSessions": ["Sessiyaları ləğv et", "Revoke sessions", "Отозвать сессии"],
++  "admin.users.suspended": ["Hesab dayandırıldı", "Account suspended", "Аккаунт приостановлен"],
++  "admin.users.unsuspended": ["Dayandırma ləğv edildi", "Account unsuspended", "Приостановка снята"],
++  "admin.users.sessionsRevoked": ["Sessiyalar ləğv edildi", "Sessions revoked", "Сессии отозваны"],
++  "admin.audit.action": ["Əməliyyat", "Action", "Действие"],
++  "admin.audit.target": ["Hədəf", "Target", "Цель"],
++  "admin.audit.reason": ["Səbəb", "Reason", "Причина"],
++  "admin.audit.when": ["Vaxt", "When", "Когда"],
++  "admin.audit.empty": ["Hələ audit qeydi yoxdur.", "No audit entries yet.", "Записей аудита пока нет."],
++  "admin.security.review": ["Baxıldı qeyd et", "Mark reviewed", "Отметить проверенным"],
++  "admin.security.reviewed": ["Qeyd olundu", "Marked reviewed", "Отмечено как проверенное"],
++  "admin.security.empty": ["Təhlükəsizlik hadisəsi yoxdur.", "No security events.", "Нет событий безопасности."],
++} as const satisfies Record<string, Entry>;
+diff --git a/client/src/i18n/catalog/common.ts b/client/src/i18n/catalog/common.ts
+index 2a1a7fa..78b0ae9 100644
+--- a/client/src/i18n/catalog/common.ts
++++ b/client/src/i18n/catalog/common.ts
+@@ -8,6 +8,7 @@ export const common = {
+   "common.save": ["Yadda saxla", "Save", "Сохранить"],
+   "common.saveAndContinue": ["Yadda saxla və davam et", "Save and continue", "Сохранить и продолжить"],
+   "common.cancel": ["Ləğv et", "Cancel", "Отмена"],
++  "common.confirm": ["Təsdiqlə", "Confirm", "Подтвердить"],
+   "common.close": ["Bağla", "Close", "Закрыть"],
+   "common.back": ["Geri", "Back", "Назад"],
+   "common.continue": ["Davam et", "Continue", "Продолжить"],
+diff --git a/client/src/i18n/catalog/index.ts b/client/src/i18n/catalog/index.ts
+index 71c0bd8..a61a065 100644
+--- a/client/src/i18n/catalog/index.ts
++++ b/client/src/i18n/catalog/index.ts
+@@ -1,3 +1,4 @@
++import { admin } from "./admin";
+ import { app } from "./app";
+ import { builder } from "./builder";
+ import { common } from "./common";
+@@ -6,6 +7,6 @@ import { student } from "./student";
+ import { teacher } from "./teacher";
+ 
+ /** Every domain catalog; the i18n test checks that no key is defined twice. */
+-export const domains = { common, format, app, teacher, builder, student } as const;
++export const domains = { common, format, app, teacher, builder, student, admin } as const;
+ 
+-export const catalog = { ...common, ...format, ...app, ...teacher, ...builder, ...student } as const;
++export const catalog = { ...common, ...format, ...app, ...teacher, ...builder, ...student, ...admin } as const;
+diff --git a/client/src/pages/admin/Admin.tsx b/client/src/pages/admin/Admin.tsx
+new file mode 100644
+index 0000000..39e2375
+--- /dev/null
++++ b/client/src/pages/admin/Admin.tsx
+@@ -0,0 +1,290 @@
++import { useAuth } from "@/_core/hooks/useAuth";
++import { ErrorNote, LanguageSwitch, Loading, Panel } from "@/components/AppShell";
++import { BrandMark } from "@/components/BrandMark";
++import { Button } from "@/components/ui/button";
++import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
++import { Input } from "@/components/ui/input";
++import { Textarea } from "@/components/ui/textarea";
++import { StatusBadge, type Tone } from "@/components/StatusBadge";
++import { t } from "@/i18n/messages";
++import { errorText, fmtDateTime } from "@/lib/format";
++import { trpc } from "@/lib/trpc";
++import { ADMIN_REASON_MIN, type AdminPermission } from "@shared/adminPermissions";
++import { useState } from "react";
++import { toast } from "sonner";
++import { Link, Redirect, Route, Switch, useLocation } from "wouter";
++
++/**
++ * Minimal, functional admin console — list/suspend/unsuspend/revoke-sessions, an audit log
++ * reader and a security-event reviewer. The server (adminProcedure) is the only real authority;
++ * every check here is a UI convenience to hide controls the server would refuse anyway.
++ */
++function useAdmin() {
++  const { user, loading } = useAuth();
++  const can = (p: AdminPermission) => !!user?.admin?.permissions.includes(p);
++  return { user, loading, can };
++}
++
++function AdminNav() {
++  const [location] = useLocation();
++  const tabs: Array<[string, string]> = [
++    ["/admin/users", t("admin.nav.users")],
++    ["/admin/audit", t("admin.nav.audit")],
++    ["/admin/security", t("admin.nav.security")],
++  ];
++  return (
++    <nav className="flex flex-wrap gap-1">
++      {tabs.map(([href, label]) => (
++        <Button key={href} asChild size="sm" variant={location === href ? "default" : "ghost"}>
++          <Link href={href}>{label}</Link>
++        </Button>
++      ))}
++    </nav>
++  );
++}
++
++function AdminShell({ children }: { children: React.ReactNode }) {
++  const { user, loading, logout } = useAuth();
++  if (loading) return <div className="p-10 text-center text-muted-foreground">{t("app.loading")}</div>;
++  if (!user) return <Redirect to={`/?returnTo=${encodeURIComponent("/admin/users")}`} />;
++  if (!user.isAdmin) return <Redirect to="/welcome" />;
++  return (
++    <div className="min-h-screen bg-background text-foreground">
++      <header className="border-b bg-card">
++        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 p-4">
++          <div className="flex items-center gap-3">
++            <BrandMark size={32} className="rounded-lg" />
++            <div>
++              <div className="text-sm font-semibold">{t("admin.title")}</div>
++              <div className="text-xs text-muted-foreground">{user.name}</div>
++            </div>
++          </div>
++          <AdminNav />
++          <div className="flex items-center gap-2">
++            <Link href="/welcome" className="text-xs text-link underline-offset-4 hover:underline">{t("admin.backToApp")}</Link>
++            <LanguageSwitch />
++            <Button variant="outline" size="sm" onClick={() => void logout()}>{t("common.logout")}</Button>
++          </div>
++        </div>
++      </header>
++      <main className="mx-auto max-w-5xl p-4 sm:p-6">{children}</main>
++    </div>
++  );
++}
++
++const STATUS_TONE: Record<string, Tone> = { ACTIVE: "success", SUSPENDED: "danger" };
++
++/** Collects a mandatory reason (server enforces the same minimum) before a high-risk admin action. */
++function ReasonDialog({
++  open,
++  onOpenChange,
++  title,
++  onConfirm,
++  pending,
++}: {
++  open: boolean;
++  onOpenChange: (v: boolean) => void;
++  title: string;
++  onConfirm: (reason: string) => void;
++  pending: boolean;
++}) {
++  const [reason, setReason] = useState("");
++  return (
++    <Dialog open={open} onOpenChange={onOpenChange}>
++      <DialogContent>
++        <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
++        <label className="text-sm">
++          <span className="text-foreground-secondary">{t("admin.reasonLabel")}</span>
++          <Textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("admin.reasonPlaceholder")} />
++        </label>
++        <DialogFooter>
++          <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
++          <Button disabled={reason.trim().length < ADMIN_REASON_MIN || pending} onClick={() => onConfirm(reason.trim())}>
++            {t("common.confirm")}
++          </Button>
++        </DialogFooter>
++      </DialogContent>
++    </Dialog>
++  );
++}
++
++function AdminUsersPage() {
++  const { can } = useAdmin();
++  const utils = trpc.useUtils();
++  const [query, setQuery] = useState("");
++  const [selected, setSelected] = useState<number | null>(null);
++  const [action, setAction] = useState<"suspend" | "unsuspend" | "revoke" | null>(null);
++  const search = trpc.admin.users.search.useQuery({ query: query.trim() || undefined }, { enabled: can("users.search") });
++  const detail = trpc.admin.users.get.useQuery({ userId: selected ?? 0 }, { enabled: selected !== null && can("users.view") });
++
++  const refresh = () => { void utils.admin.users.search.invalidate(); void utils.admin.users.get.invalidate(); };
++  const suspend = trpc.admin.users.suspend.useMutation({ onSuccess: () => { toast.success(t("admin.users.suspended")); refresh(); setAction(null); }, onError: (e) => toast.error(errorText(e)) });
++  const unsuspend = trpc.admin.users.unsuspend.useMutation({ onSuccess: () => { toast.success(t("admin.users.unsuspended")); refresh(); setAction(null); }, onError: (e) => toast.error(errorText(e)) });
++  const revoke = trpc.admin.users.revokeSessions.useMutation({ onSuccess: () => { toast.success(t("admin.users.sessionsRevoked")); refresh(); setAction(null); }, onError: (e) => toast.error(errorText(e)) });
++
++  if (!can("users.search")) return <Panel><p className="text-sm text-muted-foreground">{t("admin.noAccess")}</p></Panel>;
++
++  const d = detail.data;
++  const pending = suspend.isPending || unsuspend.isPending || revoke.isPending;
++
++  return (
++    <div className="space-y-5">
++      <Panel title={t("admin.nav.users")}>
++        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("admin.users.searchPlaceholder")} />
++        {search.error && <ErrorNote error={search.error} />}
++        {search.isLoading ? <Loading /> : (
++          <ul className="mt-3 divide-y text-sm">
++            {(search.data ?? []).map((u) => (
++              <li key={u.id}>
++                <button
++                  type="button"
++                  className="flex w-full flex-wrap items-center justify-between gap-2 py-2 text-left hover:bg-muted/40"
++                  onClick={() => setSelected(u.id)}
++                >
++                  <span className="min-w-0">
++                    <span className="block break-words font-medium">{u.name ?? "—"}</span>
++                    <span className="block break-all text-xs text-muted-foreground">{u.email}</span>
++                  </span>
++                  <StatusBadge tone={STATUS_TONE[u.accountStatus] ?? "neutral"}>{u.accountStatus}</StatusBadge>
++                </button>
++              </li>
++            ))}
++            {!search.data?.length && <li className="py-3 text-muted-foreground">{t("admin.users.noResults")}</li>}
++          </ul>
++        )}
++      </Panel>
++
++      {selected !== null && (
++        <Panel title={t("admin.users.detailTitle")} action={<Button variant="ghost" size="sm" onClick={() => setSelected(null)}>{t("common.close")}</Button>}>
++          {detail.error ? <ErrorNote error={detail.error} /> : !d ? <Loading /> : (
++            <div className="space-y-3 text-sm">
++              <div><span className="text-foreground-secondary">{t("common.name")}:</span> {d.name ?? "—"}</div>
++              <div><span className="text-foreground-secondary">{t("common.email")}:</span> {d.email}</div>
++              <div><span className="text-foreground-secondary">{t("common.status")}:</span> <StatusBadge tone={STATUS_TONE[d.accountStatus] ?? "neutral"}>{d.accountStatus}</StatusBadge></div>
++              <div><span className="text-foreground-secondary">{t("admin.users.roles")}:</span> {d.roles.length ? d.roles.join(", ") : "—"}</div>
++              <div><span className="text-foreground-secondary">{t("groups.joined")}:</span> {fmtDateTime(d.createdAt)}</div>
++              {can("users.suspend") && (
++                <div className="flex flex-wrap gap-2 pt-2">
++                  {d.accountStatus === "ACTIVE" ? (
++                    <Button variant="outline" className="text-destructive" onClick={() => setAction("suspend")}>{t("admin.users.suspend")}</Button>
++                  ) : (
++                    <Button variant="outline" onClick={() => setAction("unsuspend")}>{t("admin.users.unsuspend")}</Button>
++                  )}
++                  {can("users.revokeSessions") && <Button variant="outline" onClick={() => setAction("revoke")}>{t("admin.users.revokeSessions")}</Button>}
++                </div>
++              )}
++            </div>
++          )}
++        </Panel>
++      )}
++
++      <ReasonDialog
++        open={action !== null}
++        onOpenChange={(v) => !v && setAction(null)}
++        title={action === "suspend" ? t("admin.users.suspend") : action === "unsuspend" ? t("admin.users.unsuspend") : t("admin.users.revokeSessions")}
++        pending={pending}
++        onConfirm={(reason) => {
++          if (selected === null || !action) return;
++          if (action === "suspend") suspend.mutate({ userId: selected, reason });
++          if (action === "unsuspend") unsuspend.mutate({ userId: selected, reason });
++          if (action === "revoke") revoke.mutate({ userId: selected, reason });
++        }}
++      />
++    </div>
++  );
++}
++
++function AdminAuditPage() {
++  const { can } = useAdmin();
++  const list = trpc.admin.audit.list.useQuery({ limit: 50 }, { enabled: can("audit.viewSupport") });
++  if (!can("audit.viewSupport")) return <Panel><p className="text-sm text-muted-foreground">{t("admin.noAccess")}</p></Panel>;
++  return (
++    <Panel title={t("admin.nav.audit")}>
++      {list.error ? <ErrorNote error={list.error} /> : list.isLoading ? <Loading /> : (
++        <div className="overflow-x-auto">
++          <table className="w-full text-sm">
++            <thead className="text-left text-xs uppercase text-muted-foreground">
++              <tr>
++                <th scope="col" className="py-2">{t("admin.audit.action")}</th>
++                <th scope="col">{t("admin.audit.target")}</th>
++                <th scope="col">{t("admin.audit.reason")}</th>
++                <th scope="col">{t("admin.audit.when")}</th>
++              </tr>
++            </thead>
++            <tbody className="divide-y">
++              {(list.data ?? []).map((row) => (
++                <tr key={row.id}>
++                  <td className="py-2 pr-3 font-medium">{row.action}</td>
++                  <td className="pr-3 text-muted-foreground">{row.targetType} #{row.targetId}</td>
++                  <td className="max-w-xs truncate pr-3 text-muted-foreground" title={row.reason ?? ""}>{row.reason ?? "—"}</td>
++                  <td className="whitespace-nowrap text-muted-foreground">{fmtDateTime(row.createdAt)}</td>
++                </tr>
++              ))}
++              {!list.data?.length && (
++                <tr><td colSpan={4} className="py-3 text-muted-foreground">{t("admin.audit.empty")}</td></tr>
++              )}
++            </tbody>
++          </table>
++        </div>
++      )}
++    </Panel>
++  );
++}
++
++const SEVERITY_TONE: Record<string, Tone> = { LOW: "neutral", MEDIUM: "warning", HIGH: "danger" };
++
++function AdminSecurityPage() {
++  const { can } = useAdmin();
++  const utils = trpc.useUtils();
++  const list = trpc.admin.security.list.useQuery({ limit: 50 }, { enabled: can("security.view") });
++  const [reviewing, setReviewing] = useState<number | null>(null);
++  const review = trpc.admin.security.review.useMutation({
++    onSuccess: () => { toast.success(t("admin.security.reviewed")); void utils.admin.security.list.invalidate(); setReviewing(null); },
++    onError: (e) => toast.error(errorText(e)),
++  });
++  if (!can("security.view")) return <Panel><p className="text-sm text-muted-foreground">{t("admin.noAccess")}</p></Panel>;
++  return (
++    <Panel title={t("admin.nav.security")}>
++      {list.error ? <ErrorNote error={list.error} /> : list.isLoading ? <Loading /> : (
++        <ul className="divide-y text-sm">
++          {(list.data ?? []).map((ev) => (
++            <li key={ev.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
++              <span className="min-w-0">
++                <span className="mr-2 font-medium">{ev.type}</span>
++                <span className="text-xs text-muted-foreground">{fmtDateTime(ev.lastSeenAt)}</span>
++              </span>
++              <span className="flex items-center gap-2">
++                <StatusBadge tone={SEVERITY_TONE[ev.severity] ?? "neutral"}>{ev.severity}</StatusBadge>
++                <StatusBadge tone={ev.status === "REVIEW_REQUIRED" ? "warning" : "neutral"}>{ev.status}</StatusBadge>
++                {can("security.review") && ev.status === "REVIEW_REQUIRED" && (
++                  <Button size="sm" variant="outline" onClick={() => setReviewing(ev.id)}>{t("admin.security.review")}</Button>
++                )}
++              </span>
++            </li>
++          ))}
++          {!list.data?.length && <li className="py-3 text-muted-foreground">{t("admin.security.empty")}</li>}
++        </ul>
++      )}
++      <ReasonDialog
++        open={reviewing !== null}
++        onOpenChange={(v) => !v && setReviewing(null)}
++        title={t("admin.security.review")}
++        pending={review.isPending}
++        onConfirm={(reason) => reviewing !== null && review.mutate({ id: reviewing, status: "REVIEWED", reason })}
++      />
++    </Panel>
++  );
++}
++
++export default function AdminRoutes() {
++  return (
++    <AdminShell>
++      <Switch>
++        <Route path="/admin" component={() => <Redirect to="/admin/users" />} />
++        <Route path="/admin/users" component={AdminUsersPage} />
++        <Route path="/admin/audit" component={AdminAuditPage} />
++        <Route path="/admin/security" component={AdminSecurityPage} />
++      </Switch>
++    </AdminShell>
++  );
++}
+diff --git a/server/adminRouter.ts b/server/adminRouter.ts
+index ba229a6..1388b5b 100644
+--- a/server/adminRouter.ts
++++ b/server/adminRouter.ts
+@@ -29,6 +29,12 @@ export const adminRouter = router({
+   me: adminProcedure("overview.view").query(({ ctx }) => ({ roles: ctx.admin.roles, permissions: ctx.admin.permissions })),
+ 
+   users: router({
++    search: adminProcedure("users.search")
++      .input(z.object({ query: z.string().trim().max(255).optional(), before: userId.optional(), limit }).optional())
++      .query(({ input }) => adminUsers.searchUsers(input?.query, input?.before, input?.limit)),
++    get: adminProcedure("users.view")
++      .input(z.object({ userId }))
++      .query(({ input }) => adminUsers.getUser(input.userId)),
+     suspend: adminProcedure("users.suspend")
+       .input(z.object({ userId, reason }))
+       .mutation(({ ctx, input }) => adminUsers.suspendUser(ctx.admin, input.userId, input.reason)),
+diff --git a/server/modules/admin/users.ts b/server/modules/admin/users.ts
+index 8b8774c..1e479de 100644
+--- a/server/modules/admin/users.ts
++++ b/server/modules/admin/users.ts
+@@ -1,4 +1,4 @@
+-import { eq } from "drizzle-orm";
++import { and, desc, eq, like, or, sql } from "drizzle-orm";
+ import { users } from "../../../drizzle/schema";
+ import { requireDb, type Tx } from "../../db";
+ import { platformRolesOf } from "../access";
+@@ -6,6 +6,31 @@ import { AppError } from "../errors";
+ import { appendAudit } from "./audit";
+ import type { AdminContext } from "./authz";
+ 
++/** Paginated lookup by name/email substring — the admin UI's "find a user" box. No query returns the most recent signups. */
++export async function searchUsers(query: string | undefined, before: number | undefined, limit = 25) {
++  const db = requireDb();
++  const needle = query?.trim();
++  const conditions = [
++    before ? sql`${users.id} < ${before}` : undefined,
++    needle ? or(like(users.name, `%${needle}%`), like(users.email, `%${needle}%`)) : undefined,
++  ].filter((c): c is NonNullable<typeof c> => c !== undefined);
++  const rows = await db
++    .select({ id: users.id, name: users.name, email: users.email, accountStatus: users.accountStatus, createdAt: users.createdAt, lastSignedIn: users.lastSignedIn })
++    .from(users)
++    .where(conditions.length ? and(...conditions) : undefined)
++    .orderBy(desc(users.id))
++    .limit(limit);
++  return rows;
++}
++
++export async function getUser(userId: number) {
++  const db = requireDb();
++  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
++  if (!user) throw new AppError("NOT_FOUND");
++  const roles = await platformRolesOf(userId, db);
++  return { ...user, roles };
++}
++
+ async function lockTarget(tx: Tx, admin: AdminContext, userId: number) {
+   if (userId === admin.userId) throw new AppError("CANNOT_TARGET_SELF");
+   const [user] = await tx.select().from(users).where(eq(users.id, userId)).for("update");
+-- 
+2.43.0
+
