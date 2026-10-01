@@ -1,5 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
-import { ErrorNote, LanguageSwitch, Loading, Panel } from "@/components/AppShell";
+import { ErrorNote, LanguageSwitch, Loading, Panel, ThemeToggle } from "@/components/AppShell";
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -63,6 +63,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-2">
             <Link href="/welcome" className="text-xs text-link underline-offset-4 hover:underline">{t("admin.backToApp")}</Link>
             <LanguageSwitch />
+            <ThemeToggle />
             <Button variant="outline" size="sm" onClick={() => void logout()}>{t("common.logout")}</Button>
           </div>
         </div>
