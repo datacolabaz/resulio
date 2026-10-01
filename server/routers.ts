@@ -55,6 +55,11 @@ function publicUser(user: NonNullable<Awaited<ReturnType<typeof db.getUserByOpen
     avatarUrl: user.avatarUrl,
     locale: user.preferredLocale ?? "az",
     lastActiveContext: user.lastActiveContext ?? null,
+    studentOnboardedAt: user.studentOnboardedAt,
+    targetExam: user.targetExam,
+    targetScore: user.targetScore,
+    targetExamDate: user.targetExamDate,
+    timezone: user.timezone,
   };
 }
 
@@ -138,6 +143,30 @@ const authRouter = router({
       await db.setPreferredLocale(ctx.user.id, input.locale);
       return { locale: input.locale };
     }),
+
+  /**
+   * Every field is optional and the call itself may be empty — that's how "skip" is expressed.
+   * Either way `studentOnboardedAt` is stamped so the step is never shown to this user again.
+   */
+  completeStudentOnboarding: protectedProcedure
+    .use(rateLimit("completeStudentOnboarding", 10, MINUTE))
+    .input(
+      z.object({
+        timezone: z.string().trim().max(64).optional(),
+        targetExam: z.string().trim().max(64).optional(),
+        targetScore: z.string().trim().max(32).optional(),
+        targetExamDate: z.string().datetime().optional().nullable(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await db.completeStudentOnboarding(ctx.user.id, {
+        timezone: input.timezone,
+        targetExam: input.targetExam,
+        targetScore: input.targetScore,
+        targetExamDate: input.targetExamDate === undefined ? undefined : input.targetExamDate === null ? null : new Date(input.targetExamDate),
+      });
+      return { ok: true } as const;
+    }),
 });
 
 // ---------------------------------------------------------------------------
@@ -191,6 +220,7 @@ const teacherGroupsRouter = router({
     .input(z.object({ groupId: entityId, email: z.string().trim().email().max(320) }))
     .mutation(({ ctx, input }) => groupEmailInvites.createEmailInvite(ctx.scope, input.groupId, input.email)),
   emailInviteRevoke: teacherProcedure
+    .use(rateLimit("emailInviteRevoke", 30, MINUTE))
     .input(z.object({ groupId: entityId, inviteId: entityId }))
     .mutation(({ ctx, input }) => groupEmailInvites.revokeEmailInvite(ctx.scope, input.groupId, input.inviteId)),
   emailInviteResend: teacherProcedure

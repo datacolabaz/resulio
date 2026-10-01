@@ -67,6 +67,15 @@ export const users = mysqlTable(
     sessionsValidAfter: timestamp("sessionsValidAfter", { fsp: 3 }),
     /** Last authenticated request, refreshed at most every few minutes. */
     lastSeenAt: timestamp("lastSeenAt"),
+    /** IANA zone, captured client-side (e.g. browser Intl) at onboarding; display-only, never authoritative for deadlines. */
+    timezone: varchar("timezone", { length: 64 }),
+    /** Free text, e.g. "IELTS" or "Digər"; not a fixed enum so the offered list can change without a migration. */
+    targetExam: varchar("targetExam", { length: 64 }),
+    /** Free text: exam scoring formats vary too widely for a single numeric column (band score, percent, raw score). */
+    targetScore: varchar("targetScore", { length: 32 }),
+    targetExamDate: timestamp("targetExamDate"),
+    /** Set once the student onboarding step is saved OR explicitly skipped; gates showing it again. */
+    studentOnboardedAt: timestamp("studentOnboardedAt"),
   },
   (t) => [index("users_account_status_idx").on(t.accountStatus), index("users_last_seen_idx").on(t.lastSeenAt)],
 );

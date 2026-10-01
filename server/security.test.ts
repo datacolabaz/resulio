@@ -48,6 +48,11 @@ function user(overrides: Partial<User> = {}): User {
     suspendedAt: null,
     sessionsValidAfter: null,
     lastSeenAt: new Date(),
+    timezone: null,
+    targetExam: null,
+    targetScore: null,
+    targetExamDate: null,
+    studentOnboardedAt: null,
     ...overrides,
   };
 }
