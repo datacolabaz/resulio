@@ -177,6 +177,9 @@ export interface PublicGroupPreview {
   description: string | null;
   startDate: Date | null;
   classSchedule: ClassScheduleEntry[];
+  /** The teacher's own workspace specialty — lets the join flow suggest/lock the student's learning goal. */
+  teachingCategory: string;
+  teachingSubcategory: string;
 }
 
 export async function publicInvite(inviteCode: string): Promise<PublicGroupPreview | null> {
@@ -194,6 +197,8 @@ export async function publicInvite(inviteCode: string): Promise<PublicGroupPrevi
       scheduleVisible: groups.scheduleVisible,
       providerName: providerWorkspaces.publicDisplayName,
       providerTitle: providerWorkspaces.title,
+      teachingCategory: providerWorkspaces.teachingCategory,
+      teachingSubcategory: providerWorkspaces.teachingSubcategory,
     })
     .from(groups)
     .innerJoin(providerWorkspaces, eq(providerWorkspaces.id, groups.providerWorkspaceId))
@@ -211,6 +216,8 @@ export async function publicInvite(inviteCode: string): Promise<PublicGroupPrevi
     description: group.description,
     startDate: group.scheduleVisible ? group.startDate : null,
     classSchedule: group.scheduleVisible ? group.classSchedule : [],
+    teachingCategory: group.teachingCategory,
+    teachingSubcategory: group.teachingSubcategory,
   };
 }
 
