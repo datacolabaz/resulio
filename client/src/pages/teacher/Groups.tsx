@@ -17,6 +17,9 @@ import { toast } from "sonner";
 import { Link, useParams } from "wouter";
 
 const fieldLabel = "text-foreground-secondary";
+const GROUP_FORMATS = ["ONLINE", "IN_PERSON", "HYBRID"] as const;
+const JOIN_POLICIES = ["AUTO", "APPROVAL", "MANUAL"] as const;
+type JoinPolicy = (typeof JOIN_POLICIES)[number];
 
 export function GroupsPage() {
   const groups = trpc.teacher.groups.list.useQuery();
@@ -59,15 +62,48 @@ export function GroupsPage() {
   );
 }
 
-function GroupFormDialog({ open, onOpenChange, initial }: { open: boolean; onOpenChange: (v: boolean) => void; initial?: { id: string; name: string; subject: string; grade: string; description: string | null } }) {
+interface GroupFormInitial {
+  id: string;
+  name: string;
+  subject: string;
+  grade: string;
+  description: string | null;
+  language: string;
+  format: (typeof GROUP_FORMATS)[number];
+  startDate: string | Date | null;
+  classDays: string | null;
+  classTime: string | null;
+  scheduleVisible: boolean;
+}
+
+/** `startDate` ↔ a bare YYYY-MM-DD for <input type="date">; the server stores it as a timestamp. */
+function dateOnly(value: string | Date | null | undefined): string {
+  if (!value) return "";
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+}
+
+function GroupFormDialog({ open, onOpenChange, initial }: { open: boolean; onOpenChange: (v: boolean) => void; initial?: GroupFormInitial }) {
   const utils = trpc.useUtils();
-  const [f, setF] = useState({ name: initial?.name ?? "", subject: initial?.subject ?? "", grade: initial?.grade ?? "", description: initial?.description ?? "" });
+  const [f, setF] = useState({
+    name: initial?.name ?? "",
+    subject: initial?.subject ?? "",
+    grade: initial?.grade ?? "",
+    description: initial?.description ?? "",
+    language: initial?.language ?? "",
+    format: initial?.format ?? ("ONLINE" as (typeof GROUP_FORMATS)[number]),
+    startDate: dateOnly(initial?.startDate),
+    classDays: initial?.classDays ?? "",
+    classTime: initial?.classTime ?? "",
+    scheduleVisible: initial?.scheduleVisible ?? false,
+  });
   const done = () => { void utils.teacher.groups.invalidate(); onOpenChange(false); };
   const create = trpc.teacher.groups.create.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
   const update = trpc.teacher.groups.update.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
+  const payload = () => ({ ...f, startDate: f.startDate ? new Date(f.startDate).toISOString() : null });
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{initial ? t("groups.editTitle") : t("groups.newTitle")}</DialogTitle></DialogHeader>
         <div className="grid gap-3">
           <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("common.name") })}</span><Input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
@@ -75,13 +111,42 @@ function GroupFormDialog({ open, onOpenChange, initial }: { open: boolean; onOpe
             <label className="text-sm"><span className={fieldLabel}>{t("common.subject")}</span><Input value={f.subject} onChange={(e) => setF({ ...f, subject: e.target.value })} /></label>
             <label className="text-sm"><span className={fieldLabel}>{t("common.gradeLevel")}</span><Input value={f.grade} onChange={(e) => setF({ ...f, grade: e.target.value })} /></label>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-sm"><span className={fieldLabel}>{t("common.language")}</span><Input value={f.language} onChange={(e) => setF({ ...f, language: e.target.value })} placeholder={t("common.languagePlaceholder")} /></label>
+            <label className="text-sm">
+              <span className={fieldLabel}>{t("common.format")}</span>
+              <select
+                className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground"
+                value={f.format}
+                onChange={(e) => setF({ ...f, format: e.target.value as (typeof GROUP_FORMATS)[number] })}
+              >
+                {GROUP_FORMATS.map((v) => (
+                  <option key={v} value={v}>{t(`groups.format.${v}`)}</option>
+                ))}
+              </select>
+            </label>
+          </div>
           <label className="text-sm"><span className={fieldLabel}>{t("common.description")}</span><Textarea rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
+          <div className="rounded-xl border p-3">
+            <div className="grid grid-cols-3 gap-3">
+              <label className="text-sm"><span className={fieldLabel}>{t("common.startDate")}</span><Input type="date" value={f.startDate} onChange={(e) => setF({ ...f, startDate: e.target.value })} /></label>
+              <label className="text-sm"><span className={fieldLabel}>{t("common.classDays")}</span><Input value={f.classDays} onChange={(e) => setF({ ...f, classDays: e.target.value })} placeholder={t("common.classDaysPlaceholder")} /></label>
+              <label className="text-sm"><span className={fieldLabel}>{t("common.classTime")}</span><Input value={f.classTime} onChange={(e) => setF({ ...f, classTime: e.target.value })} placeholder={t("common.classTimePlaceholder")} /></label>
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <label htmlFor="schedule-visible" className="flex-1 text-sm">
+                <span className="block font-medium">{t("groups.scheduleVisibleLabel")}</span>
+                <span className="block text-xs text-muted-foreground">{t("groups.scheduleVisibleHint")}</span>
+              </label>
+              <Switch id="schedule-visible" checked={f.scheduleVisible} onCheckedChange={(v) => setF({ ...f, scheduleVisible: v })} />
+            </div>
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
           <Button
             disabled={f.name.trim().length < 2 || create.isPending || update.isPending}
-            onClick={() => (initial ? update.mutate({ id: initial.id, patch: f }) : create.mutate(f))}
+            onClick={() => (initial ? update.mutate({ id: initial.id, patch: payload() }) : create.mutate(payload()))}
           >
             {t("common.save")}
           </Button>
@@ -169,37 +234,110 @@ function EmailInviteSection({ groupId }: { groupId: string }) {
   );
 }
 
-function InviteDialog({ open, onOpenChange, groupId, inviteCode, autoJoinEnabled }: { open: boolean; onOpenChange: (v: boolean) => void; groupId: string; inviteCode: string; autoJoinEnabled: boolean }) {
+function InviteDialog({
+  open,
+  onOpenChange,
+  groupId,
+  inviteCode,
+  joinPolicy,
+  codeActive,
+  codeExpiresAt,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  groupId: string;
+  inviteCode: string;
+  joinPolicy: JoinPolicy;
+  codeActive: boolean;
+  codeExpiresAt: string | Date | null;
+}) {
   const utils = trpc.useUtils();
   const [email, setEmail] = useState("");
+  const [expiryInput, setExpiryInput] = useState(() => (codeExpiresAt ? new Date(codeExpiresAt).toISOString().slice(0, 10) : ""));
   const onGroupChange = () => void utils.teacher.groups.invalidate();
   const add = trpc.teacher.groups.addMember.useMutation({
     onSuccess: () => { toast.success(t("groups.studentAdded")); setEmail(""); onGroupChange(); },
     onError: (e) => toast.error(errorText(e)),
   });
-  const setAutoJoin = trpc.teacher.groups.setAutoJoin.useMutation({ onSuccess: onGroupChange, onError: (e) => toast.error(errorText(e)) });
+  const setPolicy = trpc.teacher.groups.setJoinPolicy.useMutation({ onSuccess: onGroupChange, onError: (e) => toast.error(errorText(e)) });
+  const setActive = trpc.teacher.groups.setInviteCodeActive.useMutation({ onSuccess: onGroupChange, onError: (e) => toast.error(errorText(e)) });
+  const setExpiry = trpc.teacher.groups.setInviteCodeExpiry.useMutation({ onSuccess: onGroupChange, onError: (e) => toast.error(errorText(e)) });
   const regenerate = trpc.teacher.groups.regenerateInviteCode.useMutation({
-    onSuccess: () => { toast.success(t("groups.codeRegenerated")); onGroupChange(); },
+    onSuccess: () => { toast.success(t("groups.codeRegenerated")); setExpiryInput(""); onGroupChange(); },
     onError: (e) => toast.error(errorText(e)),
   });
+  const copyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(inviteCode);
+      toast.success(t("groups.codeCopied"));
+    } catch {
+      toast.error(t("share.copyFailed"));
+    }
+  };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{t("groups.inviteTitle")}</DialogTitle></DialogHeader>
         <div className="space-y-5">
           <section aria-labelledby="invite-link">
             <h3 id="invite-link" className="mb-2 text-sm font-medium">{t("groups.inviteByLink")}</h3>
             <ShareBox path={`/join/${inviteCode}`} fileName={`resulio-group-${inviteCode}`} />
-            <p className="mt-2 text-xs text-muted-foreground">
-              {t(autoJoinEnabled ? "groups.inviteLinkNoteAuto" : "groups.inviteLinkNoteApproval", { code: inviteCode })}
-            </p>
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3">
-              <label htmlFor="auto-join" className="flex-1 text-sm">
-                <span className="block font-medium">{t("groups.autoJoinLabel")}</span>
-                <span className="block text-xs text-muted-foreground">{t("groups.autoJoinHint")}</span>
-              </label>
-              <Switch id="auto-join" checked={autoJoinEnabled} disabled={setAutoJoin.isPending} onCheckedChange={(v) => setAutoJoin.mutate({ groupId, enabled: v })} />
+            <div className="mt-3 flex items-center gap-2">
+              <span className="text-xs text-foreground-secondary">{t("groups.inviteCodeLabel")}:</span>
+              <code className="rounded bg-muted px-2 py-1 font-mono text-sm">{inviteCode}</code>
+              <Button variant="outline" size="sm" onClick={() => void copyCode()}>{t("groups.copyCode")}</Button>
             </div>
+
+            <div className="mt-3 rounded-xl border p-3">
+              <label className="text-sm">
+                <span className={fieldLabel}>{t("groups.joinPolicyLabel")}</span>
+                <select
+                  className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground"
+                  value={joinPolicy}
+                  disabled={setPolicy.isPending}
+                  onChange={(e) => setPolicy.mutate({ groupId, joinPolicy: e.target.value as JoinPolicy })}
+                >
+                  {JOIN_POLICIES.map((p) => (
+                    <option key={p} value={p}>{t(`groups.joinPolicy.${p}`)}</option>
+                  ))}
+                </select>
+              </label>
+              <p className="mt-2 text-xs text-muted-foreground">{t(`groups.joinPolicyHint.${joinPolicy}`)}</p>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3">
+              <label htmlFor="code-active" className="flex-1 text-sm">
+                <span className="block font-medium">{t("groups.codeActiveLabel")}</span>
+                <span className="block text-xs text-muted-foreground">{t("groups.codeActiveHint")}</span>
+              </label>
+              <Switch id="code-active" checked={codeActive} disabled={setActive.isPending} onCheckedChange={(v) => setActive.mutate({ groupId, active: v })} />
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-end gap-2 rounded-xl border p-3">
+              <label className="flex-1 text-sm">
+                <span className={fieldLabel}>{t("groups.codeExpiryLabel")}</span>
+                <Input type="date" value={expiryInput} onChange={(e) => setExpiryInput(e.target.value)} />
+              </label>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={setExpiry.isPending || !expiryInput}
+                onClick={() => setExpiry.mutate({ groupId, expiresAt: new Date(expiryInput).toISOString() })}
+              >
+                {t("groups.codeExpirySet")}
+              </Button>
+              {!!codeExpiresAt && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={setExpiry.isPending}
+                  onClick={() => { setExpiryInput(""); setExpiry.mutate({ groupId, expiresAt: null }); }}
+                >
+                  {t("groups.codeExpiryClear")}
+                </Button>
+              )}
+            </div>
+
             <Button
               variant="outline"
               size="sm"
@@ -384,7 +522,15 @@ export function GroupDetailPage() {
               )}
             </TabsContent>
           </Tabs>
-          <InviteDialog open={inviteOpen} onOpenChange={setInviteOpen} groupId={id} inviteCode={g.inviteCode} autoJoinEnabled={g.autoJoinEnabled} />
+          <InviteDialog
+            open={inviteOpen}
+            onOpenChange={setInviteOpen}
+            groupId={id}
+            inviteCode={g.inviteCode}
+            joinPolicy={g.joinPolicy}
+            codeActive={g.codeActive}
+            codeExpiresAt={g.codeExpiresAt}
+          />
           {editOpen && <GroupFormDialog open={editOpen} onOpenChange={setEditOpen} initial={g} />}
         </div>
       )}

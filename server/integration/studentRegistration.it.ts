@@ -57,7 +57,7 @@ describe("student entry via group code", () => {
     const teacher = await makeTeacher("Kod müəllimi");
     const off = await groups.createGroup(teacher.scope, { name: "Auto-join off", subject: "", grade: "", description: "" });
     const on = await groups.createGroup(teacher.scope, { name: "Auto-join on", subject: "", grade: "", description: "" });
-    await groups.setAutoJoin(teacher.scope, on.id, true);
+    await groups.setJoinPolicy(teacher.scope, on.id, "AUTO");
 
     const s1 = await makeUser("Tələbə off");
     const joined1 = await groups.joinByInvite(s1.id, off.inviteCode);
@@ -92,6 +92,50 @@ describe("student entry via group code", () => {
     for (let i = 0; i < 10; i++) expect(await outcome(s.join({ inviteCode: "NOPE-NOPE" }))).toBe("NOT_FOUND:INVITE_NOT_FOUND");
     expect(await outcome(s.join({ inviteCode: "NOPE-NOPE" }))).toBe("TOO_MANY_REQUESTS:RATE_LIMITED");
   });
+
+  it("MANUAL join policy refuses self-join by code even for a brand-new student", async () => {
+    const teacher = await makeTeacher("Manual müəllimi");
+    const group = await groups.createGroup(teacher.scope, { name: "Manual only", subject: "", grade: "", description: "" });
+    await groups.setJoinPolicy(teacher.scope, group.id, "MANUAL");
+    const student = await makeUser("Manual tələbə");
+    await expect(groups.joinByInvite(student.id, group.inviteCode)).rejects.toThrow("GROUP_NOT_ACCEPTING");
+    // The teacher can still add the same student directly — MANUAL only blocks self-join.
+    const added = await groups.addMemberByEmail(teacher.scope, group.id, student.email ?? "");
+    expect(added.status).toBe("ACTIVE");
+  });
+
+  it("a deactivated code refuses new joins without changing its value", async () => {
+    const teacher = await makeTeacher("Deaktiv müəllimi");
+    const group = await groups.createGroup(teacher.scope, { name: "Deactivated", subject: "", grade: "", description: "" });
+    await groups.setInviteCodeActive(teacher.scope, group.id, false);
+    const student = await makeUser("Deaktiv koda gələn");
+    await expect(groups.joinByInvite(student.id, group.inviteCode)).rejects.toThrow("INVITE_CODE_INACTIVE");
+    await groups.setInviteCodeActive(teacher.scope, group.id, true);
+    const joined = await groups.joinByInvite(student.id, group.inviteCode);
+    expect(joined.status).toBe("PENDING");
+  });
+
+  it("an expired code refuses joins; clearing the expiry lets them through again", async () => {
+    const teacher = await makeTeacher("Son tarix müəllimi");
+    const group = await groups.createGroup(teacher.scope, { name: "Expiring", subject: "", grade: "", description: "" });
+    await groups.setInviteCodeExpiry(teacher.scope, group.id, new Date(Date.now() - 1000));
+    const student = await makeUser("Vaxtı bitmiş koda gələn");
+    await expect(groups.joinByInvite(student.id, group.inviteCode)).rejects.toThrow("INVITE_CODE_EXPIRED");
+    await groups.setInviteCodeExpiry(teacher.scope, group.id, null);
+    const joined = await groups.joinByInvite(student.id, group.inviteCode);
+    expect(joined.status).toBe("PENDING");
+  });
+
+  it("regenerating the code resets it to active with no expiry", async () => {
+    const teacher = await makeTeacher("Regenerate-reset müəllimi");
+    const group = await groups.createGroup(teacher.scope, { name: "Regenerate reset", subject: "", grade: "", description: "" });
+    await groups.setInviteCodeActive(teacher.scope, group.id, false);
+    await groups.setInviteCodeExpiry(teacher.scope, group.id, new Date(Date.now() + 1000 * 3600));
+    await groups.regenerateInviteCode(teacher.scope, group.id);
+    const refreshed = await groups.assertGroupOwner(teacher.scope, group.id);
+    expect(refreshed.codeActive).toBe(true);
+    expect(refreshed.codeExpiresAt).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -102,7 +146,7 @@ describe("student entry via email invite", () => {
   it("activates membership immediately even when the group requires approval, because the email already proves the target", async () => {
     const teacher = await makeTeacher("Email müəllimi");
     const group = await groups.createGroup(teacher.scope, { name: "Email group", subject: "", grade: "", description: "" });
-    expect(group.autoJoinEnabled).toBe(false);
+    expect(group.joinPolicy).toBe("APPROVAL");
     const { token } = await emailInvites.createEmailInvite(teacher.scope, group.id, "matching@example.test");
     const student = await makeUser("Email uyğun tələbə");
     await testDb().update(users).set({ email: "matching@example.test" }).where(eq(users.id, student.id));
@@ -194,7 +238,7 @@ describe("student-to-teacher transition", () => {
   it("creating a Provider Workspace never touches the user's existing group membership", async () => {
     const otherTeacher = await makeTeacher("Digər müəllim");
     const group = await groups.createGroup(otherTeacher.scope, { name: "Öyrənmə qrupu", subject: "", grade: "", description: "" });
-    await groups.setAutoJoin(otherTeacher.scope, group.id, true);
+    await groups.setJoinPolicy(otherTeacher.scope, group.id, "AUTO");
     const student = await makeUser("İkili istifadəçi");
     await groups.joinByInvite(student.id, group.inviteCode);
 

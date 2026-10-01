@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { startLogin } from "@/const";
 import { t } from "@/i18n/messages";
 import { canEnter } from "@/lib/contexts";
-import { errorText, fmtDateTime, fmtDuration, liveLabel, typeLabel } from "@/lib/format";
+import { errorText, fmtDateTime, fmtDay, fmtDuration, groupFormatLabel, liveLabel, typeLabel } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import { useState } from "react";
 import { Link, useParams } from "wouter";
@@ -68,6 +68,25 @@ function StudentOnboarding({ onDone }: { onDone: () => void }) {
   );
 }
 
+/** Extra group facts shown on a join-preview screen, only for the fields the teacher chose to share. */
+function GroupPreviewDetails({ g }: { g: { language?: string; format?: string; startDate?: string | Date | null; classDays?: string | null; classTime?: string | null } }) {
+  const schedule = [g.classDays, g.classTime].filter(Boolean).join(" · ");
+  return (
+    <dl className="mt-3 space-y-1 text-xs text-muted-foreground">
+      {!!g.language && (
+        <div className="flex gap-1"><dt className="font-medium text-foreground-secondary">{t("public.preview.language")}:</dt><dd>{g.language}</dd></div>
+      )}
+      {!!g.format && (
+        <div className="flex gap-1"><dt className="font-medium text-foreground-secondary">{t("public.preview.format")}:</dt><dd>{groupFormatLabel(g.format)}</dd></div>
+      )}
+      {!!schedule && (
+        <div className="flex gap-1"><dt className="font-medium text-foreground-secondary">{t("public.preview.schedule")}:</dt><dd>{schedule}</dd></div>
+      )}
+      {!!g.startDate && <div>{t("public.preview.startsOn", { date: fmtDay(g.startDate) })}</div>}
+    </dl>
+  );
+}
+
 function Card({ children }: { children: React.ReactNode }) {
   return (
     <main className="flex min-h-screen items-center justify-center bg-background p-4 sm:p-6">
@@ -99,18 +118,24 @@ export function JoinGroupPage() {
         <>
           <div className="mt-3 break-words text-lg">{g.name}</div>
           <p className="text-sm text-muted-foreground">{[g.subject, g.grade, g.teacherName].filter(Boolean).join(" · ")}</p>
+          <GroupPreviewDetails g={g} />
+          {!!g.description && <p className="mt-3 text-sm">{g.description}</p>}
           <div className="mt-6">
             {loading ? null : !user ? (
               <Button className="w-full" onClick={() => startLogin(`/join/${inviteCode}`)}>{t("common.signInGoogle")}</Button>
             ) : join.isSuccess ? (
               <div className="space-y-3 text-sm" role="status">
-                <p className="text-success">{t("public.join.sent")}</p>
+                <p className="text-success">{join.data.status === "ACTIVE" ? t("public.invite.joined") : t("public.join.sent")}</p>
                 <Link href="/student/groups" className="text-link underline-offset-4 hover:underline">{t("public.myGroups")}</Link>
                 {user && !user.studentOnboardedAt && !onboardingDone && <StudentOnboarding onDone={() => setOnboardingDone(true)} />}
               </div>
+            ) : g.joinPolicy === "MANUAL" ? (
+              <p role="alert" className="text-sm text-muted-foreground">{t("public.join.notAccepting")}</p>
             ) : (
               <>
-                <Button className="w-full" disabled={join.isPending} onClick={() => join.mutate({ inviteCode })}>{t("public.join.request")}</Button>
+                <Button className="w-full" disabled={join.isPending} onClick={() => join.mutate({ inviteCode })}>
+                  {g.joinPolicy === "AUTO" ? t("public.join.joinNow") : t("public.join.request")}
+                </Button>
                 {join.error && <p role="alert" className="mt-2 text-sm text-destructive">{errorText(join.error)}</p>}
               </>
             )}
@@ -139,6 +164,8 @@ export function PublicEmailInvitePage() {
         <>
           <div className="mt-3 break-words text-lg">{g.name}</div>
           <p className="text-sm text-muted-foreground">{[g.subject, g.grade, g.teacherName].filter(Boolean).join(" · ")}</p>
+          <GroupPreviewDetails g={g} />
+          {!!g.description && <p className="mt-3 text-sm">{g.description}</p>}
           <p className="mt-3 text-xs text-muted-foreground">{t("public.invite.emailNote")}</p>
           <div className="mt-6">
             {loading ? null : !user ? (

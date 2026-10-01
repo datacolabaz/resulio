@@ -1,9 +1,12 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { groupMembers, groups, providerWorkspaces, users } from "../../drizzle/schema";
+import { GROUP_FORMATS, GROUP_JOIN_POLICIES, groupMembers, groups, providerWorkspaces, users } from "../../drizzle/schema";
 import { requireDb, type DbOrTx } from "../db";
 import type { TeacherScope } from "./access";
 import { AppError } from "./errors";
+
+export type GroupFormat = (typeof GROUP_FORMATS)[number];
+export type GroupJoinPolicy = (typeof GROUP_JOIN_POLICIES)[number];
 
 export async function assertGroupOwner(scope: TeacherScope, groupId: string, db: DbOrTx = requireDb()) {
   const [group] = await db
@@ -40,9 +43,18 @@ export async function teacherGroups(scope: TeacherScope) {
   }));
 }
 
+export interface GroupScheduleInput {
+  language: string;
+  format: GroupFormat;
+  startDate: Date | null;
+  classDays: string | null;
+  classTime: string | null;
+  scheduleVisible: boolean;
+}
+
 export async function createGroup(
   scope: TeacherScope,
-  data: { name: string; subject: string; grade: string; description: string },
+  data: { name: string; subject: string; grade: string; description: string } & Partial<GroupScheduleInput>,
 ) {
   const db = requireDb();
   const id = nanoid();
@@ -50,7 +62,11 @@ export async function createGroup(
   return assertGroupOwner(scope, id);
 }
 
-export async function renameGroup(scope: TeacherScope, groupId: string, patch: { name?: string; subject?: string; grade?: string; description?: string }) {
+export async function renameGroup(
+  scope: TeacherScope,
+  groupId: string,
+  patch: Partial<{ name: string; subject: string; grade: string; description: string } & GroupScheduleInput>,
+) {
   await assertGroupOwner(scope, groupId);
   await requireDb().update(groups).set(patch).where(eq(groups.id, groupId));
   return assertGroupOwner(scope, groupId);
@@ -106,6 +122,9 @@ export async function joinByInvite(userId: number, inviteCode: string) {
   const db = requireDb();
   const [group] = await db.select().from(groups).where(eq(groups.inviteCode, inviteCode)).limit(1);
   if (!group) throw new AppError("INVITE_NOT_FOUND");
+  if (!group.codeActive) throw new AppError("INVITE_CODE_INACTIVE");
+  if (group.codeExpiresAt && group.codeExpiresAt.getTime() <= Date.now()) throw new AppError("INVITE_CODE_EXPIRED");
+  if (group.joinPolicy === "MANUAL") throw new AppError("GROUP_NOT_ACCEPTING");
   const ws = await workspaceOwnerOf(group.providerWorkspaceId, db);
   if (ws.ownerUserId === userId) throw new AppError("CANNOT_JOIN_OWN_GROUP");
   const [existing] = await db
@@ -114,32 +133,67 @@ export async function joinByInvite(userId: number, inviteCode: string) {
     .where(and(eq(groupMembers.groupId, group.id), eq(groupMembers.userId, userId)))
     .limit(1);
   if (existing) throw new AppError("ALREADY_MEMBER");
-  const status = group.autoJoinEnabled ? ("ACTIVE" as const) : ("PENDING" as const);
+  const status = group.joinPolicy === "AUTO" ? ("ACTIVE" as const) : ("PENDING" as const);
   await db.insert(groupMembers).values({ groupId: group.id, userId, membershipRole: "STUDENT", status });
   return { groupId: group.id, groupName: group.name, ownerUserId: ws.ownerUserId, status };
 }
 
-/** Teacher toggles whether `joinByInvite` needs their approval or activates membership immediately. */
-export async function setAutoJoin(scope: TeacherScope, groupId: string, enabled: boolean) {
+/** Teacher sets whether `joinByInvite` activates immediately, needs approval, or is refused outright. */
+export async function setJoinPolicy(scope: TeacherScope, groupId: string, joinPolicy: GroupJoinPolicy) {
   await assertGroupOwner(scope, groupId);
-  await requireDb().update(groups).set({ autoJoinEnabled: enabled }).where(eq(groups.id, groupId));
-  return { ok: true, autoJoinEnabled: enabled };
+  await requireDb().update(groups).set({ joinPolicy }).where(eq(groups.id, groupId));
+  return { ok: true, joinPolicy };
 }
 
-/** Old code stops working the instant a new one is issued — the simplest form of revoke. */
+/** Old code stops working the instant a new one is issued — the simplest form of revoke. Reactivates and clears any expiry. */
 export async function regenerateInviteCode(scope: TeacherScope, groupId: string) {
   await assertGroupOwner(scope, groupId);
   const inviteCode = nanoid(10).toUpperCase();
-  await requireDb().update(groups).set({ inviteCode }).where(eq(groups.id, groupId));
+  await requireDb().update(groups).set({ inviteCode, codeActive: true, codeExpiresAt: null }).where(eq(groups.id, groupId));
   return { inviteCode };
 }
 
-export async function publicInvite(inviteCode: string) {
+/** Disables the current code/link without changing its value — distinct from regenerating. */
+export async function setInviteCodeActive(scope: TeacherScope, groupId: string, active: boolean) {
+  await assertGroupOwner(scope, groupId);
+  await requireDb().update(groups).set({ codeActive: active }).where(eq(groups.id, groupId));
+  return { ok: true, codeActive: active };
+}
+
+export async function setInviteCodeExpiry(scope: TeacherScope, groupId: string, expiresAt: Date | null) {
+  await assertGroupOwner(scope, groupId);
+  await requireDb().update(groups).set({ codeExpiresAt: expiresAt }).where(eq(groups.id, groupId));
+  return { ok: true, codeExpiresAt: expiresAt };
+}
+
+export interface PublicGroupPreview {
+  name: string;
+  subject: string;
+  grade: string;
+  teacherName: string;
+  language: string;
+  format: GroupFormat;
+  joinPolicy: GroupJoinPolicy;
+  description: string | null;
+  startDate: Date | null;
+  classDays: string | null;
+  classTime: string | null;
+}
+
+export async function publicInvite(inviteCode: string): Promise<PublicGroupPreview | null> {
   const [group] = await requireDb()
     .select({
       name: groups.name,
       subject: groups.subject,
       grade: groups.grade,
+      description: groups.description,
+      language: groups.language,
+      format: groups.format,
+      joinPolicy: groups.joinPolicy,
+      startDate: groups.startDate,
+      classDays: groups.classDays,
+      classTime: groups.classTime,
+      scheduleVisible: groups.scheduleVisible,
       providerName: providerWorkspaces.publicDisplayName,
       providerTitle: providerWorkspaces.title,
     })
@@ -148,7 +202,19 @@ export async function publicInvite(inviteCode: string) {
     .where(eq(groups.inviteCode, inviteCode))
     .limit(1);
   if (!group) return null;
-  return { name: group.name, subject: group.subject, grade: group.grade, teacherName: group.providerName || group.providerTitle };
+  return {
+    name: group.name,
+    subject: group.subject,
+    grade: group.grade,
+    teacherName: group.providerName || group.providerTitle,
+    language: group.language,
+    format: group.format,
+    joinPolicy: group.joinPolicy,
+    description: group.description,
+    startDate: group.scheduleVisible ? group.startDate : null,
+    classDays: group.scheduleVisible ? group.classDays : null,
+    classTime: group.scheduleVisible ? group.classTime : null,
+  };
 }
 
 export async function approveMember(scope: TeacherScope, groupId: string, studentId: number) {

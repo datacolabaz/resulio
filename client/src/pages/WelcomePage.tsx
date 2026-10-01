@@ -136,12 +136,17 @@ export default function WelcomePage() {
               className="mt-5 grid gap-3"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (code.trim().length >= 4) nav(`/join/${encodeURIComponent(code.trim().toUpperCase())}`);
+                if (code.trim().length >= 4) nav(`/join/${encodeURIComponent(code.trim())}`);
               }}
             >
               <label className="text-sm">
                 <span className="text-foreground-secondary">{t("welcome.inviteCode")}</span>
-                <Input value={code} maxLength={32} onChange={(e) => setCode(e.target.value)} placeholder={t("welcome.inviteCodePlaceholder")} />
+                <Input
+                  value={code}
+                  maxLength={32}
+                  onChange={(e) => setCode(e.target.value.toUpperCase().replace(/\s+/g, ""))}
+                  placeholder={t("welcome.inviteCodePlaceholder")}
+                />
               </label>
               <Button type="submit" variant="secondary" disabled={code.trim().length < 4}>{t("welcome.joinGroup")}</Button>
             </form>

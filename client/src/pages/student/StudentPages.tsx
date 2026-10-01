@@ -349,21 +349,30 @@ export function StudentProgress() {
   );
 }
 
+/** Keeps a code input clean as the user types: upper-case, no spaces — matches the server's own normalization. */
+function normalizeCode(raw: string): string {
+  return raw.toUpperCase().replace(/\s+/g, "");
+}
+
 export function StudentGroups() {
-  const utils = trpc.useUtils();
   const list = trpc.student.groups.useQuery();
   const [code, setCode] = useState("");
-  const join = trpc.student.join.useMutation({
-    onSuccess: (r) => { setCode(""); toast.success(t("student.joinRequested", { group: r.groupName })); void utils.student.groups.invalidate(); },
-    onError: (e) => toast.error(errorText(e)),
-  });
+  const [, nav] = useLocation();
   return (
     <AppShell area="learning">
       <div className="grid max-w-3xl gap-5">
         <Panel title={t("student.joinGroup")}>
+          <p className="mb-2 text-xs text-muted-foreground">{t("student.joinGroupHint")}</p>
           <div className="flex gap-2">
-            <Input placeholder={t("welcome.inviteCode")} aria-label={t("welcome.inviteCode")} value={code} onChange={(e) => setCode(e.target.value)} />
-            <Button disabled={code.trim().length < 4 || join.isPending} onClick={() => join.mutate({ inviteCode: code.trim() })}>{t("student.join")}</Button>
+            <Input
+              placeholder={t("welcome.inviteCodePlaceholder")}
+              aria-label={t("welcome.inviteCode")}
+              value={code}
+              onChange={(e) => setCode(normalizeCode(e.target.value))}
+            />
+            {/* Navigating to the preview page (not joining directly) so the student always sees the
+                group's details and confirms before membership is created or requested. */}
+            <Button disabled={code.trim().length < 4} onClick={() => nav(`/join/${encodeURIComponent(code.trim())}`)}>{t("student.join")}</Button>
           </div>
         </Panel>
         <Panel title={t("student.myGroups")}>

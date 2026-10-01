@@ -58,6 +58,8 @@ export const reviewLabel = (v: string | null | undefined) => label("review", v);
 export const difficultyLabel = (v: string | null | undefined) => label("common.difficulty", v);
 export const subscriptionLabel = (v: string | null | undefined) => label("subscription", v);
 export const providerLabel = (v: string | null | undefined) => label("provider", v);
+export const groupFormatLabel = (v: string | null | undefined) => label("groups.format", v);
+export const joinPolicyLabel = (v: string | null | undefined) => label("groups.joinPolicy", v);
 export const partnerStatusLabel = (v: string | null | undefined) => label("partnerStatus", v);
 export const heldLabel = (v: string | null | undefined) => {
   const key = `held.${v ?? ""}`;
