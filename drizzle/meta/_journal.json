@@ -57,6 +57,13 @@
       "when": 1790874638713,
       "tag": "0007_add_group_schedule_and_join_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1790878779047,
+      "tag": "0008_add_workspace_teaching_category",
+      "breakpoints": true
     }
   ]
 }

@@ -60,6 +60,9 @@ export const subscriptionLabel = (v: string | null | undefined) => label("subscr
 export const providerLabel = (v: string | null | undefined) => label("provider", v);
 export const groupFormatLabel = (v: string | null | undefined) => label("groups.format", v);
 export const joinPolicyLabel = (v: string | null | undefined) => label("groups.joinPolicy", v);
+export const teachingCategoryLabel = (v: string | null | undefined) => label("teachingCategory", v);
+/** Known subcategory keys get their catalog label; anything else (free text the teacher typed) is shown as-is. */
+export const teachingSubcategoryLabel = (v: string | null | undefined) => label("teachingSubcategory", v);
 export const partnerStatusLabel = (v: string | null | undefined) => label("partnerStatus", v);
 export const heldLabel = (v: string | null | undefined) => {
   const key = `held.${v ?? ""}`;

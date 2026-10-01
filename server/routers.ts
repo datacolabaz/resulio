@@ -1,4 +1,5 @@
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
+import { TEACHING_CATEGORIES } from "@shared/teachingCategories";
 import { z } from "zod";
 import {
   ASSESSMENT_TYPES,
@@ -423,6 +424,9 @@ const workspaceInput = z.object({
   title: z.string().trim().min(2).max(255),
   publicDisplayName: z.string().trim().max(255).default(""),
   providerType: z.enum(PROVIDER_TYPES).default("TEACHER"),
+  teachingCategory: z.enum(TEACHING_CATEGORIES).default("OTHER"),
+  // Free text: either a known subcategory key, or whatever the teacher typed under "Digər".
+  teachingSubcategory: z.string().trim().max(120).default(""),
 });
 
 const teacherRouter = router({

@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { PROVIDER_TYPES, providerWorkspaces } from "../../drizzle/schema";
+import type { TeachingCategory } from "../../shared/teachingCategories";
 import { ENV } from "../_core/env";
 import { requireDb } from "../db";
 import { managedWorkspaces, type TeacherScope } from "./access";
@@ -12,6 +13,8 @@ export type WorkspaceInput = {
   title: string;
   publicDisplayName: string;
   providerType: (typeof PROVIDER_TYPES)[number];
+  teachingCategory: TeachingCategory;
+  teachingSubcategory: string;
 };
 
 /**

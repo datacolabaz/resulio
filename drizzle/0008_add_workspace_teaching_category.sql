@@ -1,0 +1,2 @@
+ALTER TABLE `provider_workspaces` ADD `teachingCategory` varchar(32) DEFAULT 'OTHER' NOT NULL;--> statement-breakpoint
+ALTER TABLE `provider_workspaces` ADD `teachingSubcategory` varchar(120) DEFAULT '' NOT NULL;
