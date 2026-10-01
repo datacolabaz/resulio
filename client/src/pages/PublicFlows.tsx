@@ -6,8 +6,9 @@ import { Input } from "@/components/ui/input";
 import { startLogin } from "@/const";
 import { t } from "@/i18n/messages";
 import { canEnter } from "@/lib/contexts";
-import { errorText, fmtDateTime, fmtDay, fmtDuration, groupFormatLabel, liveLabel, typeLabel } from "@/lib/format";
+import { errorText, fmtDateTime, fmtDay, fmtDuration, groupFormatLabel, groupLanguageLabel, liveLabel, scheduleSummary, typeLabel } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
+import type { ClassScheduleEntry } from "@shared/schedule";
 import { useState } from "react";
 import { Link, useParams } from "wouter";
 
@@ -69,12 +70,12 @@ function StudentOnboarding({ onDone }: { onDone: () => void }) {
 }
 
 /** Extra group facts shown on a join-preview screen, only for the fields the teacher chose to share. */
-function GroupPreviewDetails({ g }: { g: { language?: string; format?: string; startDate?: string | Date | null; classDays?: string | null; classTime?: string | null } }) {
-  const schedule = [g.classDays, g.classTime].filter(Boolean).join(" · ");
+function GroupPreviewDetails({ g }: { g: { language?: string; format?: string; startDate?: string | Date | null; classSchedule?: ClassScheduleEntry[] } }) {
+  const schedule = scheduleSummary(g.classSchedule);
   return (
     <dl className="mt-3 space-y-1 text-xs text-muted-foreground">
       {!!g.language && (
-        <div className="flex gap-1"><dt className="font-medium text-foreground-secondary">{t("public.preview.language")}:</dt><dd>{g.language}</dd></div>
+        <div className="flex gap-1"><dt className="font-medium text-foreground-secondary">{t("public.preview.language")}:</dt><dd>{groupLanguageLabel(g.language)}</dd></div>
       )}
       {!!g.format && (
         <div className="flex gap-1"><dt className="font-medium text-foreground-secondary">{t("public.preview.format")}:</dt><dd>{groupFormatLabel(g.format)}</dd></div>

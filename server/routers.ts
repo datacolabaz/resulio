@@ -1,4 +1,5 @@
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
+import { CLASS_TIME_PATTERN, GROUP_LANGUAGES, WEEK_DAYS } from "@shared/schedule";
 import { TEACHING_CATEGORIES } from "@shared/teachingCategories";
 import { z } from "zod";
 import {
@@ -174,16 +175,24 @@ const authRouter = router({
 // Teacher
 // ---------------------------------------------------------------------------
 
+const classScheduleEntryInput = z.object({
+  day: z.enum(WEEK_DAYS),
+  time: z.string().regex(CLASS_TIME_PATTERN),
+});
+
 const groupInput = z.object({
   name: z.string().trim().min(2).max(120),
   subject: z.string().trim().max(120).default(""),
   grade: z.string().trim().max(40).default(""),
   description: z.string().trim().max(2000).default(""),
-  language: z.string().trim().max(64).default(""),
+  language: z.enum(GROUP_LANGUAGES).or(z.literal("")).default(""),
   format: z.enum(GROUP_FORMATS).default("ONLINE"),
   startDate: z.string().datetime().optional().nullable(),
-  classDays: z.string().trim().max(64).optional().nullable(),
-  classTime: z.string().trim().max(32).optional().nullable(),
+  classSchedule: z
+    .array(classScheduleEntryInput)
+    .max(7)
+    .refine((entries) => new Set(entries.map((e) => e.day)).size === entries.length, { message: "Duplicate day" })
+    .default([]),
   scheduleVisible: z.boolean().default(false),
 });
 

@@ -33,6 +33,7 @@ import {
   type AuditTargetType,
   type SecurityEventType,
 } from "../shared/adminPermissions";
+import type { ClassScheduleEntry } from "../shared/schedule";
 
 const ID = 32;
 const id = (name: string) => varchar(name, { length: ID });
@@ -143,10 +144,9 @@ export const groups = mysqlTable(
     language: varchar("language", { length: 64 }).notNull().default(""),
     format: mysqlEnum("format", GROUP_FORMATS).notNull().default("ONLINE"),
     startDate: timestamp("startDate"),
-    /** e.g. "Mon,Wed,Fri" — free text, not a fixed day-of-week enum, to allow irregular schedules. */
-    classDays: varchar("classDays", { length: 64 }),
-    classTime: varchar("classTime", { length: 32 }),
-    /** Whether classDays/classTime/startDate are shown on the public join-preview screen. */
+    /** Weekly meeting times, e.g. [{day:"WED",time:"17:00"},{day:"SAT",time:"11:00"}]. See shared/schedule.ts. */
+    classSchedule: json("classSchedule").$type<ClassScheduleEntry[]>().notNull().default([]),
+    /** Whether classSchedule/startDate are shown on the public join-preview screen. */
     scheduleVisible: boolean("scheduleVisible").notNull().default(false),
     inviteCode: varchar("inviteCode", { length: 32 }).notNull().unique(),
     joinPolicy: mysqlEnum("joinPolicy", GROUP_JOIN_POLICIES).notNull().default("APPROVAL"),
