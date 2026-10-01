@@ -109,6 +109,8 @@ export async function publicEmailInvitePreview(token: string) {
       scheduleVisible: groups.scheduleVisible,
       providerName: providerWorkspaces.publicDisplayName,
       providerTitle: providerWorkspaces.title,
+      teachingCategory: providerWorkspaces.teachingCategory,
+      teachingSubcategory: providerWorkspaces.teachingSubcategory,
     })
     .from(groups)
     .innerJoin(providerWorkspaces, eq(providerWorkspaces.id, groups.providerWorkspaceId))
@@ -125,6 +127,8 @@ export async function publicEmailInvitePreview(token: string) {
     description: group.description,
     startDate: group.scheduleVisible ? group.startDate : null,
     classSchedule: group.scheduleVisible ? group.classSchedule : [],
+    teachingCategory: group.teachingCategory,
+    teachingSubcategory: group.teachingSubcategory,
   };
 }
 
