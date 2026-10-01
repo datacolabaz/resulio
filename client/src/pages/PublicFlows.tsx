@@ -1,5 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
-import { LanguageSwitch } from "@/components/AppShell";
+import { LanguageSwitch, ThemeToggle } from "@/components/AppShell";
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -93,7 +93,10 @@ function Card({ children }: { children: React.ReactNode }) {
       <div className="w-full max-w-md rounded-3xl border bg-card p-6 sm:p-8">
         <div className="flex items-start justify-between gap-3">
           <BrandMark size={48} className="rounded-xl" />
-          <LanguageSwitch />
+          <div className="flex items-center gap-2">
+            <LanguageSwitch />
+            <ThemeToggle />
+          </div>
         </div>
         {children}
       </div>

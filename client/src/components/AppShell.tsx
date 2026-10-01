@@ -117,6 +117,29 @@ export function LanguageSwitch({ className = "" }: { className?: string }) {
   );
 }
 
+/**
+ * Compact light/dark toggle for headers outside the signed-in app shell (the landing page,
+ * the welcome screen) — those only had a language switch, with no visible way to change the
+ * theme short of signing in and opening the account menu. A single icon button, showing the
+ * currently-active mode, is enough here; the full light/dark/system choice still lives in the
+ * account menu and Settings for anyone who wants "follow system" specifically.
+ */
+export function ThemeToggle({ className = "" }: { className?: string }) {
+  const { theme, setPreference } = useTheme();
+  const next: ThemePreference = theme === "dark" ? "light" : "dark";
+  return (
+    <button
+      type="button"
+      onClick={() => setPreference(next)}
+      aria-label={themeLabel(next)}
+      title={themeLabel(next)}
+      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-input bg-card text-foreground transition-colors hover:bg-muted ${className}`}
+    >
+      {theme === "dark" ? <Moon className="h-4 w-4" aria-hidden /> : <Sun className="h-4 w-4" aria-hidden />}
+    </button>
+  );
+}
+
 export function AppShell({
   area,
   children,
@@ -254,6 +277,7 @@ export function AppShell({
             </div>
             <div className="flex shrink-0 items-center gap-1 sm:gap-2">
               <LanguageSwitch className="hidden sm:flex" />
+              <ThemeToggle />
               <div className="relative">
                 <button
                   type="button"

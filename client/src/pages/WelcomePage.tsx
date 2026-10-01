@@ -1,5 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
-import { LanguageSwitch } from "@/components/AppShell";
+import { LanguageSwitch, ThemeToggle } from "@/components/AppShell";
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -158,6 +158,7 @@ export default function WelcomePage() {
           </div>
           <div className="flex items-center gap-2">
             <LanguageSwitch />
+            <ThemeToggle />
             <Button variant="outline" size="sm" onClick={() => void logout()}>
               <LogOut className="h-4 w-4" aria-hidden />
               {t("common.logout")}

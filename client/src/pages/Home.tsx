@@ -1,5 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
-import { LanguageSwitch } from "@/components/AppShell";
+import { LanguageSwitch, ThemeToggle } from "@/components/AppShell";
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/button";
 import { safeReturnTo, startLogin } from "@/const";
@@ -47,7 +47,10 @@ export default function Home() {
             <div className="text-xs text-link">{t("brand.tagline")}</div>
           </div>
         </div>
-        <LanguageSwitch />
+        <div className="flex items-center gap-2">
+          <LanguageSwitch />
+          <ThemeToggle />
+        </div>
       </header>
       <main className="mx-auto grid max-w-6xl gap-12 px-4 py-10 sm:px-6 sm:py-16 lg:grid-cols-2 lg:items-center">
         <div>
