@@ -1,5 +1,5 @@
 import { ProgressChart, RankingTable, TopicBars } from "@/components/AnalyticsBlocks";
-import { AppShell, EmptyState, ErrorNote, Loading, Panel, Pill, StatCard } from "@/components/AppShell";
+import { AppShell, ChoiceChip, EmptyState, ErrorNote, Loading, Panel, Pill, StatCard } from "@/components/AppShell";
 import { ShareBox } from "@/components/ShareBox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -12,9 +12,10 @@ import { t } from "@/i18n/messages";
 import { errorText, fmtDateTime, liveLabel } from "@/lib/format";
 import { liveStatus } from "@/lib/status";
 import { trpc } from "@/lib/trpc";
-import { useState } from "react";
+import { GROUP_LANGUAGES, WEEK_DAYS, type ClassScheduleEntry, type GroupLanguage, type WeekDay } from "@shared/schedule";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Link, useParams } from "wouter";
+import { Link, useLocation, useParams, useSearch } from "wouter";
 
 const fieldLabel = "text-foreground-secondary";
 const GROUP_FORMATS = ["ONLINE", "IN_PERSON", "HYBRID"] as const;
@@ -25,6 +26,7 @@ export function GroupsPage() {
   const groups = trpc.teacher.groups.list.useQuery();
   const overview = trpc.teacher.groups.overview.useQuery();
   const [open, setOpen] = useState(false);
+  const [, nav] = useLocation();
   return (
     <AppShell area="teaching">
       <div className="space-y-5">
@@ -57,7 +59,7 @@ export function GroupsPage() {
           </div>
         )}
       </div>
-      <GroupFormDialog open={open} onOpenChange={setOpen} />
+      <GroupFormDialog open={open} onOpenChange={setOpen} onCreated={(id) => nav(`/teacher/groups/${id}?invite=1`)} />
     </AppShell>
   );
 }
@@ -71,8 +73,7 @@ interface GroupFormInitial {
   language: string;
   format: (typeof GROUP_FORMATS)[number];
   startDate: string | Date | null;
-  classDays: string | null;
-  classTime: string | null;
+  classSchedule: ClassScheduleEntry[];
   scheduleVisible: boolean;
 }
 
@@ -83,24 +84,49 @@ function dateOnly(value: string | Date | null | undefined): string {
   return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
 }
 
-function GroupFormDialog({ open, onOpenChange, initial }: { open: boolean; onOpenChange: (v: boolean) => void; initial?: GroupFormInitial }) {
+function GroupFormDialog({
+  open,
+  onOpenChange,
+  initial,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  initial?: GroupFormInitial;
+  onCreated?: (id: string) => void;
+}) {
   const utils = trpc.useUtils();
   const [f, setF] = useState({
     name: initial?.name ?? "",
     subject: initial?.subject ?? "",
     grade: initial?.grade ?? "",
     description: initial?.description ?? "",
-    language: initial?.language ?? "",
+    // Legacy free-text language values (from before this became a dropdown) don't match a known
+    // option, so they fall back to unset rather than silently submitting an invalid value.
+    language: ((GROUP_LANGUAGES as readonly string[]).includes(initial?.language ?? "") ? initial!.language : "") as GroupLanguage | "",
     format: initial?.format ?? ("ONLINE" as (typeof GROUP_FORMATS)[number]),
     startDate: dateOnly(initial?.startDate),
-    classDays: initial?.classDays ?? "",
-    classTime: initial?.classTime ?? "",
+    classSchedule: initial?.classSchedule ?? ([] as ClassScheduleEntry[]),
     scheduleVisible: initial?.scheduleVisible ?? false,
   });
   const done = () => { void utils.teacher.groups.invalidate(); onOpenChange(false); };
-  const create = trpc.teacher.groups.create.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
+  const create = trpc.teacher.groups.create.useMutation({
+    onSuccess: (g) => { onCreated?.(g.id); done(); },
+    onError: (e) => toast.error(errorText(e)),
+  });
   const update = trpc.teacher.groups.update.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
   const payload = () => ({ ...f, startDate: f.startDate ? new Date(f.startDate).toISOString() : null });
+  function toggleDay(day: WeekDay) {
+    setF((prev) => ({
+      ...prev,
+      classSchedule: prev.classSchedule.some((e) => e.day === day)
+        ? prev.classSchedule.filter((e) => e.day !== day)
+        : [...prev.classSchedule, { day, time: "09:00" }],
+    }));
+  }
+  function setDayTime(day: WeekDay, time: string) {
+    setF((prev) => ({ ...prev, classSchedule: prev.classSchedule.map((e) => (e.day === day ? { ...e, time } : e)) }));
+  }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto">
@@ -112,7 +138,19 @@ function GroupFormDialog({ open, onOpenChange, initial }: { open: boolean; onOpe
             <label className="text-sm"><span className={fieldLabel}>{t("common.gradeLevel")}</span><Input value={f.grade} onChange={(e) => setF({ ...f, grade: e.target.value })} /></label>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <label className="text-sm"><span className={fieldLabel}>{t("common.language")}</span><Input value={f.language} onChange={(e) => setF({ ...f, language: e.target.value })} placeholder={t("common.languagePlaceholder")} /></label>
+            <label className="text-sm">
+              <span className={fieldLabel}>{t("common.language")}</span>
+              <select
+                className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground"
+                value={f.language}
+                onChange={(e) => setF({ ...f, language: e.target.value as GroupLanguage | "" })}
+              >
+                <option value="">{t("common.languageUnset")}</option>
+                {GROUP_LANGUAGES.map((code) => (
+                  <option key={code} value={code}>{t(`groupLanguage.${code}`)}</option>
+                ))}
+              </select>
+            </label>
             <label className="text-sm">
               <span className={fieldLabel}>{t("common.format")}</span>
               <select
@@ -128,10 +166,30 @@ function GroupFormDialog({ open, onOpenChange, initial }: { open: boolean; onOpe
           </div>
           <label className="text-sm"><span className={fieldLabel}>{t("common.description")}</span><Textarea rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
           <div className="rounded-xl border p-3">
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid gap-3 sm:grid-cols-[auto_1fr]">
               <label className="text-sm"><span className={fieldLabel}>{t("common.startDate")}</span><Input type="date" value={f.startDate} onChange={(e) => setF({ ...f, startDate: e.target.value })} /></label>
-              <label className="text-sm"><span className={fieldLabel}>{t("common.classDays")}</span><Input value={f.classDays} onChange={(e) => setF({ ...f, classDays: e.target.value })} placeholder={t("common.classDaysPlaceholder")} /></label>
-              <label className="text-sm"><span className={fieldLabel}>{t("common.classTime")}</span><Input value={f.classTime} onChange={(e) => setF({ ...f, classTime: e.target.value })} placeholder={t("common.classTimePlaceholder")} /></label>
+              <div className="text-sm">
+                <span className={fieldLabel}>{t("groups.scheduleLabel")}</span>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  {WEEK_DAYS.map((day) => {
+                    const entry = f.classSchedule.find((e) => e.day === day);
+                    return (
+                      <div key={day} className="flex items-center gap-1.5">
+                        <ChoiceChip selected={!!entry} onClick={() => toggleDay(day)}>{t(`weekday.short.${day}`)}</ChoiceChip>
+                        {entry && (
+                          <input
+                            type="time"
+                            aria-label={t(`weekday.full.${day}`)}
+                            value={entry.time}
+                            onChange={(e) => setDayTime(day, e.target.value)}
+                            className="h-9 rounded-md border border-input bg-card px-2 text-sm text-foreground"
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
             <div className="mt-3 flex items-center justify-between gap-3">
               <label htmlFor="schedule-visible" className="flex-1 text-sm">
@@ -365,11 +423,16 @@ function InviteDialog({
 
 export function GroupDetailPage() {
   const { id = "" } = useParams<{ id: string }>();
+  const search = useSearch();
+  const [, nav] = useLocation();
   const utils = trpc.useUtils();
   const group = trpc.teacher.groups.detail.useQuery({ id });
   const analytics = trpc.teacher.groups.analytics.useQuery({ id });
-  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(() => new URLSearchParams(search).get("invite") === "1");
   const [editOpen, setEditOpen] = useState(false);
+  useEffect(() => {
+    if (new URLSearchParams(search).get("invite") === "1") nav(`/teacher/groups/${id}`, { replace: true });
+  }, []);
   const onDone = () => void utils.teacher.groups.invalidate();
   const approve = trpc.teacher.groups.approveMember.useMutation({ onSuccess: onDone, onError: (e) => toast.error(errorText(e)) });
   const remove = trpc.teacher.groups.removeMember.useMutation({ onSuccess: onDone, onError: (e) => toast.error(errorText(e)) });

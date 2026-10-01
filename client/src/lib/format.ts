@@ -1,5 +1,6 @@
 import { getLocale, isMessageKey, t } from "@/i18n/messages";
 import { formatDateTime, formatDay, formatDuration, formatRelative, formatTime, type DateInput } from "@/lib/dates";
+import { sortBySchedule, type ClassScheduleEntry } from "@shared/schedule";
 
 export function errorText(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error ?? "");
@@ -63,6 +64,13 @@ export const joinPolicyLabel = (v: string | null | undefined) => label("groups.j
 export const teachingCategoryLabel = (v: string | null | undefined) => label("teachingCategory", v);
 /** Known subcategory keys get their catalog label; anything else (free text the teacher typed) is shown as-is. */
 export const teachingSubcategoryLabel = (v: string | null | undefined) => label("teachingSubcategory", v);
+/** Known language codes (az/ru/en) get their catalog label; legacy free-text values are shown as-is. */
+export const groupLanguageLabel = (v: string | null | undefined) => label("groupLanguage", v);
+/** e.g. "Çərşənbə 17:00, Şənbə 11:00", sorted Monday-first; "" when the group has no weekly schedule. */
+export function scheduleSummary(entries: readonly ClassScheduleEntry[] | null | undefined): string {
+  if (!entries?.length) return "";
+  return sortBySchedule(entries).map((e) => `${t(`weekday.full.${e.day}`)} ${e.time}`).join(", ");
+}
 export const partnerStatusLabel = (v: string | null | undefined) => label("partnerStatus", v);
 export const heldLabel = (v: string | null | undefined) => {
   const key = `held.${v ?? ""}`;

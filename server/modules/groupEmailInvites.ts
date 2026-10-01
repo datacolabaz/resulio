@@ -105,8 +105,7 @@ export async function publicEmailInvitePreview(token: string) {
       language: groups.language,
       format: groups.format,
       startDate: groups.startDate,
-      classDays: groups.classDays,
-      classTime: groups.classTime,
+      classSchedule: groups.classSchedule,
       scheduleVisible: groups.scheduleVisible,
       providerName: providerWorkspaces.publicDisplayName,
       providerTitle: providerWorkspaces.title,
@@ -125,8 +124,7 @@ export async function publicEmailInvitePreview(token: string) {
     format: group.format,
     description: group.description,
     startDate: group.scheduleVisible ? group.startDate : null,
-    classDays: group.scheduleVisible ? group.classDays : null,
-    classTime: group.scheduleVisible ? group.classTime : null,
+    classSchedule: group.scheduleVisible ? group.classSchedule : [],
   };
 }
 

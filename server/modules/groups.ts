@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { GROUP_FORMATS, GROUP_JOIN_POLICIES, groupMembers, groups, providerWorkspaces, users } from "../../drizzle/schema";
+import type { ClassScheduleEntry } from "../../shared/schedule";
 import { requireDb, type DbOrTx } from "../db";
 import type { TeacherScope } from "./access";
 import { AppError } from "./errors";
@@ -47,8 +48,7 @@ export interface GroupScheduleInput {
   language: string;
   format: GroupFormat;
   startDate: Date | null;
-  classDays: string | null;
-  classTime: string | null;
+  classSchedule: ClassScheduleEntry[];
   scheduleVisible: boolean;
 }
 
@@ -176,8 +176,7 @@ export interface PublicGroupPreview {
   joinPolicy: GroupJoinPolicy;
   description: string | null;
   startDate: Date | null;
-  classDays: string | null;
-  classTime: string | null;
+  classSchedule: ClassScheduleEntry[];
 }
 
 export async function publicInvite(inviteCode: string): Promise<PublicGroupPreview | null> {
@@ -191,8 +190,7 @@ export async function publicInvite(inviteCode: string): Promise<PublicGroupPrevi
       format: groups.format,
       joinPolicy: groups.joinPolicy,
       startDate: groups.startDate,
-      classDays: groups.classDays,
-      classTime: groups.classTime,
+      classSchedule: groups.classSchedule,
       scheduleVisible: groups.scheduleVisible,
       providerName: providerWorkspaces.publicDisplayName,
       providerTitle: providerWorkspaces.title,
@@ -212,8 +210,7 @@ export async function publicInvite(inviteCode: string): Promise<PublicGroupPrevi
     joinPolicy: group.joinPolicy,
     description: group.description,
     startDate: group.scheduleVisible ? group.startDate : null,
-    classDays: group.scheduleVisible ? group.classDays : null,
-    classTime: group.scheduleVisible ? group.classTime : null,
+    classSchedule: group.scheduleVisible ? group.classSchedule : [],
   };
 }
 

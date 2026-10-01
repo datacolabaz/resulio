@@ -64,6 +64,13 @@
       "when": 1790878779047,
       "tag": "0008_add_workspace_teaching_category",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1790882676822,
+      "tag": "0009_group_class_schedule",
+      "breakpoints": true
     }
   ]
 }
