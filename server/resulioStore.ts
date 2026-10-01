@@ -113,6 +113,13 @@ class ResulioStore {
     return this.assignments.filter((a) => a.workspaceId === workspaceId);
   }
 
+  /** Throws NOT_FOUND if the assignment doesn't exist or belongs to another workspace. */
+  assignmentOf(scope: TeacherScope, id: string): AssignmentRecord {
+    const row = this.assignments.find((a) => a.id === id && a.workspaceId === scope.workspaceId);
+    if (!row) throw new Error("NOT_FOUND");
+    return row;
+  }
+
   createAssignment(
     scope: TeacherScope,
     input: Omit<AssignmentRecord, "id" | "workspaceId" | "createdBy" | "shareCode">,
@@ -124,8 +131,33 @@ class ResulioStore {
     return row;
   }
 
+  /**
+   * Edits an existing assignment in place (fixing a forgotten recipient, a wrong deadline, etc.).
+   * Does not re-notify recipients — `createAssignment` already did, and an edit is not a new
+   * assignment; the caller can call `notify` itself for newly added recipients if it wants to.
+   */
+  updateAssignment(scope: TeacherScope, id: string, patch: Partial<Omit<AssignmentRecord, "id" | "workspaceId" | "createdBy" | "shareCode">>) {
+    const row = this.assignmentOf(scope, id);
+    Object.assign(row, patch);
+    return row;
+  }
+
+  deleteAssignment(scope: TeacherScope, id: string) {
+    const row = this.assignmentOf(scope, id);
+    this.assignments = this.assignments.filter((a) => a.id !== row.id);
+    this.submissions = this.submissions.filter((s) => s.assignmentId !== row.id);
+    return { ok: true };
+  }
+
   workspaceMaterials(workspaceId: string) {
     return this.materials.filter((m) => m.workspaceId === workspaceId);
+  }
+
+  /** Throws NOT_FOUND if the material doesn't exist or belongs to another workspace. */
+  materialOf(scope: TeacherScope, id: string): MaterialRecord {
+    const row = this.materials.find((m) => m.id === id && m.workspaceId === scope.workspaceId);
+    if (!row) throw new Error("NOT_FOUND");
+    return row;
   }
 
   createMaterial(scope: TeacherScope, input: Omit<MaterialRecord, "id" | "workspaceId" | "createdBy" | "uploadedAt" | "shareCode">) {
@@ -139,6 +171,18 @@ class ResulioStore {
     };
     this.materials.push(row);
     return row;
+  }
+
+  updateMaterial(scope: TeacherScope, id: string, patch: Partial<Omit<MaterialRecord, "id" | "workspaceId" | "createdBy" | "uploadedAt" | "shareCode">>) {
+    const row = this.materialOf(scope, id);
+    Object.assign(row, patch);
+    return row;
+  }
+
+  deleteMaterial(scope: TeacherScope, id: string) {
+    const row = this.materialOf(scope, id);
+    this.materials = this.materials.filter((m) => m.id !== row.id);
+    return { ok: true };
   }
 
   studentMaterials(studentId: number, groupIds: string[]) {

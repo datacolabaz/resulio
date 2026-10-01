@@ -390,6 +390,33 @@ const recipients = {
   studentIds: z.array(z.number().int().positive()).max(1000).default([]),
 };
 
+const assignmentInput = z.object({
+  title: z.string().trim().min(2).max(255),
+  description: z.string().trim().max(5000).default(""),
+  instructions: z.string().trim().max(5000).default(""),
+  deadline: z.coerce.date(),
+  ...recipients,
+  attachments: z.array(z.object({ name: z.string().max(255), size: z.string().max(32) })).max(20).default([]),
+});
+
+const materialInput = z.object({
+  title: z.string().trim().min(2).max(255),
+  description: z.string().trim().max(5000).default(""),
+  subject: z.string().trim().max(120).default(""),
+  topic: z.string().trim().max(120).default(""),
+  fileName: z.string().trim().min(1).max(255),
+  ...recipients,
+});
+
+/** Resolves the recipients a patch currently points at, falling back to the row's own groupIds/studentIds when the patch doesn't touch them. */
+async function assertPatchedRecipients(
+  scope: TeacherScope,
+  current: { groupIds: string[]; studentIds: number[] },
+  patch: { groupIds?: string[]; studentIds?: number[] },
+) {
+  return assertRecipients(scope, patch.groupIds ?? current.groupIds, patch.studentIds ?? current.studentIds);
+}
+
 const teacherTasksRouter = router({
   list: teacherProcedure.query(({ ctx }) =>
     store
@@ -397,36 +424,41 @@ const teacherTasksRouter = router({
       .map((a) => ({ ...a, submissions: store.submissions.filter((s) => s.assignmentId === a.id) })),
   ),
   create: teacherProcedure
-    .input(
-      z.object({
-        title: z.string().trim().min(2).max(255),
-        description: z.string().trim().max(5000).default(""),
-        instructions: z.string().trim().max(5000).default(""),
-        deadline: z.coerce.date(),
-        ...recipients,
-        attachments: z.array(z.object({ name: z.string().max(255), size: z.string().max(32) })).max(20).default([]),
-      }),
-    )
+    .input(assignmentInput)
     .mutation(async ({ ctx, input }) => {
       const ids = await assertRecipients(ctx.scope, input.groupIds, input.studentIds);
       return store.createAssignment(ctx.scope, { ...input, deadline: input.deadline.toISOString() }, ids);
     }),
+  update: teacherProcedure
+    .input(z.object({ id: entityId, patch: assignmentInput.partial() }))
+    .mutation(async ({ ctx, input }) => {
+      const current = store.assignmentOf(ctx.scope, input.id);
+      const touchesRecipients = input.patch.groupIds !== undefined || input.patch.studentIds !== undefined;
+      const before = touchesRecipients ? new Set(await assertRecipients(ctx.scope, current.groupIds, current.studentIds)) : null;
+      const after = touchesRecipients ? await assertPatchedRecipients(ctx.scope, current, input.patch) : null;
+      const { deadline, ...rest } = input.patch;
+      const row = store.updateAssignment(ctx.scope, input.id, { ...rest, ...(deadline ? { deadline: deadline.toISOString() } : {}) });
+      if (after && before) for (const sid of after) if (!before.has(sid)) store.notify(sid, "Yeni tapşırıq", row.title);
+      return row;
+    }),
+  remove: teacherProcedure.input(z.object({ id: entityId })).mutation(({ ctx, input }) => store.deleteAssignment(ctx.scope, input.id)),
   materials: teacherProcedure.query(({ ctx }) => store.workspaceMaterials(ctx.scope.workspaceId)),
   createMaterial: teacherProcedure
-    .input(
-      z.object({
-        title: z.string().trim().min(2).max(255),
-        description: z.string().trim().max(5000).default(""),
-        subject: z.string().trim().max(120).default(""),
-        topic: z.string().trim().max(120).default(""),
-        fileName: z.string().trim().min(1).max(255),
-        ...recipients,
-      }),
-    )
+    .input(materialInput)
     .mutation(async ({ ctx, input }) => {
       await assertRecipients(ctx.scope, input.groupIds, input.studentIds);
       return store.createMaterial(ctx.scope, input);
     }),
+  updateMaterial: teacherProcedure
+    .input(z.object({ id: entityId, patch: materialInput.partial() }))
+    .mutation(async ({ ctx, input }) => {
+      const current = store.materialOf(ctx.scope, input.id);
+      if (input.patch.groupIds !== undefined || input.patch.studentIds !== undefined) {
+        await assertPatchedRecipients(ctx.scope, current, input.patch);
+      }
+      return store.updateMaterial(ctx.scope, input.id, input.patch);
+    }),
+  removeMaterial: teacherProcedure.input(z.object({ id: entityId })).mutation(({ ctx, input }) => store.deleteMaterial(ctx.scope, input.id)),
 });
 
 const workspaceInput = z.object({

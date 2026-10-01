@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { t } from "@/i18n/messages";
-import { errorText, fmtDateTime, fromLocalInput, questionTypeLabel, subscriptionLabel } from "@/lib/format";
+import { errorText, fmtDateTime, fromLocalInput, questionTypeLabel, subscriptionLabel, toLocalInput } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import { QUESTION_TYPES } from "@shared/assessment";
 import { Sparkles } from "lucide-react";
@@ -60,17 +60,69 @@ function RecipientPicker({
   );
 }
 
+interface AssignmentInitial {
+  id: string;
+  title: string;
+  description: string;
+  instructions: string;
+  deadline: string;
+  groupIds: string[];
+  studentIds: number[];
+}
+
+function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; onOpenChange: (v: boolean) => void; initial?: AssignmentInitial }) {
+  const utils = trpc.useUtils();
+  const [f, setF] = useState({
+    title: initial?.title ?? "",
+    description: initial?.description ?? "",
+    instructions: initial?.instructions ?? "",
+    deadline: initial ? toLocalInput(initial.deadline) : "",
+    groupIds: initial?.groupIds ?? ([] as string[]),
+    studentIds: initial?.studentIds ?? ([] as number[]),
+  });
+  const done = () => { void utils.teacher.tasks.list.invalidate(); onOpenChange(false); };
+  const create = trpc.teacher.tasks.create.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
+  const update = trpc.teacher.tasks.update.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
+  const deadline = fromLocalInput(f.deadline);
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader><DialogTitle>{initial ? t("modules.editTaskTitle") : t("modules.newTaskTitle")}</DialogTitle></DialogHeader>
+        <div className="grid gap-3">
+          <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("common.name") })}</span><Input required value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></label>
+          <label className="text-sm"><span className={fieldLabel}>{t("common.description")}</span><Textarea rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
+          <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("modules.deadline") })}</span><Input required type="datetime-local" value={f.deadline} onChange={(e) => setF({ ...f, deadline: e.target.value })} /></label>
+          <RecipientPicker groupIds={f.groupIds} studentIds={f.studentIds} onChange={(v) => setF({ ...f, ...v })} />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
+          <Button
+            disabled={f.title.trim().length < 2 || !deadline || create.isPending || update.isPending}
+            onClick={() => {
+              if (!deadline) return;
+              const payload = { title: f.title, description: f.description, instructions: f.instructions, deadline, groupIds: f.groupIds, studentIds: f.studentIds, attachments: [] };
+              if (initial) update.mutate({ id: initial.id, patch: payload });
+              else create.mutate(payload);
+            }}
+          >
+            {t("common.save")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function AssignmentsPage() {
   const utils = trpc.useUtils();
   const list = trpc.teacher.tasks.list.useQuery();
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<AssignmentInitial | null>(null);
   const [shareId, setShareId] = useState<string | null>(null);
-  const [f, setF] = useState({ title: "", description: "", instructions: "", deadline: "", groupIds: [] as string[], studentIds: [] as number[] });
-  const create = trpc.teacher.tasks.create.useMutation({
-    onSuccess: () => { setOpen(false); setF({ title: "", description: "", instructions: "", deadline: "", groupIds: [], studentIds: [] }); void utils.teacher.tasks.list.invalidate(); },
+  const remove = trpc.teacher.tasks.remove.useMutation({
+    onSuccess: () => void utils.teacher.tasks.list.invalidate(),
     onError: (e) => toast.error(errorText(e)),
   });
-  const deadline = fromLocalInput(f.deadline);
   return (
     <AppShell area="teaching">
       <div className="space-y-5">
@@ -86,39 +138,31 @@ export function AssignmentsPage() {
               <Panel key={a.id} title={a.title} action={<Pill>{t("modules.submissions", { count: a.submissions.length })}</Pill>}>
                 <p className="break-words text-sm text-foreground-secondary">{a.description}</p>
                 <p className="mt-2 text-xs text-muted-foreground">{t("modules.deadlineValue", { date: fmtDateTime(a.deadline) })}</p>
-                <div className="mt-3">
+                <div className="mt-3 flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={() => setShareId(shareId === a.id ? null : a.id)}>{t("common.share")}</Button>
-                  {shareId === a.id && (
-                    <div className="mt-3">
-                      <ShareBox path={`/task/${a.shareCode}`} fileName={`resulio-task-${a.shareCode}`} />
-                    </div>
-                  )}
+                  <Button size="sm" variant="outline" onClick={() => setEditing(a)}>{t("common.edit")}</Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive hover:bg-danger-surface hover:text-destructive"
+                    disabled={remove.isPending}
+                    onClick={() => confirm(t("modules.deleteTaskConfirm")) && remove.mutate({ id: a.id })}
+                  >
+                    {t("common.delete")}
+                  </Button>
                 </div>
+                {shareId === a.id && (
+                  <div className="mt-3">
+                    <ShareBox path={`/task/${a.shareCode}`} fileName={`resulio-task-${a.shareCode}`} />
+                  </div>
+                )}
               </Panel>
             ))}
           </div>
         )}
       </div>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader><DialogTitle>{t("modules.newTaskTitle")}</DialogTitle></DialogHeader>
-          <div className="grid gap-3">
-            <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("common.name") })}</span><Input required value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></label>
-            <label className="text-sm"><span className={fieldLabel}>{t("common.description")}</span><Textarea rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
-            <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("modules.deadline") })}</span><Input required type="datetime-local" value={f.deadline} onChange={(e) => setF({ ...f, deadline: e.target.value })} /></label>
-            <RecipientPicker groupIds={f.groupIds} studentIds={f.studentIds} onChange={(v) => setF({ ...f, ...v })} />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>{t("common.cancel")}</Button>
-            <Button
-              disabled={f.title.trim().length < 2 || !deadline || create.isPending}
-              onClick={() => deadline && create.mutate({ title: f.title, description: f.description, instructions: f.instructions, deadline, groupIds: f.groupIds, studentIds: f.studentIds, attachments: [] })}
-            >
-              {t("common.send")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <AssignmentFormDialog open={open} onOpenChange={setOpen} />
+      {editing && <AssignmentFormDialog open onOpenChange={(v) => !v && setEditing(null)} initial={editing} />}
     </AppShell>
   );
 }
@@ -195,14 +239,67 @@ function QuestionBankTab() {
   );
 }
 
+interface MaterialInitial {
+  id: string;
+  title: string;
+  description: string;
+  subject: string;
+  topic: string;
+  fileName: string;
+  groupIds: string[];
+  studentIds: number[];
+}
+
+function MaterialFormDialog({ open, onOpenChange, initial }: { open: boolean; onOpenChange: (v: boolean) => void; initial?: MaterialInitial }) {
+  const utils = trpc.useUtils();
+  const [f, setF] = useState({
+    title: initial?.title ?? "",
+    description: initial?.description ?? "",
+    subject: initial?.subject ?? "",
+    topic: initial?.topic ?? "",
+    fileName: initial?.fileName ?? "",
+    groupIds: initial?.groupIds ?? ([] as string[]),
+    studentIds: initial?.studentIds ?? ([] as number[]),
+  });
+  const done = () => { void utils.teacher.tasks.materials.invalidate(); onOpenChange(false); };
+  const create = trpc.teacher.tasks.createMaterial.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
+  const update = trpc.teacher.tasks.updateMaterial.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader><DialogTitle>{initial ? t("modules.editMaterialTitle") : t("modules.newMaterialTitle")}</DialogTitle></DialogHeader>
+        <div className="grid gap-3">
+          <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("common.name") })}</span><Input required value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></label>
+          <label className="text-sm"><span className={fieldLabel}>{t("common.description")}</span><Textarea rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-sm"><span className={fieldLabel}>{t("common.subject")}</span><Input value={f.subject} onChange={(e) => setF({ ...f, subject: e.target.value })} /></label>
+            <label className="text-sm"><span className={fieldLabel}>{t("common.topic")}</span><Input value={f.topic} onChange={(e) => setF({ ...f, topic: e.target.value })} /></label>
+          </div>
+          <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("modules.fileName") })}</span><Input required value={f.fileName} onChange={(e) => setF({ ...f, fileName: e.target.value })} placeholder={t("modules.fileNamePlaceholder")} /></label>
+          <RecipientPicker groupIds={f.groupIds} studentIds={f.studentIds} onChange={(v) => setF({ ...f, ...v })} />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
+          <Button
+            disabled={f.title.trim().length < 2 || !f.fileName.trim() || create.isPending || update.isPending}
+            onClick={() => (initial ? update.mutate({ id: initial.id, patch: f }) : create.mutate(f))}
+          >
+            {t("common.save")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function MaterialsTab() {
   const utils = trpc.useUtils();
   const list = trpc.teacher.tasks.materials.useQuery();
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<MaterialInitial | null>(null);
   const [shareId, setShareId] = useState<string | null>(null);
-  const [f, setF] = useState({ title: "", description: "", subject: "", topic: "", fileName: "", groupIds: [] as string[], studentIds: [] as number[] });
-  const create = trpc.teacher.tasks.createMaterial.useMutation({
-    onSuccess: () => { setOpen(false); void utils.teacher.tasks.materials.invalidate(); },
+  const remove = trpc.teacher.tasks.removeMaterial.useMutation({
+    onSuccess: () => void utils.teacher.tasks.materials.invalidate(),
     onError: (e) => toast.error(errorText(e)),
   });
   return (
@@ -217,37 +314,30 @@ function MaterialsTab() {
             <Panel key={m.id} title={m.title}>
               <p className="break-words text-sm text-foreground-secondary">{m.description}</p>
               <p className="mt-2 break-words text-xs text-muted-foreground">{[m.subject, m.topic, m.fileName].filter(Boolean).join(" · ")}</p>
-              <div className="mt-3">
+              <div className="mt-3 flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" onClick={() => setShareId(shareId === m.id ? null : m.id)}>{t("common.share")}</Button>
-                {shareId === m.id && (
-                  <div className="mt-3">
-                    <ShareBox path={`/material/${m.shareCode}`} fileName={`resulio-material-${m.shareCode}`} />
-                  </div>
-                )}
+                <Button size="sm" variant="outline" onClick={() => setEditing(m)}>{t("common.edit")}</Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-destructive hover:bg-danger-surface hover:text-destructive"
+                  disabled={remove.isPending}
+                  onClick={() => confirm(t("modules.deleteMaterialConfirm")) && remove.mutate({ id: m.id })}
+                >
+                  {t("common.delete")}
+                </Button>
               </div>
+              {shareId === m.id && (
+                <div className="mt-3">
+                  <ShareBox path={`/material/${m.shareCode}`} fileName={`resulio-material-${m.shareCode}`} />
+                </div>
+              )}
             </Panel>
           ))}
         </div>
       )}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader><DialogTitle>{t("modules.newMaterialTitle")}</DialogTitle></DialogHeader>
-          <div className="grid gap-3">
-            <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("common.name") })}</span><Input required value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></label>
-            <label className="text-sm"><span className={fieldLabel}>{t("common.description")}</span><Textarea rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="text-sm"><span className={fieldLabel}>{t("common.subject")}</span><Input value={f.subject} onChange={(e) => setF({ ...f, subject: e.target.value })} /></label>
-              <label className="text-sm"><span className={fieldLabel}>{t("common.topic")}</span><Input value={f.topic} onChange={(e) => setF({ ...f, topic: e.target.value })} /></label>
-            </div>
-            <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("modules.fileName") })}</span><Input required value={f.fileName} onChange={(e) => setF({ ...f, fileName: e.target.value })} placeholder={t("modules.fileNamePlaceholder")} /></label>
-            <RecipientPicker groupIds={f.groupIds} studentIds={f.studentIds} onChange={(v) => setF({ ...f, ...v })} />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>{t("common.cancel")}</Button>
-            <Button disabled={f.title.trim().length < 2 || !f.fileName.trim() || create.isPending} onClick={() => create.mutate(f)}>{t("common.save")}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <MaterialFormDialog open={open} onOpenChange={setOpen} />
+      {editing && <MaterialFormDialog open onOpenChange={(v) => !v && setEditing(null)} initial={editing} />}
     </div>
   );
 }
