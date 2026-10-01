@@ -17,7 +17,7 @@ import { ENV } from "./_core/env";
 import { requestMeta } from "./_core/requestMeta";
 import { sdk } from "./_core/sdk";
 import { systemRouter } from "./_core/systemRouter";
-import { PROVIDER_TYPES, UI_CONTEXTS } from "../drizzle/schema";
+import { GROUP_FORMATS, GROUP_JOIN_POLICIES, PROVIDER_TYPES, UI_CONTEXTS } from "../drizzle/schema";
 import { adminRouter } from "./adminRouter";
 import {
   partnerProcedure,
@@ -178,15 +178,26 @@ const groupInput = z.object({
   subject: z.string().trim().max(120).default(""),
   grade: z.string().trim().max(40).default(""),
   description: z.string().trim().max(2000).default(""),
+  language: z.string().trim().max(64).default(""),
+  format: z.enum(GROUP_FORMATS).default("ONLINE"),
+  startDate: z.string().datetime().optional().nullable(),
+  classDays: z.string().trim().max(64).optional().nullable(),
+  classTime: z.string().trim().max(32).optional().nullable(),
+  scheduleVisible: z.boolean().default(false),
 });
+
+/** Turns the wire-format ISO string into a Date for Drizzle, passing through null/undefined untouched. */
+function groupPatchForDb<T extends { startDate?: string | null }>({ startDate, ...rest }: T) {
+  return { ...rest, ...(startDate === undefined ? {} : { startDate: startDate === null ? null : new Date(startDate) }) };
+}
 
 const teacherGroupsRouter = router({
   list: teacherProcedure.query(({ ctx }) => groups.teacherGroups(ctx.scope)),
   overview: teacherProcedure.query(({ ctx }) => analytics.groupsOverview(ctx.scope)),
-  create: teacherProcedure.input(groupInput).mutation(({ ctx, input }) => groups.createGroup(ctx.scope, input)),
+  create: teacherProcedure.input(groupInput).mutation(({ ctx, input }) => groups.createGroup(ctx.scope, groupPatchForDb(input))),
   update: teacherProcedure
     .input(z.object({ id: entityId, patch: groupInput.partial() }))
-    .mutation(({ ctx, input }) => groups.renameGroup(ctx.scope, input.id, input.patch)),
+    .mutation(({ ctx, input }) => groups.renameGroup(ctx.scope, input.id, groupPatchForDb(input.patch))),
   detail: teacherProcedure.input(z.object({ id: entityId })).query(async ({ ctx, input }) => {
     const group = await groups.assertGroupOwner(ctx.scope, input.id);
     const members = await groups.groupMembersList(ctx.scope, input.id);
@@ -205,13 +216,19 @@ const teacherGroupsRouter = router({
   analytics: teacherProcedure
     .input(z.object({ id: entityId }))
     .query(({ ctx, input }) => analytics.groupAnalytics(ctx.scope, input.id)),
-  setAutoJoin: teacherProcedure
-    .input(z.object({ groupId: entityId, enabled: z.boolean() }))
-    .mutation(({ ctx, input }) => groups.setAutoJoin(ctx.scope, input.groupId, input.enabled)),
+  setJoinPolicy: teacherProcedure
+    .input(z.object({ groupId: entityId, joinPolicy: z.enum(GROUP_JOIN_POLICIES) }))
+    .mutation(({ ctx, input }) => groups.setJoinPolicy(ctx.scope, input.groupId, input.joinPolicy)),
   regenerateInviteCode: teacherProcedure
     .use(rateLimit("regenerateInviteCode", 10, MINUTE))
     .input(z.object({ groupId: entityId }))
     .mutation(({ ctx, input }) => groups.regenerateInviteCode(ctx.scope, input.groupId)),
+  setInviteCodeActive: teacherProcedure
+    .input(z.object({ groupId: entityId, active: z.boolean() }))
+    .mutation(({ ctx, input }) => groups.setInviteCodeActive(ctx.scope, input.groupId, input.active)),
+  setInviteCodeExpiry: teacherProcedure
+    .input(z.object({ groupId: entityId, expiresAt: z.string().datetime().nullable() }))
+    .mutation(({ ctx, input }) => groups.setInviteCodeExpiry(ctx.scope, input.groupId, input.expiresAt === null ? null : new Date(input.expiresAt))),
   emailInviteList: teacherProcedure
     .input(z.object({ groupId: entityId }))
     .query(({ ctx, input }) => groupEmailInvites.listEmailInvites(ctx.scope, input.groupId)),

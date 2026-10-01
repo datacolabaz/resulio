@@ -101,6 +101,13 @@ export async function publicEmailInvitePreview(token: string) {
       name: groups.name,
       subject: groups.subject,
       grade: groups.grade,
+      description: groups.description,
+      language: groups.language,
+      format: groups.format,
+      startDate: groups.startDate,
+      classDays: groups.classDays,
+      classTime: groups.classTime,
+      scheduleVisible: groups.scheduleVisible,
       providerName: providerWorkspaces.publicDisplayName,
       providerTitle: providerWorkspaces.title,
     })
@@ -109,7 +116,18 @@ export async function publicEmailInvitePreview(token: string) {
     .where(eq(groups.id, invite.groupId))
     .limit(1);
   if (!group) return null;
-  return { name: group.name, subject: group.subject, grade: group.grade, teacherName: group.providerName || group.providerTitle };
+  return {
+    name: group.name,
+    subject: group.subject,
+    grade: group.grade,
+    teacherName: group.providerName || group.providerTitle,
+    language: group.language,
+    format: group.format,
+    description: group.description,
+    startDate: group.scheduleVisible ? group.startDate : null,
+    classDays: group.scheduleVisible ? group.classDays : null,
+    classTime: group.scheduleVisible ? group.classTime : null,
+  };
 }
 
 /**

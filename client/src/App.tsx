@@ -5,6 +5,7 @@ import { LocaleProvider, useI18n } from "@/i18n/locale";
 import { t } from "@/i18n/messages";
 import { canEnter, entryPath, getActiveWorkspaceId, setActiveWorkspaceId, type UiContext } from "@/lib/contexts";
 import { trpc } from "@/lib/trpc";
+import AdminRoutes from "@/pages/admin/Admin";
 import Home from "@/pages/Home";
 import NotFound from "@/pages/NotFound";
 import PartnerPage from "@/pages/PartnerPage";
@@ -122,6 +123,8 @@ function Router() {
       <Route path="/app">{() => <AppRedirect />}</Route>
       <Route path="/settings" component={SettingsPage} />
       <Route path="/partner">{partner(<PartnerPage />)}</Route>
+      <Route path="/admin/:rest*" component={AdminRoutes} />
+      <Route path="/admin" component={AdminRoutes} />
 
       <Route path="/teacher">{teacher(<TeacherHome />)}</Route>
       <Route path="/teacher/assessments">{teacher(<AssessmentsPage />)}</Route>

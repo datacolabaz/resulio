@@ -117,6 +117,15 @@ export const providerWorkspaces = mysqlTable(
   (t) => [index("provider_workspaces_owner_idx").on(t.ownerUserId)],
 );
 
+export const GROUP_FORMATS = ["ONLINE", "IN_PERSON", "HYBRID"] as const;
+/**
+ * AUTO: `joinByInvite` activates membership immediately. APPROVAL: membership starts PENDING,
+ * the teacher approves it. MANUAL: self-join is refused outright — the teacher must add every
+ * student with `addMemberByEmail`. The invite code/link is the same value for both AUTO and
+ * APPROVAL; Resulio does not keep a separate token per channel (see groups.ts).
+ */
+export const GROUP_JOIN_POLICIES = ["AUTO", "APPROVAL", "MANUAL"] as const;
+
 export const groups = mysqlTable(
   "study_groups",
   {
@@ -126,9 +135,20 @@ export const groups = mysqlTable(
     subject: varchar("subject", { length: 120 }).notNull().default(""),
     grade: varchar("grade", { length: 32 }).notNull().default(""),
     description: text("description"),
+    /** Free text so the list of teaching languages never needs a migration to extend. */
+    language: varchar("language", { length: 64 }).notNull().default(""),
+    format: mysqlEnum("format", GROUP_FORMATS).notNull().default("ONLINE"),
+    startDate: timestamp("startDate"),
+    /** e.g. "Mon,Wed,Fri" — free text, not a fixed day-of-week enum, to allow irregular schedules. */
+    classDays: varchar("classDays", { length: 64 }),
+    classTime: varchar("classTime", { length: 32 }),
+    /** Whether classDays/classTime/startDate are shown on the public join-preview screen. */
+    scheduleVisible: boolean("scheduleVisible").notNull().default(false),
     inviteCode: varchar("inviteCode", { length: 32 }).notNull().unique(),
-    /** When true, `joinByInvite` activates membership immediately instead of leaving it PENDING for teacher approval. */
-    autoJoinEnabled: boolean("autoJoinEnabled").notNull().default(false),
+    joinPolicy: mysqlEnum("joinPolicy", GROUP_JOIN_POLICIES).notNull().default("APPROVAL"),
+    /** Deactivating stops new joins without burning the code value the way regenerating does. */
+    codeActive: boolean("codeActive").notNull().default(true),
+    codeExpiresAt: timestamp("codeExpiresAt"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   (t) => [index("groups_workspace_idx").on(t.providerWorkspaceId)],

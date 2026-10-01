@@ -35,6 +35,7 @@ import {
   Plus,
   Presentation,
   Settings,
+  Shield,
   Sun,
   TrendingUp,
   Users,
@@ -358,6 +359,12 @@ export function AppShell({
                     <Settings className="h-4 w-4" aria-hidden />
                     {t("nav.settings")}
                   </DropdownMenuItem>
+                  {user?.isAdmin && (
+                    <DropdownMenuItem onSelect={() => nav("/admin/users")}>
+                      <Shield className="h-4 w-4" aria-hidden />
+                      {t("nav.admin")}
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem onSelect={() => void logout()}>
                     <LogOut className="h-4 w-4" aria-hidden />
                     {t("common.logout")}

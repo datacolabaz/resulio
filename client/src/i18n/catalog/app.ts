@@ -66,6 +66,8 @@ export const app = {
     "Запрос отправлен. Экзамены группы появятся после одобрения преподавателем.",
   ],
   "public.join.request": ["Qoşulmaq üçün sorğu göndər", "Send a join request", "Отправить запрос на вступление"],
+  "public.join.joinNow": ["Qrupa qoşul", "Join group", "Вступить в группу"],
+  "public.join.notAccepting": ["Bu qrup hazırda yeni tələbə qəbul etmir. Qoşulmaq üçün müəlliminizdən dəvət alın.", "This group isn't accepting new students right now. Ask your teacher to add you directly.", "Эта группа сейчас не принимает новых студентов. Попросите преподавателя добавить вас напрямую."],
   "public.myGroups": ["Qruplarım →", "My groups →", "Мои группы →"],
   "public.invite.notFound": ["Dəvət linki tapılmadı, vaxtı bitib və ya ləğv edilib.", "Invite link not found, expired, or revoked.", "Ссылка-приглашение не найдена, истекла или отозвана."],
   "public.invite.emailNote": [
@@ -74,6 +76,10 @@ export const app = {
     "Это приглашение создано для одного конкретного адреса эл. почты. Войдите с тем же аккаунтом Google.",
   ],
   "public.invite.joined": ["Qrupa qoşuldunuz.", "You have joined the group.", "Вы вступили в группу."],
+  "public.preview.language": ["Dil", "Language", "Язык"],
+  "public.preview.format": ["Format", "Format", "Формат"],
+  "public.preview.schedule": ["Cədvəl", "Schedule", "Расписание"],
+  "public.preview.startsOn": ["Başlama: {date}", "Starts: {date}", "Начало: {date}"],
 
   "public.onboarding.title": ["Öyrənmə hədəfinizi seçin", "Set your learning goal", "Укажите свою цель обучения"],
   "public.onboarding.lead": [

@@ -1,10 +1,35 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq, like, or, sql } from "drizzle-orm";
 import { users } from "../../../drizzle/schema";
 import { requireDb, type Tx } from "../../db";
 import { platformRolesOf } from "../access";
 import { AppError } from "../errors";
 import { appendAudit } from "./audit";
 import type { AdminContext } from "./authz";
+
+/** Paginated lookup by name/email substring — the admin UI's "find a user" box. No query returns the most recent signups. */
+export async function searchUsers(query: string | undefined, before: number | undefined, limit = 25) {
+  const db = requireDb();
+  const needle = query?.trim();
+  const conditions = [
+    before ? sql`${users.id} < ${before}` : undefined,
+    needle ? or(like(users.name, `%${needle}%`), like(users.email, `%${needle}%`)) : undefined,
+  ].filter((c): c is NonNullable<typeof c> => c !== undefined);
+  const rows = await db
+    .select({ id: users.id, name: users.name, email: users.email, accountStatus: users.accountStatus, createdAt: users.createdAt, lastSignedIn: users.lastSignedIn })
+    .from(users)
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(users.id))
+    .limit(limit);
+  return rows;
+}
+
+export async function getUser(userId: number) {
+  const db = requireDb();
+  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!user) throw new AppError("NOT_FOUND");
+  const roles = await platformRolesOf(userId, db);
+  return { ...user, roles };
+}
 
 async function lockTarget(tx: Tx, admin: AdminContext, userId: number) {
   if (userId === admin.userId) throw new AppError("CANNOT_TARGET_SELF");
