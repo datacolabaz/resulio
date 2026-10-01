@@ -8,7 +8,7 @@ import { t } from "@/i18n/messages";
 import { availableContexts, CONTEXT_HOME, contextLabel, setActiveWorkspaceId } from "@/lib/contexts";
 import { errorText, providerLabel } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
-import { GraduationCap, Presentation } from "lucide-react";
+import { GraduationCap, LogOut, Presentation } from "lucide-react";
 import { useState } from "react";
 import { Link, Redirect, useLocation, useSearch } from "wouter";
 
@@ -65,7 +65,7 @@ export function WorkspaceForm({ onCreated }: { onCreated?: () => void }) {
 }
 
 export default function WelcomePage() {
-  const { user, loading } = useAuth();
+  const { user, loading, logout } = useAuth();
   const [, nav] = useLocation();
   const search = new URLSearchParams(useSearch());
   const returnTo = safeReturnTo(search.get("returnTo"));
@@ -89,7 +89,13 @@ export default function WelcomePage() {
               <p className="text-sm text-muted-foreground">{t("welcome.lead")}</p>
             </div>
           </div>
-          <LanguageSwitch />
+          <div className="flex items-center gap-2">
+            <LanguageSwitch />
+            <Button variant="outline" size="sm" onClick={() => void logout()}>
+              <LogOut className="h-4 w-4" aria-hidden />
+              {t("common.logout")}
+            </Button>
+          </div>
         </div>
 
         {onlyPending && (
