@@ -8,6 +8,7 @@ export const common = {
   "common.save": ["Yadda saxla", "Save", "Сохранить"],
   "common.saveAndContinue": ["Yadda saxla və davam et", "Save and continue", "Сохранить и продолжить"],
   "common.cancel": ["Ləğv et", "Cancel", "Отмена"],
+  "common.confirm": ["Təsdiqlə", "Confirm", "Подтвердить"],
   "common.close": ["Bağla", "Close", "Закрыть"],
   "common.back": ["Geri", "Back", "Назад"],
   "common.continue": ["Davam et", "Continue", "Продолжить"],

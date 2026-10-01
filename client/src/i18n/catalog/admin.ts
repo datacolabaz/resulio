@@ -1,0 +1,32 @@
+import type { Entry } from "../types";
+
+/** Platform admin console: user lookup/suspend, audit log, security events. Tuple order: [az, en, ru]. */
+export const admin = {
+  "nav.admin": ["Admin panel", "Admin panel", "Панель администратора"],
+  "admin.title": ["Admin panel", "Admin panel", "Панель администратора"],
+  "admin.backToApp": ["Tətbiqə qayıt", "Back to app", "Назад в приложение"],
+  "admin.noAccess": ["Bu bölmə üçün icazəniz yoxdur.", "You do not have access to this section.", "У вас нет доступа к этому разделу."],
+  "admin.reasonLabel": ["Səbəb", "Reason", "Причина"],
+  "admin.reasonPlaceholder": ["Bu əməliyyatın səbəbini qeyd edin (minimum 10 simvol)", "Note the reason for this action (10 characters minimum)", "Укажите причину этого действия (минимум 10 символов)"],
+  "admin.nav.users": ["İstifadəçilər", "Users", "Пользователи"],
+  "admin.nav.audit": ["Audit jurnalı", "Audit log", "Журнал аудита"],
+  "admin.nav.security": ["Təhlükəsizlik", "Security", "Безопасность"],
+  "admin.users.searchPlaceholder": ["Ad və ya e-poçt üzrə axtar", "Search by name or email", "Поиск по имени или эл. почте"],
+  "admin.users.noResults": ["Nəticə yoxdur.", "No results.", "Нет результатов."],
+  "admin.users.detailTitle": ["İstifadəçi", "User", "Пользователь"],
+  "admin.users.roles": ["Rollar", "Roles", "Роли"],
+  "admin.users.suspend": ["Hesabı dayandır", "Suspend account", "Приостановить аккаунт"],
+  "admin.users.unsuspend": ["Dayandırmanı ləğv et", "Unsuspend account", "Снять приостановку"],
+  "admin.users.revokeSessions": ["Sessiyaları ləğv et", "Revoke sessions", "Отозвать сессии"],
+  "admin.users.suspended": ["Hesab dayandırıldı", "Account suspended", "Аккаунт приостановлен"],
+  "admin.users.unsuspended": ["Dayandırma ləğv edildi", "Account unsuspended", "Приостановка снята"],
+  "admin.users.sessionsRevoked": ["Sessiyalar ləğv edildi", "Sessions revoked", "Сессии отозваны"],
+  "admin.audit.action": ["Əməliyyat", "Action", "Действие"],
+  "admin.audit.target": ["Hədəf", "Target", "Цель"],
+  "admin.audit.reason": ["Səbəb", "Reason", "Причина"],
+  "admin.audit.when": ["Vaxt", "When", "Когда"],
+  "admin.audit.empty": ["Hələ audit qeydi yoxdur.", "No audit entries yet.", "Записей аудита пока нет."],
+  "admin.security.review": ["Baxıldı qeyd et", "Mark reviewed", "Отметить проверенным"],
+  "admin.security.reviewed": ["Qeyd olundu", "Marked reviewed", "Отмечено как проверенное"],
+  "admin.security.empty": ["Təhlükəsizlik hadisəsi yoxdur.", "No security events.", "Нет событий безопасности."],
+} as const satisfies Record<string, Entry>;

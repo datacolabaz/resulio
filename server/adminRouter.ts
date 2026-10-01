@@ -29,6 +29,12 @@ export const adminRouter = router({
   me: adminProcedure("overview.view").query(({ ctx }) => ({ roles: ctx.admin.roles, permissions: ctx.admin.permissions })),
 
   users: router({
+    search: adminProcedure("users.search")
+      .input(z.object({ query: z.string().trim().max(255).optional(), before: userId.optional(), limit }).optional())
+      .query(({ input }) => adminUsers.searchUsers(input?.query, input?.before, input?.limit)),
+    get: adminProcedure("users.view")
+      .input(z.object({ userId }))
+      .query(({ input }) => adminUsers.getUser(input.userId)),
     suspend: adminProcedure("users.suspend")
       .input(z.object({ userId, reason }))
       .mutation(({ ctx, input }) => adminUsers.suspendUser(ctx.admin, input.userId, input.reason)),
