@@ -71,6 +71,13 @@
       "when": 1790882676822,
       "tag": "0009_group_class_schedule",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1790885581770,
+      "tag": "0010_persist_tasks_materials_notifications",
+      "breakpoints": true
     }
   ]
 }

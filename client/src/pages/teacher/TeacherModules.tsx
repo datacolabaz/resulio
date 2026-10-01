@@ -65,7 +65,7 @@ interface AssignmentInitial {
   title: string;
   description: string;
   instructions: string;
-  deadline: string;
+  deadline: Date | string;
   groupIds: string[];
   studentIds: number[];
 }

@@ -18,7 +18,7 @@ import {
 } from "../../drizzle/schema";
 import type { StudentAnswer } from "../../shared/assessment";
 import { requireDb, type DbOrTx } from "../db";
-import { store } from "../resulioStore";
+import * as notifications from "./notifications";
 import {
   AUTOSAVE_EVENT_THROTTLE_MS,
   HEARTBEAT_THROTTLE_MS,
@@ -463,8 +463,8 @@ export async function finalizeAttempt(attemptId: string, opts: { auto: boolean }
 
   if (notify) {
     const n = notify as { ownerUserId: number | null; studentId: number; title: string; percentage: number };
-    if (n.ownerUserId) store.notify(n.ownerUserId, "İmtahan tamamlandı", `${n.title}: ${n.percentage}%`);
-    store.notify(n.studentId, "Nəticəniz hazırdır", n.title);
+    if (n.ownerUserId) await notifications.notify(n.ownerUserId, "İmtahan tamamlandı", `${n.title}: ${n.percentage}%`);
+    await notifications.notify(n.studentId, "Nəticəniz hazırdır", n.title);
   }
   return resultId;
 }
@@ -831,7 +831,7 @@ export async function gradeOpenAnswer(scope: TeacherScope, resultId: string, que
       .where(eq(results.id, resultId));
     return { resultId, studentId: result.studentId, ...totals };
   });
-  if (outcome.pendingReviewCount === 0) store.notify(outcome.studentId, "Yoxlama tamamlandı", "Açıq cavablarınız qiymətləndirildi");
+  if (outcome.pendingReviewCount === 0) await notifications.notify(outcome.studentId, "Yoxlama tamamlandı", "Açıq cavablarınız qiymətləndirildi");
   return outcome;
 }
 

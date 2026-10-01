@@ -574,6 +574,81 @@ export const featureFlagOverrides = mysqlTable(
   (t) => [uniqueIndex("feature_flag_override_scope_unique").on(t.flagKey, t.scopeType, t.scopeId)],
 );
 
+export const TASK_SUBMISSION_STATUSES = ["NOT_STARTED", "IN_PROGRESS", "SUBMITTED", "LATE", "REVIEWED"] as const;
+
+/**
+ * A homework/assignment a teacher sends to a group and/or individual students. `groupIds`/
+ * `studentIds` are JSON rather than join tables — same free-list convention as
+ * `groups.classSchedule` — since they're never queried relationally, only read back whole and
+ * filtered in application code.
+ */
+export const tasks = mysqlTable(
+  "tasks",
+  {
+    id: id("id").primaryKey(),
+    providerWorkspaceId: id("providerWorkspaceId").notNull(),
+    createdBy: int("createdBy").notNull(),
+    shareCode: varchar("shareCode", { length: 16 }).notNull().unique(),
+    title: varchar("title", { length: 255 }).notNull(),
+    description: text("description").notNull(),
+    instructions: text("instructions").notNull(),
+    deadline: timestamp("deadline").notNull(),
+    groupIds: json("groupIds").$type<string[]>().notNull(),
+    studentIds: json("studentIds").$type<number[]>().notNull(),
+    attachments: json("attachments").$type<Array<{ name: string; size: string }>>().notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [index("tasks_workspace_idx").on(t.providerWorkspaceId)],
+);
+
+/** One row per student a task reaches, created lazily on first submission. */
+export const taskSubmissions = mysqlTable(
+  "task_submissions",
+  {
+    id: id("id").primaryKey(),
+    taskId: id("taskId").notNull(),
+    studentId: int("studentId").notNull(),
+    status: mysqlEnum("status", TASK_SUBMISSION_STATUSES).notNull(),
+    files: json("files").$type<Array<{ name: string }>>().notNull(),
+    submittedAt: timestamp("submittedAt"),
+    comment: text("comment"),
+  },
+  (t) => [uniqueIndex("task_submissions_task_student_unique").on(t.taskId, t.studentId)],
+);
+
+/** A file a teacher shares with a group and/or individual students — recorded by name only; actual upload is a later phase. */
+export const materials = mysqlTable(
+  "materials",
+  {
+    id: id("id").primaryKey(),
+    providerWorkspaceId: id("providerWorkspaceId").notNull(),
+    createdBy: int("createdBy").notNull(),
+    shareCode: varchar("shareCode", { length: 16 }).notNull().unique(),
+    title: varchar("title", { length: 255 }).notNull(),
+    description: text("description").notNull(),
+    subject: varchar("subject", { length: 120 }).notNull(),
+    topic: varchar("topic", { length: 120 }).notNull(),
+    fileName: varchar("fileName", { length: 255 }).notNull(),
+    groupIds: json("groupIds").$type<string[]>().notNull(),
+    studentIds: json("studentIds").$type<number[]>().notNull(),
+    uploadedAt: timestamp("uploadedAt").defaultNow().notNull(),
+  },
+  (t) => [index("materials_workspace_idx").on(t.providerWorkspaceId)],
+);
+
+export const notifications = mysqlTable(
+  "notifications",
+  {
+    id: id("id").primaryKey(),
+    userId: int("userId").notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    body: text("body").notNull(),
+    isRead: boolean("isRead").notNull().default(false),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [index("notifications_user_idx").on(t.userId, t.createdAt)],
+);
+
 export type ProviderWorkspace = typeof providerWorkspaces.$inferSelect;
 export type PartnerProfile = typeof partnerProfiles.$inferSelect;
 export type Group = typeof groups.$inferSelect;

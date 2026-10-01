@@ -41,7 +41,9 @@ import * as attempts from "./modules/attempts";
 import { AppError } from "./modules/errors";
 import * as groupEmailInvites from "./modules/groupEmailInvites";
 import * as groups from "./modules/groups";
+import * as notifications from "./modules/notifications";
 import * as partners from "./modules/partners";
+import * as tasks from "./modules/tasks";
 import * as workspaces from "./modules/workspaces";
 import { store } from "./resulioStore";
 
@@ -418,47 +420,42 @@ async function assertPatchedRecipients(
 }
 
 const teacherTasksRouter = router({
-  list: teacherProcedure.query(({ ctx }) =>
-    store
-      .workspaceAssignments(ctx.scope.workspaceId)
-      .map((a) => ({ ...a, submissions: store.submissions.filter((s) => s.assignmentId === a.id) })),
-  ),
+  list: teacherProcedure.query(({ ctx }) => tasks.listForWorkspace(ctx.scope.workspaceId)),
   create: teacherProcedure
     .input(assignmentInput)
     .mutation(async ({ ctx, input }) => {
       const ids = await assertRecipients(ctx.scope, input.groupIds, input.studentIds);
-      return store.createAssignment(ctx.scope, { ...input, deadline: input.deadline.toISOString() }, ids);
+      return tasks.createAssignment(ctx.scope, input, ids);
     }),
   update: teacherProcedure
     .input(z.object({ id: entityId, patch: assignmentInput.partial() }))
     .mutation(async ({ ctx, input }) => {
-      const current = store.assignmentOf(ctx.scope, input.id);
+      const current = await tasks.assignmentOf(ctx.scope, input.id);
       const touchesRecipients = input.patch.groupIds !== undefined || input.patch.studentIds !== undefined;
       const before = touchesRecipients ? new Set(await assertRecipients(ctx.scope, current.groupIds, current.studentIds)) : null;
       const after = touchesRecipients ? await assertPatchedRecipients(ctx.scope, current, input.patch) : null;
-      const { deadline, ...rest } = input.patch;
-      const row = store.updateAssignment(ctx.scope, input.id, { ...rest, ...(deadline ? { deadline: deadline.toISOString() } : {}) });
-      if (after && before) for (const sid of after) if (!before.has(sid)) store.notify(sid, "Yeni tapşırıq", row.title);
+      const row = await tasks.updateAssignment(ctx.scope, input.id, input.patch);
+      if (after && before) for (const sid of after) if (!before.has(sid)) await notifications.notify(sid, "Yeni tapşırıq", row.title);
       return row;
     }),
-  remove: teacherProcedure.input(z.object({ id: entityId })).mutation(({ ctx, input }) => store.deleteAssignment(ctx.scope, input.id)),
-  materials: teacherProcedure.query(({ ctx }) => store.workspaceMaterials(ctx.scope.workspaceId)),
+  remove: teacherProcedure.input(z.object({ id: entityId })).mutation(({ ctx, input }) => tasks.deleteAssignment(ctx.scope, input.id)),
+  materials: teacherProcedure.query(({ ctx }) => tasks.listMaterialsForWorkspace(ctx.scope.workspaceId)),
   createMaterial: teacherProcedure
     .input(materialInput)
     .mutation(async ({ ctx, input }) => {
       await assertRecipients(ctx.scope, input.groupIds, input.studentIds);
-      return store.createMaterial(ctx.scope, input);
+      return tasks.createMaterial(ctx.scope, input);
     }),
   updateMaterial: teacherProcedure
     .input(z.object({ id: entityId, patch: materialInput.partial() }))
     .mutation(async ({ ctx, input }) => {
-      const current = store.materialOf(ctx.scope, input.id);
+      const current = await tasks.materialOf(ctx.scope, input.id);
       if (input.patch.groupIds !== undefined || input.patch.studentIds !== undefined) {
         await assertPatchedRecipients(ctx.scope, current, input.patch);
       }
-      return store.updateMaterial(ctx.scope, input.id, input.patch);
+      return tasks.updateMaterial(ctx.scope, input.id, input.patch);
     }),
-  removeMaterial: teacherProcedure.input(z.object({ id: entityId })).mutation(({ ctx, input }) => store.deleteMaterial(ctx.scope, input.id)),
+  removeMaterial: teacherProcedure.input(z.object({ id: entityId })).mutation(({ ctx, input }) => tasks.deleteMaterial(ctx.scope, input.id)),
 });
 
 const workspaceInput = z.object({
@@ -559,7 +556,7 @@ const studentRouter = router({
     .mutation(async ({ ctx, input }) => {
       const joined = await groups.joinByInvite(ctx.user.id, input.inviteCode.toUpperCase());
       const verb = joined.status === "ACTIVE" ? "Yeni tələbə qoşuldu" : "Qoşulma sorğusu";
-      store.notify(joined.ownerUserId, verb, `${ctx.user.name ?? "Tələbə"} → ${joined.groupName}`);
+      await notifications.notify(joined.ownerUserId, verb, `${ctx.user.name ?? "Tələbə"} → ${joined.groupName}`);
       return { groupId: joined.groupId, groupName: joined.groupName, status: joined.status };
     }),
   acceptEmailInvite: studentProcedure
@@ -567,46 +564,27 @@ const studentRouter = router({
     .input(z.object({ token: z.string().trim().min(16).max(128) }))
     .mutation(({ ctx, input }) => groupEmailInvites.acceptEmailInvite(ctx.user.id, ctx.user.email ?? "", input.token)),
   tasks: studentProcedure.query(async ({ ctx }) =>
-    store.studentAssignments(ctx.user.id, await groups.activeGroupIdsOfStudent(ctx.user.id)),
+    tasks.studentAssignments(ctx.user.id, await groups.activeGroupIdsOfStudent(ctx.user.id)),
   ),
   submitTask: studentProcedure
     .use(rateLimit("submitTask", 20, MINUTE))
     .input(z.object({ assignmentId: z.string().min(1).max(32), files: z.array(z.string().trim().min(1).max(255)).min(1).max(10) }))
     .mutation(async ({ ctx, input }) => {
       const groupIds = await groups.activeGroupIdsOfStudent(ctx.user.id);
-      const asg = store.assignments.find((a) => a.id === input.assignmentId);
-      const ownerId = asg ? await workspaces.workspaceOwnerId(asg.workspaceId) : null;
-      try {
-        return store.submitAssignment(ctx.user.id, groupIds, input.assignmentId, input.files, ownerId ?? undefined);
-      } catch {
-        throw new AppError("NOT_FOUND");
-      }
+      return tasks.submitAssignment(ctx.user.id, groupIds, input.assignmentId, input.files);
     }),
   materials: studentProcedure.query(async ({ ctx }) =>
-    store.studentMaterials(ctx.user.id, await groups.activeGroupIdsOfStudent(ctx.user.id)),
+    tasks.studentMaterials(ctx.user.id, await groups.activeGroupIdsOfStudent(ctx.user.id)),
   ),
   /** Self-enrolling via a teacher's share link: adds the student as an individual recipient. */
   claimTask: studentProcedure
     .use(rateLimit("claimTask", 20, MINUTE))
     .input(z.object({ shareCode: z.string().trim().min(4).max(32) }))
-    .mutation(({ ctx, input }) => {
-      const asg = store.assignments.find((row) => row.shareCode === input.shareCode);
-      if (!asg) throw new AppError("NOT_FOUND");
-      if (!asg.studentIds.includes(ctx.user.id)) {
-        asg.studentIds = [...asg.studentIds, ctx.user.id];
-        store.notify(asg.createdBy, "Qoşuldu", `${ctx.user.name ?? "Tələbə"} → ${asg.title}`);
-      }
-      return { id: asg.id };
-    }),
+    .mutation(({ ctx, input }) => tasks.claimAssignment(ctx.user.id, ctx.user.name, input.shareCode)),
   claimMaterial: studentProcedure
     .use(rateLimit("claimMaterial", 20, MINUTE))
     .input(z.object({ shareCode: z.string().trim().min(4).max(32) }))
-    .mutation(({ ctx, input }) => {
-      const m = store.materials.find((row) => row.shareCode === input.shareCode);
-      if (!m) throw new AppError("NOT_FOUND");
-      if (!m.studentIds.includes(ctx.user.id)) m.studentIds = [...m.studentIds, ctx.user.id];
-      return { id: m.id };
-    }),
+    .mutation(({ ctx, input }) => tasks.claimMaterial(ctx.user.id, input.shareCode)),
 });
 
 // ---------------------------------------------------------------------------
@@ -621,15 +599,15 @@ const publicRouter = router({
   task: publicProcedure
     .use(rateLimit("publicTask", 60, MINUTE))
     .input(z.object({ shareCode: z.string().trim().min(4).max(32) }))
-    .query(({ input }) => {
-      const a = store.assignments.find((row) => row.shareCode === input.shareCode);
+    .query(async ({ input }) => {
+      const a = await tasks.assignmentByShareCode(input.shareCode);
       return a ? { id: a.id, title: a.title, description: a.description, deadline: a.deadline } : null;
     }),
   material: publicProcedure
     .use(rateLimit("publicMaterial", 60, MINUTE))
     .input(z.object({ shareCode: z.string().trim().min(4).max(32) }))
-    .query(({ input }) => {
-      const m = store.materials.find((row) => row.shareCode === input.shareCode);
+    .query(async ({ input }) => {
+      const m = await tasks.materialByShareCode(input.shareCode);
       return m ? { id: m.id, title: m.title, description: m.description, subject: m.subject, topic: m.topic, fileName: m.fileName } : null;
     }),
   invite: publicProcedure
@@ -643,9 +621,9 @@ const publicRouter = router({
 });
 
 const inboxRouter = router({
-  list: protectedProcedure.query(({ ctx }) => store.notifications.filter((n) => n.userId === ctx.user.id).slice(0, 100)),
-  read: protectedProcedure.input(z.object({ id: z.string().min(1).max(32) })).mutation(({ ctx, input }) => {
-    store.markRead(ctx.user.id, input.id);
+  list: protectedProcedure.query(({ ctx }) => notifications.listFor(ctx.user.id)),
+  read: protectedProcedure.input(z.object({ id: z.string().min(1).max(32) })).mutation(async ({ ctx, input }) => {
+    await notifications.markRead(ctx.user.id, input.id);
     return { ok: true };
   }),
 });
