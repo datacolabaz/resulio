@@ -16,6 +16,7 @@ import {
   releaseLabel,
   typeLabel,
 } from "@/lib/format";
+import { normalizeJoinInput, resolveJoinInput } from "@/lib/joinInput";
 import { itemStatus, liveStatus } from "@/lib/status";
 import { trpc } from "@/lib/trpc";
 import { CheckCircle2, Clock, History, X } from "lucide-react";
@@ -349,11 +350,6 @@ export function StudentProgress() {
   );
 }
 
-/** Keeps a code input clean as the user types: upper-case, no spaces — matches the server's own normalization. */
-function normalizeCode(raw: string): string {
-  return raw.toUpperCase().replace(/\s+/g, "");
-}
-
 export function StudentGroups() {
   const list = trpc.student.groups.useQuery();
   const [code, setCode] = useState("");
@@ -365,14 +361,14 @@ export function StudentGroups() {
           <p className="mb-2 text-xs text-muted-foreground">{t("student.joinGroupHint")}</p>
           <div className="flex gap-2">
             <Input
-              placeholder={t("welcome.inviteCodePlaceholder")}
-              aria-label={t("welcome.inviteCode")}
+              placeholder={t("welcome.inviteCodeOrLinkPlaceholder")}
+              aria-label={t("welcome.inviteCodeOrLink")}
               value={code}
-              onChange={(e) => setCode(normalizeCode(e.target.value))}
+              onChange={(e) => setCode(normalizeJoinInput(e.target.value))}
             />
             {/* Navigating to the preview page (not joining directly) so the student always sees the
                 group's details and confirms before membership is created or requested. */}
-            <Button disabled={code.trim().length < 4} onClick={() => nav(`/join/${encodeURIComponent(code.trim())}`)}>{t("student.join")}</Button>
+            <Button disabled={!resolveJoinInput(code)} onClick={() => { const route = resolveJoinInput(code); if (route) nav(route); }}>{t("student.join")}</Button>
           </div>
         </Panel>
         <Panel title={t("student.myGroups")}>

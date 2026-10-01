@@ -5,8 +5,18 @@ import { common } from "./common";
 import { format } from "./format";
 import { student } from "./student";
 import { teacher } from "./teacher";
+import { teachingCategories } from "./teachingCategories";
 
 /** Every domain catalog; the i18n test checks that no key is defined twice. */
-export const domains = { common, format, app, teacher, builder, student, admin } as const;
+export const domains = { common, format, app, teacher, builder, student, admin, teachingCategories } as const;
 
-export const catalog = { ...common, ...format, ...app, ...teacher, ...builder, ...student, ...admin } as const;
+export const catalog = {
+  ...common,
+  ...format,
+  ...app,
+  ...teacher,
+  ...builder,
+  ...student,
+  ...admin,
+  ...teachingCategories,
+} as const;

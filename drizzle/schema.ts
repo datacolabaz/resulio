@@ -112,6 +112,10 @@ export const providerWorkspaces = mysqlTable(
     publicDisplayName: varchar("publicDisplayName", { length: 255 }).notNull().default(""),
     providerType: mysqlEnum("providerType", PROVIDER_TYPES).notNull().default("TEACHER"),
     subscriptionStatus: mysqlEnum("subscriptionStatus", SUBSCRIPTION_STATUSES).notNull().default("BETA"),
+    /** One of TEACHING_CATEGORIES (shared/teachingCategories.ts). Plain varchar, not a DB enum, so the list can grow without a migration. */
+    teachingCategory: varchar("teachingCategory", { length: 32 }).notNull().default("OTHER"),
+    /** A known subcategory key for `teachingCategory`, or free text the teacher typed when they picked "Digər". */
+    teachingSubcategory: varchar("teachingSubcategory", { length: 120 }).notNull().default(""),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   (t) => [index("provider_workspaces_owner_idx").on(t.ownerUserId)],

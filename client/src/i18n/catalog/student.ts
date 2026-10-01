@@ -61,7 +61,11 @@ export const student = {
   "student.trend": ["Nəticələrin dinamikası", "Results over time", "Динамика результатов"],
   "student.joinRequested": ["{group}: sorğu göndərildi", "{group}: request sent", "{group}: запрос отправлен"],
   "student.joinGroup": ["Qrupa qoşul", "Join a group", "Вступить в группу"],
-  "student.joinGroupHint": ["Kodu müəlliminizdən və ya tədris mərkəzinizdən alın.", "Get the code from your teacher or learning centre.", "Получите код у преподавателя или учебного центра."],
+  "student.joinGroupHint": [
+    "Müəlliminizdən aldığınız dəvət kodunu və ya linkini bu sahəyə yapışdırın.",
+    "Paste the invite code or link you got from your teacher into this field.",
+    "Вставьте код или ссылку-приглашение от преподавателя в это поле.",
+  ],
   "student.join": ["Qoşul", "Join", "Вступить"],
   "student.myGroups": ["Qruplarım", "My groups", "Мои группы"],
   "student.noGroups": ["Hələ heç bir qrupa qoşulmamısınız.", "You have not joined any groups yet.", "Вы пока не состоите ни в одной группе."],
