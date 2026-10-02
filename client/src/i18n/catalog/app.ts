@@ -314,11 +314,4 @@ export const app = {
   "partner.referredList": ["Kim qoşuldu", "Who signed up", "Кто зарегистрировался"],
   "partner.referredEmpty": ["Hələ heç kim bu linklə qoşulmayıb", "Nobody has signed up through this link yet", "По этой ссылке пока никто не зарегистрировался"],
   "partner.referredRow": ["{name} · {channel} · {date}", "{name} · {channel} · {date}", "{name} · {channel} · {date}"],
-
-  "referral.cardTitle": ["Resulio-nu paylaş, gəlir qazan", "Share Resulio, earn a commission", "Поделитесь Resulio и получайте комиссию"],
-  "referral.cardBody": [
-    "Dostun ilk ödəniş etdikdə sən 10% komissiya qazanırsan.",
-    "When your referral makes their first payment, you earn a 10% commission.",
-    "Когда приглашённый сделает первый платёж, вы получите комиссию 10%.",
-  ],
 } as const satisfies Record<string, Entry>;

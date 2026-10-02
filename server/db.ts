@@ -162,16 +162,6 @@ export async function setPreferredLocale(userId: number, locale: string) {
   await requireDb().update(users).set({ preferredLocale: locale }).where(eq(users.id, userId));
 }
 
-/** Shown at most once, ever, regardless of whether the user shared or skipped. */
-export async function markReferralOnboardingSeen(userId: number) {
-  await requireDb().update(users).set({ referralOnboardingSeenAt: new Date() }).where(eq(users.id, userId));
-}
-
-/** Snoozes the dashboard referral card; it reappears once this is more than REFERRAL_CARD_SNOOZE_DAYS old. */
-export async function markReferralCardDismissed(userId: number) {
-  await requireDb().update(users).set({ referralCardDismissedAt: new Date() }).where(eq(users.id, userId));
-}
-
 /**
  * Saves the optional student onboarding fields and marks onboarding as done, whether the
  * student filled anything in or skipped outright — either way it must not be asked again.
