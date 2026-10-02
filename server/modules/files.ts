@@ -1,8 +1,9 @@
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { files, tasks, type FileRow } from "../../drizzle/schema";
+import { files, materials, tasks, type FileRow } from "../../drizzle/schema";
 import { requireDb } from "../db";
 import { managedWorkspaces } from "./access";
+import { recordEvent } from "./activity";
 import { AppError } from "./errors";
 import { activeGroupIdsOfStudent } from "./groups";
 
@@ -108,4 +109,32 @@ export async function assertCanDownload(file: FileRow, userId: number) {
   if (await teacherOwnsWorkspace(file.workspaceId, userId)) return;
   if (await studentCanReach(file, userId)) return;
   throw new AppError("FORBIDDEN");
+}
+
+/**
+ * Best-effort logging for the teacher-facing "who downloaded this" report. Only a student's own
+ * download of something a teacher sent is interesting here, so the teacher's own preview of their
+ * upload, and a student downloading their own submission back, are both skipped. Resolves which
+ * material or task attachment the file belongs to by lookup rather than requiring the caller to
+ * say — the download endpoint is one shared route for every file kind. Never throws: a logging
+ * failure must not turn a successful download into a failed request.
+ */
+export async function recordDownload(file: FileRow, userId: number) {
+  try {
+    if (file.uploadedBy === userId) return;
+    if (await teacherOwnsWorkspace(file.workspaceId, userId)) return;
+    const db = requireDb();
+    const [material] = await db.select({ id: materials.id }).from(materials).where(eq(materials.fileId, file.id)).limit(1);
+    if (material) {
+      await recordEvent(db, { userId, workspaceId: file.workspaceId, groupId: null, entityType: "MATERIAL", entityId: material.id, eventType: "MATERIAL_DOWNLOADED" });
+      return;
+    }
+    const workspaceTasks = await db.select().from(tasks).where(eq(tasks.providerWorkspaceId, file.workspaceId));
+    const task = workspaceTasks.find((t) => t.attachments.some((a) => a.fileId === file.id));
+    if (task) {
+      await recordEvent(db, { userId, workspaceId: file.workspaceId, groupId: null, entityType: "ASSIGNMENT", entityId: task.id, eventType: "FILE_DOWNLOADED" });
+    }
+  } catch (error) {
+    console.error("[files] recordDownload failed", error);
+  }
 }

@@ -5,11 +5,14 @@ import {
   groups,
   resultItems,
   results,
+  taskSubmissions,
+  tasks,
   users,
   versionQuestions,
 } from "../../drizzle/schema";
 import { requireDb } from "../db";
 import { assignedStudentIds, getTargets, ownedAssessment, summary } from "./assessments";
+import { AppError } from "./errors";
 import {
   bestPerStudent,
   questionStats,
@@ -174,6 +177,29 @@ export async function groupAnalytics(scope: TeacherScope, groupId: string) {
   const allScores = byAssessment.filter((a) => a.completedCount > 0);
   const topics = topicStats(items);
 
+  // Tasks ("tapşırıq") have no score or topic to analyze — just a completion level, which is what
+  // this gives: for every task reaching this group, how many of its members have turned something
+  // in. Kept separate from the exam-based numbers above rather than blended into `history`.
+  const groupTasks = (await db.select().from(tasks).where(eq(tasks.providerWorkspaceId, scope.workspaceId))).filter((t) =>
+    t.groupIds.includes(groupId),
+  );
+  const taskSubs = groupTasks.length
+    ? await db.select().from(taskSubmissions).where(inArray(taskSubmissions.taskId, groupTasks.map((t) => t.id)))
+    : [];
+  const taskProgress = groupTasks
+    .map((t) => {
+      const mine = taskSubs.filter((s) => s.taskId === t.id && memberIds.includes(s.studentId));
+      return {
+        id: t.id,
+        title: t.title,
+        deadline: t.deadline,
+        targetCount: memberIds.length,
+        submittedCount: mine.length,
+        lateCount: mine.filter((s) => s.status === "LATE").length,
+      };
+    })
+    .sort((a, b) => b.deadline.getTime() - a.deadline.getTime());
+
   return {
     group: { id: group.id, name: group.name, subject: group.subject, grade: group.grade },
     studentCount: memberIds.length,
@@ -189,6 +215,59 @@ export async function groupAnalytics(scope: TeacherScope, groupId: string) {
       .filter((a) => a.completedCount > 0)
       .reverse()
       .map((a) => ({ assessmentId: a.id, label: a.title, averageScore: a.averageScore })),
+    taskProgress,
+  };
+}
+
+/**
+ * The exam-progress equivalent of `studentProgress`, scoped to one group instead of every
+ * assessment the student has ever taken — so a student who's in several teachers' groups can see
+ * progress for just this one, instead of everything blended together. Only exams targeted at this
+ * specific group count; results releases/visibility follow the same rule as the self-service
+ * `studentProgress` (no `scope`, so only released results are counted).
+ */
+export async function studentGroupProgress(studentId: number, groupId: string) {
+  const db = requireDb();
+  const [group] = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
+  if (!group) throw new AppError("NOT_FOUND");
+  const memberIds = await activeStudentIdsOfGroups([groupId]);
+  if (!memberIds.includes(studentId)) throw new AppError("NOT_FOUND");
+
+  const workspaceAssessments = await db.select({ id: assessments.id }).from(assessments).where(eq(assessments.providerWorkspaceId, group.providerWorkspaceId));
+  const relatedIds: string[] = [];
+  for (const a of workspaceAssessments) {
+    const t = await getTargets(a.id);
+    if (t.groupIds.includes(groupId)) relatedIds.push(a.id);
+  }
+  const empty = { group: { id: group.id, name: group.name }, series: [], summary: summarizeScores([]), topics: [], skills: [] };
+  if (!relatedIds.length) return empty;
+
+  const rows = await db
+    .select({ r: results, a: assessments, assignmentId: attempts.assignmentId })
+    .from(results)
+    .innerJoin(assessments, eq(assessments.id, results.assessmentId))
+    .innerJoin(attempts, eq(attempts.id, results.attemptId))
+    .where(and(eq(results.studentId, studentId), inArray(results.assessmentId, relatedIds)))
+    .orderBy(asc(results.completedAt));
+  if (!rows.length) return empty;
+
+  const vis = await visibilityForResults(rows.map((x) => ({ result: x.r, assessment: x.a, assignmentId: x.assignmentId })));
+  const visible = rows.filter((x) => vis.get(x.r.id)?.released);
+  const items = await itemsOfResults(visible.map((x) => x.r.id));
+  const scores = visible.map((x) => x.r.percentage);
+  return {
+    group: { id: group.id, name: group.name },
+    series: visible.map((x) => ({
+      resultId: x.r.id,
+      assessmentId: x.a.id,
+      type: x.a.type,
+      label: x.a.settings.title,
+      percentage: x.r.percentage,
+      completedAt: x.r.completedAt,
+    })),
+    summary: summarizeScores(scores),
+    topics: topicStats(items),
+    skills: topicStats(items.filter((i) => i.skill), "skill"),
   };
 }
 

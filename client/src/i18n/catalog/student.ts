@@ -71,6 +71,7 @@ export const student = {
   "student.noGroups": ["Hələ heç bir qrupa qoşulmamısınız.", "You have not joined any groups yet.", "Вы пока не состоите ни в одной группе."],
   "student.member": ["Üzv", "Member", "Участник"],
   "student.awaitingApproval": ["Təsdiq gözləyir", "Awaiting approval", "Ожидает одобрения"],
+  "student.groupProgress": ["Bu qrupdakı proqresim", "Progress in this group", "Прогресс в этой группе"],
   "student.taskSubmitted": ["Təhvil verildi", "Submitted", "Сдано"],
   "student.noTasks": ["Tapşırıq yoxdur", "No assignments", "Заданий нет"],
   "student.noTasksBody": ["Müəlliminiz tapşırıq göndərdikdə burada görünəcək.", "Assignments appear here when your teacher sends them.", "Задания появятся, когда преподаватель их отправит."],
