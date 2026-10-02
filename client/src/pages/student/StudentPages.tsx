@@ -360,22 +360,11 @@ export function StudentGroups() {
   return (
     <AppShell area="learning">
       <div className="grid max-w-3xl gap-5">
-        <Panel title={t("student.joinGroup")}>
-          <p className="mb-2 text-xs text-muted-foreground">{t("student.joinGroupHint")}</p>
-          <div className="flex gap-2">
-            <Input
-              placeholder={t("welcome.inviteCodeOrLinkPlaceholder")}
-              aria-label={t("welcome.inviteCodeOrLink")}
-              value={code}
-              onChange={(e) => setCode(normalizeJoinInput(e.target.value))}
-            />
-            {/* Navigating to the preview page (not joining directly) so the student always sees the
-                group's details and confirms before membership is created or requested. */}
-            <Button disabled={!resolveJoinInput(code)} onClick={() => { const route = resolveJoinInput(code); if (route) nav(route); }}>{t("student.join")}</Button>
-          </div>
-        </Panel>
-        <Panel title={t("student.myGroups")}>
-          {!list.data?.length ? <p className="text-sm text-muted-foreground">{t("student.noGroups")}</p> : (
+        {/* A student who already has groups sees those first -- the join-another-group box is a
+            secondary action, not the first thing competing for attention on a page whose main
+            job, for most visits, is checking groups already joined. */}
+        {!!list.data?.length && (
+          <Panel title={t("student.myGroups")}>
             <ul className="divide-y">
               {list.data.map((g) => (
                 <li key={g.id} className="py-2 text-sm">
@@ -402,8 +391,27 @@ export function StudentGroups() {
                 </li>
               ))}
             </ul>
-          )}
+          </Panel>
+        )}
+        <Panel title={t("student.joinGroup")}>
+          <p className="mb-2 text-xs text-muted-foreground">{t("student.joinGroupHint")}</p>
+          <div className="flex gap-2">
+            <Input
+              placeholder={t("welcome.inviteCodeOrLinkPlaceholder")}
+              aria-label={t("welcome.inviteCodeOrLink")}
+              value={code}
+              onChange={(e) => setCode(normalizeJoinInput(e.target.value))}
+            />
+            {/* Navigating to the preview page (not joining directly) so the student always sees the
+                group's details and confirms before membership is created or requested. */}
+            <Button disabled={!resolveJoinInput(code)} onClick={() => { const route = resolveJoinInput(code); if (route) nav(route); }}>{t("student.join")}</Button>
+          </div>
         </Panel>
+        {!list.data?.length && (
+          <Panel title={t("student.myGroups")}>
+            <p className="text-sm text-muted-foreground">{t("student.noGroups")}</p>
+          </Panel>
+        )}
       </div>
     </AppShell>
   );
