@@ -10,6 +10,7 @@ import { frontendRedirect, hostRedirect } from "./hostRedirect";
 import { securityHeaders } from "./spa";
 import { publicPlatformScript } from "./publicConfig";
 import { requestIdMiddleware } from "./requestMeta";
+import { registerFileRoutes } from "./files";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
@@ -54,6 +55,7 @@ async function startServer() {
     res.set("Cache-Control", "no-store").type("application/javascript").send(publicPlatformScript());
   });
   registerGoogleAuthRoutes(app);
+  registerFileRoutes(app);
   app.use(
     "/api/trpc",
     createExpressMiddleware({

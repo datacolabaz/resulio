@@ -20,6 +20,7 @@ import {
   typeLabel,
 } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
+import { fileDownloadUrl } from "@/lib/uploadFile";
 import type { ClassScheduleEntry } from "@shared/schedule";
 import { TEACHING_CATEGORIES, TEACHING_SUBCATEGORIES, type TeachingCategory } from "@shared/teachingCategories";
 import { useState } from "react";
@@ -383,7 +384,15 @@ export function PublicMaterialPage() {
         <>
           <h1 className="mt-4 break-words text-2xl font-semibold">{m.title}</h1>
           {m.description && <p className="mt-3 break-words text-sm text-foreground-secondary">{m.description}</p>}
-          <p className="mt-3 text-sm text-muted-foreground">{[m.subject, m.topic, m.fileName].filter(Boolean).join(" · ")}</p>
+          <p className="mt-3 text-sm text-muted-foreground">{[m.subject, m.topic].filter(Boolean).join(" · ")}</p>
+          {m.fileId && (
+            <a
+              href={fileDownloadUrl(m.fileId)}
+              className="mt-3 inline-block rounded-lg border border-border bg-muted px-3 py-1.5 text-sm text-link underline-offset-2 hover:underline"
+            >
+              {t("common.download")}: {m.fileName}
+            </a>
+          )}
           <div className="mt-6">
             {loading ? null : !user ? (
               <Button className="w-full" onClick={() => startLogin(returnTo)}>{t("common.signInGoogle")}</Button>

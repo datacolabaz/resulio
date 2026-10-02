@@ -1,5 +1,6 @@
 import { ProgressChart, TopicBars } from "@/components/AnalyticsBlocks";
 import { AppShell, ChoiceChip, EmptyState, ErrorNote, Loading, Panel, Pill, StatCard } from "@/components/AppShell";
+import { SingleFileUpload } from "@/components/FileUpload";
 import { StatusBadge, toneSurface } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +20,7 @@ import {
 import { normalizeJoinInput, resolveJoinInput } from "@/lib/joinInput";
 import { itemStatus, liveStatus } from "@/lib/status";
 import { trpc } from "@/lib/trpc";
+import { fileDownloadUrl, type UploadedFile } from "@/lib/uploadFile";
 import { CheckCircle2, Clock, History, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -395,7 +397,7 @@ export function StudentGroups() {
 export function StudentTasks() {
   const utils = trpc.useUtils();
   const list = trpc.student.tasks.useQuery();
-  const [files, setFiles] = useState<Record<string, string>>({});
+  const [files, setFiles] = useState<Record<string, UploadedFile | null>>({});
   const submit = trpc.student.submitTask.useMutation({
     onSuccess: () => { toast.success(t("student.taskSubmitted")); void utils.student.tasks.invalidate(); },
     onError: (e) => toast.error(errorText(e)),
@@ -418,15 +420,34 @@ export function StudentTasks() {
             >
               <p className="break-words text-sm text-foreground-secondary">{a.description}</p>
               <p className="mt-2 text-xs text-muted-foreground">{t("modules.deadlineValue", { date: fmtDateTime(a.deadline) })}</p>
-              <div className="mt-3 flex gap-2">
-                <Input
-                  placeholder={t("student.fileName")}
-                  aria-label={t("student.fileNameFor", { title: a.title })}
-                  value={files[a.id] ?? ""}
-                  onChange={(e) => setFiles({ ...files, [a.id]: e.target.value })}
-                />
-                <Button disabled={!files[a.id]?.trim() || submit.isPending} onClick={() => submit.mutate({ assignmentId: a.id, files: [files[a.id].trim()] })}>{t("common.send")}</Button>
-              </div>
+              {a.attachments.length > 0 && (
+                <ul className="mt-2 flex flex-wrap gap-1.5">
+                  {a.attachments.map((file) => (
+                    <li key={file.fileId}>
+                      <a href={fileDownloadUrl(file.fileId)} className="rounded-lg border border-border bg-muted px-2 py-1 text-xs text-link underline-offset-2 hover:underline">
+                        {file.name}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {a.submission?.files?.length ? (
+                <p className="mt-3 text-xs text-muted-foreground">{t("student.submittedFiles", { names: a.submission.files.map((f) => f.name).join(", ") })}</p>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  <SingleFileUpload context="submission" taskId={a.id} value={files[a.id] ?? null} onChange={(file) => setFiles({ ...files, [a.id]: file })} />
+                  <Button
+                    disabled={!files[a.id] || submit.isPending}
+                    onClick={() => {
+                      const file = files[a.id];
+                      if (!file) return;
+                      submit.mutate({ assignmentId: a.id, files: [{ fileId: file.fileId, name: file.name, size: file.size }] });
+                    }}
+                  >
+                    {t("common.send")}
+                  </Button>
+                </div>
+              )}
             </Panel>
           ))}
         </div>
@@ -446,7 +467,12 @@ export function StudentMaterials() {
           {list.data.map((m) => (
             <Panel key={m.id} title={m.title}>
               <p className="break-words text-sm text-foreground-secondary">{m.description}</p>
-              <p className="mt-2 break-words text-xs text-muted-foreground">{[m.subject, m.topic, m.fileName].filter(Boolean).join(" · ")}</p>
+              <p className="mt-2 break-words text-xs text-muted-foreground">{[m.subject, m.topic].filter(Boolean).join(" · ")}</p>
+              {m.fileId && (
+                <a href={fileDownloadUrl(m.fileId)} className="mt-2 inline-block rounded-lg border border-border bg-muted px-2 py-1 text-xs text-link underline-offset-2 hover:underline">
+                  {m.fileName}
+                </a>
+              )}
             </Panel>
           ))}
         </div>

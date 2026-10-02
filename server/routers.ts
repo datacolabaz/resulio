@@ -398,7 +398,10 @@ const assignmentInput = z.object({
   instructions: z.string().trim().max(5000).default(""),
   deadline: z.coerce.date(),
   ...recipients,
-  attachments: z.array(z.object({ name: z.string().max(255), size: z.string().max(32) })).max(20).default([]),
+  attachments: z
+    .array(z.object({ fileId: z.string().trim().min(1).max(32), name: z.string().max(255), size: z.number().int().nonnegative() }))
+    .max(20)
+    .default([]),
 });
 
 const materialInput = z.object({
@@ -407,6 +410,9 @@ const materialInput = z.object({
   subject: z.string().trim().max(120).default(""),
   topic: z.string().trim().max(120).default(""),
   fileName: z.string().trim().min(1).max(255),
+  fileId: z.string().trim().min(1).max(32).nullable().default(null),
+  mimeType: z.string().trim().max(127).nullable().default(null),
+  sizeBytes: z.number().int().nonnegative().nullable().default(null),
   ...recipients,
 });
 
@@ -568,7 +574,15 @@ const studentRouter = router({
   ),
   submitTask: studentProcedure
     .use(rateLimit("submitTask", 20, MINUTE))
-    .input(z.object({ assignmentId: z.string().min(1).max(32), files: z.array(z.string().trim().min(1).max(255)).min(1).max(10) }))
+    .input(
+      z.object({
+        assignmentId: z.string().min(1).max(32),
+        files: z
+          .array(z.object({ fileId: z.string().trim().min(1).max(32), name: z.string().max(255), size: z.number().int().nonnegative() }))
+          .min(1)
+          .max(10),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       const groupIds = await groups.activeGroupIdsOfStudent(ctx.user.id);
       return tasks.submitAssignment(ctx.user.id, groupIds, input.assignmentId, input.files);
@@ -608,7 +622,9 @@ const publicRouter = router({
     .input(z.object({ shareCode: z.string().trim().min(4).max(32) }))
     .query(async ({ input }) => {
       const m = await tasks.materialByShareCode(input.shareCode);
-      return m ? { id: m.id, title: m.title, description: m.description, subject: m.subject, topic: m.topic, fileName: m.fileName } : null;
+      return m
+        ? { id: m.id, title: m.title, description: m.description, subject: m.subject, topic: m.topic, fileName: m.fileName, fileId: m.fileId }
+        : null;
     }),
   invite: publicProcedure
     .use(rateLimit("publicInvite", 60, MINUTE))
