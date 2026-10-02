@@ -1,10 +1,12 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { materials, taskSubmissions, tasks } from "../../drizzle/schema";
+import { materials, taskSubmissions, tasks, type TaskAccessMode } from "../../drizzle/schema";
 import { requireDb } from "../db";
-import type { TeacherScope } from "./access";
+import { managedWorkspaces, type TeacherScope } from "./access";
 import { AppError } from "./errors";
+import { activeGroupIdsOfStudent } from "./groups";
 import * as notifications from "./notifications";
+import { canSeeTaskContent, taskReachesStudent, taskViewerAccess, type TaskAccessSubject, type TaskViewerAccess } from "./taskAccess";
 import { workspaceOwnerId } from "./workspaces";
 
 /**
@@ -28,6 +30,8 @@ export interface AssignmentInput {
   groupIds: string[];
   studentIds: number[];
   attachments: Array<{ fileId: string; name: string; size: number }>;
+  /** Omitted = the column default, PUBLIC. */
+  accessMode?: TaskAccessMode;
 }
 
 /** Throws NOT_FOUND if the assignment doesn't exist or belongs to another workspace. */
@@ -85,7 +89,7 @@ export async function deleteAssignment(scope: TeacherScope, id: string) {
 export async function studentAssignments(studentId: number, groupIds: string[]) {
   const db = requireDb();
   const rows = await db.select().from(tasks);
-  const relevant = rows.filter((t) => t.studentIds.includes(studentId) || t.groupIds.some((g) => groupIds.includes(g)));
+  const relevant = rows.filter((t) => taskReachesStudent(t, studentId, groupIds));
   if (!relevant.length) return [];
   const subs = await db
     .select()
@@ -104,8 +108,7 @@ export async function submitAssignment(
   const db = requireDb();
   const [task] = await db.select().from(tasks).where(eq(tasks.id, assignmentId)).limit(1);
   if (!task) throw new AppError("NOT_FOUND");
-  const reaches = task.studentIds.includes(studentId) || task.groupIds.some((g) => groupIds.includes(g));
-  if (!reaches) throw new AppError("NOT_FOUND");
+  if (!taskReachesStudent(task, studentId, groupIds)) throw new AppError(task.accessMode === "GROUPS" ? "TASK_NO_ACCESS" : "NOT_FOUND");
 
   const status = task.deadline.getTime() < Date.now() ? ("LATE" as const) : ("SUBMITTED" as const);
   const filesJson = files;
@@ -131,11 +134,29 @@ export async function assignmentByShareCode(shareCode: string) {
   return row ?? null;
 }
 
-/** Self-enrolling via a teacher's share link: adds the student as an individual recipient. */
+/** Resolves what `userId` (null = signed out) may see of this task on its share page. */
+export async function viewerAccess(
+  task: TaskAccessSubject & { providerWorkspaceId: string },
+  userId: number | null,
+): Promise<TaskViewerAccess> {
+  if (userId === null) return taskViewerAccess(task, null);
+  const [owned, groupIds] = await Promise.all([managedWorkspaces(userId), activeGroupIdsOfStudent(userId)]);
+  return taskViewerAccess(task, { userId, managesWorkspace: owned.some((w) => w.id === task.providerWorkspaceId), groupIds });
+}
+
+/**
+ * Self-enrolling via a teacher's share link: adds the student as an individual recipient. A
+ * group-restricted task is only claimable by a member of one of its groups, who it already
+ * reaches through that group — so nothing is appended to `studentIds` then.
+ */
 export async function claimAssignment(userId: number, userName: string | null, shareCode: string) {
   const db = requireDb();
   const [row] = await db.select().from(tasks).where(eq(tasks.shareCode, shareCode)).limit(1);
   if (!row) throw new AppError("NOT_FOUND");
+  if (row.accessMode === "GROUPS") {
+    if (!canSeeTaskContent(await viewerAccess(row, userId))) throw new AppError("TASK_NO_ACCESS");
+    return { id: row.id };
+  }
   if (!row.studentIds.includes(userId)) {
     await db.update(tasks).set({ studentIds: [...row.studentIds, userId] }).where(eq(tasks.id, row.id));
     await notifications.notify(row.createdBy, "Qoşuldu", `${userName ?? "Tələbə"} → ${row.title}`);

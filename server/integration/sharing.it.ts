@@ -47,7 +47,8 @@ describe("public task page: file access for recipients", () => {
     const { task } = await taskWithAttachment(teacher.scope);
     const anon = caller(null);
     const seen = await anon.public.task({ shareCode: task.shareCode });
-    expect(seen?.attachments).toEqual([{ fileId: expect.any(String), name: "Excel_SUMIF_SUMIFS_3_Exercises.xlsx", size: expect.any(Number) }]);
+    expect(seen?.access).toBe("ALLOWED");
+    expect(seen?.task?.attachments).toEqual([{ fileId: expect.any(String), name: "Excel_SUMIF_SUMIFS_3_Exercises.xlsx", size: expect.any(Number) }]);
   });
 
   it("lets a signed-in recipient who was never granted workspace or submission access still download the task's attachment", async () => {

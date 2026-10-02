@@ -12,12 +12,21 @@ type Engagement = RouterOutputs["teacher"]["tasks"]["engagement"];
  */
 export function TaskEngagementList({ data }: { data: Engagement | undefined }) {
   if (!data) return null;
-  const { students, anonymous } = data;
+  const { students, anonymous, accessMode } = data;
+  const restricted = accessMode === "GROUPS";
   const active = students.filter((s) => s.openedAt || s.downloadCount > 0 || s.submittedAt || s.joinedAt);
+  // In restricted mode the roster is exactly the selected groups' members, so these are the ones still to reach.
+  const notOpened = restricted ? students.filter((s) => s.onRoster && !s.openedAt && !s.downloadCount && !s.submittedAt) : [];
   return (
     <div className="mt-3 rounded-lg border bg-muted/30 p-3">
       <h4 className="text-xs font-medium text-foreground-secondary">{t("modules.engagementTitle")}</h4>
       {!active.length && <p className="mt-1 text-xs text-muted-foreground">{t("modules.engagementEmpty")}</p>}
+      {notOpened.length > 0 && (
+        <div className="mt-2 text-xs">
+          <p className="font-medium text-foreground-secondary">{t("modules.engagementNotOpenedMembers", { count: notOpened.length })}</p>
+          <p className="mt-0.5 break-words text-muted-foreground">{notOpened.map((s) => s.name ?? s.email ?? `#${s.studentId}`).join(", ")}</p>
+        </div>
+      )}
       {students.length > 0 && (
         <div className="overflow-x-auto">
           <table className="mt-2 w-full text-xs">
@@ -35,7 +44,11 @@ export function TaskEngagementList({ data }: { data: Engagement | undefined }) {
                 <tr key={s.studentId} className="border-t border-border/60 align-top">
                   <td className="py-1.5 pr-2">
                     <div className="min-w-0 break-words font-medium">{s.name ?? s.email ?? `#${s.studentId}`}</div>
-                    {!s.onRoster && <div className="text-muted-foreground">{t("modules.engagementViaLink")}</div>}
+                    {!s.onRoster && (
+                      <div className={restricted ? "text-destructive" : "text-muted-foreground"}>
+                        {restricted ? t("modules.engagementNoAccess") : t("modules.engagementViaLink")}
+                      </div>
+                    )}
                   </td>
                   <td className="py-1.5 pr-2">{s.channel ? shareChannelLabel(s.channel) : s.openedAt ? t("modules.engagementDashboard") : "—"}</td>
                   <td className="py-1.5 pr-2">

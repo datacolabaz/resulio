@@ -10,6 +10,7 @@ import {
   taskSubmissions,
   users,
   type Assessment,
+  type TaskAccessMode,
 } from "../../drizzle/schema";
 import type { ShareChannel } from "../../shared/shareTracking";
 import {
@@ -485,6 +486,9 @@ async function eligibleStudents(groupIds: string[], studentIds: number[]): Promi
     .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "", "az"));
 }
 
+/** Individually listed students only count as a task's recipients while its link is open to anyone. */
+const taskRosterStudentIds = (task: { accessMode: TaskAccessMode; studentIds: number[] }) => (task.accessMode === "GROUPS" ? [] : task.studentIds);
+
 /** Teacher view of a material: who among the students it reaches has viewed and/or downloaded it. */
 export async function materialActivity(scope: TeacherScope, materialId: string) {
   const material = await tasksModule.materialOf(scope, materialId);
@@ -518,7 +522,7 @@ export async function materialActivity(scope: TeacherScope, materialId: string) 
  *  itself already comes back with `teacher.tasks.list`, so this only adds "seen it or not"). */
 export async function taskActivity(scope: TeacherScope, taskId: string) {
   const task = await tasksModule.assignmentOf(scope, taskId);
-  const roster = await eligibleStudents(task.groupIds, task.studentIds);
+  const roster = await eligibleStudents(task.groupIds, taskRosterStudentIds(task));
   if (!roster.length) return { eligible: [] };
   const db = requireDb();
   const events = await db
@@ -568,7 +572,7 @@ export async function taskEngagement(scope: TeacherScope, taskId: string) {
   const excluded = new Set(excludeUserIds);
 
   const [roster, rows, submissions, activityRows] = await Promise.all([
-    eligibleStudents(task.groupIds, task.studentIds),
+    eligibleStudents(task.groupIds, taskRosterStudentIds(task)),
     shareTracking.shareEventsFor("TASK", task.shareCode),
     db
       .select({ studentId: taskSubmissions.studentId, status: taskSubmissions.status, submittedAt: taskSubmissions.submittedAt })
@@ -665,6 +669,7 @@ export async function taskEngagement(scope: TeacherScope, taskId: string) {
 
   return {
     shareCode: task.shareCode,
+    accessMode: task.accessMode,
     funnel,
     students,
     anonymous: { visitors: anonymous.visitors.size, opens: anonymous.opens, downloads: anonymous.downloads },

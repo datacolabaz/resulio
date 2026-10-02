@@ -25,16 +25,18 @@ function RecipientPicker({
   groupIds,
   studentIds,
   onChange,
+  groupsOnly = false,
 }: {
   groupIds: string[];
   studentIds: number[];
   onChange: (v: { groupIds: string[]; studentIds: number[] }) => void;
+  groupsOnly?: boolean;
 }) {
   const groups = trpc.teacher.groups.list.useQuery();
   const students = trpc.teacher.students.useQuery();
   const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className={`grid gap-3 ${groupsOnly ? "" : "sm:grid-cols-2"}`}>
       <fieldset>
         <legend className="mb-1 text-sm text-foreground-secondary">{t("common.groups")}</legend>
         <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border p-2">
@@ -47,7 +49,7 @@ function RecipientPicker({
           {!groups.data?.length && <div className="text-xs text-muted-foreground">{t("modules.noGroups")}</div>}
         </div>
       </fieldset>
-      <fieldset>
+      {!groupsOnly && <fieldset>
         <legend className="mb-1 text-sm text-foreground-secondary">{t("common.students")}</legend>
         <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border p-2">
           {(students.data ?? []).map((s) => (
@@ -58,9 +60,44 @@ function RecipientPicker({
           ))}
           {!students.data?.length && <div className="text-xs text-muted-foreground">{t("modules.noStudents")}</div>}
         </div>
-      </fieldset>
+      </fieldset>}
     </div>
   );
+}
+
+type TaskAccessMode = "PUBLIC" | "GROUPS";
+
+function AccessModePicker({ value, onChange }: { value: TaskAccessMode; onChange: (v: TaskAccessMode) => void }) {
+  const options: Array<{ mode: TaskAccessMode; label: string; hint: string }> = [
+    { mode: "PUBLIC", label: t("modules.accessPublic"), hint: t("modules.accessPublicHint") },
+    { mode: "GROUPS", label: t("modules.accessGroups"), hint: t("modules.accessGroupsHint") },
+  ];
+  return (
+    <fieldset>
+      <legend className="mb-1 text-sm text-foreground-secondary">{t("modules.accessTitle")}</legend>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {options.map((o) => (
+          <label
+            key={o.mode}
+            className={`flex cursor-pointer gap-2 rounded-lg border p-2.5 text-sm ${value === o.mode ? "border-link bg-muted" : "border-border"}`}
+          >
+            <input type="radio" name="task-access-mode" className="mt-0.5 accent-link" checked={value === o.mode} onChange={() => onChange(o.mode)} />
+            <span className="min-w-0">
+              <span className="block font-medium">{o.label}</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">{o.hint}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+/** Open-link vs. selected-groups badge on a task card. */
+function AccessBadge({ accessMode, groupIds, groupNames }: { accessMode: TaskAccessMode; groupIds: string[]; groupNames: Map<string, string> }) {
+  if (accessMode === "PUBLIC") return <Pill>{t("modules.accessBadgePublic")}</Pill>;
+  const names = groupIds.map((id) => groupNames.get(id)).filter((n): n is string => !!n);
+  return <Pill className="max-w-full break-words">{t("modules.accessBadgeGroups", { groups: names.join(", ") || "—" })}</Pill>;
 }
 
 interface AssignmentInitial {
@@ -72,6 +109,7 @@ interface AssignmentInitial {
   groupIds: string[];
   studentIds: number[];
   attachments: Array<{ fileId: string; name: string; size: number }>;
+  accessMode: TaskAccessMode;
 }
 
 function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; onOpenChange: (v: boolean) => void; initial?: AssignmentInitial }) {
@@ -84,11 +122,13 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
     groupIds: initial?.groupIds ?? ([] as string[]),
     studentIds: initial?.studentIds ?? ([] as number[]),
     attachments: (initial?.attachments ?? []).map((a) => ({ ...a, mimeType: "" })),
+    accessMode: initial?.accessMode ?? ("PUBLIC" as TaskAccessMode),
   });
   const done = () => { void utils.teacher.tasks.list.invalidate(); onOpenChange(false); };
   const create = trpc.teacher.tasks.create.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
   const update = trpc.teacher.tasks.update.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
   const deadline = fromLocalInput(f.deadline);
+  const missingGroups = f.accessMode === "GROUPS" && !f.groupIds.length;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl">
@@ -101,16 +141,27 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
             <p className={`mb-1 text-sm ${fieldLabel}`}>{t("modules.attachments")}</p>
             <MultiFileUpload context="task-attachment" value={f.attachments} onChange={(attachments) => setF({ ...f, attachments })} />
           </div>
-          <RecipientPicker groupIds={f.groupIds} studentIds={f.studentIds} onChange={(v) => setF({ ...f, ...v })} />
+          <AccessModePicker value={f.accessMode} onChange={(accessMode) => setF({ ...f, accessMode })} />
+          <RecipientPicker groupIds={f.groupIds} studentIds={f.studentIds} groupsOnly={f.accessMode === "GROUPS"} onChange={(v) => setF({ ...f, ...v })} />
+          {missingGroups && <p role="alert" className="text-xs text-destructive">{t("modules.accessGroupsRequired")}</p>}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
           <Button
-            disabled={f.title.trim().length < 2 || !deadline || create.isPending || update.isPending}
+            disabled={f.title.trim().length < 2 || !deadline || missingGroups || create.isPending || update.isPending}
             onClick={() => {
               if (!deadline) return;
               const attachments = f.attachments.map(({ fileId, name, size }) => ({ fileId, name, size }));
-              const payload = { title: f.title, description: f.description, instructions: f.instructions, deadline, groupIds: f.groupIds, studentIds: f.studentIds, attachments };
+              const payload = {
+                title: f.title,
+                description: f.description,
+                instructions: f.instructions,
+                deadline,
+                groupIds: f.groupIds,
+                studentIds: f.studentIds,
+                attachments,
+                accessMode: f.accessMode,
+              };
               if (initial) update.mutate({ id: initial.id, patch: payload });
               else create.mutate(payload);
             }}
@@ -128,6 +179,8 @@ export function AssignmentsPage() {
   const list = trpc.teacher.tasks.list.useQuery();
   const students = trpc.teacher.students.useQuery();
   const studentByI = new Map((students.data ?? []).map((s) => [s.id, s]));
+  const groupsQ = trpc.teacher.groups.list.useQuery();
+  const groupNames = new Map((groupsQ.data ?? []).map((g) => [g.id, g.name]));
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<AssignmentInitial | null>(null);
   const [shareId, setShareId] = useState<string | null>(null);
@@ -165,6 +218,7 @@ export function AssignmentsPage() {
               >
                 <p className="break-words text-sm text-foreground-secondary">{a.description}</p>
                 <p className="mt-2 text-xs text-muted-foreground">{t("modules.deadlineValue", { date: fmtDateTime(a.deadline) })}</p>
+                <div className="mt-2"><AccessBadge accessMode={a.accessMode} groupIds={a.groupIds} groupNames={groupNames} /></div>
                 {a.attachments.length > 0 && (
                   <ul className="mt-2 flex flex-wrap gap-1.5">
                     {a.attachments.map((file) => (

@@ -20,7 +20,7 @@ import { ENV } from "./_core/env";
 import { requestMeta } from "./_core/requestMeta";
 import { sdk } from "./_core/sdk";
 import { systemRouter } from "./_core/systemRouter";
-import { GROUP_FORMATS, GROUP_JOIN_POLICIES, PROVIDER_TYPES, UI_CONTEXTS } from "../drizzle/schema";
+import { GROUP_FORMATS, GROUP_JOIN_POLICIES, PROVIDER_TYPES, TASK_ACCESS_MODES, UI_CONTEXTS, type TaskAccessMode } from "../drizzle/schema";
 import { adminRouter } from "./adminRouter";
 import {
   partnerProcedure,
@@ -46,6 +46,7 @@ import * as notifications from "./modules/notifications";
 import * as partners from "./modules/partners";
 import * as referrals from "./modules/referrals";
 import * as shareTracking from "./modules/shareTracking";
+import { canSeeTaskContent, rosterStudentIds } from "./modules/taskAccess";
 import * as tasks from "./modules/tasks";
 import * as workspaces from "./modules/workspaces";
 import { store } from "./resulioStore";
@@ -95,12 +96,17 @@ async function me(user: NonNullable<Awaited<ReturnType<typeof db.getUserByOpenId
   };
 }
 
-async function assertRecipients(scope: TeacherScope, groupIds: string[], studentIds: number[]) {
+/** Validates the recipients belong to this teacher and returns who they reach (group members only, for a GROUPS-restricted task). */
+async function assertRecipients(scope: TeacherScope, groupIds: string[], studentIds: number[], accessMode: TaskAccessMode = "PUBLIC") {
   for (const g of groupIds) await groups.assertGroupOwner(scope, g);
   const own = new Set(await groups.teacherStudentIds(scope));
   if (!studentIds.every((s) => own.has(s))) throw new AppError("FORBIDDEN");
   const fromGroups = await groups.activeStudentIdsOfGroups(groupIds);
-  return [...new Set([...fromGroups, ...studentIds])];
+  return rosterStudentIds({ accessMode, groupIds, studentIds }, fromGroups);
+}
+
+function assertAccessGroups(accessMode: TaskAccessMode, groupIds: string[]) {
+  if (accessMode === "GROUPS" && !groupIds.length) throw new AppError("TASK_GROUPS_REQUIRED");
 }
 
 const csvCell = (v: unknown) => {
@@ -434,6 +440,8 @@ const assignmentInput = z.object({
     .array(z.object({ fileId: z.string().trim().min(1).max(32), name: z.string().max(255), size: z.number().int().nonnegative() }))
     .max(20)
     .default([]),
+  // No .default(): zod 4 applies defaults inside .partial() too, which would reset the mode on every patch that omits it.
+  accessMode: z.enum(TASK_ACCESS_MODES).optional(),
 });
 
 const materialInput = z.object({
@@ -462,16 +470,22 @@ const teacherTasksRouter = router({
   create: teacherProcedure
     .input(assignmentInput)
     .mutation(async ({ ctx, input }) => {
-      const ids = await assertRecipients(ctx.scope, input.groupIds, input.studentIds);
-      return tasks.createAssignment(ctx.scope, input, ids);
+      const accessMode = input.accessMode ?? "PUBLIC";
+      assertAccessGroups(accessMode, input.groupIds);
+      const ids = await assertRecipients(ctx.scope, input.groupIds, input.studentIds, accessMode);
+      return tasks.createAssignment(ctx.scope, { ...input, accessMode }, ids);
     }),
   update: teacherProcedure
     .input(z.object({ id: entityId, patch: assignmentInput.partial() }))
     .mutation(async ({ ctx, input }) => {
       const current = await tasks.assignmentOf(ctx.scope, input.id);
-      const touchesRecipients = input.patch.groupIds !== undefined || input.patch.studentIds !== undefined;
-      const before = touchesRecipients ? new Set(await assertRecipients(ctx.scope, current.groupIds, current.studentIds)) : null;
-      const after = touchesRecipients ? await assertPatchedRecipients(ctx.scope, current, input.patch) : null;
+      const accessMode = input.patch.accessMode ?? current.accessMode;
+      const groupIds = input.patch.groupIds ?? current.groupIds;
+      const studentIds = input.patch.studentIds ?? current.studentIds;
+      assertAccessGroups(accessMode, groupIds);
+      const touchesRecipients = input.patch.groupIds !== undefined || input.patch.studentIds !== undefined || accessMode !== current.accessMode;
+      const before = touchesRecipients ? new Set(await assertRecipients(ctx.scope, current.groupIds, current.studentIds, current.accessMode)) : null;
+      const after = touchesRecipients ? await assertRecipients(ctx.scope, groupIds, studentIds, accessMode) : null;
       const row = await tasks.updateAssignment(ctx.scope, input.id, input.patch);
       if (after && before) for (const sid of after) if (!before.has(sid)) await notifications.notify(sid, "Yeni tapşırıq", row.title);
       return row;
@@ -703,9 +717,15 @@ const publicRouter = router({
   task: publicProcedure
     .use(rateLimit("publicTask", 60, MINUTE))
     .input(z.object({ shareCode: z.string().trim().min(4).max(32) }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       const a = await tasks.assignmentByShareCode(input.shareCode);
-      return a ? { id: a.id, title: a.title, description: a.description, deadline: a.deadline, attachments: a.attachments } : null;
+      if (!a) return null;
+      const access = await tasks.viewerAccess(a, ctx.user?.id ?? null);
+      // Nothing about a restricted task (title, files, …) leaves the server unless this visitor may see it.
+      const task = canSeeTaskContent(access)
+        ? { id: a.id, title: a.title, description: a.description, deadline: a.deadline, attachments: a.attachments }
+        : null;
+      return { access, accessMode: a.accessMode, task };
     }),
   material: publicProcedure
     .use(rateLimit("publicMaterial", 60, MINUTE))

@@ -233,6 +233,26 @@ export const app = {
   ],
   "public.task.goToTasks": ["Tapşırıqlarım →", "My assignments →", "Мои задания →"],
   "public.task.attachments": ["Fayllar", "Files", "Файлы"],
+  "public.task.signInTitle": ["Bu tapşırıq məhduddur", "This assignment is restricted", "Это задание с ограниченным доступом"],
+  "public.task.signInBody": [
+    "Tapşırığı görmək üçün daxil olun. Yalnız müəllimin seçdiyi qrupların üzvləri giriş əldə edə bilər.",
+    "Sign in to view this assignment. Only members of the groups the teacher selected can open it.",
+    "Войдите, чтобы открыть задание. Доступ есть только у участников групп, выбранных преподавателем.",
+  ],
+  "public.task.noAccessTitle": ["Bu tapşırığa girişiniz yoxdur", "You don't have access to this assignment", "У вас нет доступа к этому заданию"],
+  "public.task.noAccessBody": [
+    "Bu tapşırıq yalnız müəllimin seçdiyi qrupların üzvləri üçün açıqdır. Qrupa əlavə olunmalısınızsa, müəlliminizlə əlaqə saxlayın.",
+    "This assignment is only open to members of the groups the teacher selected. If you should be in one of them, contact your teacher.",
+    "Это задание доступно только участникам групп, выбранных преподавателем. Если вы должны быть в одной из них, свяжитесь с преподавателем.",
+  ],
+  "public.task.signedInAs": ["Daxil olduğunuz hesab: {email}", "Signed in as {email}", "Вы вошли как {email}"],
+  "public.task.switchAccount": ["Başqa hesabla daxil ol", "Sign in with another account", "Войти с другим аккаунтом"],
+  "public.task.restrictedNote": ["Yalnız seçilmiş qrupların üzvləri üçün", "Only for members of the selected groups", "Только для участников выбранных групп"],
+  "public.task.ownerNote": [
+    "Siz bu tapşırığın müəllimisiniz — tələbələr bu səhifəni belə görür.",
+    "You are this assignment's teacher — this is how students see this page.",
+    "Вы преподаватель этого задания — так эту страницу видят ученики.",
+  ],
 
   "public.material.notFound": ["Material tapılmadı.", "Material not found.", "Материал не найден."],
   "public.material.claim": ["Materialı al", "Get this material", "Получить материал"],

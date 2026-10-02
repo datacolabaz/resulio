@@ -1,0 +1,1 @@
+ALTER TABLE `tasks` ADD `accessMode` enum('PUBLIC','GROUPS') DEFAULT 'PUBLIC' NOT NULL;

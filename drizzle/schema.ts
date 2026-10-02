@@ -636,6 +636,15 @@ export const featureFlagOverrides = mysqlTable(
 export const TASK_SUBMISSION_STATUSES = ["NOT_STARTED", "IN_PROGRESS", "SUBMITTED", "LATE", "REVIEWED"] as const;
 
 /**
+ * Who may open a task's share link (and its attached files). PUBLIC: anyone holding the link.
+ * GROUPS: only signed-in ACTIVE members of the task's own `groupIds` (plus the owning teacher);
+ * individually listed `studentIds` — which share-link claims also append to — grant nothing then.
+ * See server/modules/taskAccess.ts.
+ */
+export const TASK_ACCESS_MODES = ["PUBLIC", "GROUPS"] as const;
+export type TaskAccessMode = (typeof TASK_ACCESS_MODES)[number];
+
+/**
  * A homework/assignment a teacher sends to a group and/or individual students. `groupIds`/
  * `studentIds` are JSON rather than join tables — same free-list convention as
  * `groups.classSchedule` — since they're never queried relationally, only read back whole and
@@ -655,6 +664,7 @@ export const tasks = mysqlTable(
     groupIds: json("groupIds").$type<string[]>().notNull(),
     studentIds: json("studentIds").$type<number[]>().notNull(),
     attachments: json("attachments").$type<Array<{ fileId: string; name: string; size: number }>>().notNull(),
+    accessMode: mysqlEnum("accessMode", TASK_ACCESS_MODES).notNull().default("PUBLIC"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   (t) => [index("tasks_workspace_idx").on(t.providerWorkspaceId)],

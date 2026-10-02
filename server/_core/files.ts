@@ -10,6 +10,7 @@ import { resolveWorkspace } from "../modules/access";
 import { AppError, type AppErrorCode } from "../modules/errors";
 import * as filesModule from "../modules/files";
 import { activeGroupIdsOfStudent } from "../modules/groups";
+import { taskReachesStudent } from "../modules/taskAccess";
 import { hitRateLimit } from "./rateLimit";
 import { sdk } from "./sdk";
 
@@ -106,8 +107,7 @@ export function registerFileRoutes(app: Express) {
           const [task] = await requireDb().select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
           if (!task) throw new AppError("NOT_FOUND");
           const groupIds = await activeGroupIdsOfStudent(user.id);
-          const reaches = task.studentIds.includes(user.id) || task.groupIds.some((g) => groupIds.includes(g));
-          if (!reaches) throw new AppError("FORBIDDEN");
+          if (!taskReachesStudent(task, user.id, groupIds)) throw new AppError("FORBIDDEN");
           workspaceId = task.providerWorkspaceId;
         } else {
           const header = req.headers[WORKSPACE_HEADER];
@@ -118,8 +118,9 @@ export function registerFileRoutes(app: Express) {
           // Both of these can end up linked from a task/material's own public share-code page
           // (PublicTaskPage / PublicMaterialPage), which anyone with that link can open while
           // signed out -- so the attached file has to be reachable the same way, same as the
-          // page's text already is. A "submission" file (handled above) is never on a public
-          // page, so it stays private.
+          // page's text already is. Attachments of a group-restricted task are re-checked per
+          // user on download anyway (filesModule.downloadAccess). A "submission" file (handled
+          // above) is never on a public page, so it stays private.
           isPublic = context === "material" || context === "task-attachment";
         }
 
@@ -144,13 +145,13 @@ export function registerFileRoutes(app: Express) {
       // Resolved either way (even for a public file) so a successful download can be attributed
       // to a student for the "who viewed/downloaded this" report — see filesModule.recordDownload.
       const user = await currentUser(req);
-      if (!file.isPublic) {
-        if (!user) {
-          res.status(401).json({ error: "UNAUTHORIZED" });
-          return;
-        }
-        await filesModule.assertCanDownload(file, user.id);
-      } else if (hitRateLimit(`file-download-public:${req.ip}`, 120, 60_000)) {
+      const access = await filesModule.downloadAccess(file, user?.id ?? null);
+      if (access === "SIGN_IN_REQUIRED") {
+        res.status(401).json({ error: "UNAUTHORIZED" });
+        return;
+      }
+      if (access === "DENIED") throw new AppError("FORBIDDEN");
+      if (access === "OPEN" && hitRateLimit(`file-download-public:${req.ip}`, 120, 60_000)) {
         res.status(429).json({ error: "RATE_LIMITED" });
         return;
       }

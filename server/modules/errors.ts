@@ -48,7 +48,9 @@ export type AppErrorCode =
   | "AUDIT_UNSAFE_METADATA"
   | "FILE_NOT_FOUND"
   | "FILE_TOO_LARGE"
-  | "FILE_TYPE_NOT_ALLOWED";
+  | "FILE_TYPE_NOT_ALLOWED"
+  | "TASK_NO_ACCESS"
+  | "TASK_GROUPS_REQUIRED";
 
 export class AppError extends Error {
   constructor(public readonly code: AppErrorCode) {
@@ -101,6 +103,8 @@ const HTTP: Partial<Record<AppErrorCode, TRPCError["code"]>> = {
   FILE_NOT_FOUND: "NOT_FOUND",
   FILE_TOO_LARGE: "PAYLOAD_TOO_LARGE",
   FILE_TYPE_NOT_ALLOWED: "BAD_REQUEST",
+  TASK_NO_ACCESS: "FORBIDDEN",
+  TASK_GROUPS_REQUIRED: "BAD_REQUEST",
 };
 
 /** Convert domain errors into tRPC errors; the message stays a stable machine code. */

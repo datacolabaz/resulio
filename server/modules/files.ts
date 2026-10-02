@@ -8,6 +8,7 @@ import { recordEvent } from "./activity";
 import { AppError } from "./errors";
 import { activeGroupIdsOfStudent } from "./groups";
 import { recordShareEvent } from "./shareTracking";
+import { fileOpenToAnyone, taskReachesStudent } from "./taskAccess";
 
 /**
  * File storage for task attachments, material files, and student submission files. Content is
@@ -92,25 +93,41 @@ async function teacherOwnsWorkspace(workspaceId: string, userId: number) {
   return owned.some((w) => w.id === workspaceId);
 }
 
-/** The file is their own upload, or a task attachment on a task that reaches them. */
-async function studentCanReach(file: FileRow, studentId: number) {
-  if (file.uploadedBy === studentId) return true;
-  const groupIds = await activeGroupIdsOfStudent(studentId);
+async function tasksAttaching(file: FileRow) {
   const workspaceTasks = await requireDb().select().from(tasks).where(eq(tasks.providerWorkspaceId, file.workspaceId));
-  return workspaceTasks.some(
-    (task) =>
-      (task.studentIds.includes(studentId) || task.groupIds.some((g) => groupIds.includes(g))) &&
-      task.attachments.some((a) => a.fileId === file.id),
-  );
+  return workspaceTasks.filter((task) => task.attachments.some((a) => a.fileId === file.id));
 }
 
-/** Throws FORBIDDEN unless `userId` may download this file: anyone for a public (material) file,
- *  the owning teacher for their workspace's files, or a student who the file actually reaches. */
+/** The file is their own upload, or a task attachment on a task that reaches them. */
+async function studentCanReach(file: FileRow, studentId: number, attachedTo: Awaited<ReturnType<typeof tasksAttaching>>) {
+  if (file.uploadedBy === studentId) return true;
+  if (!attachedTo.length) return false;
+  const groupIds = await activeGroupIdsOfStudent(studentId);
+  return attachedTo.some((task) => taskReachesStudent(task, studentId, groupIds));
+}
+
+/**
+ * OPEN: servable without a session (a material file, or an attachment of an open-link task).
+ * ALLOWED: this signed-in user may download it. SIGN_IN_REQUIRED / DENIED otherwise — e.g. an
+ * attachment of a group-restricted task, for a visitor who isn't signed in or isn't in its groups.
+ */
+export async function downloadAccess(file: FileRow, userId: number | null): Promise<"OPEN" | "ALLOWED" | "SIGN_IN_REQUIRED" | "DENIED"> {
+  const attachedTo = await tasksAttaching(file);
+  if (file.isPublic) {
+    const [material] = await requireDb().select({ id: materials.id }).from(materials).where(eq(materials.fileId, file.id)).limit(1);
+    if (fileOpenToAnyone(true, attachedTo, Boolean(material))) return "OPEN";
+  }
+  if (userId === null) return "SIGN_IN_REQUIRED";
+  if (await teacherOwnsWorkspace(file.workspaceId, userId)) return "ALLOWED";
+  if (await studentCanReach(file, userId, attachedTo)) return "ALLOWED";
+  return "DENIED";
+}
+
+/** Throws FORBIDDEN unless `userId` may download this file: anyone for an open file (see
+ *  `downloadAccess`), the owning teacher for their workspace's files, or a student it reaches. */
 export async function assertCanDownload(file: FileRow, userId: number) {
-  if (file.isPublic) return;
-  if (await teacherOwnsWorkspace(file.workspaceId, userId)) return;
-  if (await studentCanReach(file, userId)) return;
-  throw new AppError("FORBIDDEN");
+  const access = await downloadAccess(file, userId);
+  if (access !== "OPEN" && access !== "ALLOWED") throw new AppError("FORBIDDEN");
 }
 
 /**

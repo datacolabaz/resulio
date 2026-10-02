@@ -249,15 +249,38 @@ export function PublicTaskPage() {
   const { user, loading } = useAuth();
   const task = trpc.public.task.useQuery({ shareCode }, { enabled: shareCode.length >= 4, retry: false });
   const claim = trpc.student.claimTask.useMutation();
-  const a = task.data;
-  const { channel, campaign, visitorId: vid } = useShareAttribution("TASK", shareCode, Boolean(a));
+  const page = task.data;
+  const a = page?.task;
+  const { channel, campaign, visitorId: vid } = useShareAttribution("TASK", shareCode, Boolean(page));
   const returnTo = `/task/${shareCode}${window.location.search}`;
   return (
     <Card>
-      {task.isLoading ? <p role="status" className="mt-4 text-sm text-muted-foreground">{t("common.loading")}</p> : !a ? (
+      {task.isLoading ? <p role="status" className="mt-4 text-sm text-muted-foreground">{t("common.loading")}</p> : !page ? (
         <p role="alert" className="mt-4 text-sm text-destructive">{t("public.task.notFound")}</p>
+      ) : !a ? (
+        <>
+          <h1 className="mt-4 break-words text-xl font-semibold">
+            {page.access === "SIGN_IN_REQUIRED" ? t("public.task.signInTitle") : t("public.task.noAccessTitle")}
+          </h1>
+          <p className="mt-3 text-sm text-foreground-secondary">
+            {page.access === "SIGN_IN_REQUIRED" ? t("public.task.signInBody") : t("public.task.noAccessBody")}
+          </p>
+          {user?.email && page.access === "DENIED" && (
+            <p className="mt-3 break-words text-xs text-muted-foreground">{t("public.task.signedInAs", { email: user.email })}</p>
+          )}
+          <div className="mt-6">
+            {loading ? null : (
+              <Button className="w-full" variant={user ? "outline" : "default"} onClick={() => startLogin(returnTo)}>
+                {user ? t("public.task.switchAccount") : t("common.signInGoogle")}
+              </Button>
+            )}
+          </div>
+        </>
       ) : (
         <>
+          {page.accessMode === "GROUPS" && (
+            <p className="mt-4 text-xs font-medium uppercase tracking-wide text-link">{t("public.task.restrictedNote")}</p>
+          )}
           <h1 className="mt-4 break-words text-2xl font-semibold">{a.title}</h1>
           {a.description && <p className="mt-3 break-words text-sm text-foreground-secondary">{a.description}</p>}
           <p className="mt-3 text-sm text-muted-foreground">{t("modules.deadlineValue", { date: fmtDateTime(a.deadline) })}</p>
@@ -278,6 +301,8 @@ export function PublicTaskPage() {
           <div className="mt-6">
             {loading ? null : !user ? (
               <Button className="w-full" onClick={() => startLogin(returnTo)}>{t("common.signInGoogle")}</Button>
+            ) : page.access === "OWNER" ? (
+              <p className="text-sm text-foreground-secondary" role="status">{t("public.task.ownerNote")}</p>
             ) : claim.isSuccess ? (
               <div className="space-y-3 text-sm" role="status">
                 <p className="text-success">{t("public.task.claimed")}</p>

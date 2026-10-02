@@ -44,6 +44,12 @@ export const format = {
   "error.INTERNAL_ERROR": ["Gözlənilməz xəta baş verdi.", "An unexpected error occurred.", "Произошла непредвиденная ошибка."],
   "error.SUSPENDED": ["Hesabınız dayandırılıb.", "Your account is suspended.", "Ваш аккаунт приостановлен."],
   "error.UNAUTHORIZED": ["Davam etmək üçün daxil olun.", "Please sign in to continue.", "Войдите, чтобы продолжить."],
+  "error.TASK_NO_ACCESS": ["Bu tapşırığa girişiniz yoxdur.", "You don't have access to this assignment.", "У вас нет доступа к этому заданию."],
+  "error.TASK_GROUPS_REQUIRED": [
+    "\"Yalnız seçilmiş qruplar\" rejimi üçün ən azı bir qrup seçin.",
+    "Select at least one group for \"Only selected groups\" access.",
+    "Для режима «Только выбранные группы» выберите хотя бы одну группу.",
+  ],
 
   "duration.hm": ["{h} saat {m} dəq", "{h} h {m} min", "{h} ч {m} мин"],
   "duration.ms": ["{m} dəq {s} san", "{m} min {s} sec", "{m} мин {s} с"],

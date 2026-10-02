@@ -113,6 +113,13 @@
       "when": 1790960000000,
       "tag": "0015_share_event_visitor",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "5",
+      "when": 1790970000000,
+      "tag": "0016_task_access_mode",
+      "breakpoints": true
     }
   ]
 }
