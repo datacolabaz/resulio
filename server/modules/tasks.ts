@@ -27,7 +27,7 @@ export interface AssignmentInput {
   deadline: Date;
   groupIds: string[];
   studentIds: number[];
-  attachments: Array<{ name: string; size: string }>;
+  attachments: Array<{ fileId: string; name: string; size: number }>;
 }
 
 /** Throws NOT_FOUND if the assignment doesn't exist or belongs to another workspace. */
@@ -95,7 +95,12 @@ export async function studentAssignments(studentId: number, groupIds: string[]) 
   return relevant.map((t) => ({ ...t, submission: byTask.get(t.id) }));
 }
 
-export async function submitAssignment(studentId: number, groupIds: string[], assignmentId: string, files: string[]) {
+export async function submitAssignment(
+  studentId: number,
+  groupIds: string[],
+  assignmentId: string,
+  files: Array<{ fileId: string; name: string; size: number }>,
+) {
   const db = requireDb();
   const [task] = await db.select().from(tasks).where(eq(tasks.id, assignmentId)).limit(1);
   if (!task) throw new AppError("NOT_FOUND");
@@ -103,7 +108,7 @@ export async function submitAssignment(studentId: number, groupIds: string[], as
   if (!reaches) throw new AppError("NOT_FOUND");
 
   const status = task.deadline.getTime() < Date.now() ? ("LATE" as const) : ("SUBMITTED" as const);
-  const filesJson = files.map((name) => ({ name }));
+  const filesJson = files;
   const [existing] = await db
     .select()
     .from(taskSubmissions)
@@ -148,6 +153,9 @@ export interface MaterialInput {
   subject: string;
   topic: string;
   fileName: string;
+  fileId: string | null;
+  mimeType: string | null;
+  sizeBytes: number | null;
   groupIds: string[];
   studentIds: number[];
 }

@@ -1,4 +1,5 @@
 import { AppShell, EmptyState, Loading, Panel, Pill } from "@/components/AppShell";
+import { MultiFileUpload, SingleFileUpload } from "@/components/FileUpload";
 import { draftFromQuestion, QuestionEditor } from "@/components/QuestionEditor";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ShareBox } from "@/components/ShareBox";
@@ -9,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { t } from "@/i18n/messages";
 import { errorText, fmtDateTime, fromLocalInput, questionTypeLabel, subscriptionLabel, toLocalInput } from "@/lib/format";
+import { fileDownloadUrl } from "@/lib/uploadFile";
 import { trpc } from "@/lib/trpc";
 import { QUESTION_TYPES } from "@shared/assessment";
 import { Sparkles } from "lucide-react";
@@ -68,6 +70,7 @@ interface AssignmentInitial {
   deadline: Date | string;
   groupIds: string[];
   studentIds: number[];
+  attachments: Array<{ fileId: string; name: string; size: number }>;
 }
 
 function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; onOpenChange: (v: boolean) => void; initial?: AssignmentInitial }) {
@@ -79,6 +82,7 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
     deadline: initial ? toLocalInput(initial.deadline) : "",
     groupIds: initial?.groupIds ?? ([] as string[]),
     studentIds: initial?.studentIds ?? ([] as number[]),
+    attachments: (initial?.attachments ?? []).map((a) => ({ ...a, mimeType: "" })),
   });
   const done = () => { void utils.teacher.tasks.list.invalidate(); onOpenChange(false); };
   const create = trpc.teacher.tasks.create.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
@@ -92,6 +96,10 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
           <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("common.name") })}</span><Input required value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></label>
           <label className="text-sm"><span className={fieldLabel}>{t("common.description")}</span><Textarea rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
           <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("modules.deadline") })}</span><Input required type="datetime-local" value={f.deadline} onChange={(e) => setF({ ...f, deadline: e.target.value })} /></label>
+          <div>
+            <p className={`mb-1 text-sm ${fieldLabel}`}>{t("modules.attachments")}</p>
+            <MultiFileUpload context="task-attachment" value={f.attachments} onChange={(attachments) => setF({ ...f, attachments })} />
+          </div>
           <RecipientPicker groupIds={f.groupIds} studentIds={f.studentIds} onChange={(v) => setF({ ...f, ...v })} />
         </div>
         <DialogFooter>
@@ -100,7 +108,8 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
             disabled={f.title.trim().length < 2 || !deadline || create.isPending || update.isPending}
             onClick={() => {
               if (!deadline) return;
-              const payload = { title: f.title, description: f.description, instructions: f.instructions, deadline, groupIds: f.groupIds, studentIds: f.studentIds, attachments: [] };
+              const attachments = f.attachments.map(({ fileId, name, size }) => ({ fileId, name, size }));
+              const payload = { title: f.title, description: f.description, instructions: f.instructions, deadline, groupIds: f.groupIds, studentIds: f.studentIds, attachments };
               if (initial) update.mutate({ id: initial.id, patch: payload });
               else create.mutate(payload);
             }}
@@ -126,8 +135,7 @@ export function AssignmentsPage() {
   return (
     <AppShell area="teaching">
       <div className="space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">{t("modules.tasksBeta")}</p>
+        <div className="flex flex-wrap items-center justify-end gap-3">
           <Button onClick={() => setOpen(true)}>{t("modules.newTask")}</Button>
         </div>
         {list.isLoading ? <Loading /> : !list.data?.length ? (
@@ -138,6 +146,17 @@ export function AssignmentsPage() {
               <Panel key={a.id} title={a.title} action={<Pill>{t("modules.submissions", { count: a.submissions.length })}</Pill>}>
                 <p className="break-words text-sm text-foreground-secondary">{a.description}</p>
                 <p className="mt-2 text-xs text-muted-foreground">{t("modules.deadlineValue", { date: fmtDateTime(a.deadline) })}</p>
+                {a.attachments.length > 0 && (
+                  <ul className="mt-2 flex flex-wrap gap-1.5">
+                    {a.attachments.map((file) => (
+                      <li key={file.fileId}>
+                        <a href={fileDownloadUrl(file.fileId)} className="rounded-lg border border-border bg-muted px-2 py-1 text-xs text-link underline-offset-2 hover:underline">
+                          {file.name}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={() => setShareId(shareId === a.id ? null : a.id)}>{t("common.share")}</Button>
                   <Button size="sm" variant="outline" onClick={() => setEditing(a)}>{t("common.edit")}</Button>
@@ -246,6 +265,7 @@ interface MaterialInitial {
   subject: string;
   topic: string;
   fileName: string;
+  fileId: string | null;
   groupIds: string[];
   studentIds: number[];
 }
@@ -257,7 +277,7 @@ function MaterialFormDialog({ open, onOpenChange, initial }: { open: boolean; on
     description: initial?.description ?? "",
     subject: initial?.subject ?? "",
     topic: initial?.topic ?? "",
-    fileName: initial?.fileName ?? "",
+    file: initial?.fileId ? { fileId: initial.fileId, name: initial.fileName, size: 0, mimeType: "" } : null,
     groupIds: initial?.groupIds ?? ([] as string[]),
     studentIds: initial?.studentIds ?? ([] as number[]),
   });
@@ -275,14 +295,33 @@ function MaterialFormDialog({ open, onOpenChange, initial }: { open: boolean; on
             <label className="text-sm"><span className={fieldLabel}>{t("common.subject")}</span><Input value={f.subject} onChange={(e) => setF({ ...f, subject: e.target.value })} /></label>
             <label className="text-sm"><span className={fieldLabel}>{t("common.topic")}</span><Input value={f.topic} onChange={(e) => setF({ ...f, topic: e.target.value })} /></label>
           </div>
-          <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("modules.fileName") })}</span><Input required value={f.fileName} onChange={(e) => setF({ ...f, fileName: e.target.value })} placeholder={t("modules.fileNamePlaceholder")} /></label>
+          <div>
+            <p className={`mb-1 text-sm ${fieldLabel}`}>{t("common.required", { label: t("modules.fileName") })}</p>
+            <SingleFileUpload context="material" value={f.file} onChange={(file) => setF({ ...f, file })} />
+          </div>
           <RecipientPicker groupIds={f.groupIds} studentIds={f.studentIds} onChange={(v) => setF({ ...f, ...v })} />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
           <Button
-            disabled={f.title.trim().length < 2 || !f.fileName.trim() || create.isPending || update.isPending}
-            onClick={() => (initial ? update.mutate({ id: initial.id, patch: f }) : create.mutate(f))}
+            disabled={f.title.trim().length < 2 || !f.file || create.isPending || update.isPending}
+            onClick={() => {
+              if (!f.file) return;
+              const payload = {
+                title: f.title,
+                description: f.description,
+                subject: f.subject,
+                topic: f.topic,
+                fileName: f.file.name,
+                fileId: f.file.fileId,
+                mimeType: f.file.mimeType || null,
+                sizeBytes: f.file.size || null,
+                groupIds: f.groupIds,
+                studentIds: f.studentIds,
+              };
+              if (initial) update.mutate({ id: initial.id, patch: payload });
+              else create.mutate(payload);
+            }}
           >
             {t("common.save")}
           </Button>
@@ -304,8 +343,7 @@ function MaterialsTab() {
   });
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">{t("modules.materialsBeta")}</p>
+      <div className="flex flex-wrap items-center justify-end gap-3">
         <Button onClick={() => setOpen(true)}>{t("modules.newMaterial")}</Button>
       </div>
       {!list.data?.length ? <EmptyState title={t("modules.noMaterials")} body={t("modules.noMaterialsBody")} /> : (
@@ -313,7 +351,12 @@ function MaterialsTab() {
           {list.data.map((m) => (
             <Panel key={m.id} title={m.title}>
               <p className="break-words text-sm text-foreground-secondary">{m.description}</p>
-              <p className="mt-2 break-words text-xs text-muted-foreground">{[m.subject, m.topic, m.fileName].filter(Boolean).join(" · ")}</p>
+              <p className="mt-2 break-words text-xs text-muted-foreground">{[m.subject, m.topic].filter(Boolean).join(" · ")}</p>
+              {m.fileId && (
+                <a href={fileDownloadUrl(m.fileId)} className="mt-2 inline-block rounded-lg border border-border bg-muted px-2 py-1 text-xs text-link underline-offset-2 hover:underline">
+                  {m.fileName}
+                </a>
+              )}
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" onClick={() => setShareId(shareId === m.id ? null : m.id)}>{t("common.share")}</Button>
                 <Button size="sm" variant="outline" onClick={() => setEditing(m)}>{t("common.edit")}</Button>

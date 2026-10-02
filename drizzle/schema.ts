@@ -5,6 +5,7 @@ import {
   index,
   int,
   json,
+  longtext,
   mysqlEnum,
   mysqlTable,
   primaryKey,
@@ -595,7 +596,7 @@ export const tasks = mysqlTable(
     deadline: timestamp("deadline").notNull(),
     groupIds: json("groupIds").$type<string[]>().notNull(),
     studentIds: json("studentIds").$type<number[]>().notNull(),
-    attachments: json("attachments").$type<Array<{ name: string; size: string }>>().notNull(),
+    attachments: json("attachments").$type<Array<{ fileId: string; name: string; size: number }>>().notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   (t) => [index("tasks_workspace_idx").on(t.providerWorkspaceId)],
@@ -609,14 +610,15 @@ export const taskSubmissions = mysqlTable(
     taskId: id("taskId").notNull(),
     studentId: int("studentId").notNull(),
     status: mysqlEnum("status", TASK_SUBMISSION_STATUSES).notNull(),
-    files: json("files").$type<Array<{ name: string }>>().notNull(),
+    files: json("files").$type<Array<{ fileId: string; name: string; size: number }>>().notNull(),
     submittedAt: timestamp("submittedAt"),
     comment: text("comment"),
   },
   (t) => [uniqueIndex("task_submissions_task_student_unique").on(t.taskId, t.studentId)],
 );
 
-/** A file a teacher shares with a group and/or individual students — recorded by name only; actual upload is a later phase. */
+/** A file a teacher shares with a group and/or individual students. The actual bytes live in `files`
+ *  (see below); fileId/mimeType/sizeBytes are denormalized here so the list view never needs a join. */
 export const materials = mysqlTable(
   "materials",
   {
@@ -629,11 +631,38 @@ export const materials = mysqlTable(
     subject: varchar("subject", { length: 120 }).notNull(),
     topic: varchar("topic", { length: 120 }).notNull(),
     fileName: varchar("fileName", { length: 255 }).notNull(),
+    fileId: varchar("fileId", { length: ID }),
+    mimeType: varchar("mimeType", { length: 127 }),
+    sizeBytes: int("sizeBytes"),
     groupIds: json("groupIds").$type<string[]>().notNull(),
     studentIds: json("studentIds").$type<number[]>().notNull(),
     uploadedAt: timestamp("uploadedAt").defaultNow().notNull(),
   },
   (t) => [index("materials_workspace_idx").on(t.providerWorkspaceId)],
+);
+
+/**
+ * Binary content for task attachments, material files, and student submission files, stored as
+ * base64 text (MySQL on Railway has no first-class blob helper in drizzle's mysql-core, and
+ * base64-in-longtext avoids driver-specific binary-column edge cases for the moderate file sizes
+ * this app handles — see server/modules/files.ts for the size cap). `isPublic` is true only for
+ * material files, which — like exam share links — are meant to be reachable by anyone holding the
+ * link; task attachments and submission files stay access-checked per request.
+ */
+export const files = mysqlTable(
+  "files",
+  {
+    id: id("id").primaryKey(),
+    workspaceId: id("workspaceId").notNull(),
+    uploadedBy: int("uploadedBy").notNull(),
+    fileName: varchar("fileName", { length: 255 }).notNull(),
+    mimeType: varchar("mimeType", { length: 127 }).notNull(),
+    sizeBytes: int("sizeBytes").notNull(),
+    dataBase64: longtext("dataBase64").notNull(),
+    isPublic: boolean("isPublic").notNull().default(false),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [index("files_workspace_idx").on(t.workspaceId)],
 );
 
 export const notifications = mysqlTable(
@@ -661,3 +690,4 @@ export type Attempt = typeof attempts.$inferSelect;
 export type Result = typeof results.$inferSelect;
 export type ResultItem = typeof resultItems.$inferSelect;
 export type AssessmentAssignment = typeof assessmentAssignments.$inferSelect;
+export type FileRow = typeof files.$inferSelect;

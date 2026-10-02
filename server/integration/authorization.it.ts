@@ -181,7 +181,7 @@ describe("student A cannot reach student B's data", () => {
   it("assignments, submissions and materials", async () => {
     const s = caller(A.student).student;
     expect((await s.tasks()).map((t) => t.id)).toEqual([A.taskId]);
-    expect(await outcome(s.submitTask({ assignmentId: B.taskId, files: ["x.pdf"] }))).toBe(NOT_FOUND);
+    expect(await outcome(s.submitTask({ assignmentId: B.taskId, files: [{ fileId: "f1", name: "x.pdf", size: 1024 }] }))).toBe(NOT_FOUND);
     expect((await s.materials()).map((m) => m.id)).toEqual([A.materialId]);
   });
 

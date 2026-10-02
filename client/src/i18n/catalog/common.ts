@@ -89,6 +89,18 @@ export const common = {
   "common.selected": ["seçilib", "selected", "выбрано"],
   "common.active": ["aktiv", "active", "активно"],
   "common.completedStep": ["tamamlanıb", "completed", "завершено"],
+  "common.download": ["Yüklə", "Download", "Скачать"],
+  "common.remove": ["Çıxar", "Remove", "Убрать"],
+
+  "files.choose": ["Fayl seç", "Choose file", "Выбрать файл"],
+  "files.replace": ["Dəyiş", "Replace", "Заменить"],
+  "files.addFiles": ["Fayl əlavə et", "Add files", "Добавить файлы"],
+  "files.uploading": ["Yüklənir…", "Uploading…", "Загрузка…"],
+  "files.noFile": ["Fayl seçilməyib", "No file chosen", "Файл не выбран"],
+  "files.allowedTypes": ["İcazəli: xlsx, xls, csv, pdf, pptx, ppt, docx, doc, txt, png, jpg, jpeg (maks. 8 MB)", "Allowed: xlsx, xls, csv, pdf, pptx, ppt, docx, doc, txt, png, jpg, jpeg (max 8 MB)", "Разрешено: xlsx, xls, csv, pdf, pptx, ppt, docx, doc, txt, png, jpg, jpeg (макс. 8 МБ)"],
+  "files.tooLarge": ["Fayl həddindən böyükdür (maks. 8 MB).", "File is too large (max 8 MB).", "Файл слишком большой (макс. 8 МБ)."],
+  "files.typeNotAllowed": ["Bu fayl növünə icazə verilmir.", "This file type isn't allowed.", "Этот тип файла не разрешён."],
+  "files.uploadFailed": ["Fayl yüklənmədi. Yenidən cəhd edin.", "File upload failed. Try again.", "Не удалось загрузить файл. Попробуйте снова."],
 
   "nav.home": ["Ana səhifə", "Home", "Главная"],
   "nav.exams": ["İmtahanlar", "Exams", "Экзамены"],

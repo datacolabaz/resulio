@@ -45,7 +45,10 @@ export type AppErrorCode =
   | "ALREADY_HAS_ROLE"
   | "LAST_SUPER_ADMIN"
   | "INVALID_TRANSITION"
-  | "AUDIT_UNSAFE_METADATA";
+  | "AUDIT_UNSAFE_METADATA"
+  | "FILE_NOT_FOUND"
+  | "FILE_TOO_LARGE"
+  | "FILE_TYPE_NOT_ALLOWED";
 
 export class AppError extends Error {
   constructor(public readonly code: AppErrorCode) {
@@ -95,6 +98,9 @@ const HTTP: Partial<Record<AppErrorCode, TRPCError["code"]>> = {
   LAST_SUPER_ADMIN: "CONFLICT",
   INVALID_TRANSITION: "PRECONDITION_FAILED",
   AUDIT_UNSAFE_METADATA: "INTERNAL_SERVER_ERROR",
+  FILE_NOT_FOUND: "NOT_FOUND",
+  FILE_TOO_LARGE: "PAYLOAD_TOO_LARGE",
+  FILE_TYPE_NOT_ALLOWED: "BAD_REQUEST",
 };
 
 /** Convert domain errors into tRPC errors; the message stays a stable machine code. */
