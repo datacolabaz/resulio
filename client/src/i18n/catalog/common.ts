@@ -112,6 +112,7 @@ export const common = {
   "nav.analytics": ["Analitika", "Analytics", "Аналитика"],
   "nav.usage": ["Paket və istifadə", "Plan & usage", "Тариф и использование"],
   "nav.settings": ["Ayarlar", "Settings", "Настройки"],
+  "nav.referral": ["Tövsiyə proqramı", "Referrals", "Реферальная программа"],
   "nav.myGroups": ["Qruplarım", "My groups", "Мои группы"],
   "nav.myResults": ["Nəticələrim", "My results", "Мои результаты"],
   "nav.myProgress": ["İnkişafım", "My progress", "Мой прогресс"],

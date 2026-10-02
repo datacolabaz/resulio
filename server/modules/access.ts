@@ -1,4 +1,5 @@
 import { and, asc, eq } from "drizzle-orm";
+import { customAlphabet } from "nanoid";
 import {
   groupMembers,
   partnerProfiles,
@@ -10,6 +11,8 @@ import {
   type UiContext,
 } from "../../drizzle/schema";
 import { requireDb, type DbOrTx } from "../db";
+
+export const generateReferralCode = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 10);
 
 /** Resolved teaching authority for one request: the managed workspace plus the acting user. */
 export type TeacherScope = { workspaceId: string; userId: number };
@@ -57,6 +60,30 @@ export async function partnerProfileOf(userId: number, db: DbOrTx = requireDb())
   return row ?? null;
 }
 
+/**
+ * Every user is a referral partner from the moment they're first looked up this way -- there is
+ * no apply/review step before someone can see and share their own referral link. An admin can
+ * still SUSPEND an individual account after the fact (see `decidePartnerProfile`); that is the
+ * fraud-control lever now, not a gate in front of everyone.
+ *
+ * Lazily provisions on first call so this also backfills any account that existed before this
+ * behavior shipped, with no migration script needed. `partnerProfiles.userId` is unique, so a
+ * concurrent double-call just loses the insert race and falls through to re-reading the row the
+ * other call created.
+ */
+export async function ensurePartnerProfile(userId: number, db: DbOrTx = requireDb()): Promise<PartnerProfile> {
+  const existing = await partnerProfileOf(userId, db);
+  if (existing) return existing;
+  try {
+    await db.insert(partnerProfiles).values({ userId, status: "APPROVED", referralCode: generateReferralCode(), approvedAt: new Date() });
+  } catch {
+    // Unique-constraint race: another concurrent call already created this user's row.
+  }
+  const row = await partnerProfileOf(userId, db);
+  if (!row) throw new Error(`Failed to provision partner profile for user ${userId}`);
+  return row;
+}
+
 export async function platformRolesOf(userId: number, db: DbOrTx = requireDb()): Promise<PlatformRole[]> {
   const rows = await db.select({ role: platformRoles.role }).from(platformRoles).where(eq(platformRoles.userId, userId));
   return rows.map((r) => r.role);
@@ -76,7 +103,7 @@ export async function resolveAccess(userId: number): Promise<UserAccess> {
   const [memberships, workspaces, partner, roles] = await Promise.all([
     membershipCounts(userId),
     managedWorkspaces(userId),
-    partnerProfileOf(userId),
+    ensurePartnerProfile(userId),
     platformRolesOf(userId),
   ]);
   return {
@@ -105,8 +132,15 @@ export function canEnterContext(access: UserAccess, context: UiContext): boolean
   return access.contexts[context];
 }
 
-/** Last used context if still valid, otherwise the first one the user can enter. */
+/**
+ * Last used context if still valid, otherwise the first substantive one the user can enter.
+ * `partner` is deliberately excluded from this automatic fallback: every user can always enter
+ * it now (see `ensurePartnerProfile`), so it would otherwise become the landing screen for a
+ * brand-new user with nothing else set up yet, instead of the onboarding screen. It only becomes
+ * the active context by explicit choice -- navigating there, which the `last` check above then
+ * remembers for next time.
+ */
 export function defaultContext(access: UserAccess, last: UiContext | null): UiContext | null {
   if (last && canEnterContext(access, last)) return last;
-  return (["learning", "teaching", "partner"] as const).find((c) => canEnterContext(access, c)) ?? null;
+  return (["learning", "teaching"] as const).find((c) => canEnterContext(access, c)) ?? null;
 }
