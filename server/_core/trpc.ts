@@ -2,7 +2,7 @@ import { UNAUTHED_ERR_MSG, WORKSPACE_HEADER } from '@shared/const';
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { AdminPermission } from "../../shared/adminPermissions";
-import { partnerProfileOf, resolveWorkspace, workspaceExists } from "../modules/access";
+import { ensurePartnerProfile, resolveWorkspace, workspaceExists } from "../modules/access";
 import { authorizeAdmin, type AdminContext } from "../modules/admin/authz";
 import { toTrpcError } from "../modules/errors";
 import { recordSecurityEvent } from "../modules/securityEvents";
@@ -82,8 +82,8 @@ export const teacherProcedure = protectedProcedure.use(async ({ ctx, next, path 
 export const studentProcedure = protectedProcedure;
 
 export const partnerProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  const partner = await partnerProfileOf(ctx.user.id);
-  if (partner?.status !== "APPROVED") throw new TRPCError({ code: "FORBIDDEN", message: "PARTNER_ONLY" });
+  const partner = await ensurePartnerProfile(ctx.user.id);
+  if (partner.status !== "APPROVED") throw new TRPCError({ code: "FORBIDDEN", message: "PARTNER_ONLY" });
   return next({ ctx: { ...ctx, partner } });
 });
 

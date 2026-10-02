@@ -32,7 +32,7 @@ import {
   teacherProcedure,
 } from "./_core/trpc";
 import * as db from "./db";
-import { canEnterContext, defaultContext, partnerProfileOf, resolveAccess, type TeacherScope } from "./modules/access";
+import { canEnterContext, defaultContext, ensurePartnerProfile, resolveAccess, type TeacherScope } from "./modules/access";
 import * as activity from "./modules/activity";
 import { adminView } from "./modules/admin/authz";
 import * as ai from "./modules/ai";
@@ -781,9 +781,10 @@ const workspacesRouter = router({
 });
 
 const partnerRouter = router({
+  /** Every user is auto-provisioned a referral profile on first lookup -- see `ensurePartnerProfile`. */
   profile: protectedProcedure.query(async ({ ctx }) => {
-    const p = await partnerProfileOf(ctx.user.id);
-    return p ? { status: p.status, referralCode: p.status === "APPROVED" ? p.referralCode : null } : null;
+    const p = await ensurePartnerProfile(ctx.user.id);
+    return { status: p.status, referralCode: p.status === "APPROVED" ? p.referralCode : null };
   }),
   /** Applies, or re-submits answers while the admin has requested more information. */
   requestProfile: protectedProcedure

@@ -22,7 +22,7 @@ vi.mock("./modules/access", async (importOriginal) => {
   return {
     ...actual,
     resolveWorkspace: vi.fn(),
-    partnerProfileOf: vi.fn(),
+    ensurePartnerProfile: vi.fn(),
     platformRolesOf: vi.fn(),
     resolveAccess: vi.fn(),
   };
@@ -101,7 +101,7 @@ async function codeOf(p: Promise<unknown>) {
 beforeEach(() => {
   resetRateLimits();
   mocked.resolveWorkspace.mockResolvedValue(WORKSPACE);
-  mocked.partnerProfileOf.mockResolvedValue(null);
+  mocked.ensurePartnerProfile.mockResolvedValue({ id: 1, userId: 7, status: "PENDING", referralCode: "ABC", approvedAt: null, createdAt: new Date() });
   mocked.platformRolesOf.mockResolvedValue([]);
   mocked.resolveAccess.mockResolvedValue(accessOf());
 });
@@ -144,12 +144,13 @@ describe("context-based access", () => {
     expect(await codeOf(u.student.results())).toBe("INTERNAL_SERVER_ERROR:DATABASE_UNAVAILABLE");
   });
 
-  it("opens the partner context only for an approved partner profile", async () => {
-    expect(await codeOf(caller(user()).partner.dashboard())).toBe("FORBIDDEN:PARTNER_ONLY");
+  it("opens the partner context only for an approved partner profile (auto-provisioned, but an admin can still suspend it)", async () => {
     const profile = { id: 1, userId: 7, status: "PENDING" as const, referralCode: "ABC", approvedAt: null, createdAt: new Date() };
-    mocked.partnerProfileOf.mockResolvedValue(profile);
+    mocked.ensurePartnerProfile.mockResolvedValue(profile);
     expect(await codeOf(caller(user()).partner.dashboard())).toBe("FORBIDDEN:PARTNER_ONLY");
-    mocked.partnerProfileOf.mockResolvedValue({ ...profile, status: "APPROVED", approvedAt: new Date() });
+    mocked.ensurePartnerProfile.mockResolvedValue({ ...profile, status: "SUSPENDED" });
+    expect(await codeOf(caller(user()).partner.dashboard())).toBe("FORBIDDEN:PARTNER_ONLY");
+    mocked.ensurePartnerProfile.mockResolvedValue({ ...profile, status: "APPROVED", approvedAt: new Date() });
     expect(await caller(user()).partner.dashboard()).toMatchObject({ status: "APPROVED", referralCode: "ABC" });
   });
 

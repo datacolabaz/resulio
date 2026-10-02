@@ -353,11 +353,4 @@ export const app = {
     "When your referral makes their first payment, you earn a 10% commission.",
     "Когда приглашённый сделает первый платёж, вы получите комиссию 10%.",
   ],
-  "referral.apply": ["Tərəfdaş olmaq üçün müraciət et", "Apply to become a partner", "Подать заявку на партнёрство"],
-  "referral.applySent": ["Müraciətin göndərildi", "Your application was sent", "Заявка отправлена"],
-  "referral.pending": [
-    "Müraciətin baxılır — təsdiqlənəndə buradan paylaşa biləcəksən.",
-    "Your application is under review — you'll be able to share from here once it's approved.",
-    "Заявка на рассмотрении — вы сможете делиться ссылкой здесь после одобрения.",
-  ],
 } as const satisfies Record<string, Entry>;

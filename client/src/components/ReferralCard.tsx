@@ -1,24 +1,24 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { ShareBox } from "@/components/ShareBox";
-import { Button } from "@/components/ui/button";
 import { t } from "@/i18n/messages";
 import { trpc } from "@/lib/trpc";
 import { REFERRAL_CARD_SNOOZE_DAYS } from "@shared/const";
 import { X } from "lucide-react";
-import { toast } from "sonner";
 
 /**
  * "Share Resulio, earn a commission" card, in its two placements:
- * - "onboarding": shown once, ever, right after a teacher's first login; dismissed by any action
- *   (sharing or "not now") and never shown again.
- * - "dashboard": a persistent card on the teacher dashboard, dismissible for REFERRAL_CARD_SNOOZE_DAYS
- *   days at a time; only rendered once the teacher has done something (a group, task or exam) --
- *   the caller decides that and only mounts this component when it should show.
+ * - "onboarding": shown once, ever, right after first login; dismissed by any action (sharing or
+ *   "not now") and never shown again.
+ * - "dashboard": a persistent card, dismissible for REFERRAL_CARD_SNOOZE_DAYS days at a time; only
+ *   rendered once the teacher has done something (a group, task or exam) -- the caller decides
+ *   that and only mounts this component when it should show.
  *
- * Either way: a teacher who isn't an approved partner yet sees an invitation to apply, not a
- * live referral link (this app gates referral codes behind partner approval -- that review step
- * stays in place here, it is not bypassed by this card). No commission/earnings figure is shown
- * anywhere, because this app has no payment system yet to compute one from truthfully.
+ * Every user is auto-provisioned a referral link the moment they're looked up (see
+ * `ensurePartnerProfile` on the server) -- there's no apply/review step before someone can share
+ * it. An admin can still suspend an individual account after the fact if it's abused; that's the
+ * only case where `status` isn't APPROVED here, and this card just stays quiet for that account.
+ * No commission/earnings figure is shown anywhere, because this app has no payment system yet to
+ * compute one from truthfully.
  */
 export function ReferralCard({ variant }: { variant: "onboarding" | "dashboard" }) {
   const { user } = useAuth();
@@ -26,17 +26,8 @@ export function ReferralCard({ variant }: { variant: "onboarding" | "dashboard" 
   const utils = trpc.useUtils();
   const dismissOnboarding = trpc.auth.dismissReferralOnboarding.useMutation({ onSuccess: () => utils.auth.me.invalidate() });
   const dismissCard = trpc.auth.dismissReferralCard.useMutation({ onSuccess: () => utils.auth.me.invalidate() });
-  const apply = trpc.partner.requestProfile.useMutation({
-    onSuccess: () => {
-      toast.success(t("referral.applySent"));
-      void utils.partner.profile.invalidate();
-    },
-  });
 
-  // `partner.data` is legitimately `null` once the query has resolved for a teacher who has
-  // never applied to the partner program -- that is the common case this card exists to reach,
-  // so only "still loading" (or a fetch error) should suppress rendering, not "no profile yet".
-  if (!user || partner.isLoading || !partner.isSuccess) return null;
+  if (!user || partner.isLoading || !partner.isSuccess || !partner.data.referralCode) return null;
   if (variant === "onboarding" && user.referralOnboardingSeenAt) return null;
   if (variant === "dashboard") {
     const dismissedAt = user.referralCardDismissedAt ? new Date(user.referralCardDismissedAt).getTime() : null;
@@ -44,8 +35,7 @@ export function ReferralCard({ variant }: { variant: "onboarding" | "dashboard" 
   }
 
   const dismiss = () => (variant === "onboarding" ? dismissOnboarding.mutate() : dismissCard.mutate());
-  const status = partner.data?.status;
-  const referralCode = status === "APPROVED" ? (partner.data?.referralCode ?? null) : null;
+  const referralCode = partner.data.referralCode;
 
   return (
     <div className="rounded-xl border bg-muted/30 p-4">
@@ -58,22 +48,14 @@ export function ReferralCard({ variant }: { variant: "onboarding" | "dashboard" 
           <X className="h-4 w-4" aria-hidden />
         </button>
       </div>
-      {referralCode ? (
-        <div className="mt-3">
-          <ShareBox
-            path={`/?ref=${referralCode}`}
-            fileName={`resulio-referral-${referralCode}`}
-            tracking={{ targetType: "REFERRAL", targetId: referralCode, campaign: variant === "onboarding" ? "onboarding" : "dashboard_card" }}
-            onAction={dismiss}
-          />
-        </div>
-      ) : status === "PENDING" || status === "INFO_REQUESTED" ? (
-        <p className="mt-3 text-sm text-muted-foreground">{t("referral.pending")}</p>
-      ) : (
-        <div className="mt-3">
-          <Button size="sm" disabled={apply.isPending} onClick={() => apply.mutate(undefined)}>{t("referral.apply")}</Button>
-        </div>
-      )}
+      <div className="mt-3">
+        <ShareBox
+          path={`/?ref=${referralCode}`}
+          fileName={`resulio-referral-${referralCode}`}
+          tracking={{ targetType: "REFERRAL", targetId: referralCode, campaign: variant === "onboarding" ? "onboarding" : "dashboard_card" }}
+          onAction={dismiss}
+        />
+      </div>
     </div>
   );
 }

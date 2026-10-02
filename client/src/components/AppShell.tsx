@@ -67,6 +67,7 @@ const TEACHER_NAV: { href: string; key: MessageKey; icon: typeof LayoutDashboard
   { href: "/teacher/results", key: "nav.results", icon: ListChecks },
   { href: "/teacher/analytics", key: "nav.analytics", icon: LineChart },
   { href: "/teacher/usage", key: "nav.usage", icon: Gauge },
+  { href: "/partner", key: "nav.referral", icon: Handshake },
   { href: "/settings", key: "nav.settings", icon: Settings },
 ];
 
@@ -78,6 +79,7 @@ const STUDENT_NAV: typeof TEACHER_NAV = [
   { href: "/student/groups", key: "nav.myGroups", icon: Users },
   { href: "/student/results", key: "nav.myResults", icon: ListChecks },
   { href: "/student/progress", key: "nav.myProgress", icon: TrendingUp },
+  { href: "/partner", key: "nav.referral", icon: Handshake },
   { href: "/settings", key: "nav.settings", icon: Settings },
 ];
 
