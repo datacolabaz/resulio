@@ -202,6 +202,25 @@ export const app = {
   "public.onboarding.dateLabel": ["İmtahan tarixi", "Exam date", "Дата экзамена"],
   "public.onboarding.save": ["Yadda saxla", "Save", "Сохранить"],
   "public.onboarding.skip": ["Atla", "Skip", "Пропустить"],
+  "public.onboarding.referralLabel": ["Resulio haqqında haradan eşitdiniz?", "How did you hear about Resulio?", "Откуда вы узнали о Resulio?"],
+  "public.onboarding.referrerLabel": ["Sizə kim tövsiyə etdi?", "Who recommended you?", "Кто вас порекомендовал?"],
+  "public.onboarding.referrerSearchPlaceholder": ["Ad və ya soyad yazın", "Type a name", "Введите имя"],
+  "public.onboarding.referrerNoMatch": ["Uyğun istifadəçi tapılmadı", "No matching user found", "Подходящий пользователь не найден"],
+  "public.onboarding.referrerNotListed": [
+    "Siyahıda tapmadım, adını özüm yazım",
+    "Not in the list, I'll type their name",
+    "Не нашёл(ла) в списке, введу имя сам(а)",
+  ],
+  "public.onboarding.referrerSearchInstead": ["Əvəzinə axtarıb seçim", "Search and pick instead", "Лучше найду и выберу"],
+  "public.onboarding.referrerNameLabel": ["Tövsiyə edənin adı və soyadı", "Referrer's full name", "Имя и фамилия того, кто порекомендовал"],
+  "public.onboarding.referrerNamePlaceholder": ["Ad Soyad", "First Last", "Имя Фамилия"],
+
+  "referralSource.INSTAGRAM": ["Instagram", "Instagram", "Instagram"],
+  "referralSource.FACEBOOK": ["Facebook", "Facebook", "Facebook"],
+  "referralSource.TIKTOK": ["TikTok", "TikTok", "TikTok"],
+  "referralSource.GOOGLE_SEARCH": ["Google / axtarış", "Google / search", "Google / поиск"],
+  "referralSource.REFERRAL": ["Tövsiyə (dost/tanış)", "Referral (friend/acquaintance)", "Рекомендация (друг/знакомый)"],
+  "referralSource.OTHER": ["Başqa", "Other", "Другое"],
 
   "public.exam.notFound": ["İmtahan tapılmadı.", "Exam not found.", "Экзамен не найден."],
   "public.exam.joinFirst": [

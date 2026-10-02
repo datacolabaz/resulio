@@ -1,4 +1,5 @@
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
+import { REFERRAL_SOURCES } from "@shared/referralSources";
 import { CLASS_TIME_PATTERN, GROUP_LANGUAGES, WEEK_DAYS } from "@shared/schedule";
 import { TEACHING_CATEGORIES } from "@shared/teachingCategories";
 import { z } from "zod";
@@ -160,6 +161,9 @@ const authRouter = router({
         targetExam: z.string().trim().max(64).optional(),
         targetScore: z.string().trim().max(32).optional(),
         targetExamDate: z.string().datetime().optional().nullable(),
+        referralSource: z.enum(REFERRAL_SOURCES).optional(),
+        referrerUserId: z.number().int().positive().optional(),
+        referrerName: z.string().trim().min(1).max(160).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -168,9 +172,18 @@ const authRouter = router({
         targetExam: input.targetExam,
         targetScore: input.targetScore,
         targetExamDate: input.targetExamDate === undefined ? undefined : input.targetExamDate === null ? null : new Date(input.targetExamDate),
+        referralSource: input.referralSource,
+        referrerUserId: input.referrerUserId,
+        referrerName: input.referrerName,
       });
       return { ok: true } as const;
     }),
+
+  /** "Who recommended you" tag search on the onboarding step — name only, nothing else about the match is exposed. */
+  searchReferrer: protectedProcedure
+    .use(rateLimit("searchReferrer", 30, MINUTE))
+    .input(z.object({ query: z.string().trim().max(60) }))
+    .query(({ ctx, input }) => db.searchUsersByName(input.query, ctx.user.id)),
 });
 
 // ---------------------------------------------------------------------------
