@@ -14,19 +14,14 @@ import {
   groupFormatLabel,
   groupLanguageLabel,
   liveLabel,
-  referralSourceLabel,
   scheduleSummary,
-  teachingCategoryLabel,
-  teachingSubcategoryLabel,
   typeLabel,
 } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import { fileDownloadUrl } from "@/lib/uploadFile";
-import { REFERRAL_SOURCES, type ReferralSource } from "@shared/referralSources";
 import type { ClassScheduleEntry } from "@shared/schedule";
 import { SHARE_CAMPAIGNS, SHARE_CHANNELS, type ShareCampaign, type ShareChannel, type ShareTargetType } from "@shared/shareTracking";
-import { TEACHING_CATEGORIES, TEACHING_SUBCATEGORIES, type TeachingCategory } from "@shared/teachingCategories";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Link, useParams, useSearch } from "wouter";
 
 /**
@@ -50,258 +45,6 @@ function useShareAttribution(targetType: ShareTargetType, targetId: string, read
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, targetId]);
   return { channel, campaign };
-}
-
-/**
- * Shown once, right after a student's first successful group join — optional and skippable, per
- * spec. `onDone` fires whether the student saved something or skipped; either way the server
- * stamps `studentOnboardedAt` so this never appears again for that user.
- *
- * The "what are you learning" field reuses the teacher's own teachingCategory/teachingSubcategory
- * taxonomy (shared/teachingCategories.ts) instead of a separate, narrower exam-only list — so a
- * student sees the same breadth of fields (IT, business, etc.) a teacher can pick for a workspace.
- * When the group just joined has its own specialty set, that specialty is locked in rather than
- * asked again: the student already told us by picking this exact group.
- */
-function StudentOnboarding({ onDone, groupTeachingSubcategory }: { onDone: () => void; groupTeachingSubcategory?: string }) {
-  const lockedLabel = groupTeachingSubcategory?.trim() ? teachingSubcategoryLabel(groupTeachingSubcategory) : null;
-  const [category, setCategory] = useState<TeachingCategory | "">("");
-  const [subcategory, setSubcategory] = useState("");
-  const [customText, setCustomText] = useState("");
-  const [targetScore, setTargetScore] = useState("");
-  const [targetExamDate, setTargetExamDate] = useState("");
-  const [referralSource, setReferralSource] = useState<ReferralSource | "">("");
-  const [referrer, setReferrer] = useState<{ id: number; name: string } | null>(null);
-  const [referrerName, setReferrerName] = useState("");
-  const complete = trpc.auth.completeStudentOnboarding.useMutation({ onSuccess: onDone });
-
-  const subcategoryOptions = category && category !== "OTHER" ? TEACHING_SUBCATEGORIES[category] : null;
-  const needsCustomText = category === "OTHER" || subcategory === "OTHER";
-  const freeChoiceValue = category === "" ? "" : needsCustomText ? customText.trim() : teachingSubcategoryLabel(subcategory);
-  const targetExam = lockedLabel ?? freeChoiceValue;
-
-  function handleCategoryChange(next: TeachingCategory | "") {
-    setCategory(next);
-    setSubcategory(next && next !== "OTHER" ? TEACHING_SUBCATEGORIES[next][0] : "");
-    setCustomText("");
-  }
-
-  function handleReferralSourceChange(next: ReferralSource | "") {
-    setReferralSource(next);
-    setReferrer(null);
-    setReferrerName("");
-  }
-
-  const save = () => {
-    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    complete.mutate({
-      timezone,
-      targetExam: targetExam || undefined,
-      targetScore: targetScore.trim() || undefined,
-      targetExamDate: targetExamDate ? new Date(targetExamDate).toISOString() : undefined,
-      referralSource: referralSource || undefined,
-      referrerUserId: referralSource === "REFERRAL" ? referrer?.id : undefined,
-      referrerName: referralSource === "REFERRAL" && !referrer ? referrerName.trim() || undefined : undefined,
-    });
-  };
-  return (
-    <div className="mt-6 border-t pt-5 text-left">
-      <h2 className="text-sm font-semibold">{t("public.onboarding.title")}</h2>
-      <p className="mt-1 text-xs text-muted-foreground">{t("public.onboarding.lead")}</p>
-      <div className="mt-3 grid gap-3">
-        <label className="text-sm">
-          <span className="text-foreground-secondary">{t("public.onboarding.examLabel")}</span>
-          {lockedLabel ? (
-            <div className="mt-1 rounded-md border border-input bg-muted/40 px-3 py-2 text-sm text-foreground">
-              {lockedLabel}
-              <p className="mt-0.5 text-xs text-muted-foreground">{t("public.onboarding.lockedNote")}</p>
-            </div>
-          ) : (
-            <select
-              className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground"
-              value={category}
-              onChange={(e) => handleCategoryChange(e.target.value as TeachingCategory | "")}
-            >
-              <option value="">{t("public.onboarding.examUnset")}</option>
-              {TEACHING_CATEGORIES.map((k) => (
-                <option key={k} value={k}>{teachingCategoryLabel(k)}</option>
-              ))}
-            </select>
-          )}
-        </label>
-        {!lockedLabel && subcategoryOptions && (
-          <label className="text-sm">
-            <span className="text-foreground-secondary">{t("workspace.subcategory")}</span>
-            <select
-              className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground"
-              value={subcategory}
-              onChange={(e) => setSubcategory(e.target.value)}
-            >
-              {subcategoryOptions.map((k) => (
-                <option key={k} value={k}>{teachingSubcategoryLabel(k)}</option>
-              ))}
-            </select>
-          </label>
-        )}
-        {!lockedLabel && needsCustomText && (
-          <label className="text-sm">
-            <span className="text-foreground-secondary">{category === "OTHER" ? t("workspace.category") : t("workspace.subcategory")}</span>
-            <Input
-              maxLength={120}
-              value={customText}
-              onChange={(e) => setCustomText(e.target.value)}
-              placeholder={t("public.onboarding.customPlaceholder")}
-            />
-          </label>
-        )}
-        <label className="text-sm">
-          <span className="text-foreground-secondary">{t("public.onboarding.scoreLabel")}</span>
-          <Input value={targetScore} maxLength={32} onChange={(e) => setTargetScore(e.target.value)} placeholder={t("public.onboarding.scorePlaceholder")} />
-        </label>
-        <label className="text-sm">
-          <span className="text-foreground-secondary">{t("public.onboarding.dateLabel")}</span>
-          <Input type="date" value={targetExamDate} onChange={(e) => setTargetExamDate(e.target.value)} />
-        </label>
-        <label className="text-sm">
-          <span className="text-foreground-secondary">{t("public.onboarding.referralLabel")}</span>
-          <select
-            className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground"
-            value={referralSource}
-            onChange={(e) => handleReferralSourceChange(e.target.value as ReferralSource | "")}
-          >
-            <option value="">{t("public.onboarding.examUnset")}</option>
-            {REFERRAL_SOURCES.map((k) => (
-              <option key={k} value={k}>{referralSourceLabel(k)}</option>
-            ))}
-          </select>
-        </label>
-        {referralSource === "REFERRAL" && (
-          <ReferrerPicker referrer={referrer} onPick={setReferrer} referrerName={referrerName} onNameChange={setReferrerName} />
-        )}
-      </div>
-      <div className="mt-4 flex gap-2">
-        <Button size="sm" disabled={complete.isPending} onClick={save}>{t("public.onboarding.save")}</Button>
-        <Button size="sm" variant="ghost" disabled={complete.isPending} onClick={onDone}>{t("public.onboarding.skip")}</Button>
-      </div>
-      {complete.error && <p role="alert" className="mt-2 text-sm text-destructive">{errorText(complete.error)}</p>}
-    </div>
-  );
-}
-
-/**
- * Shown only when the student picked REFERRAL as their source. Two mutually exclusive ways to
- * say who recommended them: search-and-tag an existing Resulio user (the default), or — via the
- * "not on the list" toggle — just type that person's name. Switching away from a picked user, or
- * back from the free-text toggle, clears the other field so only one of referrerUserId/referrerName
- * is ever sent.
- */
-function ReferrerPicker({
-  referrer,
-  onPick,
-  referrerName,
-  onNameChange,
-}: {
-  referrer: { id: number; name: string } | null;
-  onPick: (u: { id: number; name: string } | null) => void;
-  referrerName: string;
-  onNameChange: (v: string) => void;
-}) {
-  const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [typingName, setTypingName] = useState(false);
-
-  useEffect(() => {
-    const id = setTimeout(() => setDebouncedQuery(query.trim()), 300);
-    return () => clearTimeout(id);
-  }, [query]);
-
-  const search = trpc.auth.searchReferrer.useQuery(
-    { query: debouncedQuery },
-    { enabled: !referrer && !typingName && debouncedQuery.length >= 2 },
-  );
-
-  if (typingName) {
-    return (
-      <label className="text-sm">
-        <span className="text-foreground-secondary">{t("public.onboarding.referrerNameLabel")}</span>
-        <Input
-          maxLength={160}
-          value={referrerName}
-          onChange={(e) => onNameChange(e.target.value)}
-          placeholder={t("public.onboarding.referrerNamePlaceholder")}
-        />
-        <button
-          type="button"
-          className="mt-1 text-xs text-link underline-offset-2 hover:underline"
-          onClick={() => {
-            setTypingName(false);
-            onNameChange("");
-          }}
-        >
-          {t("public.onboarding.referrerSearchInstead")}
-        </button>
-      </label>
-    );
-  }
-
-  return (
-    <div className="text-sm">
-      <span className="text-foreground-secondary">{t("public.onboarding.referrerLabel")}</span>
-      {referrer ? (
-        <div className="mt-1 flex items-center justify-between gap-2 rounded-md border border-input bg-muted/40 px-3 py-2 text-sm text-foreground">
-          <span className="min-w-0 truncate">{referrer.name}</span>
-          <button type="button" className="shrink-0 text-xs text-link underline-offset-2 hover:underline" onClick={() => onPick(null)}>
-            {t("common.remove")}
-          </button>
-        </div>
-      ) : (
-        <>
-          <Input
-            maxLength={60}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t("public.onboarding.referrerSearchPlaceholder")}
-          />
-          {debouncedQuery.length >= 2 && (
-            <div className="mt-1 overflow-hidden rounded-md border border-input bg-card">
-              {search.isFetching ? (
-                <p className="px-3 py-2 text-xs text-muted-foreground">{t("common.loading")}</p>
-              ) : search.data && search.data.length > 0 ? (
-                <ul>
-                  {search.data.map((u) => (
-                    <li key={u.id}>
-                      <button
-                        type="button"
-                        className="block w-full px-3 py-2 text-left text-sm hover:bg-muted/60"
-                        onClick={() => {
-                          onPick(u);
-                          setQuery("");
-                        }}
-                      >
-                        {u.name}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="px-3 py-2 text-xs text-muted-foreground">{t("public.onboarding.referrerNoMatch")}</p>
-              )}
-            </div>
-          )}
-          <button
-            type="button"
-            className="mt-1 text-xs text-link underline-offset-2 hover:underline"
-            onClick={() => {
-              setTypingName(true);
-              setQuery("");
-            }}
-          >
-            {t("public.onboarding.referrerNotListed")}
-          </button>
-        </>
-      )}
-    </div>
-  );
 }
 
 /** Extra group facts shown on a join-preview screen, only for the fields the teacher chose to share. */
@@ -366,7 +109,6 @@ export function JoinGroupPage() {
   const invite = trpc.public.invite.useQuery({ inviteCode }, { enabled: inviteCode.length >= 4, retry: false });
   const utils = trpc.useUtils();
   const join = trpc.student.join.useMutation({ onSuccess: () => utils.auth.me.invalidate() });
-  const [onboardingDone, setOnboardingDone] = useState(false);
   const g = invite.data;
   const { channel, campaign } = useShareAttribution("GROUP", inviteCode, Boolean(g));
   return (
@@ -387,9 +129,6 @@ export function JoinGroupPage() {
               <div className="space-y-3 text-sm" role="status">
                 <p className="text-success">{join.data.status === "ACTIVE" ? t("public.invite.joined") : t("public.join.sent")}</p>
                 <Link href="/student/groups" className="text-link underline-offset-4 hover:underline">{t("public.myGroups")}</Link>
-                {user && !user.studentOnboardedAt && !onboardingDone && (
-                  <StudentOnboarding onDone={() => setOnboardingDone(true)} groupTeachingSubcategory={g.teachingSubcategory} />
-                )}
               </div>
             ) : g.joinPolicy === "MANUAL" ? (
               <p role="alert" className="text-sm text-muted-foreground">{t("public.join.notAccepting")}</p>
@@ -413,7 +152,6 @@ export function PublicEmailInvitePage() {
   const invite = trpc.public.emailInvite.useQuery({ token }, { enabled: token.length >= 16, retry: false });
   const utils = trpc.useUtils();
   const accept = trpc.student.acceptEmailInvite.useMutation({ onSuccess: () => utils.auth.me.invalidate() });
-  const [onboardingDone, setOnboardingDone] = useState(false);
   const g = invite.data;
   const returnTo = `/invite/${token}`;
   return (
@@ -435,9 +173,6 @@ export function PublicEmailInvitePage() {
               <div className="space-y-3 text-sm" role="status">
                 <p className="text-success">{t("public.invite.joined")}</p>
                 <Link href="/student/groups" className="text-link underline-offset-4 hover:underline">{t("public.myGroups")}</Link>
-                {user && !user.studentOnboardedAt && !onboardingDone && (
-                  <StudentOnboarding onDone={() => setOnboardingDone(true)} groupTeachingSubcategory={g.teachingSubcategory} />
-                )}
               </div>
             ) : accept.error ? (
               <JoinErrorNote error={accept.error} />
