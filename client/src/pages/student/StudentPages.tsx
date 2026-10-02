@@ -357,62 +357,84 @@ export function StudentGroups() {
   const [code, setCode] = useState("");
   const [, nav] = useLocation();
   const [progressId, setProgressId] = useState<string | null>(null);
+  // Only matters once the student already has at least one group -- see below.
+  const [joinOpen, setJoinOpen] = useState(false);
+  const hasGroups = !!list.data?.length;
   return (
     <AppShell area="learning">
-      <div className="grid max-w-3xl gap-5">
-        {/* A student who already has groups sees those first -- the join-another-group box is a
-            secondary action, not the first thing competing for attention on a page whose main
-            job, for most visits, is checking groups already joined. */}
-        {!!list.data?.length && (
-          <Panel title={t("student.myGroups")}>
-            <ul className="divide-y">
-              {list.data.map((g) => (
-                <li key={g.id} className="py-2 text-sm">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="min-w-0 break-words">{g.name} <span className="text-xs text-muted-foreground">{g.subject}</span></span>
-                    <span className="flex items-center gap-2">
-                      {g.status === "ACTIVE" ? (
-                        <>
-                          <button
-                            type="button"
-                            className="text-xs text-link underline-offset-2 hover:underline"
-                            onClick={() => setProgressId(progressId === g.id ? null : g.id)}
-                          >
-                            {t("student.groupProgress")}
-                          </button>
-                          <StatusBadge tone="success">{t("student.member")}</StatusBadge>
-                        </>
-                      ) : (
-                        <StatusBadge tone="warning">{t("student.awaitingApproval")}</StatusBadge>
-                      )}
-                    </span>
-                  </div>
-                  {progressId === g.id && <GroupProgressPanel groupId={g.id} />}
-                </li>
-              ))}
-            </ul>
-          </Panel>
-        )}
-        <Panel title={t("student.joinGroup")}>
-          <p className="mb-2 text-xs text-muted-foreground">{t("student.joinGroupHint")}</p>
-          <div className="flex gap-2">
-            <Input
-              placeholder={t("welcome.inviteCodeOrLinkPlaceholder")}
-              aria-label={t("welcome.inviteCodeOrLink")}
-              value={code}
-              onChange={(e) => setCode(normalizeJoinInput(e.target.value))}
-            />
-            {/* Navigating to the preview page (not joining directly) so the student always sees the
-                group's details and confirms before membership is created or requested. */}
-            <Button disabled={!resolveJoinInput(code)} onClick={() => { const route = resolveJoinInput(code); if (route) nav(route); }}>{t("student.join")}</Button>
-          </div>
-        </Panel>
-        {!list.data?.length && (
-          <Panel title={t("student.myGroups")}>
-            <p className="text-sm text-muted-foreground">{t("student.noGroups")}</p>
-          </Panel>
-        )}
-      </div>
+      {list.isLoading ? (
+        <Loading />
+      ) : (
+        <div className="grid max-w-3xl gap-5">
+          {/* A student who already has groups sees those first -- the join-another-group box is a
+              secondary action, not the first thing competing for attention on a page whose main
+              job, for most visits, is checking groups already joined. */}
+          {hasGroups && (
+            <Panel title={t("student.myGroups")}>
+              <ul className="divide-y">
+                {list.data!.map((g) => (
+                  <li key={g.id} className="py-2 text-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="min-w-0 break-words">{g.name} <span className="text-xs text-muted-foreground">{g.subject}</span></span>
+                      <span className="flex items-center gap-2">
+                        {g.status === "ACTIVE" ? (
+                          <>
+                            <button
+                              type="button"
+                              className="text-xs text-link underline-offset-2 hover:underline"
+                              onClick={() => setProgressId(progressId === g.id ? null : g.id)}
+                            >
+                              {t("student.groupProgress")}
+                            </button>
+                            <StatusBadge tone="success">{t("student.member")}</StatusBadge>
+                          </>
+                        ) : (
+                          <StatusBadge tone="warning">{t("student.awaitingApproval")}</StatusBadge>
+                        )}
+                      </span>
+                    </div>
+                    {progressId === g.id && <GroupProgressPanel groupId={g.id} />}
+                  </li>
+                ))}
+              </ul>
+            </Panel>
+          )}
+          {/* Once the student already belongs to (or is awaiting approval for) a group, the join
+              box stops being something they see every visit -- it collapses to a single link, since
+              by far the common case from here on is checking an existing group, not joining a new
+              one. A brand-new student with no groups yet still sees the full box immediately. */}
+          {hasGroups && !joinOpen ? (
+            <button
+              type="button"
+              onClick={() => setJoinOpen(true)}
+              className="justify-self-start text-sm text-link underline-offset-2 hover:underline"
+            >
+              {t("student.joinAnotherGroup")}
+            </button>
+          ) : (
+            <Panel title={t("student.joinGroup")}>
+              <p className="mb-2 text-xs text-muted-foreground">{t("student.joinGroupHint")}</p>
+              <div className="flex gap-2">
+                <Input
+                  placeholder={t("welcome.inviteCodeOrLinkPlaceholder")}
+                  aria-label={t("welcome.inviteCodeOrLink")}
+                  value={code}
+                  onChange={(e) => setCode(normalizeJoinInput(e.target.value))}
+                  autoFocus={hasGroups}
+                />
+                {/* Navigating to the preview page (not joining directly) so the student always sees the
+                    group's details and confirms before membership is created or requested. */}
+                <Button disabled={!resolveJoinInput(code)} onClick={() => { const route = resolveJoinInput(code); if (route) nav(route); }}>{t("student.join")}</Button>
+              </div>
+            </Panel>
+          )}
+          {!hasGroups && (
+            <Panel title={t("student.myGroups")}>
+              <p className="text-sm text-muted-foreground">{t("student.noGroups")}</p>
+            </Panel>
+          )}
+        </div>
+      )}
     </AppShell>
   );
 }

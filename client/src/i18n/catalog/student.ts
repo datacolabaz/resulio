@@ -67,6 +67,7 @@ export const student = {
     "Вставьте код или ссылку-приглашение от преподавателя в это поле.",
   ],
   "student.join": ["Qoşul", "Join", "Вступить"],
+  "student.joinAnotherGroup": ["+ Başqa kodla qoşul", "+ Join with another code", "+ Вступить по другому коду"],
   "student.myGroups": ["Qruplarım", "My groups", "Мои группы"],
   "student.noGroups": ["Hələ heç bir qrupa qoşulmamısınız.", "You have not joined any groups yet.", "Вы пока не состоите ни в одной группе."],
   "student.member": ["Üzv", "Member", "Участник"],
