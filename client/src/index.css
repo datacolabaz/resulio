@@ -312,3 +312,24 @@
     }
   }
 }
+
+/*
+ * Landing hero dashboard preview: a very subtle floating motion so the mockup reads as a live
+ * product rather than a flat screenshot. Opt-in only under `prefers-reduced-motion: no-preference`
+ * — no `.hero-preview-float` rule exists at all under reduced motion, so there is nothing to
+ * override or turn off per element.
+ */
+@keyframes hero-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .hero-preview-float {
+    animation: hero-float 6s ease-in-out infinite;
+  }
+}
