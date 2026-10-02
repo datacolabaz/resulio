@@ -14,6 +14,7 @@ import {
   groupFormatLabel,
   groupLanguageLabel,
   liveLabel,
+  referralSourceLabel,
   scheduleSummary,
   teachingCategoryLabel,
   teachingSubcategoryLabel,
@@ -21,9 +22,10 @@ import {
 } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import { fileDownloadUrl } from "@/lib/uploadFile";
+import { REFERRAL_SOURCES, type ReferralSource } from "@shared/referralSources";
 import type { ClassScheduleEntry } from "@shared/schedule";
 import { TEACHING_CATEGORIES, TEACHING_SUBCATEGORIES, type TeachingCategory } from "@shared/teachingCategories";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "wouter";
 
 /**
@@ -44,6 +46,9 @@ function StudentOnboarding({ onDone, groupTeachingSubcategory }: { onDone: () =>
   const [customText, setCustomText] = useState("");
   const [targetScore, setTargetScore] = useState("");
   const [targetExamDate, setTargetExamDate] = useState("");
+  const [referralSource, setReferralSource] = useState<ReferralSource | "">("");
+  const [referrer, setReferrer] = useState<{ id: number; name: string } | null>(null);
+  const [referrerName, setReferrerName] = useState("");
   const complete = trpc.auth.completeStudentOnboarding.useMutation({ onSuccess: onDone });
 
   const subcategoryOptions = category && category !== "OTHER" ? TEACHING_SUBCATEGORIES[category] : null;
@@ -57,6 +62,12 @@ function StudentOnboarding({ onDone, groupTeachingSubcategory }: { onDone: () =>
     setCustomText("");
   }
 
+  function handleReferralSourceChange(next: ReferralSource | "") {
+    setReferralSource(next);
+    setReferrer(null);
+    setReferrerName("");
+  }
+
   const save = () => {
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     complete.mutate({
@@ -64,6 +75,9 @@ function StudentOnboarding({ onDone, groupTeachingSubcategory }: { onDone: () =>
       targetExam: targetExam || undefined,
       targetScore: targetScore.trim() || undefined,
       targetExamDate: targetExamDate ? new Date(targetExamDate).toISOString() : undefined,
+      referralSource: referralSource || undefined,
+      referrerUserId: referralSource === "REFERRAL" ? referrer?.id : undefined,
+      referrerName: referralSource === "REFERRAL" && !referrer ? referrerName.trim() || undefined : undefined,
     });
   };
   return (
@@ -124,12 +138,144 @@ function StudentOnboarding({ onDone, groupTeachingSubcategory }: { onDone: () =>
           <span className="text-foreground-secondary">{t("public.onboarding.dateLabel")}</span>
           <Input type="date" value={targetExamDate} onChange={(e) => setTargetExamDate(e.target.value)} />
         </label>
+        <label className="text-sm">
+          <span className="text-foreground-secondary">{t("public.onboarding.referralLabel")}</span>
+          <select
+            className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground"
+            value={referralSource}
+            onChange={(e) => handleReferralSourceChange(e.target.value as ReferralSource | "")}
+          >
+            <option value="">{t("public.onboarding.examUnset")}</option>
+            {REFERRAL_SOURCES.map((k) => (
+              <option key={k} value={k}>{referralSourceLabel(k)}</option>
+            ))}
+          </select>
+        </label>
+        {referralSource === "REFERRAL" && (
+          <ReferrerPicker referrer={referrer} onPick={setReferrer} referrerName={referrerName} onNameChange={setReferrerName} />
+        )}
       </div>
       <div className="mt-4 flex gap-2">
         <Button size="sm" disabled={complete.isPending} onClick={save}>{t("public.onboarding.save")}</Button>
         <Button size="sm" variant="ghost" disabled={complete.isPending} onClick={onDone}>{t("public.onboarding.skip")}</Button>
       </div>
       {complete.error && <p role="alert" className="mt-2 text-sm text-destructive">{errorText(complete.error)}</p>}
+    </div>
+  );
+}
+
+/**
+ * Shown only when the student picked REFERRAL as their source. Two mutually exclusive ways to
+ * say who recommended them: search-and-tag an existing Resulio user (the default), or — via the
+ * "not on the list" toggle — just type that person's name. Switching away from a picked user, or
+ * back from the free-text toggle, clears the other field so only one of referrerUserId/referrerName
+ * is ever sent.
+ */
+function ReferrerPicker({
+  referrer,
+  onPick,
+  referrerName,
+  onNameChange,
+}: {
+  referrer: { id: number; name: string } | null;
+  onPick: (u: { id: number; name: string } | null) => void;
+  referrerName: string;
+  onNameChange: (v: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [typingName, setTypingName] = useState(false);
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(query.trim()), 300);
+    return () => clearTimeout(id);
+  }, [query]);
+
+  const search = trpc.auth.searchReferrer.useQuery(
+    { query: debouncedQuery },
+    { enabled: !referrer && !typingName && debouncedQuery.length >= 2 },
+  );
+
+  if (typingName) {
+    return (
+      <label className="text-sm">
+        <span className="text-foreground-secondary">{t("public.onboarding.referrerNameLabel")}</span>
+        <Input
+          maxLength={160}
+          value={referrerName}
+          onChange={(e) => onNameChange(e.target.value)}
+          placeholder={t("public.onboarding.referrerNamePlaceholder")}
+        />
+        <button
+          type="button"
+          className="mt-1 text-xs text-link underline-offset-2 hover:underline"
+          onClick={() => {
+            setTypingName(false);
+            onNameChange("");
+          }}
+        >
+          {t("public.onboarding.referrerSearchInstead")}
+        </button>
+      </label>
+    );
+  }
+
+  return (
+    <div className="text-sm">
+      <span className="text-foreground-secondary">{t("public.onboarding.referrerLabel")}</span>
+      {referrer ? (
+        <div className="mt-1 flex items-center justify-between gap-2 rounded-md border border-input bg-muted/40 px-3 py-2 text-sm text-foreground">
+          <span className="min-w-0 truncate">{referrer.name}</span>
+          <button type="button" className="shrink-0 text-xs text-link underline-offset-2 hover:underline" onClick={() => onPick(null)}>
+            {t("common.remove")}
+          </button>
+        </div>
+      ) : (
+        <>
+          <Input
+            maxLength={60}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t("public.onboarding.referrerSearchPlaceholder")}
+          />
+          {debouncedQuery.length >= 2 && (
+            <div className="mt-1 overflow-hidden rounded-md border border-input bg-card">
+              {search.isFetching ? (
+                <p className="px-3 py-2 text-xs text-muted-foreground">{t("common.loading")}</p>
+              ) : search.data && search.data.length > 0 ? (
+                <ul>
+                  {search.data.map((u) => (
+                    <li key={u.id}>
+                      <button
+                        type="button"
+                        className="block w-full px-3 py-2 text-left text-sm hover:bg-muted/60"
+                        onClick={() => {
+                          onPick(u);
+                          setQuery("");
+                        }}
+                      >
+                        {u.name}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="px-3 py-2 text-xs text-muted-foreground">{t("public.onboarding.referrerNoMatch")}</p>
+              )}
+            </div>
+          )}
+          <button
+            type="button"
+            className="mt-1 text-xs text-link underline-offset-2 hover:underline"
+            onClick={() => {
+              setTypingName(true);
+              setQuery("");
+            }}
+          >
+            {t("public.onboarding.referrerNotListed")}
+          </button>
+        </>
+      )}
     </div>
   );
 }

@@ -1,9 +1,10 @@
-import { and, eq, isNull, ne, or, sql } from "drizzle-orm";
+import { and, eq, isNull, like, ne, or, sql } from "drizzle-orm";
 import { drizzle, type MySql2Database } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { nanoid } from "nanoid";
 import * as schema from "../drizzle/schema";
 import { authAccounts, users, type InsertUser, type UiContext, type User } from "../drizzle/schema";
+import type { ReferralSource } from "../shared/referralSources";
 
 export type Db = MySql2Database<typeof schema>;
 export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -166,7 +167,15 @@ export async function setPreferredLocale(userId: number, locale: string) {
  */
 export async function completeStudentOnboarding(
   userId: number,
-  input: { timezone?: string; targetExam?: string; targetScore?: string; targetExamDate?: Date | null },
+  input: {
+    timezone?: string;
+    targetExam?: string;
+    targetScore?: string;
+    targetExamDate?: Date | null;
+    referralSource?: ReferralSource;
+    referrerUserId?: number | null;
+    referrerName?: string | null;
+  },
 ) {
   await requireDb()
     .update(users)
@@ -175,7 +184,28 @@ export async function completeStudentOnboarding(
       ...(input.targetExam !== undefined ? { targetExam: input.targetExam } : {}),
       ...(input.targetScore !== undefined ? { targetScore: input.targetScore } : {}),
       ...(input.targetExamDate !== undefined ? { targetExamDate: input.targetExamDate } : {}),
+      ...(input.referralSource !== undefined ? { referralSource: input.referralSource } : {}),
+      // Tagging a user and typing a name are mutually exclusive on the client, so whichever one
+      // was sent wins outright and clears the other rather than leaving a stale value behind.
+      ...(input.referrerUserId !== undefined ? { referrerUserId: input.referrerUserId, referrerName: null } : {}),
+      ...(input.referrerName !== undefined ? { referrerName: input.referrerName, referrerUserId: null } : {}),
       studentOnboardedAt: new Date(),
     })
     .where(eq(users.id, userId));
+}
+
+/**
+ * Up to 8 users (excluding the caller) whose name contains `query`, for the onboarding step's
+ * "who recommended you" tag search. Name only — no email/avatar — since this is exposed to any
+ * signed-in student searching for an arbitrary other person by name.
+ */
+export async function searchUsersByName(query: string, excludeUserId: number) {
+  const trimmed = query.trim();
+  if (trimmed.length < 2) return [];
+  const rows = await requireDb()
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(and(like(users.name, `%${trimmed}%`), ne(users.id, excludeUserId)))
+    .limit(8);
+  return rows.filter((r): r is { id: number; name: string } => !!r.name);
 }

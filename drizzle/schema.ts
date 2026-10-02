@@ -34,6 +34,7 @@ import {
   type AuditTargetType,
   type SecurityEventType,
 } from "../shared/adminPermissions";
+import { REFERRAL_SOURCES } from "../shared/referralSources";
 import type { ClassScheduleEntry } from "../shared/schedule";
 
 const ID = 32;
@@ -78,6 +79,12 @@ export const users = mysqlTable(
     targetExamDate: timestamp("targetExamDate"),
     /** Set once the student onboarding step is saved OR explicitly skipped; gates showing it again. */
     studentOnboardedAt: timestamp("studentOnboardedAt"),
+    /** Captured at the same onboarding step as targetExam; optional, for the team's own acquisition tracking. */
+    referralSource: mysqlEnum("referralSource", REFERRAL_SOURCES),
+    /** Set only when referralSource is REFERRAL and the student tagged an existing Resulio user. Not a DB foreign key (same light-touch style as other user-id references in this schema), just an id. */
+    referrerUserId: int("referrerUserId"),
+    /** Set only when referralSource is REFERRAL and the student typed a name instead of tagging a user (that person isn't on Resulio, or the student couldn't find them). */
+    referrerName: varchar("referrerName", { length: 160 }),
   },
   (t) => [index("users_account_status_idx").on(t.accountStatus), index("users_last_seen_idx").on(t.lastSeenAt)],
 );
