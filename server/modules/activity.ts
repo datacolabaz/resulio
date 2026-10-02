@@ -21,6 +21,8 @@ import type { TeacherScope } from "./access";
 import { ownedAssessment, resolveAssignment } from "./assessments";
 import { participantState, throttleElapsed } from "./engine";
 import { AppError } from "./errors";
+import { activeStudentIdsOfGroups } from "./groups";
+import * as tasksModule from "./tasks";
 
 /** A repeated view inside this window neither writes an event nor touches the progress row. */
 export const VIEW_THROTTLE_MS = 30 * 60_000;
@@ -408,4 +410,124 @@ export async function assessmentActivityCards(scope: TeacherScope) {
     { activeAssessments: Number(active?.n ?? 0), inProgressNow: 0, inactiveNow: 0, pendingReview: Number(pending?.n ?? 0) },
   );
   return { serverNow: now, totals, cards };
+}
+
+// ---------------------------------------------------------------------------
+// Material / task view & download tracking
+// ---------------------------------------------------------------------------
+//
+// Unlike assessments (which have a dedicated `assessment_student_progress` row per student,
+// updated on every view/heartbeat), materials and tasks only need a much lighter "has this
+// student ever seen this" fact — so these write straight to `student_activity_events` and read
+// the first occurrence back, instead of maintaining a second progress table.
+
+/** Records a MATERIAL_VIEWED/ASSIGNMENT_VIEWED event the first time each item is seen by this
+ *  student, in one batched existence check + one batched insert. Safe to call on every list
+ *  fetch — after the first time, it's a single SELECT with nothing to insert. */
+async function markFirstViews(
+  entityType: Extract<ActivityEntityType, "MATERIAL" | "ASSIGNMENT">,
+  eventType: Extract<ActivityEventType, "MATERIAL_VIEWED" | "ASSIGNMENT_VIEWED">,
+  items: { id: string; providerWorkspaceId: string }[],
+  studentId: number,
+) {
+  if (!items.length) return;
+  const db = requireDb();
+  const ids = items.map((m) => m.id);
+  const existing = await db
+    .select({ entityId: studentActivityEvents.entityId })
+    .from(studentActivityEvents)
+    .where(
+      and(
+        eq(studentActivityEvents.userId, studentId),
+        eq(studentActivityEvents.entityType, entityType),
+        eq(studentActivityEvents.eventType, eventType),
+        inArray(studentActivityEvents.entityId, ids),
+      ),
+    );
+  const seen = new Set(existing.map((e) => e.entityId));
+  const toInsert = items.filter((m) => !seen.has(m.id));
+  if (!toInsert.length) return;
+  await db.insert(studentActivityEvents).values(
+    toInsert.map((m) => ({
+      userId: studentId,
+      providerWorkspaceId: m.providerWorkspaceId,
+      groupId: null,
+      entityType,
+      entityId: m.id,
+      eventType,
+    })),
+  );
+}
+
+export const markMaterialsViewed = (items: { id: string; providerWorkspaceId: string }[], studentId: number) =>
+  markFirstViews("MATERIAL", "MATERIAL_VIEWED", items, studentId);
+
+export const markAssignmentsViewed = (items: { id: string; providerWorkspaceId: string }[], studentId: number) =>
+  markFirstViews("ASSIGNMENT", "ASSIGNMENT_VIEWED", items, studentId);
+
+type EligibleStudent = { studentId: number; name: string | null; email: string | null };
+
+/** Every student this material/task reaches (active group members plus anyone individually
+ *  targeted) — the full roster a "who's seen this" report needs, including those at zero. */
+async function eligibleStudents(groupIds: string[], studentIds: number[]): Promise<EligibleStudent[]> {
+  const memberIds = await activeStudentIdsOfGroups(groupIds);
+  const ids = [...new Set([...memberIds, ...studentIds])];
+  if (!ids.length) return [];
+  const db = requireDb();
+  const rows = await db.select({ id: users.id, name: users.name, email: users.email }).from(users).where(inArray(users.id, ids));
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  return ids
+    .map((id) => ({ studentId: id, name: byId.get(id)?.name ?? null, email: byId.get(id)?.email ?? null }))
+    .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "", "az"));
+}
+
+/** Teacher view of a material: who among the students it reaches has viewed and/or downloaded it. */
+export async function materialActivity(scope: TeacherScope, materialId: string) {
+  const material = await tasksModule.materialOf(scope, materialId);
+  const roster = await eligibleStudents(material.groupIds, material.studentIds);
+  if (!roster.length) return { eligible: [] };
+  const db = requireDb();
+  const events = await db
+    .select({ userId: studentActivityEvents.userId, eventType: studentActivityEvents.eventType, createdAt: studentActivityEvents.createdAt })
+    .from(studentActivityEvents)
+    .where(
+      and(
+        eq(studentActivityEvents.entityType, "MATERIAL"),
+        eq(studentActivityEvents.entityId, materialId),
+        inArray(studentActivityEvents.userId, roster.map((r) => r.studentId)),
+      ),
+    );
+  const firstOf = (userId: number, eventType: string) =>
+    events
+      .filter((e) => e.userId === userId && e.eventType === eventType)
+      .reduce<Date | null>((min, e) => (!min || e.createdAt < min ? e.createdAt : min), null);
+  return {
+    eligible: roster.map((r) => ({
+      ...r,
+      viewedAt: firstOf(r.studentId, "MATERIAL_VIEWED"),
+      downloadedAt: firstOf(r.studentId, "MATERIAL_DOWNLOADED"),
+    })),
+  };
+}
+
+/** Teacher view of a task: who among the students it reaches has viewed it (submission status
+ *  itself already comes back with `teacher.tasks.list`, so this only adds "seen it or not"). */
+export async function taskActivity(scope: TeacherScope, taskId: string) {
+  const task = await tasksModule.assignmentOf(scope, taskId);
+  const roster = await eligibleStudents(task.groupIds, task.studentIds);
+  if (!roster.length) return { eligible: [] };
+  const db = requireDb();
+  const events = await db
+    .select({ userId: studentActivityEvents.userId, createdAt: studentActivityEvents.createdAt })
+    .from(studentActivityEvents)
+    .where(
+      and(
+        eq(studentActivityEvents.entityType, "ASSIGNMENT"),
+        eq(studentActivityEvents.entityId, taskId),
+        eq(studentActivityEvents.eventType, "ASSIGNMENT_VIEWED"),
+        inArray(studentActivityEvents.userId, roster.map((r) => r.studentId)),
+      ),
+    );
+  const viewedAt = new Map(events.map((e) => [e.userId, e.createdAt]));
+  return { eligible: roster.map((r) => ({ ...r, viewedAt: viewedAt.get(r.studentId) ?? null })) };
 }

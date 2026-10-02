@@ -131,6 +131,7 @@ export function AssignmentsPage() {
   const [editing, setEditing] = useState<AssignmentInitial | null>(null);
   const [shareId, setShareId] = useState<string | null>(null);
   const [submissionsId, setSubmissionsId] = useState<string | null>(null);
+  const activityQ = trpc.teacher.tasks.activity.useQuery({ id: submissionsId ?? "" }, { enabled: !!submissionsId });
   const remove = trpc.teacher.tasks.remove.useMutation({
     onSuccess: () => void utils.teacher.tasks.list.invalidate(),
     onError: (e) => toast.error(errorText(e)),
@@ -155,7 +156,6 @@ export function AssignmentsPage() {
                     className="cursor-pointer disabled:cursor-default"
                     aria-label={t("modules.viewSubmissions")}
                     onClick={() => setSubmissionsId(submissionsId === a.id ? null : a.id)}
-                    disabled={!a.submissions.length}
                   >
                     <Pill>{t("modules.submissions", { count: a.submissions.length })}</Pill>
                   </button>
@@ -201,6 +201,28 @@ export function AssignmentsPage() {
                     })}
                   </ul>
                 )}
+                {submissionsId === a.id && !!activityQ.data?.eligible.length && (() => {
+                  const submittedIds = new Set(a.submissions.map((s) => s.studentId));
+                  const viewedNotSubmitted = activityQ.data!.eligible.filter((e) => e.viewedAt && !submittedIds.has(e.studentId));
+                  const notViewed = activityQ.data!.eligible.filter((e) => !e.viewedAt && !submittedIds.has(e.studentId));
+                  if (!viewedNotSubmitted.length && !notViewed.length) return null;
+                  return (
+                    <div className="mt-3 space-y-2 text-xs">
+                      {viewedNotSubmitted.length > 0 && (
+                        <div>
+                          <p className="font-medium text-foreground-secondary">{t("modules.viewedNotSubmitted")}</p>
+                          <p className="mt-1 break-words text-muted-foreground">{viewedNotSubmitted.map((e) => e.name ?? e.email ?? `#${e.studentId}`).join(", ")}</p>
+                        </div>
+                      )}
+                      {notViewed.length > 0 && (
+                        <div>
+                          <p className="font-medium text-foreground-secondary">{t("modules.notViewed")}</p>
+                          <p className="mt-1 break-words text-muted-foreground">{notViewed.map((e) => e.name ?? e.email ?? `#${e.studentId}`).join(", ")}</p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={() => setShareId(shareId === a.id ? null : a.id)}>{t("common.share")}</Button>
                   <Button size="sm" variant="outline" onClick={() => setEditing(a)}>{t("common.edit")}</Button>
@@ -381,6 +403,8 @@ function MaterialsTab() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<MaterialInitial | null>(null);
   const [shareId, setShareId] = useState<string | null>(null);
+  const [activityId, setActivityId] = useState<string | null>(null);
+  const activityQ = trpc.teacher.tasks.materialActivity.useQuery({ id: activityId ?? "" }, { enabled: !!activityId });
   const remove = trpc.teacher.tasks.removeMaterial.useMutation({
     onSuccess: () => void utils.teacher.tasks.materials.invalidate(),
     onError: (e) => toast.error(errorText(e)),
@@ -393,13 +417,47 @@ function MaterialsTab() {
       {!list.data?.length ? <EmptyState title={t("modules.noMaterials")} body={t("modules.noMaterialsBody")} /> : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {list.data.map((m) => (
-            <Panel key={m.id} title={m.title}>
+            <Panel
+              key={m.id}
+              title={m.title}
+              action={
+                <button
+                  type="button"
+                  className="cursor-pointer text-xs text-link underline-offset-2 hover:underline"
+                  onClick={() => setActivityId(activityId === m.id ? null : m.id)}
+                >
+                  {t("modules.viewActivity")}
+                </button>
+              }
+            >
               <p className="break-words text-sm text-foreground-secondary">{m.description}</p>
               <p className="mt-2 break-words text-xs text-muted-foreground">{[m.subject, m.topic].filter(Boolean).join(" · ")}</p>
               {m.fileId && (
                 <a href={fileDownloadUrl(m.fileId)} className="mt-2 inline-block rounded-lg border border-border bg-muted px-2 py-1 text-xs text-link underline-offset-2 hover:underline">
                   {m.fileName}
                 </a>
+              )}
+              {activityId === m.id && (
+                !activityQ.data ? <Loading /> : !activityQ.data.eligible.length ? (
+                  <p className="mt-3 text-xs text-muted-foreground">{t("modules.noRecipientsYet")}</p>
+                ) : (
+                  <ul className="mt-3 divide-y divide-border rounded-xl border border-border text-xs">
+                    {activityQ.data.eligible.map((e) => (
+                      <li key={e.studentId} className="flex flex-wrap items-center justify-between gap-2 p-2">
+                        <span className="min-w-0 break-words font-medium">{e.name ?? e.email ?? `#${e.studentId}`}</span>
+                        <span className="flex gap-1.5">
+                          {e.downloadedAt ? (
+                            <StatusBadge tone="success">{t("modules.downloaded")}</StatusBadge>
+                          ) : e.viewedAt ? (
+                            <StatusBadge tone="info">{t("modules.viewed")}</StatusBadge>
+                          ) : (
+                            <StatusBadge tone="neutral">{t("modules.notViewedShort")}</StatusBadge>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )
               )}
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" onClick={() => setShareId(shareId === m.id ? null : m.id)}>{t("common.share")}</Button>

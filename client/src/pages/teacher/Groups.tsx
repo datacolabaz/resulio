@@ -467,6 +467,7 @@ export function GroupDetailPage() {
               <TabsTrigger value="students">{t("common.students")}</TabsTrigger>
               <TabsTrigger value="requests">{pending.length > 0 ? t("groups.tab.requestsCount", { count: pending.length }) : t("groups.tab.requests")}</TabsTrigger>
               <TabsTrigger value="assessments">{t("common.exams")}</TabsTrigger>
+              <TabsTrigger value="tasks">{t("groups.tab.tasks")}</TabsTrigger>
               <TabsTrigger value="analytics">{t("common.analytics")}</TabsTrigger>
             </TabsList>
             <TabsContent value="students" className="pt-3">
@@ -552,6 +553,39 @@ export function GroupDetailPage() {
                             <td>{h.participationRate}%</td>
                             <td className="font-semibold">{h.averageScore}%</td>
                             <td>{h.medianScore}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Panel>
+            </TabsContent>
+            <TabsContent value="tasks" className="pt-3">
+              <Panel>
+                {!ga?.taskProgress.length ? (
+                  <p className="text-sm text-muted-foreground">{t("groups.noTasks")}</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="text-left text-xs uppercase text-muted-foreground">
+                        <tr>
+                          <th scope="col" className="py-2">{t("modules.task")}</th>
+                          <th scope="col">{t("modules.deadline")}</th>
+                          <th scope="col">{t("groups.completion")}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {ga.taskProgress.map((tp) => (
+                          <tr key={tp.id}>
+                            <td className="break-words py-2 pr-3">
+                              <Link href="/teacher/modules" className="text-link underline-offset-4 hover:underline">{tp.title}</Link>
+                            </td>
+                            <td className="whitespace-nowrap pr-3 text-muted-foreground">{fmtDateTime(tp.deadline)}</td>
+                            <td className="flex items-center gap-2 pr-3">
+                              <span className="font-semibold">{tp.submittedCount}/{tp.targetCount}</span>
+                              {!!tp.lateCount && <StatusBadge tone="warning">{t("groups.lateCount", { count: tp.lateCount })}</StatusBadge>}
+                            </td>
                           </tr>
                         ))}
                       </tbody>

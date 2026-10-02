@@ -458,6 +458,8 @@ const teacherTasksRouter = router({
       return row;
     }),
   remove: teacherProcedure.input(z.object({ id: entityId })).mutation(({ ctx, input }) => tasks.deleteAssignment(ctx.scope, input.id)),
+  /** Who among the students this task reaches has opened it (submission status comes separately, from `list`). */
+  activity: teacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => activity.taskActivity(ctx.scope, input.id)),
   materials: teacherProcedure.query(({ ctx }) => tasks.listMaterialsForWorkspace(ctx.scope.workspaceId)),
   createMaterial: teacherProcedure
     .input(materialInput)
@@ -475,6 +477,8 @@ const teacherTasksRouter = router({
       return tasks.updateMaterial(ctx.scope, input.id, input.patch);
     }),
   removeMaterial: teacherProcedure.input(z.object({ id: entityId })).mutation(({ ctx, input }) => tasks.deleteMaterial(ctx.scope, input.id)),
+  /** Who among the students this material reaches has viewed and/or downloaded it. */
+  materialActivity: teacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => activity.materialActivity(ctx.scope, input.id)),
 });
 
 const workspaceInput = z.object({
@@ -582,9 +586,15 @@ const studentRouter = router({
     .use(rateLimit("acceptEmailInvite", 10, MINUTE))
     .input(z.object({ token: z.string().trim().min(16).max(128) }))
     .mutation(({ ctx, input }) => groupEmailInvites.acceptEmailInvite(ctx.user.id, ctx.user.email ?? "", input.token)),
-  tasks: studentProcedure.query(async ({ ctx }) =>
-    tasks.studentAssignments(ctx.user.id, await groups.activeGroupIdsOfStudent(ctx.user.id)),
-  ),
+  tasks: studentProcedure.query(async ({ ctx }) => {
+    const rows = await tasks.studentAssignments(ctx.user.id, await groups.activeGroupIdsOfStudent(ctx.user.id));
+    await activity.markAssignmentsViewed(rows.map((r) => ({ id: r.id, providerWorkspaceId: r.providerWorkspaceId })), ctx.user.id);
+    return rows;
+  }),
+  /** Exam progress scoped to one of the student's groups — see analytics.studentGroupProgress. */
+  groupProgress: studentProcedure
+    .input(z.object({ groupId: entityId }))
+    .query(({ ctx, input }) => analytics.studentGroupProgress(ctx.user.id, input.groupId)),
   submitTask: studentProcedure
     .use(rateLimit("submitTask", 20, MINUTE))
     .input(
@@ -600,9 +610,11 @@ const studentRouter = router({
       const groupIds = await groups.activeGroupIdsOfStudent(ctx.user.id);
       return tasks.submitAssignment(ctx.user.id, groupIds, input.assignmentId, input.files);
     }),
-  materials: studentProcedure.query(async ({ ctx }) =>
-    tasks.studentMaterials(ctx.user.id, await groups.activeGroupIdsOfStudent(ctx.user.id)),
-  ),
+  materials: studentProcedure.query(async ({ ctx }) => {
+    const rows = await tasks.studentMaterials(ctx.user.id, await groups.activeGroupIdsOfStudent(ctx.user.id));
+    await activity.markMaterialsViewed(rows.map((r) => ({ id: r.id, providerWorkspaceId: r.providerWorkspaceId })), ctx.user.id);
+    return rows;
+  }),
   /** Self-enrolling via a teacher's share link: adds the student as an individual recipient. */
   claimTask: studentProcedure
     .use(rateLimit("claimTask", 20, MINUTE))

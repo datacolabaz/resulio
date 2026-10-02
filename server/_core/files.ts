@@ -119,8 +119,10 @@ export function registerFileRoutes(app: Express) {
     try {
       const file = await filesModule.fileRow(req.params.id);
       if (!file) throw new AppError("FILE_NOT_FOUND");
+      // Resolved either way (even for a public file) so a successful download can be attributed
+      // to a student for the "who viewed/downloaded this" report — see filesModule.recordDownload.
+      const user = await currentUser(req);
       if (!file.isPublic) {
-        const user = await currentUser(req);
         if (!user) {
           res.status(401).json({ error: "UNAUTHORIZED" });
           return;
@@ -130,6 +132,7 @@ export function registerFileRoutes(app: Express) {
         res.status(429).json({ error: "RATE_LIMITED" });
         return;
       }
+      if (user) await filesModule.recordDownload(file, user.id);
       const buffer = Buffer.from(file.dataBase64, "base64");
       const asciiName = file.fileName.replace(/[^\x20-\x7E]/g, "_");
       res.setHeader("Content-Type", file.mimeType);

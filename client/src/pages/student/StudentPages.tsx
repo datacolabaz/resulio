@@ -356,6 +356,7 @@ export function StudentGroups() {
   const list = trpc.student.groups.useQuery();
   const [code, setCode] = useState("");
   const [, nav] = useLocation();
+  const [progressId, setProgressId] = useState<string | null>(null);
   return (
     <AppShell area="learning">
       <div className="grid max-w-3xl gap-5">
@@ -377,13 +378,27 @@ export function StudentGroups() {
           {!list.data?.length ? <p className="text-sm text-muted-foreground">{t("student.noGroups")}</p> : (
             <ul className="divide-y">
               {list.data.map((g) => (
-                <li key={g.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-                  <span className="min-w-0 break-words">{g.name} <span className="text-xs text-muted-foreground">{g.subject}</span></span>
-                  {g.status === "ACTIVE" ? (
-                    <StatusBadge tone="success">{t("student.member")}</StatusBadge>
-                  ) : (
-                    <StatusBadge tone="warning">{t("student.awaitingApproval")}</StatusBadge>
-                  )}
+                <li key={g.id} className="py-2 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="min-w-0 break-words">{g.name} <span className="text-xs text-muted-foreground">{g.subject}</span></span>
+                    <span className="flex items-center gap-2">
+                      {g.status === "ACTIVE" ? (
+                        <>
+                          <button
+                            type="button"
+                            className="text-xs text-link underline-offset-2 hover:underline"
+                            onClick={() => setProgressId(progressId === g.id ? null : g.id)}
+                          >
+                            {t("student.groupProgress")}
+                          </button>
+                          <StatusBadge tone="success">{t("student.member")}</StatusBadge>
+                        </>
+                      ) : (
+                        <StatusBadge tone="warning">{t("student.awaitingApproval")}</StatusBadge>
+                      )}
+                    </span>
+                  </div>
+                  {progressId === g.id && <GroupProgressPanel groupId={g.id} />}
                 </li>
               ))}
             </ul>
@@ -391,6 +406,26 @@ export function StudentGroups() {
         </Panel>
       </div>
     </AppShell>
+  );
+}
+
+/** A student's own exam progress narrowed to one group, so being in several teachers' groups
+ *  doesn't blend unrelated subjects together — see analytics.studentGroupProgress server-side. */
+function GroupProgressPanel({ groupId }: { groupId: string }) {
+  const p = trpc.student.groupProgress.useQuery({ groupId });
+  if (!p.data) return <Loading />;
+  if (!p.data.series.length) {
+    return <p className="mt-2 rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground">{t("student.noProgressBody")}</p>;
+  }
+  return (
+    <div className="mt-2 space-y-3 rounded-lg bg-muted/40 p-3">
+      <div className="grid grid-cols-3 gap-2">
+        <StatCard label={t("common.average")} value={`${p.data.summary.average}%`} />
+        <StatCard label={t("student.highest")} value={`${p.data.summary.highest}%`} />
+        <StatCard label={t("student.resultCount")} value={p.data.summary.count} />
+      </div>
+      <TopicBars rows={p.data.topics} />
+    </div>
   );
 }
 
