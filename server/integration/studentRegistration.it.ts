@@ -19,8 +19,10 @@ describe("Google auth identity dedup", () => {
     const sub = `sub_${Date.now()}_a`;
     const first = await db.upsertProviderUser({ provider: "google", providerAccountId: sub, email: "dedup.a@example.test", name: "A", avatarUrl: null });
     const second = await db.upsertProviderUser({ provider: "google", providerAccountId: sub, email: "dedup.a@example.test", name: "A renamed", avatarUrl: null });
-    expect(second.id).toBe(first.id);
-    expect(second.name).toBe("A renamed"); // refreshed from the latest Google profile
+    expect(first.isNew).toBe(true);
+    expect(second.isNew).toBe(false);
+    expect(second.user.id).toBe(first.user.id);
+    expect(second.user.name).toBe("A renamed"); // refreshed from the latest Google profile
     const links = await testDb().select().from(authAccounts).where(eq(authAccounts.providerAccountId, sub));
     expect(links).toHaveLength(1);
   });
@@ -35,7 +37,8 @@ describe("Google auth identity dedup", () => {
       name: legacy.name,
       avatarUrl: null,
     });
-    expect(linked.id).toBe(legacy.id);
+    expect(linked.isNew).toBe(false); // attached to the pre-existing row, not a fresh signup
+    expect(linked.user.id).toBe(legacy.id);
     const links = await testDb().select().from(authAccounts).where(eq(authAccounts.userId, legacy.id));
     expect(links).toHaveLength(1);
   });
@@ -44,7 +47,7 @@ describe("Google auth identity dedup", () => {
     const email = `shared.${Date.now()}@example.test`;
     const first = await db.upsertProviderUser({ provider: "google", providerAccountId: `sub_${Date.now()}_x`, email, name: "X", avatarUrl: null });
     const second = await db.upsertProviderUser({ provider: "google", providerAccountId: `sub_${Date.now()}_y`, email, name: "Y", avatarUrl: null });
-    expect(second.id).not.toBe(first.id);
+    expect(second.user.id).not.toBe(first.user.id);
   });
 });
 

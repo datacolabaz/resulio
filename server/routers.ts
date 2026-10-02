@@ -44,13 +44,21 @@ import * as groupEmailInvites from "./modules/groupEmailInvites";
 import * as groups from "./modules/groups";
 import * as notifications from "./modules/notifications";
 import * as partners from "./modules/partners";
+import * as referrals from "./modules/referrals";
+import * as shareTracking from "./modules/shareTracking";
 import * as tasks from "./modules/tasks";
 import * as workspaces from "./modules/workspaces";
 import { store } from "./resulioStore";
+import { SHARE_CAMPAIGNS, SHARE_CHANNELS, SHARE_TARGET_TYPES } from "../shared/shareTracking";
 
 const MINUTE = 60_000;
 const assessmentId = z.string().min(1).max(32);
 const entityId = z.string().min(1).max(32);
+/** Attached to a join/claim call when the student arrived via a tagged share link; both optional since most arrivals are still untagged DIRECT visits. */
+const shareAttribution = z.object({
+  channel: z.enum(SHARE_CHANNELS).optional(),
+  campaign: z.enum(SHARE_CAMPAIGNS).optional(),
+});
 
 function publicUser(user: NonNullable<Awaited<ReturnType<typeof db.getUserByOpenId>>>) {
   return {
@@ -65,6 +73,8 @@ function publicUser(user: NonNullable<Awaited<ReturnType<typeof db.getUserByOpen
     targetScore: user.targetScore,
     targetExamDate: user.targetExamDate,
     timezone: user.timezone,
+    referralOnboardingSeenAt: user.referralOnboardingSeenAt,
+    referralCardDismissedAt: user.referralCardDismissedAt,
   };
 }
 
@@ -184,6 +194,17 @@ const authRouter = router({
     .use(rateLimit("searchReferrer", 30, MINUTE))
     .input(z.object({ query: z.string().trim().max(60) }))
     .query(({ ctx, input }) => db.searchUsersByName(input.query, ctx.user.id)),
+
+  /** The first-login "share Resulio, earn a commission" card is shown at most once, ever — this marks that it was. */
+  dismissReferralOnboarding: protectedProcedure.mutation(async ({ ctx }) => {
+    if (!ctx.user.referralOnboardingSeenAt) await db.markReferralOnboardingSeen(ctx.user.id);
+    return { ok: true } as const;
+  }),
+  /** The dashboard referral card reappears once this is more than 30 days old (see shared/const.ts REFERRAL_CARD_SNOOZE_DAYS). */
+  dismissReferralCard: protectedProcedure.mutation(async ({ ctx }) => {
+    await db.markReferralCardDismissed(ctx.user.id);
+    return { ok: true } as const;
+  }),
 });
 
 // ---------------------------------------------------------------------------
@@ -269,6 +290,11 @@ const teacherGroupsRouter = router({
     .use(rateLimit("emailInviteResend", 20, MINUTE))
     .input(z.object({ groupId: entityId, inviteId: entityId }))
     .mutation(({ ctx, input }) => groupEmailInvites.resendEmailInvite(ctx.scope, input.groupId, input.inviteId)),
+  /** Clicks/opens/joins on this group's own invite link, broken down by channel (Telegram, WhatsApp, QR, copy link). */
+  shareFunnel: teacherProcedure.input(z.object({ groupId: entityId })).query(async ({ ctx, input }) => {
+    const group = await groups.assertGroupOwner(ctx.scope, input.groupId);
+    return shareTracking.shareFunnel("GROUP", group.inviteCode);
+  }),
 });
 
 const questionBankFilter = z
@@ -349,6 +375,11 @@ const teacherAssessmentsRouter = router({
         .join(","),
     );
     return [header.join(","), ...lines].join("\n");
+  }),
+  /** Clicks/opens/joins on this exam's share link, broken down by channel. */
+  shareFunnel: teacherProcedure.input(z.object({ id: assessmentId })).query(async ({ ctx, input }) => {
+    const row = await assessments.ownedAssessment(ctx.scope, input.id);
+    return shareTracking.shareFunnel("EXAM", row.shareCode);
   }),
 });
 
@@ -479,6 +510,16 @@ const teacherTasksRouter = router({
   removeMaterial: teacherProcedure.input(z.object({ id: entityId })).mutation(({ ctx, input }) => tasks.deleteMaterial(ctx.scope, input.id)),
   /** Who among the students this material reaches has viewed and/or downloaded it. */
   materialActivity: teacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => activity.materialActivity(ctx.scope, input.id)),
+  /** Clicks/opens/joins on this task's share link, broken down by channel. */
+  shareFunnel: teacherProcedure.input(z.object({ id: entityId })).query(async ({ ctx, input }) => {
+    const row = await tasks.assignmentOf(ctx.scope, input.id);
+    return shareTracking.shareFunnel("TASK", row.shareCode);
+  }),
+  /** Clicks/opens/joins on this material's share link, broken down by channel. */
+  materialShareFunnel: teacherProcedure.input(z.object({ id: entityId })).query(async ({ ctx, input }) => {
+    const row = await tasks.materialOf(ctx.scope, input.id);
+    return shareTracking.shareFunnel("MATERIAL", row.shareCode);
+  }),
 });
 
 const workspaceInput = z.object({
@@ -575,11 +616,20 @@ const studentRouter = router({
   groups: studentProcedure.query(({ ctx }) => groups.studentGroups(ctx.user.id)),
   join: studentProcedure
     .use(rateLimit("joinGroup", 10, MINUTE))
-    .input(z.object({ inviteCode: z.string().trim().min(4).max(32) }))
+    .input(z.object({ inviteCode: z.string().trim().min(4).max(32) }).merge(shareAttribution))
     .mutation(async ({ ctx, input }) => {
-      const joined = await groups.joinByInvite(ctx.user.id, input.inviteCode.toUpperCase());
+      const code = input.inviteCode.toUpperCase();
+      const joined = await groups.joinByInvite(ctx.user.id, code);
       const verb = joined.status === "ACTIVE" ? "Yeni tələbə qoşuldu" : "Qoşulma sorğusu";
       await notifications.notify(joined.ownerUserId, verb, `${ctx.user.name ?? "Tələbə"} → ${joined.groupName}`);
+      await shareTracking.recordShareEvent({
+        targetType: "GROUP",
+        targetId: code,
+        channel: input.channel ?? "DIRECT",
+        eventType: "JOINED",
+        campaign: input.campaign,
+        actorUserId: ctx.user.id,
+      });
       return { groupId: joined.groupId, groupName: joined.groupName, status: joined.status };
     }),
   acceptEmailInvite: studentProcedure
@@ -618,12 +668,34 @@ const studentRouter = router({
   /** Self-enrolling via a teacher's share link: adds the student as an individual recipient. */
   claimTask: studentProcedure
     .use(rateLimit("claimTask", 20, MINUTE))
-    .input(z.object({ shareCode: z.string().trim().min(4).max(32) }))
-    .mutation(({ ctx, input }) => tasks.claimAssignment(ctx.user.id, ctx.user.name, input.shareCode)),
+    .input(z.object({ shareCode: z.string().trim().min(4).max(32) }).merge(shareAttribution))
+    .mutation(async ({ ctx, input }) => {
+      const result = await tasks.claimAssignment(ctx.user.id, ctx.user.name, input.shareCode);
+      await shareTracking.recordShareEvent({
+        targetType: "TASK",
+        targetId: input.shareCode,
+        channel: input.channel ?? "DIRECT",
+        eventType: "JOINED",
+        campaign: input.campaign,
+        actorUserId: ctx.user.id,
+      });
+      return result;
+    }),
   claimMaterial: studentProcedure
     .use(rateLimit("claimMaterial", 20, MINUTE))
-    .input(z.object({ shareCode: z.string().trim().min(4).max(32) }))
-    .mutation(({ ctx, input }) => tasks.claimMaterial(ctx.user.id, input.shareCode)),
+    .input(z.object({ shareCode: z.string().trim().min(4).max(32) }).merge(shareAttribution))
+    .mutation(async ({ ctx, input }) => {
+      const result = await tasks.claimMaterial(ctx.user.id, input.shareCode);
+      await shareTracking.recordShareEvent({
+        targetType: "MATERIAL",
+        targetId: input.shareCode,
+        channel: input.channel ?? "DIRECT",
+        eventType: "JOINED",
+        campaign: input.campaign,
+        actorUserId: ctx.user.id,
+      });
+      return result;
+    }),
 });
 
 // ---------------------------------------------------------------------------
@@ -659,6 +731,28 @@ const publicRouter = router({
     .use(rateLimit("publicEmailInvite", 60, MINUTE))
     .input(z.object({ token: z.string().trim().min(16).max(128) }))
     .query(({ input }) => groupEmailInvites.publicEmailInvitePreview(input.token)),
+  /**
+   * Fire-and-forget click/open logging for a share link, callable anonymously (pre-login) and
+   * without a `targetId` existence check — it only ever feeds a teacher/partner-facing count, so
+   * a stray or spoofed row has no effect beyond slightly noisy analytics. "JOINED" is never
+   * accepted here; it is only ever recorded server-side, tied to the actor, by the mutation that
+   * actually performs the join/claim (see student.join / claimTask / claimMaterial).
+   */
+  shareEvent: publicProcedure
+    .use(rateLimit("shareEvent", 30, MINUTE))
+    .input(
+      z.object({
+        targetType: z.enum(SHARE_TARGET_TYPES),
+        targetId: z.string().trim().min(1).max(64),
+        channel: z.enum(SHARE_CHANNELS),
+        eventType: z.enum(["CLICKED", "OPENED"]),
+        campaign: z.enum(SHARE_CAMPAIGNS).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await shareTracking.recordShareEvent({ ...input, actorUserId: ctx.user?.id ?? null });
+      return { ok: true };
+    }),
 });
 
 const inboxRouter = router({
@@ -713,6 +807,13 @@ const partnerRouter = router({
     referralCode: ctx.partner.referralCode,
     approvedAt: ctx.partner.approvedAt,
   })),
+  /**
+   * Real clicks/opens/signups by channel, plus the masked list of who actually signed up through
+   * this partner's link. Deliberately no earnings/commission figures: this app has no payment or
+   * subscription system yet, so there is nothing real to compute a commission from -- showing a
+   * number there would be exactly the fabricated stat this feature's own spec says never to show.
+   */
+  referralStats: partnerProcedure.query(({ ctx }) => referrals.referralStats(ctx.partner.id, ctx.partner.referralCode)),
 });
 
 export const appRouter = router({

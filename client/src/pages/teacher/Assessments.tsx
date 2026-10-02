@@ -1,6 +1,6 @@
 import { DistributionChart, QuestionStatsTable, RankingTable, TopicBars } from "@/components/AnalyticsBlocks";
 import { AppShell, ChoiceChip, EmptyState, ErrorNote, Loading, Panel, Pill, StatCard } from "@/components/AppShell";
-import { ShareBox } from "@/components/ShareBox";
+import { ShareBox, ShareFunnelSummary } from "@/components/ShareBox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -130,6 +130,7 @@ export function AssessmentDetailPage() {
     onError: (e) => toast.error(errorText(e)),
   });
   const a = detail.data;
+  const shareFunnelQ = trpc.teacher.assessments.shareFunnel.useQuery({ id }, { enabled: Boolean(a?.currentVersionId) });
   const yesNo = (v: boolean) => (v ? t("common.yes") : t("common.no"));
 
   return (
@@ -185,7 +186,14 @@ export function AssessmentDetailPage() {
                 </Panel>
                 <Panel title={t("assessment.sharing")}>
                   {a.currentVersionId ? (
-                    <ShareBox path={`/exam/${a.shareCode}`} fileName={`resulio-${a.shareCode}`} />
+                    <>
+                      <ShareBox
+                        path={`/exam/${a.shareCode}`}
+                        fileName={`resulio-${a.shareCode}`}
+                        tracking={{ targetType: "EXAM", targetId: a.shareCode, campaign: "exam_share" }}
+                      />
+                      <ShareFunnelSummary data={shareFunnelQ.data} />
+                    </>
                   ) : (
                     <p className="text-sm text-muted-foreground">{t("assessment.linkAfterPublish")}</p>
                   )}

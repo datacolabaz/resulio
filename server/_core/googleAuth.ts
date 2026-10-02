@@ -1,10 +1,12 @@
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
+import { SHARE_CAMPAIGNS, SHARE_CHANNELS, type ShareCampaign, type ShareChannel } from "@shared/shareTracking";
 import { parse as parseCookieHeader } from "cookie";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
 import type { Express, Request, Response } from "express";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import * as db from "../db";
 import { recordSecurityEvent } from "../modules/securityEvents";
+import { attributeReferral } from "../modules/referrals";
 import { clearNamedCookie, getSessionCookieOptions, isSecureRequest } from "./cookies";
 import { ENV } from "./env";
 import { hashIp } from "./requestMeta";
@@ -16,7 +18,7 @@ const GOOGLE_JWKS = createRemoteJWKSet(new URL("https://www.googleapis.com/oauth
 const STATE_COOKIE = "resulio_oauth";
 const STATE_MAX_AGE_MS = 10 * 60 * 1000;
 
-type OAuthState = { nonce: string; verifier: string; returnTo: string };
+type OAuthState = { nonce: string; verifier: string; returnTo: string; ref?: string; source?: ShareChannel; campaign?: ShareCampaign };
 
 const b64url = (buf: Buffer) => buf.toString("base64url");
 
@@ -26,6 +28,20 @@ export function safeReturnTo(value: unknown): string {
   if (!value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\")) return "/app";
   if (value.startsWith("/api/")) return "/app";
   return value.slice(0, 512);
+}
+
+/** A partner referralCode is the same shape as its public link's code: short, uppercase alnum. */
+function safeRef(value: unknown): string | undefined {
+  return typeof value === "string" && /^[A-Z0-9]{4,32}$/i.test(value) ? value.toUpperCase() : undefined;
+}
+
+function safeChannel(value: unknown): ShareChannel | undefined {
+  const up = typeof value === "string" ? value.toUpperCase() : "";
+  return (SHARE_CHANNELS as readonly string[]).includes(up) ? (up as ShareChannel) : undefined;
+}
+
+function safeCampaign(value: unknown): ShareCampaign | undefined {
+  return (SHARE_CAMPAIGNS as readonly string[]).includes(String(value)) ? (value as ShareCampaign) : undefined;
 }
 
 export function redirectUri(req: Request) {
@@ -41,9 +57,18 @@ function hmacKey() {
   return secret;
 }
 
-/** PKCE + return path travel with Google's `state` so Safari bounce-tracking cannot drop them. */
+/**
+ * PKCE + return path travel with Google's `state` so Safari bounce-tracking cannot drop them.
+ * `rf`/`sc`/`cp` (referral code / share channel / campaign) ride the same signed, time-boxed
+ * envelope so a brand-new signup can be attributed to the referral link it arrived from without
+ * depending on any cookie or client-side storage surviving the round trip to Google and back.
+ */
 export function encodeOAuthState(state: OAuthState, now = Date.now()): string {
-  const body = b64url(Buffer.from(JSON.stringify({ n: state.nonce, v: state.verifier, r: state.returnTo, e: now + STATE_MAX_AGE_MS })));
+  const body = b64url(
+    Buffer.from(
+      JSON.stringify({ n: state.nonce, v: state.verifier, r: state.returnTo, e: now + STATE_MAX_AGE_MS, rf: state.ref, sc: state.source, cp: state.campaign }),
+    ),
+  );
   const sig = createHmac("sha256", hmacKey()).update(body).digest("base64url");
   return `${body}.${sig}`;
 }
@@ -61,10 +86,25 @@ export function decodeOAuthState(raw: string, now = Date.now()): OAuthState | nu
   }
   if (sig.length !== expected.length || !timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
   try {
-    const parsed = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as { n?: unknown; v?: unknown; r?: unknown; e?: unknown };
+    const parsed = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as {
+      n?: unknown;
+      v?: unknown;
+      r?: unknown;
+      e?: unknown;
+      rf?: unknown;
+      sc?: unknown;
+      cp?: unknown;
+    };
     if (typeof parsed.n !== "string" || typeof parsed.v !== "string" || typeof parsed.e !== "number") return null;
     if (parsed.e < now) return null;
-    return { nonce: parsed.n, verifier: parsed.v, returnTo: safeReturnTo(parsed.r) };
+    return {
+      nonce: parsed.n,
+      verifier: parsed.v,
+      returnTo: safeReturnTo(parsed.r),
+      ref: safeRef(parsed.rf),
+      source: safeChannel(parsed.sc),
+      campaign: safeCampaign(parsed.cp),
+    };
   } catch {
     return null;
   }
@@ -181,6 +221,9 @@ export function registerGoogleAuthRoutes(app: Express) {
       nonce: b64url(randomBytes(24)),
       verifier: b64url(randomBytes(48)),
       returnTo: safeReturnTo(req.query.returnTo),
+      ref: safeRef(req.query.ref),
+      source: safeChannel(req.query.source),
+      campaign: safeCampaign(req.query.campaign),
     };
     const packed = encodeOAuthState(state);
     res.cookie(STATE_COOKIE, packed, {
@@ -262,13 +305,14 @@ export function registerGoogleAuthRoutes(app: Express) {
         return;
       }
 
-      const user = await db.upsertProviderUser({
+      const { user, isNew } = await db.upsertProviderUser({
         provider: "google",
         providerAccountId: payload.sub,
         email: typeof payload.email === "string" ? payload.email.toLowerCase() : null,
         name: typeof payload.name === "string" ? payload.name : null,
         avatarUrl: typeof payload.picture === "string" ? payload.picture : null,
       });
+      await attributeReferral(user.id, isNew, state.ref, state.source ?? "DIRECT", state.campaign);
 
       const token = await sdk.createSessionToken(user.openId, { name: user.name ?? "", expiresInMs: ONE_YEAR_MS });
       res.cookie(COOKIE_NAME, token, { ...getSessionCookieOptions(req), maxAge: ONE_YEAR_MS });

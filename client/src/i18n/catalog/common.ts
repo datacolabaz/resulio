@@ -91,6 +91,7 @@ export const common = {
   "common.completedStep": ["tamamlanıb", "completed", "завершено"],
   "common.download": ["Yüklə", "Download", "Скачать"],
   "common.remove": ["Çıxar", "Remove", "Убрать"],
+  "common.dismiss": ["Bağla", "Dismiss", "Закрыть"],
 
   "files.choose": ["Fayl seç", "Choose file", "Выбрать файл"],
   "files.replace": ["Dəyiş", "Replace", "Заменить"],

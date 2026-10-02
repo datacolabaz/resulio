@@ -1,7 +1,7 @@
 import { AppShell, ChoiceChip, ErrorNote, Loading, Panel, Pill } from "@/components/AppShell";
 import { draftFromQuestion, QuestionEditor } from "@/components/QuestionEditor";
 import { QuestionRenderer } from "@/components/QuestionRenderer";
-import { ShareBox } from "@/components/ShareBox";
+import { ShareBox, ShareFunnelSummary } from "@/components/ShareBox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -601,6 +601,7 @@ function RulesStep({ a, onNext }: { a: Detail; onNext: () => void }) {
 function PublishStep({ a }: { a: Detail }) {
   const preview = trpc.teacher.assessments.preview.useQuery({ id: a.id });
   const invalidate = useInvalidateDetail(a.id);
+  const shareFunnelQ = trpc.teacher.assessments.shareFunnel.useQuery({ id: a.id }, { enabled: Boolean(a.currentVersionId) });
   const [mode, setMode] = useState<"student" | "key">("student");
   const [open, setOpen] = useState(false);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
@@ -632,7 +633,14 @@ function PublishStep({ a }: { a: Detail }) {
       </Panel>
 
       {a.currentVersionId && (
-        <Panel title={t("assessment.sharing")}><ShareBox path={`/exam/${a.shareCode}`} fileName={`resulio-${a.shareCode}`} /></Panel>
+        <Panel title={t("assessment.sharing")}>
+          <ShareBox
+            path={`/exam/${a.shareCode}`}
+            fileName={`resulio-${a.shareCode}`}
+            tracking={{ targetType: "EXAM", targetId: a.shareCode, campaign: "exam_share" }}
+          />
+          <ShareFunnelSummary data={shareFunnelQ.data} />
+        </Panel>
       )}
 
       <Panel

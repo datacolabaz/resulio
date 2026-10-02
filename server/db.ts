@@ -72,7 +72,9 @@ export async function markSeen(user: Pick<User, "id" | "lastSeenAt">) {
 
 /**
  * Resolve (or create) the internal user linked to an external identity provider account.
- * The provider's subject never becomes the internal user id.
+ * The provider's subject never becomes the internal user id. `isNew` tells the caller whether
+ * this call actually created the account -- referral attribution (see server/modules/referrals.ts)
+ * must only ever apply to that moment, never to a later login by the same person.
  */
 export async function upsertProviderUser(input: {
   provider: string;
@@ -80,7 +82,7 @@ export async function upsertProviderUser(input: {
   email: string | null;
   name: string | null;
   avatarUrl: string | null;
-}): Promise<User> {
+}): Promise<{ user: User; isNew: boolean }> {
   const db = requireDb();
   return db.transaction(async (tx) => {
     const [link] = await tx
@@ -101,7 +103,7 @@ export async function upsertProviderUser(input: {
         .where(eq(users.id, userId));
       const [user] = await tx.select().from(users).where(eq(users.id, userId)).limit(1);
       if (!user) throw new Error("ACCOUNT_USER_MISSING");
-      return user;
+      return { user, isNew: false };
     };
 
     if (link) return refresh(link.userId);
@@ -148,7 +150,7 @@ export async function upsertProviderUser(input: {
       providerEmail: input.email,
     });
     const [user] = await tx.select().from(users).where(eq(users.id, inserted.id)).limit(1);
-    return user!;
+    return { user: user!, isNew: true };
   });
 }
 
@@ -158,6 +160,16 @@ export async function setLastActiveContext(userId: number, context: UiContext) {
 
 export async function setPreferredLocale(userId: number, locale: string) {
   await requireDb().update(users).set({ preferredLocale: locale }).where(eq(users.id, userId));
+}
+
+/** Shown at most once, ever, regardless of whether the user shared or skipped. */
+export async function markReferralOnboardingSeen(userId: number) {
+  await requireDb().update(users).set({ referralOnboardingSeenAt: new Date() }).where(eq(users.id, userId));
+}
+
+/** Snoozes the dashboard referral card; it reappears once this is more than REFERRAL_CARD_SNOOZE_DAYS old. */
+export async function markReferralCardDismissed(userId: number) {
+  await requireDb().update(users).set({ referralCardDismissedAt: new Date() }).where(eq(users.id, userId));
 }
 
 /**
