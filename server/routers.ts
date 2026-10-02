@@ -73,8 +73,6 @@ function publicUser(user: NonNullable<Awaited<ReturnType<typeof db.getUserByOpen
     targetScore: user.targetScore,
     targetExamDate: user.targetExamDate,
     timezone: user.timezone,
-    referralOnboardingSeenAt: user.referralOnboardingSeenAt,
-    referralCardDismissedAt: user.referralCardDismissedAt,
   };
 }
 
@@ -194,17 +192,6 @@ const authRouter = router({
     .use(rateLimit("searchReferrer", 30, MINUTE))
     .input(z.object({ query: z.string().trim().max(60) }))
     .query(({ ctx, input }) => db.searchUsersByName(input.query, ctx.user.id)),
-
-  /** The first-login "share Resulio, earn a commission" card is shown at most once, ever — this marks that it was. */
-  dismissReferralOnboarding: protectedProcedure.mutation(async ({ ctx }) => {
-    if (!ctx.user.referralOnboardingSeenAt) await db.markReferralOnboardingSeen(ctx.user.id);
-    return { ok: true } as const;
-  }),
-  /** The dashboard referral card reappears once this is more than 30 days old (see shared/const.ts REFERRAL_CARD_SNOOZE_DAYS). */
-  dismissReferralCard: protectedProcedure.mutation(async ({ ctx }) => {
-    await db.markReferralCardDismissed(ctx.user.id);
-    return { ok: true } as const;
-  }),
 });
 
 // ---------------------------------------------------------------------------

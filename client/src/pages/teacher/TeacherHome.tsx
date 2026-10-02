@@ -1,6 +1,5 @@
 import { AssessmentActivity } from "@/components/ActivityCards";
 import { AppShell, EmptyState, Loading, Panel, StatCard } from "@/components/AppShell";
-import { ReferralCard } from "@/components/ReferralCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { t } from "@/i18n/messages";
@@ -23,7 +22,6 @@ export default function TeacherHome() {
         <Loading />
       ) : (
         <div className="space-y-6">
-          <ReferralCard variant="onboarding" />
           <AssessmentActivity />
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
@@ -35,8 +33,6 @@ export default function TeacherHome() {
             <StatCard label={t("home.averageScore")} value={`${d.averageScore}%`} />
             <StatCard label={t("home.toReview")} value={pending.data?.length ?? 0} />
           </div>
-          {((groups.data?.length ?? 0) > 0 || d.upcoming.length > 0 || d.drafts > 0) && <ReferralCard variant="dashboard" />}
-
           <div className="grid gap-6 xl:grid-cols-3">
             <Panel className="xl:col-span-2" title={t("home.activeAndUpcoming")} action={<Link href="/teacher/assessments" className={linkClass}>{t("common.all")}</Link>}>
               {d.upcoming.length === 0 ? (
