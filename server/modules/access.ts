@@ -183,13 +183,19 @@ export function canEnterContext(access: UserAccess, context: UiContext): boolean
 
 /**
  * Last used context if still valid, otherwise the first substantive one the user can enter.
- * `partner` is deliberately excluded from this automatic fallback: every user can always enter
- * it now (see `ensurePartnerProfile`), so it would otherwise become the landing screen for a
- * brand-new user with nothing else set up yet, instead of the onboarding screen. It only becomes
- * the active context by explicit choice -- navigating there, which the `last` check above then
- * remembers for next time.
+ *
+ * `partner` is never returned here, from either path. It isn't a landing destination at all --
+ * it's one page reached from inside the teaching/learning sidebar (see PartnerPage), not a space
+ * of its own to land back in. Every user can always enter it (see `ensurePartnerProfile`), so if
+ * it were allowed through the `last` check below, visiting it even once would make it "sticky":
+ * the very next login -- Google included, which asks this function for the post-login
+ * destination -- would open straight to Partner instead of the real workspace. (A `lastActiveContext`
+ * of "partner" can also simply be stale: it's how an older build, before the client stopped ever
+ * recording it, left some accounts. Filtering it out here self-heals those on their next login,
+ * same as `ensurePartnerProfile` self-heals a leftover pre-auto-approval status -- no migration
+ * needed.)
  */
 export function defaultContext(access: UserAccess, last: UiContext | null): UiContext | null {
-  if (last && canEnterContext(access, last)) return last;
+  if (last && last !== "partner" && canEnterContext(access, last)) return last;
   return (["learning", "teaching"] as const).find((c) => canEnterContext(access, c)) ?? null;
 }
