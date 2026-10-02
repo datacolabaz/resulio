@@ -1,5 +1,6 @@
 import { and, asc, eq } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
+import type { PartnerStatus } from "../../shared/adminPermissions";
 import {
   groupMembers,
   partnerProfiles,
@@ -10,9 +11,22 @@ import {
   type ProviderWorkspace,
   type UiContext,
 } from "../../drizzle/schema";
+import type { RequestMeta } from "../_core/requestMeta";
 import { requireDb, type DbOrTx } from "../db";
+import { appendAudit } from "./admin/audit";
 
 export const generateReferralCode = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 10);
+
+/** NULL actor on the audit entry below -- see appendAudit's SYSTEM convention. Not a real request. */
+const ENSURE_PARTNER_META: RequestMeta = { requestId: null, ipHash: null, userAgentSummary: "ensure-partner-profile" };
+
+/**
+ * Statuses a `partner_profiles` row can be left in from the old apply/admin-review gate (removed --
+ * see `ensurePartnerProfile`). None of these are a deliberate post-hoc admin decision the way
+ * SUSPENDED is, so an account stuck in one of them is auto-upgraded rather than left stranded
+ * behind a gate the product no longer has a UI for.
+ */
+const LEGACY_GATE_STATUSES: readonly PartnerStatus[] = ["PENDING", "INFO_REQUESTED", "REJECTED"];
 
 /** Resolved teaching authority for one request: the managed workspace plus the acting user. */
 export type TeacherScope = { workspaceId: string; userId: number };
@@ -70,10 +84,45 @@ export async function partnerProfileOf(userId: number, db: DbOrTx = requireDb())
  * behavior shipped, with no migration script needed. `partnerProfiles.userId` is unique, so a
  * concurrent double-call just loses the insert race and falls through to re-reading the row the
  * other call created.
+ *
+ * An account that applied through the old "Apply to become a partner" flow before this gate was
+ * removed can already have a row sitting in PENDING, INFO_REQUESTED, or REJECTED -- none of those
+ * were ever a decision an admin made about THIS person specifically (REJECTED there meant "this
+ * application wasn't convincing enough", a bar that no longer exists for anyone). Left alone, that
+ * leftover row would keep such an account locked out forever, since a row already existing is what
+ * skips provisioning above. So any of those three statuses is auto-upgraded to APPROVED here, the
+ * same outcome a brand-new user gets. SUSPENDED is the one status this never touches: it's the
+ * fraud-control action described above, made about this specific account after they already had
+ * access, and only an admin REACTIVATE should undo it.
  */
 export async function ensurePartnerProfile(userId: number, db: DbOrTx = requireDb()): Promise<PartnerProfile> {
   const existing = await partnerProfileOf(userId, db);
-  if (existing) return existing;
+  if (existing) {
+    if (!LEGACY_GATE_STATUSES.includes(existing.status)) return existing;
+    const now = new Date();
+    // decidedBy/decidedAt are cleared, not kept: whatever human decision is on that row (an
+    // admin's REQUEST_INFO or REJECT) is exactly what's being overridden here, so leaving their
+    // id in place would misattribute this approval to them.
+    await db
+      .update(partnerProfiles)
+      .set({ status: "APPROVED", approvedAt: existing.approvedAt ?? now, decidedBy: null, decidedAt: null })
+      .where(eq(partnerProfiles.id, existing.id));
+    await appendAudit(
+      db,
+      null,
+      {
+        action: "PARTNER_APPROVED",
+        targetType: "PARTNER_PROFILE",
+        targetId: existing.id,
+        userId,
+        before: { status: existing.status },
+        after: { status: "APPROVED" },
+        reason: "Auto-approved: the apply/review gate this status came from was removed.",
+      },
+      ENSURE_PARTNER_META,
+    );
+    return { ...existing, status: "APPROVED", approvedAt: existing.approvedAt ?? now, decidedBy: null, decidedAt: null };
+  }
   try {
     await db.insert(partnerProfiles).values({ userId, status: "APPROVED", referralCode: generateReferralCode(), approvedAt: new Date() });
   } catch {
