@@ -237,6 +237,7 @@ export function PublicTaskPage() {
   const { user, loading } = useAuth();
   const task = trpc.public.task.useQuery({ shareCode }, { enabled: shareCode.length >= 4, retry: false });
   const claim = trpc.student.claimTask.useMutation();
+  const logDownload = trpc.public.shareEvent.useMutation();
   const a = task.data;
   const { channel, campaign } = useShareAttribution("TASK", shareCode, Boolean(a));
   const returnTo = `/task/${shareCode}${window.location.search}`;
@@ -249,6 +250,21 @@ export function PublicTaskPage() {
           <h1 className="mt-4 break-words text-2xl font-semibold">{a.title}</h1>
           {a.description && <p className="mt-3 break-words text-sm text-foreground-secondary">{a.description}</p>}
           <p className="mt-3 text-sm text-muted-foreground">{t("modules.deadlineValue", { date: fmtDateTime(a.deadline) })}</p>
+          {a.attachments.length > 0 && (
+            <div className="mt-3 space-y-1.5">
+              <p className="text-xs font-medium text-foreground-secondary">{t("public.task.attachments")}</p>
+              {a.attachments.map((file) => (
+                <a
+                  key={file.fileId}
+                  href={fileDownloadUrl(file.fileId)}
+                  onClick={() => logDownload.mutate({ targetType: "TASK", targetId: shareCode, channel: channel ?? "DIRECT", eventType: "DOWNLOADED", campaign })}
+                  className="block rounded-lg border border-border bg-muted px-3 py-1.5 text-sm text-link underline-offset-2 hover:underline"
+                >
+                  {t("common.download")}: {file.name}
+                </a>
+              ))}
+            </div>
+          )}
           <div className="mt-6">
             {loading ? null : !user ? (
               <Button className="w-full" onClick={() => startLogin(returnTo)}>{t("common.signInGoogle")}</Button>
@@ -282,6 +298,7 @@ export function PublicMaterialPage() {
   const { user, loading } = useAuth();
   const material = trpc.public.material.useQuery({ shareCode }, { enabled: shareCode.length >= 4, retry: false });
   const claim = trpc.student.claimMaterial.useMutation();
+  const logDownload = trpc.public.shareEvent.useMutation();
   const m = material.data;
   const { channel, campaign } = useShareAttribution("MATERIAL", shareCode, Boolean(m));
   const returnTo = `/material/${shareCode}${window.location.search}`;
@@ -297,6 +314,7 @@ export function PublicMaterialPage() {
           {m.fileId && (
             <a
               href={fileDownloadUrl(m.fileId)}
+              onClick={() => logDownload.mutate({ targetType: "MATERIAL", targetId: shareCode, channel: channel ?? "DIRECT", eventType: "DOWNLOADED", campaign })}
               className="mt-3 inline-block rounded-lg border border-border bg-muted px-3 py-1.5 text-sm text-link underline-offset-2 hover:underline"
             >
               {t("common.download")}: {m.fileName}

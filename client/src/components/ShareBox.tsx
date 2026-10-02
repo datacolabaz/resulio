@@ -111,14 +111,18 @@ export function ShareBox({
 }
 
 /**
- * Small, honest channel breakdown for one share link: clicks (the button was pressed), opens
- * (the destination page actually loaded), joins (the student went through with it). No funnel
- * stage beyond that is shown, because this app doesn't track anything past it.
+ * Small, honest channel breakdown for one share link: how many times the sender shared it
+ * through each channel ("Paylaşıldı" -- this is the sender's own button presses, not a
+ * recipient's click, which this app has no way to observe), how many times the destination
+ * page actually loaded for a recipient ("Açılış"), how many times a recipient opened/downloaded
+ * an attached file from it ("Yükləndi"), and how many recipients went through with joining or
+ * claiming it ("Qoşulma"). No funnel stage beyond that is shown, because this app doesn't track
+ * anything past it.
  */
 export function ShareFunnelSummary({ data }: { data: ShareFunnel | undefined }) {
   if (!data) return null;
   const rows = SHARE_CHANNELS.filter((c) => c !== "DIRECT").map((c) => ({ channel: c, ...data.byChannel[c] }));
-  const hasAny = data.totals.clicked > 0 || data.totals.opened > 0 || data.totals.joined > 0;
+  const hasAny = data.totals.clicked > 0 || data.totals.opened > 0 || data.totals.downloaded > 0 || data.totals.joined > 0;
   return (
     <div className="mt-3 rounded-lg border bg-muted/30 p-3">
       <h4 className="text-xs font-medium text-foreground-secondary">{t("share.funnelTitle")}</h4>
@@ -131,6 +135,7 @@ export function ShareFunnelSummary({ data }: { data: ShareFunnel | undefined }) 
               <th className="py-1 font-normal">{t("share.funnelChannel")}</th>
               <th className="py-1 font-normal">{t("share.funnelClicked")}</th>
               <th className="py-1 font-normal">{t("share.funnelOpened")}</th>
+              <th className="py-1 font-normal">{t("share.funnelDownloaded")}</th>
               <th className="py-1 font-normal">{t("share.funnelJoined")}</th>
             </tr>
           </thead>
@@ -140,6 +145,7 @@ export function ShareFunnelSummary({ data }: { data: ShareFunnel | undefined }) 
                 <td className="py-1">{shareChannelLabel(r.channel)}</td>
                 <td className="py-1">{r.clicked}</td>
                 <td className="py-1">{r.opened}</td>
+                <td className="py-1">{r.downloaded}</td>
                 <td className="py-1">{r.joined}</td>
               </tr>
             ))}

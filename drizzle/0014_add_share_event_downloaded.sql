@@ -1,0 +1,1 @@
+ALTER TABLE `share_events` MODIFY COLUMN `eventType` enum('CLICKED','OPENED','DOWNLOADED','JOINED') NOT NULL;

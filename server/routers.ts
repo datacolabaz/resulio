@@ -699,7 +699,7 @@ const publicRouter = router({
     .input(z.object({ shareCode: z.string().trim().min(4).max(32) }))
     .query(async ({ input }) => {
       const a = await tasks.assignmentByShareCode(input.shareCode);
-      return a ? { id: a.id, title: a.title, description: a.description, deadline: a.deadline } : null;
+      return a ? { id: a.id, title: a.title, description: a.description, deadline: a.deadline, attachments: a.attachments } : null;
     }),
   material: publicProcedure
     .use(rateLimit("publicMaterial", 60, MINUTE))
@@ -719,11 +719,13 @@ const publicRouter = router({
     .input(z.object({ token: z.string().trim().min(16).max(128) }))
     .query(({ input }) => groupEmailInvites.publicEmailInvitePreview(input.token)),
   /**
-   * Fire-and-forget click/open logging for a share link, callable anonymously (pre-login) and
-   * without a `targetId` existence check — it only ever feeds a teacher/partner-facing count, so
-   * a stray or spoofed row has no effect beyond slightly noisy analytics. "JOINED" is never
+   * Fire-and-forget click/open/download logging for a share link, callable anonymously (pre-login)
+   * and without a `targetId` existence check — it only ever feeds a teacher/partner-facing count,
+   * so a stray or spoofed row has no effect beyond slightly noisy analytics. "JOINED" is never
    * accepted here; it is only ever recorded server-side, tied to the actor, by the mutation that
-   * actually performs the join/claim (see student.join / claimTask / claimMaterial).
+   * actually performs the join/claim (see student.join / claimTask / claimMaterial). "CLICKED" is
+   * the sender's own share-button press (see shared/shareTracking.ts); "OPENED" and "DOWNLOADED"
+   * are both recipient-side, fired from the public page itself.
    */
   shareEvent: publicProcedure
     .use(rateLimit("shareEvent", 30, MINUTE))
@@ -732,7 +734,7 @@ const publicRouter = router({
         targetType: z.enum(SHARE_TARGET_TYPES),
         targetId: z.string().trim().min(1).max(64),
         channel: z.enum(SHARE_CHANNELS),
-        eventType: z.enum(["CLICKED", "OPENED"]),
+        eventType: z.enum(["CLICKED", "OPENED", "DOWNLOADED"]),
         campaign: z.enum(SHARE_CAMPAIGNS).optional(),
       }),
     )
