@@ -63,6 +63,7 @@ export const groupFormatLabel = (v: string | null | undefined) => label("groups.
 export const joinPolicyLabel = (v: string | null | undefined) => label("groups.joinPolicy", v);
 export const teachingCategoryLabel = (v: string | null | undefined) => label("teachingCategory", v);
 export const referralSourceLabel = (v: string | null | undefined) => label("referralSource", v);
+export const shareChannelLabel = (v: string | null | undefined) => label("shareChannel", v);
 /** Known subcategory keys get their catalog label; anything else (free text the teacher typed) is shown as-is. */
 export const teachingSubcategoryLabel = (v: string | null | undefined) => label("teachingSubcategory", v);
 /** Known language codes (az/ru/en) get their catalog label; legacy free-text values are shown as-is. */

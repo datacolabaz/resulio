@@ -2,7 +2,7 @@ import { AppShell, EmptyState, Loading, Panel, Pill } from "@/components/AppShel
 import { MultiFileUpload, SingleFileUpload } from "@/components/FileUpload";
 import { draftFromQuestion, QuestionEditor } from "@/components/QuestionEditor";
 import { StatusBadge } from "@/components/StatusBadge";
-import { ShareBox } from "@/components/ShareBox";
+import { ShareBox, ShareFunnelSummary } from "@/components/ShareBox";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -132,6 +132,7 @@ export function AssignmentsPage() {
   const [shareId, setShareId] = useState<string | null>(null);
   const [submissionsId, setSubmissionsId] = useState<string | null>(null);
   const activityQ = trpc.teacher.tasks.activity.useQuery({ id: submissionsId ?? "" }, { enabled: !!submissionsId });
+  const shareFunnelQ = trpc.teacher.tasks.shareFunnel.useQuery({ id: shareId ?? "" }, { enabled: !!shareId });
   const remove = trpc.teacher.tasks.remove.useMutation({
     onSuccess: () => void utils.teacher.tasks.list.invalidate(),
     onError: (e) => toast.error(errorText(e)),
@@ -238,7 +239,12 @@ export function AssignmentsPage() {
                 </div>
                 {shareId === a.id && (
                   <div className="mt-3">
-                    <ShareBox path={`/task/${a.shareCode}`} fileName={`resulio-task-${a.shareCode}`} />
+                    <ShareBox
+                      path={`/task/${a.shareCode}`}
+                      fileName={`resulio-task-${a.shareCode}`}
+                      tracking={{ targetType: "TASK", targetId: a.shareCode, campaign: "task_share" }}
+                    />
+                    <ShareFunnelSummary data={shareFunnelQ.data} />
                   </div>
                 )}
               </Panel>
@@ -405,6 +411,7 @@ function MaterialsTab() {
   const [shareId, setShareId] = useState<string | null>(null);
   const [activityId, setActivityId] = useState<string | null>(null);
   const activityQ = trpc.teacher.tasks.materialActivity.useQuery({ id: activityId ?? "" }, { enabled: !!activityId });
+  const shareFunnelQ = trpc.teacher.tasks.materialShareFunnel.useQuery({ id: shareId ?? "" }, { enabled: !!shareId });
   const remove = trpc.teacher.tasks.removeMaterial.useMutation({
     onSuccess: () => void utils.teacher.tasks.materials.invalidate(),
     onError: (e) => toast.error(errorText(e)),
@@ -474,7 +481,12 @@ function MaterialsTab() {
               </div>
               {shareId === m.id && (
                 <div className="mt-3">
-                  <ShareBox path={`/material/${m.shareCode}`} fileName={`resulio-material-${m.shareCode}`} />
+                  <ShareBox
+                    path={`/material/${m.shareCode}`}
+                    fileName={`resulio-material-${m.shareCode}`}
+                    tracking={{ targetType: "MATERIAL", targetId: m.shareCode, campaign: "material_share" }}
+                  />
+                  <ShareFunnelSummary data={shareFunnelQ.data} />
                 </div>
               )}
             </Panel>

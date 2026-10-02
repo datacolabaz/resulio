@@ -24,9 +24,33 @@ import { trpc } from "@/lib/trpc";
 import { fileDownloadUrl } from "@/lib/uploadFile";
 import { REFERRAL_SOURCES, type ReferralSource } from "@shared/referralSources";
 import type { ClassScheduleEntry } from "@shared/schedule";
+import { SHARE_CAMPAIGNS, SHARE_CHANNELS, type ShareCampaign, type ShareChannel, type ShareTargetType } from "@shared/shareTracking";
 import { TEACHING_CATEGORIES, TEACHING_SUBCATEGORIES, type TeachingCategory } from "@shared/teachingCategories";
-import { useEffect, useState } from "react";
-import { Link, useParams } from "wouter";
+import { useEffect, useRef, useState } from "react";
+import { Link, useParams, useSearch } from "wouter";
+
+/**
+ * Reads ?source=&campaign= off the current public share link (tagged by ShareBox), fires a
+ * single best-effort "opened" event once the target has actually loaded, and hands back the
+ * channel/campaign so the page's own join/claim mutation can tag the resulting "joined" event
+ * with the same attribution.
+ */
+function useShareAttribution(targetType: ShareTargetType, targetId: string, ready: boolean) {
+  const params = new URLSearchParams(useSearch());
+  const rawChannel = params.get("source")?.toUpperCase() ?? "";
+  const channel = (SHARE_CHANNELS as readonly string[]).includes(rawChannel) ? (rawChannel as ShareChannel) : undefined;
+  const rawCampaign = params.get("campaign") ?? "";
+  const campaign = (SHARE_CAMPAIGNS as readonly string[]).includes(rawCampaign) ? (rawCampaign as ShareCampaign) : undefined;
+  const logOpen = trpc.public.shareEvent.useMutation();
+  const fired = useRef(false);
+  useEffect(() => {
+    if (!ready || fired.current || !targetId) return;
+    fired.current = true;
+    logOpen.mutate({ targetType, targetId, channel: channel ?? "DIRECT", eventType: "OPENED", campaign });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, targetId]);
+  return { channel, campaign };
+}
 
 /**
  * Shown once, right after a student's first successful group join — optional and skippable, per
@@ -344,6 +368,7 @@ export function JoinGroupPage() {
   const join = trpc.student.join.useMutation({ onSuccess: () => utils.auth.me.invalidate() });
   const [onboardingDone, setOnboardingDone] = useState(false);
   const g = invite.data;
+  const { channel, campaign } = useShareAttribution("GROUP", inviteCode, Boolean(g));
   return (
     <Card>
       <h1 className="mt-4 text-xl font-semibold">{t("public.join.title")}</h1>
@@ -357,7 +382,7 @@ export function JoinGroupPage() {
           {!!g.description && <p className="mt-3 text-sm">{g.description}</p>}
           <div className="mt-6">
             {loading ? null : !user ? (
-              <Button className="w-full" onClick={() => startLogin(`/join/${inviteCode}`)}>{t("common.signInGoogle")}</Button>
+              <Button className="w-full" onClick={() => startLogin(`/join/${inviteCode}${window.location.search}`)}>{t("common.signInGoogle")}</Button>
             ) : join.isSuccess ? (
               <div className="space-y-3 text-sm" role="status">
                 <p className="text-success">{join.data.status === "ACTIVE" ? t("public.invite.joined") : t("public.join.sent")}</p>
@@ -371,7 +396,7 @@ export function JoinGroupPage() {
             ) : join.error ? (
               <JoinErrorNote error={join.error} />
             ) : (
-              <Button className="w-full" disabled={join.isPending} onClick={() => join.mutate({ inviteCode })}>
+              <Button className="w-full" disabled={join.isPending} onClick={() => join.mutate({ inviteCode, channel, campaign })}>
                 {g.joinPolicy === "AUTO" ? t("public.join.joinNow") : t("public.join.request")}
               </Button>
             )}
@@ -431,7 +456,8 @@ export function PublicExamPage() {
   const { user, loading } = useAuth();
   const exam = trpc.public.exam.useQuery({ shareCode }, { enabled: shareCode.length >= 4, retry: false });
   const e = exam.data;
-  const returnTo = `/exam/${shareCode}`;
+  useShareAttribution("EXAM", shareCode, Boolean(e));
+  const returnTo = `/exam/${shareCode}${window.location.search}`;
   return (
     <Card>
       {exam.isLoading ? <p role="status" className="mt-4 text-sm text-muted-foreground">{t("common.loading")}</p> : !e ? (
@@ -477,7 +503,8 @@ export function PublicTaskPage() {
   const task = trpc.public.task.useQuery({ shareCode }, { enabled: shareCode.length >= 4, retry: false });
   const claim = trpc.student.claimTask.useMutation();
   const a = task.data;
-  const returnTo = `/task/${shareCode}`;
+  const { channel, campaign } = useShareAttribution("TASK", shareCode, Boolean(a));
+  const returnTo = `/task/${shareCode}${window.location.search}`;
   return (
     <Card>
       {task.isLoading ? <p role="status" className="mt-4 text-sm text-muted-foreground">{t("common.loading")}</p> : !a ? (
@@ -504,7 +531,7 @@ export function PublicTaskPage() {
               </div>
             ) : (
               <>
-                <Button className="w-full" disabled={claim.isPending} onClick={() => claim.mutate({ shareCode })}>{t("public.task.claim")}</Button>
+                <Button className="w-full" disabled={claim.isPending} onClick={() => claim.mutate({ shareCode, channel, campaign })}>{t("public.task.claim")}</Button>
                 {claim.error && <p role="alert" className="mt-2 text-sm text-destructive">{errorText(claim.error)}</p>}
               </>
             )}
@@ -521,7 +548,8 @@ export function PublicMaterialPage() {
   const material = trpc.public.material.useQuery({ shareCode }, { enabled: shareCode.length >= 4, retry: false });
   const claim = trpc.student.claimMaterial.useMutation();
   const m = material.data;
-  const returnTo = `/material/${shareCode}`;
+  const { channel, campaign } = useShareAttribution("MATERIAL", shareCode, Boolean(m));
+  const returnTo = `/material/${shareCode}${window.location.search}`;
   return (
     <Card>
       {material.isLoading ? <p role="status" className="mt-4 text-sm text-muted-foreground">{t("common.loading")}</p> : !m ? (
@@ -556,7 +584,7 @@ export function PublicMaterialPage() {
               </div>
             ) : (
               <>
-                <Button className="w-full" disabled={claim.isPending} onClick={() => claim.mutate({ shareCode })}>{t("public.material.claim")}</Button>
+                <Button className="w-full" disabled={claim.isPending} onClick={() => claim.mutate({ shareCode, channel, campaign })}>{t("public.material.claim")}</Button>
                 {claim.error && <p role="alert" className="mt-2 text-sm text-destructive">{errorText(claim.error)}</p>}
               </>
             )}

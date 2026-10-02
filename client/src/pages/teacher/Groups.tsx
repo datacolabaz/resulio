@@ -1,6 +1,6 @@
 import { ProgressChart, RankingTable, TopicBars } from "@/components/AnalyticsBlocks";
 import { AppShell, ChoiceChip, EmptyState, ErrorNote, Loading, Panel, Pill, StatCard } from "@/components/AppShell";
-import { ShareBox } from "@/components/ShareBox";
+import { ShareBox, ShareFunnelSummary } from "@/components/ShareBox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -313,6 +313,7 @@ function InviteDialog({
   const [email, setEmail] = useState("");
   const [expiryInput, setExpiryInput] = useState(() => (codeExpiresAt ? new Date(codeExpiresAt).toISOString().slice(0, 10) : ""));
   const onGroupChange = () => void utils.teacher.groups.invalidate();
+  const shareFunnel = trpc.teacher.groups.shareFunnel.useQuery({ groupId }, { enabled: open });
   const add = trpc.teacher.groups.addMember.useMutation({
     onSuccess: () => { toast.success(t("groups.studentAdded")); setEmail(""); onGroupChange(); },
     onError: (e) => toast.error(errorText(e)),
@@ -339,12 +340,17 @@ function InviteDialog({
         <div className="space-y-5">
           <section aria-labelledby="invite-link">
             <h3 id="invite-link" className="mb-2 text-sm font-medium">{t("groups.inviteByLink")}</h3>
-            <ShareBox path={`/join/${inviteCode}`} fileName={`resulio-group-${inviteCode}`} />
+            <ShareBox
+              path={`/join/${inviteCode}`}
+              fileName={`resulio-group-${inviteCode}`}
+              tracking={{ targetType: "GROUP", targetId: inviteCode, campaign: "group_join" }}
+            />
             <div className="mt-3 flex items-center gap-2">
               <span className="text-xs text-foreground-secondary">{t("groups.inviteCodeLabel")}:</span>
               <code className="rounded bg-muted px-2 py-1 font-mono text-sm">{inviteCode}</code>
               <Button variant="outline" size="sm" onClick={() => void copyCode()}>{t("groups.copyCode")}</Button>
             </div>
+            <ShareFunnelSummary data={shareFunnel.data} />
 
             <div className="mt-3 rounded-xl border p-3">
               <label className="text-sm">

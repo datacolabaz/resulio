@@ -36,6 +36,7 @@ import {
 } from "../shared/adminPermissions";
 import { REFERRAL_SOURCES } from "../shared/referralSources";
 import type { ClassScheduleEntry } from "../shared/schedule";
+import { SHARE_CHANNELS, SHARE_EVENT_TYPES, SHARE_TARGET_TYPES } from "../shared/shareTracking";
 
 const ID = 32;
 const id = (name: string) => varchar(name, { length: ID });
@@ -85,6 +86,10 @@ export const users = mysqlTable(
     referrerUserId: int("referrerUserId"),
     /** Set only when referralSource is REFERRAL and the student typed a name instead of tagging a user (that person isn't on Resulio, or the student couldn't find them). */
     referrerName: varchar("referrerName", { length: 160 }),
+    /** Set the first time the first-login "share Resulio, earn a commission" card is shown or skipped. Shown at most once, ever, regardless of outcome. */
+    referralOnboardingSeenAt: timestamp("referralOnboardingSeenAt"),
+    /** Set when the teacher dismisses the dashboard referral card; the card reappears once this is more than 30 days old. */
+    referralCardDismissedAt: timestamp("referralCardDismissedAt"),
   },
   (t) => [index("users_account_status_idx").on(t.accountStatus), index("users_last_seen_idx").on(t.lastSeenAt)],
 );
@@ -224,6 +229,50 @@ export const partnerProfiles = mysqlTable("partner_profiles", {
   decidedBy: int("decidedBy"),
   decidedAt: timestamp("decidedAt"),
 });
+
+/**
+ * Append-only click/open/join tracking for public share links (group invite codes, task/exam/
+ * material share codes, and partner referral codes). `targetId` is the already-public code the
+ * link carries (the group's inviteCode, an assessment/task/material's shareCode, or a partner's
+ * referralCode) -- never a second identifier to keep in sync. No row is ever updated or deleted;
+ * counts are always computed live from this table so they can never drift from what happened.
+ */
+export const shareEvents = mysqlTable(
+  "share_events",
+  {
+    id: bigint("id", { mode: "number" }).autoincrement().primaryKey(),
+    targetType: mysqlEnum("targetType", SHARE_TARGET_TYPES).notNull(),
+    targetId: varchar("targetId", { length: 64 }).notNull(),
+    channel: mysqlEnum("channel", SHARE_CHANNELS).notNull().default("DIRECT"),
+    eventType: mysqlEnum("eventType", SHARE_EVENT_TYPES).notNull(),
+    /** Which surface generated the link, e.g. "group_join", "profile_referral". Free-form, not a DB enum, so a new placement never needs a migration. */
+    campaign: varchar("campaign", { length: 40 }),
+    /** Set when the actor was signed in at the time of the event (e.g. a JOINED event); NULL for anonymous CLICKED/OPENED. */
+    actorUserId: int("actorUserId"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [index("share_events_target_idx").on(t.targetType, t.targetId, t.createdAt)],
+);
+
+/**
+ * Who referred a new signup, captured once at account creation (never updated -- first valid
+ * referral wins). `userId` is unique so a second attribution attempt for the same user always
+ * fails harmlessly; there is deliberately no commission/earnings column here because no payment
+ * system exists yet in this app -- that ledger is a separate, later addition once payments do.
+ */
+export const referralAttributions = mysqlTable(
+  "referral_attributions",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull().unique(),
+    partnerId: int("partnerId").notNull(),
+    referralCode: varchar("referralCode", { length: 32 }).notNull(),
+    channel: mysqlEnum("channel", SHARE_CHANNELS).notNull().default("DIRECT"),
+    campaign: varchar("campaign", { length: 40 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [index("referral_attributions_partner_idx").on(t.partnerId, t.createdAt)],
+);
 
 export const PLATFORM_ROLES = ADMIN_ROLES;
 export type PlatformRole = (typeof PLATFORM_ROLES)[number];
