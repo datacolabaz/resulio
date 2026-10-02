@@ -27,12 +27,6 @@ export const app = {
   "shell.language": ["Dil: {name}", "Language: {name}", "Язык: {name}"],
   "shell.primaryNav": ["Əsas naviqasiya", "Main navigation", "Основная навигация"],
 
-  "landing.headline": ["Müəllim → Qrup → İmtahan → Analitika", "Teacher → Group → Exam → Analytics", "Преподаватель → Группа → Экзамен → Аналитика"],
-  "landing.lead": [
-    "Müəllim və tələbələr üçün sadə, sürətli, analiz yönümlü imtahan platforması.",
-    "A simple, fast, analytics-first exam platform for teachers and students.",
-    "Простая и быстрая экзаменационная платформа с аналитикой для преподавателей и студентов.",
-  ],
   "landing.cancelled": ["Giriş ləğv edildi.", "Sign-in was cancelled.", "Вход отменён."],
   "landing.loginFailed": [
     "Google ilə giriş alınmadı ({reason}). Yenidən cəhd edin.",
@@ -42,14 +36,121 @@ export const app = {
   "landing.demoTeacher": ["Demo müəllim", "Demo teacher", "Демо-преподаватель"],
   "landing.demoStudent": ["Demo tələbə", "Demo student", "Демо-студент"],
   "landing.demoMissing": ["Demo hesab tapılmadı. Əvvəlcə {command} işə salın.", "Demo account not found. Run {command} first.", "Демо-аккаунт не найден. Сначала выполните {command}."],
-  "landing.feature.builder.title": ["İmtahan qurucusu", "Exam builder", "Конструктор экзаменов"],
-  "landing.feature.builder.body": ["9 sual növü, dəyişməz versiyalar, preview.", "9 question types, immutable versions, preview.", "9 типов вопросов, неизменяемые версии, предпросмотр."],
-  "landing.feature.session.title": ["Təhlükəsiz sessiya", "Reliable session", "Надёжная сессия"],
-  "landing.feature.session.body": ["server taymeri, avtomatik yadda saxlama, avtomatik təhvil.", "server timer, autosave, automatic submission.", "серверный таймер, автосохранение, автоматическая сдача."],
-  "landing.feature.analytics.title": ["Nəticə və analitika", "Results and analytics", "Результаты и аналитика"],
-  "landing.feature.analytics.body": ["median, reytinq, ən çox səhv edilən suallar, mövzular.", "median, ranking, most-missed questions, topics.", "медиана, рейтинг, самые сложные вопросы, темы."],
-  "landing.feature.sharing.title": ["Paylaşma", "Sharing", "Доступ"],
-  "landing.feature.sharing.body": ["link və QR ilə qrup və ya fərdi təyinat.", "group or individual assignment via link and QR.", "назначение группе или студенту по ссылке и QR."],
+
+  // Hero
+  "landing.hero.eyebrow": [
+    "Müəllimlər üçün imtahan və nəticə analitikası",
+    "Exam and results analytics for teachers",
+    "Аналитика экзаменов и результатов для преподавателей",
+  ],
+  "landing.hero.headline": ["İmtahan yaradın. Nəticələri anlayın.", "Create exams. Understand the results.", "Создавайте экзамены. Понимайте результаты."],
+  "landing.hero.body": [
+    "Resulio ilə qruplar yaradın, imtahanları link və QR kodla paylaşın və nəticələrdən hansı mövzuların əlavə izaha ehtiyac duyduğunu anlayın.",
+    "Create groups in Resulio, share exams by link or QR code, and see from the results which topics need a second explanation.",
+    "Создавайте группы в Resulio, делитесь экзаменами по ссылке или QR-коду и узнавайте из результатов, какие темы нужно объяснить ещё раз.",
+  ],
+  "landing.hero.ctaPrimary": ["Pulsuz başla", "Start for free", "Начать бесплатно"],
+  "landing.hero.ctaSecondary": ["Nümunə panelə bax", "See the sample dashboard", "Посмотреть демо-панель"],
+  "landing.hero.previewSummary": [
+    "Nümunə Resulio müəllim paneli: 9A Riyaziyyat qrupu üçün Cəbr — Tənliklər imtahanı, 26 şagirddən 24-ü tamamlayıb, median nəticə 72%, ən çox səhv edilən sual 7-dir, mövzu kvadrat tənliklərdir.",
+    "Sample Resulio teacher dashboard: the Algebra — Equations exam for Grade 9A · Math, 24 of 26 students completed, median score 72%, the most-missed question is question 7, topic quadratic equations.",
+    "Демо-панель преподавателя Resulio: экзамен «Алгебра — Уравнения» для группы 9-А · Математика, 24 из 26 учеников завершили, медиана 72%, самый сложный вопрос — 7, тема «квадратные уравнения».",
+  ],
+
+  // Reused across every product preview on the landing page.
+  "landing.demo.note": ["Nümunə interfeys — real hesab deyil.", "Example interface — not a real account.", "Пример интерфейса — это не реальный аккаунт."],
+
+  // Demo content shown inside the previews (same fictional teacher, group and exam throughout).
+  "landing.preview.teacherName": ["Aysel müəllimə", "Aysel, teacher", "Айсель, преподаватель"],
+  "landing.preview.greeting": ["Xoş gəldiniz, {name}", "Welcome, {name}", "Добро пожаловать, {name}"],
+  "landing.preview.groupName": ["9A Riyaziyyat", "Grade 9A · Math", "9-А · Математика"],
+  "landing.preview.examTitle": ["Cəbr — Tənliklər", "Algebra — Equations", "Алгебра — Уравнения"],
+  "landing.preview.studentsCompleted": [
+    "{completed} / {total} şagird tamamladı",
+    "{completed} / {total} students completed",
+    "{completed} / {total} учеников завершили",
+  ],
+  "landing.preview.resultsReady": ["Nəticələr hazırdır", "Results are ready", "Результаты готовы"],
+  "landing.preview.viewResults": ["Nəticələrə bax", "View results", "Посмотреть результаты"],
+  "landing.preview.activeExams": ["Aktiv imtahanlar", "Active exams", "Активные экзамены"],
+  "landing.preview.completedThisWeek": ["Bu həftə tamamlanan", "Completed this week", "Завершено на этой неделе"],
+  "landing.preview.mostMissedQuestion": ["Ən çox səhv edilən sual", "Most-missed question", "Самый сложный вопрос"],
+  "landing.preview.questionN": ["Sual {n}", "Question {n}", "Вопрос {n}"],
+  "landing.preview.topicResult": ["Mövzu üzrə nəticə", "Result by topic", "Результат по теме"],
+  "landing.preview.topicName": ["Kvadrat tənliklər", "Quadratic equations", "Квадратные уравнения"],
+  "landing.preview.insightLabel": ["Növbəti dərs üçün", "For your next lesson", "Для следующего урока"],
+  "landing.preview.insight": [
+    "Kvadrat tənliklər mövzusunu təkrar izah etmək faydalı ola bilər.",
+    "It may help to go over quadratic equations again.",
+    "Возможно, стоит ещё раз объяснить тему квадратных уравнений.",
+  ],
+  "landing.preview.sampleQuestion": [
+    "x² − 5x + 6 = 0 tənliyinin kökləri hansılardır?",
+    "What are the roots of x² − 5x + 6 = 0?",
+    "Какие корни уравнения x² − 5x + 6 = 0?",
+  ],
+  "landing.preview.sampleQuestion2": [
+    "2x + 3 = 11 tənliyini həll edin.",
+    "Solve 2x + 3 = 11.",
+    "Решите уравнение 2x + 3 = 11.",
+  ],
+  "landing.preview.sampleQuestion3": [
+    "x² − ___x + 6 = (x − 2)(x − 3) ifadəsində boşluğu doldurun.",
+    "Fill in the blank: x² − ___x + 6 = (x − 2)(x − 3).",
+    "Заполните пропуск: x² − ___x + 6 = (x − 2)(x − 3).",
+  ],
+  "landing.preview.builderSummary": [
+    "Nümunə imtahan qurucusu: Cəbr — Tənliklər imtahanı, 12 sual, 24 bal, 9 fərqli sual tipi arasından seçim.",
+    "Sample exam builder: the Algebra — Equations exam, 12 questions, 24 points, a choice of 9 different question types.",
+    "Демо-конструктор экзамена: экзамен «Алгебра — Уравнения», 12 вопросов, 24 балла, выбор из 9 типов вопросов.",
+  ],
+  "landing.preview.sessionSummary": [
+    "Nümunə şagird imtahan ekranı: 12 sualdan 9-u cavablandırılıb, 7-ci sualdadır, qalan vaxt 18:42, cavablar avtomatik saxlanılıb.",
+    "Sample student exam screen: 9 of 12 questions answered, on question 7, 18:42 left, answers saved automatically.",
+    "Демо-экран сдачи экзамена: отвечено 9 из 12 вопросов, вопрос 7, осталось 18:42, ответы сохранены автоматически.",
+  ],
+  "landing.preview.analyticsSummary": [
+    "Nümunə analitika paneli: median nəticə 72%, ən çox səhv edilən sual 7, ən zəif mövzu kvadrat tənliklər, nəticə 42%.",
+    "Sample analytics dashboard: median score 72%, most-missed question 7, weakest topic quadratic equations at 42%.",
+    "Демо-панель аналитики: медиана 72%, самый сложный вопрос — 7, самая слабая тема — квадратные уравнения, 42%.",
+  ],
+
+  // Section 1 — exam builder
+  "landing.section.builder.title": ["İmtahanı paylaşmazdan əvvəl tam yoxlayın.", "Check the exam fully before you share it.", "Полностью проверьте экзамен перед тем, как поделиться им."],
+  "landing.section.builder.body": [
+    "Sualları hazırlayın, imtahanı şagirdin görəcəyi formada preview edin və son versiyanı paylaşın.",
+    "Prepare your questions, preview the exam exactly as a student will see it, and share the final version.",
+    "Подготовьте вопросы, посмотрите предпросмотр экзамена так, как его увидит студент, и поделитесь финальной версией.",
+  ],
+  "landing.section.builder.detail": [
+    "9 fərqli sual tipi ilə çevik imtahanlar yaradın.",
+    "Build flexible exams with 9 different question types.",
+    "Создавайте гибкие экзамены с 9 типами вопросов.",
+  ],
+
+  // Section 2 — student exam session
+  "landing.section.session.title": ["İmtahan zamanı cavablar qorunur.", "Answers stay safe during the exam.", "Ответы в безопасности во время экзамена."],
+  "landing.section.session.body": [
+    "Vaxt server tərəfdə izlənir, cavablar avtomatik yadda saxlanır və vaxt tamam olduqda imtahan avtomatik təhvil verilir.",
+    "Time is tracked on the server, answers are saved automatically, and the exam is submitted on its own when time runs out.",
+    "Время отслеживается на сервере, ответы сохраняются автоматически, а экзамен сдаётся сам, когда время заканчивается.",
+  ],
+
+  // Section 3 — share by link/QR
+  "landing.section.share.title": ["Şagirdləri bir linklə imtahana qoşun.", "Bring students into the exam with one link.", "Подключите учеников к экзамену одной ссылкой."],
+  "landing.section.share.body": [
+    "İmtahanı seçilmiş qrupa və ya fərdi şagirdlərə göndərin. Şagirdlər link və ya QR kodla rahat qoşulsun.",
+    "Send the exam to a chosen group or to individual students. They join easily by link or QR code.",
+    "Отправьте экзамен выбранной группе или отдельным ученикам. Присоединиться по ссылке или QR-коду легко.",
+  ],
+
+  // Section 4 — analytics
+  "landing.section.analytics.title": ["Sadəcə balı yox, səbəbi görün.", "See not just the score, but why.", "Видите не просто балл, а причину."],
+  "landing.section.analytics.body": [
+    "Hansı sualların çətin olduğunu və hansı mövzuların təkrar izaha ehtiyac duyduğunu nəticələrdən anlayın.",
+    "See from the results which questions were hard and which topics need a second explanation.",
+    "Узнайте из результатов, какие вопросы оказались сложными и какие темы нужно объяснить ещё раз.",
+  ],
 
   "share.copied": ["Link kopyalandı", "Link copied", "Ссылка скопирована"],
   "share.copyFailed": ["Kopyalamaq alınmadı", "Could not copy", "Не удалось скопировать"],
