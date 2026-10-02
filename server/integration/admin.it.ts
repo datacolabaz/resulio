@@ -246,7 +246,15 @@ describe("suspension and session revocation", () => {
 });
 
 describe("partner applications", () => {
-  it("runs apply → request info → update → approve → suspend with audit rows and opens the partner context only when approved", async () => {
+  /**
+   * `requestProfile`/`admin.partners.decide` are what's left of the old apply-and-get-reviewed
+   * gate (no client UI calls them any more -- see `ensurePartnerProfile`'s doc comment). A row
+   * this flow leaves in PENDING, INFO_REQUESTED, or REJECTED is never a real, lasting block any
+   * more: the next time anything looks the profile up through `ensurePartnerProfile` (here,
+   * `dashboard()`), it's auto-approved on the spot, with no admin in the loop. SUSPEND is the one
+   * decision that still sticks, because it's the fraud-control lever this product actually has now.
+   */
+  it("auto-approves a PENDING/INFO_REQUESTED profile on next lookup, but suspend still sticks", async () => {
     const admin = await makeAdmin("SUPER_ADMIN");
     const applicant = await makeUser("Namizəd");
     const app = caller(applicant);
@@ -257,17 +265,23 @@ describe("partner applications", () => {
       outcome(caller(admin, {}, fresh).admin.partners.decide({ id: profile.id, decision, reason }));
 
     expect(await decide("REQUEST_INFO")).toBe("OK");
-    expect(await outcome(app.partner.dashboard())).toBe("FORBIDDEN:PARTNER_ONLY");
-    expect(await app.partner.requestProfile({ answers: { audience: "Riyaziyyat müəllimləri", channel: "Telegram" } })).toEqual({ status: "PENDING" });
+    // Still genuinely PENDING/INFO_REQUESTED in the DB -- nothing has looked it up yet to trigger
+    // the auto-approve, so SUSPEND (APPROVED-only) is still correctly rejected here.
     expect(await decide("SUSPEND")).toBe("PRECONDITION_FAILED:INVALID_TRANSITION");
-    expect(await decide("APPROVE", "")).toMatch(/^BAD_REQUEST/);
-    expect(await decide("APPROVE")).toBe("OK");
-    const [approved] = await db().select().from(partnerProfiles).where(eq(partnerProfiles.id, profile.id));
-    expect(approved).toMatchObject({ status: "APPROVED", decidedBy: admin.id, applicationAnswers: { audience: "Riyaziyyat müəllimləri", channel: "Telegram" } });
-    expect(approved.decidedAt).toBeInstanceOf(Date);
-    expect(approved.approvedAt).toBeInstanceOf(Date);
+    expect(await decide("SUSPEND", "")).toMatch(/^BAD_REQUEST/);
+    expect(await app.partner.requestProfile({ answers: { audience: "Riyaziyyat müəllimləri", channel: "Telegram" } })).toEqual({ status: "PENDING" });
+
+    // First lookup through ensurePartnerProfile: the leftover PENDING row is auto-approved, with
+    // no admin decision behind it -- dashboard() succeeds instead of staying FORBIDDEN.
     expect(await outcome(app.partner.dashboard())).toBe("OK");
+    const [approved] = await db().select().from(partnerProfiles).where(eq(partnerProfiles.id, profile.id));
+    expect(approved).toMatchObject({ status: "APPROVED", decidedBy: null, applicationAnswers: { audience: "Riyaziyyat müəllimləri", channel: "Telegram" } });
+    expect(approved.decidedAt).toBeNull(); // auto-approved, not an admin decision
+    expect(approved.approvedAt).toBeInstanceOf(Date);
+
+    // An explicit APPROVE is no longer a valid transition once it's already APPROVED.
     expect(await decide("APPROVE")).toBe("PRECONDITION_FAILED:INVALID_TRANSITION");
+    // SUSPEND is the real, lasting gate -- it still works, and still sticks.
     expect(await decide("SUSPEND")).toBe("OK");
     expect(await outcome(app.partner.dashboard())).toBe("FORBIDDEN:PARTNER_ONLY");
 
@@ -281,7 +295,21 @@ describe("partner applications", () => {
     ]);
     const applied = audit[audit.length - 1];
     expect(applied).toMatchObject({ actorUserId: applicant.id, actorAdminRole: null, afterJson: { status: "PENDING", answeredFields: ["audience", "channel"] } });
+    const autoApproved = audit.find((a) => a.action === "PARTNER_APPROVED")!;
+    expect(autoApproved).toMatchObject({ actorUserId: null, actorAdminRole: "SYSTEM", afterJson: { status: "APPROVED" } });
     expect(JSON.stringify(audit)).not.toContain("Riyaziyyat");
+  });
+
+  it("auto-approves a REJECTED profile on next lookup too -- REJECTED only ever meant the old review didn't pass, which no longer applies to anyone", async () => {
+    const admin = await makeAdmin("SUPER_ADMIN");
+    const applicant = await makeUser("Namizəd");
+    const app = caller(applicant);
+    await app.partner.requestProfile();
+    const [profile] = await db().select().from(partnerProfiles).where(eq(partnerProfiles.userId, applicant.id));
+    expect(await outcome(caller(admin, {}, fresh).admin.partners.decide({ id: profile.id, decision: "REJECT", reason: REASON }))).toBe("OK");
+    expect(await outcome(app.partner.dashboard())).toBe("OK");
+    const [row] = await db().select().from(partnerProfiles).where(eq(partnerProfiles.id, profile.id));
+    expect(row).toMatchObject({ status: "APPROVED", decidedBy: null });
   });
 
   it("does not let an admin decide their own application", async () => {
