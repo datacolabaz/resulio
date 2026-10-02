@@ -159,10 +159,12 @@ export const app = {
   "share.whatsapp": ["WhatsApp ilə paylaş", "Share via WhatsApp", "Поделиться в WhatsApp"],
   "share.telegram": ["Telegram ilə paylaş", "Share via Telegram", "Поделиться в Telegram"],
   "share.funnelTitle": ["Paylaşım statistikası", "Share analytics", "Статистика перехода по ссылке"],
-  "share.funnelEmpty": ["Bu link üzrə hələ klik qeydə alınmayıb", "No clicks recorded for this link yet", "По этой ссылке пока нет кликов"],
+  "share.funnelEmpty": ["Bu link üzrə hələ fəaliyyət qeydə alınmayıb", "No activity recorded for this link yet", "По этой ссылке пока нет активности"],
   "share.funnelChannel": ["Kanal", "Channel", "Канал"],
-  "share.funnelClicked": ["Klik", "Clicked", "Клик"],
+  /** Sender's own share-button presses -- NOT a recipient click (see shared/shareTracking.ts). */
+  "share.funnelClicked": ["Paylaşıldı", "Shared", "Отправлено"],
   "share.funnelOpened": ["Açılış", "Opened", "Открытие"],
+  "share.funnelDownloaded": ["Yükləndi", "Downloaded", "Скачано"],
   "share.funnelJoined": ["Qoşulma", "Joined", "Присоединение"],
   "shareChannel.TELEGRAM": ["Telegram", "Telegram", "Telegram"],
   "shareChannel.WHATSAPP": ["WhatsApp", "WhatsApp", "WhatsApp"],
@@ -223,6 +225,7 @@ export const app = {
     "Чтобы открыть раздел ученика, сначала вступите в группу (по ссылке или коду).",
   ],
   "public.task.goToTasks": ["Tapşırıqlarım →", "My assignments →", "Мои задания →"],
+  "public.task.attachments": ["Fayllar", "Files", "Файлы"],
 
   "public.material.notFound": ["Material tapılmadı.", "Material not found.", "Материал не найден."],
   "public.material.claim": ["Materialı al", "Get this material", "Получить материал"],

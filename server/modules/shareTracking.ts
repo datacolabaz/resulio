@@ -42,12 +42,13 @@ export async function shareFunnel(targetType: ShareTargetType, targetId: string)
     .groupBy(shareEvents.channel, shareEvents.eventType);
 
   const byChannel = Object.fromEntries(
-    SHARE_CHANNELS.map((c) => [c, { clicked: 0, opened: 0, joined: 0 }]),
+    SHARE_CHANNELS.map((c) => [c, { clicked: 0, opened: 0, downloaded: 0, joined: 0 }]),
   ) as ShareFunnel["byChannel"];
-  const totals = { clicked: 0, opened: 0, joined: 0 };
+  const totals = { clicked: 0, opened: 0, downloaded: 0, joined: 0 };
+  const KEY_BY_EVENT = { CLICKED: "clicked", OPENED: "opened", DOWNLOADED: "downloaded", JOINED: "joined" } as const;
   for (const r of rows) {
     const n = Number(r.count);
-    const key = r.eventType === "CLICKED" ? "clicked" : r.eventType === "OPENED" ? "opened" : "joined";
+    const key = KEY_BY_EVENT[r.eventType];
     byChannel[r.channel][key] += n;
     totals[key] += n;
   }

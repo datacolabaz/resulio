@@ -98,7 +98,12 @@ export function registerFileRoutes(app: Express) {
           const workspace = await resolveWorkspace(user.id, requested);
           if (!workspace) throw new AppError("NO_WORKSPACE");
           workspaceId = workspace.id;
-          isPublic = context === "material";
+          // Both of these can end up linked from a task/material's own public share-code page
+          // (PublicTaskPage / PublicMaterialPage), which anyone with that link can open while
+          // signed out -- so the attached file has to be reachable the same way, same as the
+          // page's text already is. A "submission" file (handled above) is never on a public
+          // page, so it stays private.
+          isPublic = context === "material" || context === "task-attachment";
         }
 
         const saved = await filesModule.saveFile({
