@@ -91,8 +91,44 @@ describe("share funnel: sender-side vs. recipient-side events are never blended"
     await shareTracking.recordShareEvent({ targetType: "TASK", targetId: task.shareCode, channel: "WHATSAPP", eventType: "DOWNLOADED" });
 
     const funnel = await shareTracking.shareFunnel("TASK", task.shareCode);
-    expect(funnel.byChannel.WHATSAPP).toEqual({ clicked: 2, opened: 1, downloaded: 1, joined: 0 });
-    expect(funnel.totals).toEqual({ clicked: 2, opened: 1, downloaded: 1, joined: 0 });
+    const expected = { clicked: 2, opened: 1, openedUnique: 1, downloaded: 1, downloadedUnique: 1, joined: 0, submitted: 0 };
+    expect(funnel.byChannel.WHATSAPP).toEqual(expected);
+    expect(funnel.totals).toEqual(expected);
+  });
+
+  it("records a download server-side only when the file belongs to the shared task, attributed to the link's channel", async () => {
+    const teacher = await makeTeacher("Statistika müəllimi 3");
+    const { task, fileId } = await taskWithAttachment(teacher.scope);
+    const file = await filesModule.fileRow(fileId);
+    await filesModule.recordShareDownload(file!, { targetType: "TASK", shareCode: task.shareCode, channel: "TELEGRAM", visitorId: "visitor-abc-123" }, null);
+    await filesModule.recordShareDownload(file!, { targetType: "TASK", shareCode: "NOTTHISTASK", channel: "TELEGRAM" }, null);
+    const funnel = await shareTracking.shareFunnel("TASK", task.shareCode);
+    expect(funnel.byChannel.TELEGRAM.downloaded).toBe(1);
+    expect(funnel.totals.downloaded).toBe(1);
+  });
+
+  it("shows the teacher who opened, downloaded and submitted, and keeps the teacher's own preview out", async () => {
+    const teacher = await makeTeacher("Statistika müəllimi 4");
+    const { task } = await taskWithAttachment(teacher.scope);
+    const student = await makeUser("Linklə gələn tələbə");
+    const visitorId = "browser-of-student-1";
+    // Anonymous open on the student's browser, then sign-in + claim from the same browser.
+    await shareTracking.recordShareEvent({ targetType: "TASK", targetId: task.shareCode, channel: "TELEGRAM", eventType: "OPENED", visitorId });
+    await shareTracking.recordShareEvent({ targetType: "TASK", targetId: task.shareCode, channel: "TELEGRAM", eventType: "DOWNLOADED", visitorId });
+    await caller(student).student.claimTask({ shareCode: task.shareCode, channel: "TELEGRAM", visitorId });
+    await caller(student).student.claimTask({ shareCode: task.shareCode, channel: "TELEGRAM", visitorId });
+    // The teacher previewing their own link must not count.
+    await shareTracking.recordShareEvent({ targetType: "TASK", targetId: task.shareCode, channel: "COPY_LINK", eventType: "OPENED", actorUserId: teacher.scope.userId });
+    // Someone who never signs in.
+    await shareTracking.recordShareEvent({ targetType: "TASK", targetId: task.shareCode, channel: "WHATSAPP", eventType: "OPENED", visitorId: "anonymous-browser-9" });
+
+    const report = await caller(teacher.user).teacher.tasks.engagement({ id: task.id });
+    expect(report.funnel.byChannel.TELEGRAM).toMatchObject({ opened: 1, openedUnique: 1, downloaded: 1, joined: 1 });
+    expect(report.funnel.byChannel.COPY_LINK.opened).toBe(0);
+    expect(report.anonymous).toEqual({ visitors: 1, opens: 1, downloads: 0 });
+    const row = report.students.find((s) => s.studentId === student.id);
+    expect(row).toMatchObject({ channel: "TELEGRAM", downloadCount: 1, submittedAt: null, onRoster: true });
+    expect(row?.openedAt).toBeInstanceOf(Date);
   });
 
   it("accepts a public, anonymous DOWNLOADED event through the same shareEvent mutation used for CLICKED/OPENED", async () => {

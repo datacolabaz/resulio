@@ -13,7 +13,7 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false } },
 });
 
-const PUBLIC_PATHS = [/^\/$/, /^\/login/, /^\/join\//, /^\/exam\//];
+const PUBLIC_PATHS = [/^\/$/, /^\/login/, /^\/join\//, /^\/invite\//, /^\/exam\//, /^\/task\//, /^\/material\//];
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;

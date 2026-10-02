@@ -7,9 +7,11 @@ import {
   groupMembers,
   results,
   studentActivityEvents,
+  taskSubmissions,
   users,
   type Assessment,
 } from "../../drizzle/schema";
+import type { ShareChannel } from "../../shared/shareTracking";
 import {
   INACTIVITY_THRESHOLDS,
   type ActivityEntityType,
@@ -22,7 +24,9 @@ import { ownedAssessment, resolveAssignment } from "./assessments";
 import { participantState, throttleElapsed } from "./engine";
 import { AppError } from "./errors";
 import { activeStudentIdsOfGroups } from "./groups";
+import * as shareTracking from "./shareTracking";
 import * as tasksModule from "./tasks";
+import { workspaceOwnerId } from "./workspaces";
 
 /** A repeated view inside this window neither writes an event nor touches the progress row. */
 export const VIEW_THROTTLE_MS = 30 * 60_000;
@@ -530,4 +534,139 @@ export async function taskActivity(scope: TeacherScope, taskId: string) {
     );
   const viewedAt = new Map(events.map((e) => [e.userId, e.createdAt]));
   return { eligible: roster.map((r) => ({ ...r, viewedAt: viewedAt.get(r.studentId) ?? null })) };
+}
+
+export type TaskEngagementStudent = {
+  studentId: number;
+  name: string | null;
+  email: string | null;
+  /** Recipient through the task's groups/individual list (vs. only seen via the public link). */
+  onRoster: boolean;
+  /** Channel of the student's first visit through the share link; null if they only used the dashboard. */
+  channel: ShareChannel | null;
+  openedAt: Date | null;
+  lastOpenedAt: Date | null;
+  openCount: number;
+  downloadCount: number;
+  lastDownloadAt: Date | null;
+  joinedAt: Date | null;
+  submittedAt: Date | null;
+  submissionStatus: "SUBMITTED" | "LATE" | null;
+};
+
+/**
+ * Teacher view of one task's share link and recipients, "Drive-style": per-channel funnel plus,
+ * per identified student, when they first opened it (share link or dashboard), how many times
+ * they downloaded its files, and whether/when they submitted. Visitors who never signed in are
+ * only counted in aggregate. The teacher's own previews are excluded throughout.
+ */
+export async function taskEngagement(scope: TeacherScope, taskId: string) {
+  const task = await tasksModule.assignmentOf(scope, taskId);
+  const db = requireDb();
+  const ownerId = await workspaceOwnerId(task.providerWorkspaceId);
+  const excludeUserIds = [...new Set([scope.userId, task.createdBy, ...(ownerId ? [ownerId] : [])])];
+  const excluded = new Set(excludeUserIds);
+
+  const [roster, rows, submissions, activityRows] = await Promise.all([
+    eligibleStudents(task.groupIds, task.studentIds),
+    shareTracking.shareEventsFor("TASK", task.shareCode),
+    db
+      .select({ studentId: taskSubmissions.studentId, status: taskSubmissions.status, submittedAt: taskSubmissions.submittedAt })
+      .from(taskSubmissions)
+      .where(eq(taskSubmissions.taskId, task.id)),
+    db
+      .select({ userId: studentActivityEvents.userId, eventType: studentActivityEvents.eventType, createdAt: studentActivityEvents.createdAt })
+      .from(studentActivityEvents)
+      .where(
+        and(
+          eq(studentActivityEvents.providerWorkspaceId, task.providerWorkspaceId),
+          eq(studentActivityEvents.entityType, "ASSIGNMENT"),
+          eq(studentActivityEvents.entityId, task.id),
+          inArray(studentActivityEvents.eventType, ["ASSIGNMENT_VIEWED", "FILE_DOWNLOADED"]),
+        ),
+      ),
+  ]);
+
+  const submitted = submissions.filter((s) => !excluded.has(s.studentId) && (s.status === "SUBMITTED" || s.status === "LATE" || s.status === "REVIEWED"));
+  const funnel = shareTracking.buildFunnel(rows, { excludeUserIds, submittedUserIds: submitted.map((s) => s.studentId) });
+  const { userOf, personKey } = shareTracking.identifyPeople(rows);
+
+  type Acc = Omit<TaskEngagementStudent, "name" | "email" | "onRoster">;
+  const acc = new Map<number, Acc>();
+  const entry = (studentId: number): Acc => {
+    let e = acc.get(studentId);
+    if (!e) {
+      e = { studentId, channel: null, openedAt: null, lastOpenedAt: null, openCount: 0, downloadCount: 0, lastDownloadAt: null, joinedAt: null, submittedAt: null, submissionStatus: null };
+      acc.set(studentId, e);
+    }
+    return e;
+  };
+  const earliest = (a: Date | null, b: Date) => (!a || b < a ? b : a);
+  const latest = (a: Date | null, b: Date) => (!a || b > a ? b : a);
+
+  for (const r of roster) entry(r.studentId);
+  const anonymous = { visitors: new Set<string>(), opens: 0, downloads: 0 };
+  for (const r of rows) {
+    if (r.eventType === "CLICKED") continue;
+    const userId = userOf(r);
+    if (userId === null) {
+      anonymous.visitors.add(personKey(r));
+      if (r.eventType === "OPENED") anonymous.opens++;
+      if (r.eventType === "DOWNLOADED") anonymous.downloads++;
+      continue;
+    }
+    if (excluded.has(userId)) continue;
+    const e = entry(userId);
+    e.channel ??= r.channel;
+    if (r.eventType === "OPENED") {
+      e.openCount++;
+      e.openedAt = earliest(e.openedAt, r.createdAt);
+      e.lastOpenedAt = latest(e.lastOpenedAt, r.createdAt);
+    } else if (r.eventType === "JOINED") {
+      e.joinedAt = earliest(e.joinedAt, r.createdAt);
+    } else if (r.eventType === "DOWNLOADED" && r.actorUserId === null) {
+      // A signed-in download is already in student_activity_events (FILE_DOWNLOADED, below);
+      // only downloads made before signing in on that browser are added from here.
+      e.downloadCount++;
+      e.lastDownloadAt = latest(e.lastDownloadAt, r.createdAt);
+    }
+  }
+  for (const a of activityRows) {
+    if (excluded.has(a.userId)) continue;
+    const e = entry(a.userId);
+    if (a.eventType === "ASSIGNMENT_VIEWED") {
+      e.openedAt = earliest(e.openedAt, a.createdAt);
+      e.lastOpenedAt = latest(e.lastOpenedAt, a.createdAt);
+    } else {
+      e.downloadCount++;
+      e.lastDownloadAt = latest(e.lastDownloadAt, a.createdAt);
+    }
+  }
+  for (const s of submitted) {
+    const e = entry(s.studentId);
+    e.submittedAt = s.submittedAt;
+    e.submissionStatus = s.status === "LATE" ? "LATE" : "SUBMITTED";
+  }
+
+  const rosterById = new Map(roster.map((r) => [r.studentId, r]));
+  const missing = [...acc.keys()].filter((id) => !rosterById.has(id));
+  const people = new Map<number, { name: string | null; email: string | null }>();
+  if (missing.length) {
+    const found = await db.select({ id: users.id, name: users.name, email: users.email }).from(users).where(inArray(users.id, missing));
+    for (const p of found) people.set(p.id, { name: p.name, email: p.email });
+  }
+  const rank = (s: TaskEngagementStudent) => (s.submittedAt ? 0 : s.downloadCount > 0 ? 1 : s.openedAt ? 2 : 3);
+  const students: TaskEngagementStudent[] = [...acc.values()]
+    .map((e) => {
+      const person = rosterById.get(e.studentId) ?? people.get(e.studentId);
+      return { ...e, name: person?.name ?? null, email: person?.email ?? null, onRoster: rosterById.has(e.studentId) };
+    })
+    .sort((a, b) => rank(a) - rank(b) || (a.name ?? "").localeCompare(b.name ?? "", "az"));
+
+  return {
+    shareCode: task.shareCode,
+    funnel,
+    students,
+    anonymous: { visitors: anonymous.visitors.size, opens: anonymous.opens, downloads: anonymous.downloads },
+  };
 }

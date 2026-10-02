@@ -1,0 +1,1 @@
+ALTER TABLE `share_events` ADD `visitorId` varchar(40);

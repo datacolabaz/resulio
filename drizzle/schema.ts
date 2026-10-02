@@ -249,6 +249,8 @@ export const shareEvents = mysqlTable(
     campaign: varchar("campaign", { length: 40 }),
     /** Set when the actor was signed in at the time of the event (e.g. a JOINED event); NULL for anonymous CLICKED/OPENED. */
     actorUserId: int("actorUserId"),
+    /** Random per-browser id from the recipient's localStorage: de-duplicates anonymous visitors and links their pre-login events to the account they later sign in with. */
+    visitorId: varchar("visitorId", { length: 40 }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   (t) => [index("share_events_target_idx").on(t.targetType, t.targetId, t.createdAt)],

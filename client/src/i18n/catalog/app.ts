@@ -166,6 +166,13 @@ export const app = {
   "share.funnelOpened": ["Açılış", "Opened", "Открытие"],
   "share.funnelDownloaded": ["Yükləndi", "Downloaded", "Скачано"],
   "share.funnelJoined": ["Qoşulma", "Joined", "Присоединение"],
+  "share.funnelSubmitted": ["Təslim", "Submitted", "Сдано"],
+  "share.funnelTotal": ["Cəmi", "Total", "Итого"],
+  "share.funnelNote": [
+    "Mötərizədə — neçə fərqli nəfər (təkrar açılışlar bir dəfə sayılır). «Birbaşa» — mənbə nişanı olmayan linklə gələnlər. Öz baxışlarınız sayılmır.",
+    "In brackets: distinct people (repeat visits count once). \"Direct\" means visits through an untagged link. Your own visits are not counted.",
+    "В скобках — число разных людей (повторные визиты считаются один раз). «Напрямую» — переходы по ссылке без метки источника. Ваши собственные просмотры не учитываются.",
+  ],
   "shareChannel.TELEGRAM": ["Telegram", "Telegram", "Telegram"],
   "shareChannel.WHATSAPP": ["WhatsApp", "WhatsApp", "WhatsApp"],
   "shareChannel.COPY_LINK": ["Kopyalanan link", "Copied link", "Скопированная ссылка"],

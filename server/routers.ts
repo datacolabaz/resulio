@@ -49,7 +49,7 @@ import * as shareTracking from "./modules/shareTracking";
 import * as tasks from "./modules/tasks";
 import * as workspaces from "./modules/workspaces";
 import { store } from "./resulioStore";
-import { SHARE_CAMPAIGNS, SHARE_CHANNELS, SHARE_TARGET_TYPES } from "../shared/shareTracking";
+import { SHARE_CAMPAIGNS, SHARE_CHANNELS, SHARE_TARGET_TYPES, VISITOR_ID_PATTERN } from "../shared/shareTracking";
 
 const MINUTE = 60_000;
 const assessmentId = z.string().min(1).max(32);
@@ -58,6 +58,7 @@ const entityId = z.string().min(1).max(32);
 const shareAttribution = z.object({
   channel: z.enum(SHARE_CHANNELS).optional(),
   campaign: z.enum(SHARE_CAMPAIGNS).optional(),
+  visitorId: z.string().regex(VISITOR_ID_PATTERN).optional(),
 });
 
 function publicUser(user: NonNullable<Awaited<ReturnType<typeof db.getUserByOpenId>>>) {
@@ -280,7 +281,7 @@ const teacherGroupsRouter = router({
   /** Clicks/opens/joins on this group's own invite link, broken down by channel (Telegram, WhatsApp, QR, copy link). */
   shareFunnel: teacherProcedure.input(z.object({ groupId: entityId })).query(async ({ ctx, input }) => {
     const group = await groups.assertGroupOwner(ctx.scope, input.groupId);
-    return shareTracking.shareFunnel("GROUP", group.inviteCode);
+    return shareTracking.shareFunnel("GROUP", group.inviteCode, { excludeUserIds: [ctx.user.id] });
   }),
 });
 
@@ -366,7 +367,7 @@ const teacherAssessmentsRouter = router({
   /** Clicks/opens/joins on this exam's share link, broken down by channel. */
   shareFunnel: teacherProcedure.input(z.object({ id: assessmentId })).query(async ({ ctx, input }) => {
     const row = await assessments.ownedAssessment(ctx.scope, input.id);
-    return shareTracking.shareFunnel("EXAM", row.shareCode);
+    return shareTracking.shareFunnel("EXAM", row.shareCode, { excludeUserIds: [ctx.user.id] });
   }),
 });
 
@@ -500,12 +501,14 @@ const teacherTasksRouter = router({
   /** Clicks/opens/joins on this task's share link, broken down by channel. */
   shareFunnel: teacherProcedure.input(z.object({ id: entityId })).query(async ({ ctx, input }) => {
     const row = await tasks.assignmentOf(ctx.scope, input.id);
-    return shareTracking.shareFunnel("TASK", row.shareCode);
+    return shareTracking.shareFunnel("TASK", row.shareCode, { excludeUserIds: [ctx.user.id, row.createdBy] });
   }),
+  /** Share funnel (incl. submissions per channel) plus who opened, downloaded and submitted this task. */
+  engagement: teacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => activity.taskEngagement(ctx.scope, input.id)),
   /** Clicks/opens/joins on this material's share link, broken down by channel. */
   materialShareFunnel: teacherProcedure.input(z.object({ id: entityId })).query(async ({ ctx, input }) => {
     const row = await tasks.materialOf(ctx.scope, input.id);
-    return shareTracking.shareFunnel("MATERIAL", row.shareCode);
+    return shareTracking.shareFunnel("MATERIAL", row.shareCode, { excludeUserIds: [ctx.user.id, row.createdBy] });
   }),
 });
 
@@ -616,6 +619,7 @@ const studentRouter = router({
         eventType: "JOINED",
         campaign: input.campaign,
         actorUserId: ctx.user.id,
+        visitorId: input.visitorId,
       });
       return { groupId: joined.groupId, groupName: joined.groupName, status: joined.status };
     }),
@@ -665,6 +669,7 @@ const studentRouter = router({
         eventType: "JOINED",
         campaign: input.campaign,
         actorUserId: ctx.user.id,
+        visitorId: input.visitorId,
       });
       return result;
     }),
@@ -680,6 +685,7 @@ const studentRouter = router({
         eventType: "JOINED",
         campaign: input.campaign,
         actorUserId: ctx.user.id,
+        visitorId: input.visitorId,
       });
       return result;
     }),
@@ -728,7 +734,8 @@ const publicRouter = router({
    * are both recipient-side, fired from the public page itself.
    */
   shareEvent: publicProcedure
-    .use(rateLimit("shareEvent", 30, MINUTE))
+    // Anonymous calls are keyed by IP, and a whole class often shares one school NAT address.
+    .use(rateLimit("shareEvent", 120, MINUTE))
     .input(
       z.object({
         targetType: z.enum(SHARE_TARGET_TYPES),
@@ -736,6 +743,7 @@ const publicRouter = router({
         channel: z.enum(SHARE_CHANNELS),
         eventType: z.enum(["CLICKED", "OPENED", "DOWNLOADED"]),
         campaign: z.enum(SHARE_CAMPAIGNS).optional(),
+        visitorId: z.string().regex(VISITOR_ID_PATTERN).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {

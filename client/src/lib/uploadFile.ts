@@ -1,4 +1,5 @@
 import { API_BASE } from "@/const";
+import { SHARE_SOURCE_PARAM, type ShareCampaign, type ShareChannel } from "@shared/shareTracking";
 
 export interface UploadedFile {
   fileId: string;
@@ -34,6 +35,17 @@ export async function uploadFile(file: File, context: UploadContext, opts?: { ta
 
 export function fileDownloadUrl(fileId: string): string {
   return `${API_BASE}/api/files/${fileId}`;
+}
+
+/** Download link from a public share page: the server records the share-link "downloaded" event itself when it serves the file. */
+export function sharedFileDownloadUrl(
+  fileId: string,
+  share: { targetType: "TASK" | "MATERIAL"; shareCode: string; channel?: ShareChannel; campaign?: ShareCampaign; visitorId: string },
+): string {
+  const params = new URLSearchParams({ share: share.targetType, code: share.shareCode, vid: share.visitorId });
+  if (share.channel) params.set("src", SHARE_SOURCE_PARAM[share.channel]);
+  if (share.campaign) params.set("campaign", share.campaign);
+  return `${fileDownloadUrl(fileId)}?${params.toString()}`;
 }
 
 export function formatFileSize(bytes: number): string {

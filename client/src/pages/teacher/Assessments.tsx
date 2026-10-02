@@ -191,6 +191,7 @@ export function AssessmentDetailPage() {
                         path={`/exam/${a.shareCode}`}
                         fileName={`resulio-${a.shareCode}`}
                         tracking={{ targetType: "EXAM", targetId: a.shareCode, campaign: "exam_share" }}
+                        onTracked={() => void shareFunnelQ.refetch()}
                       />
                       <ShareFunnelSummary data={shareFunnelQ.data} />
                     </>

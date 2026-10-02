@@ -1,11 +1,13 @@
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { files, materials, tasks, type FileRow } from "../../drizzle/schema";
+import type { ShareCampaign, ShareChannel } from "../../shared/shareTracking";
 import { requireDb } from "../db";
 import { managedWorkspaces } from "./access";
 import { recordEvent } from "./activity";
 import { AppError } from "./errors";
 import { activeGroupIdsOfStudent } from "./groups";
+import { recordShareEvent } from "./shareTracking";
 
 /**
  * File storage for task attachments, material files, and student submission files. Content is
@@ -136,5 +138,39 @@ export async function recordDownload(file: FileRow, userId: number) {
     }
   } catch (error) {
     console.error("[files] recordDownload failed", error);
+  }
+}
+
+/**
+ * Share-link attribution for a download started from a public task/material page: recorded here,
+ * on the server, when the bytes are actually served -- a click handler racing the navigation to
+ * the file (and in-app browsers that hand the file off elsewhere) loses too many of these. Only
+ * counted when the file really belongs to the task/material that share code points at. Never throws.
+ */
+export async function recordShareDownload(
+  file: FileRow,
+  share: { targetType: "TASK" | "MATERIAL"; shareCode: string; channel: ShareChannel; campaign?: ShareCampaign; visitorId?: string },
+  userId: number | null,
+) {
+  try {
+    const db = requireDb();
+    if (share.targetType === "TASK") {
+      const [task] = await db.select({ attachments: tasks.attachments }).from(tasks).where(eq(tasks.shareCode, share.shareCode)).limit(1);
+      if (!task?.attachments.some((a) => a.fileId === file.id)) return;
+    } else {
+      const [material] = await db.select({ fileId: materials.fileId }).from(materials).where(eq(materials.shareCode, share.shareCode)).limit(1);
+      if (material?.fileId !== file.id) return;
+    }
+    await recordShareEvent({
+      targetType: share.targetType,
+      targetId: share.shareCode,
+      channel: share.channel,
+      eventType: "DOWNLOADED",
+      campaign: share.campaign,
+      actorUserId: userId,
+      visitorId: share.visitorId,
+    });
+  } catch (error) {
+    console.error("[files] recordShareDownload failed", error);
   }
 }

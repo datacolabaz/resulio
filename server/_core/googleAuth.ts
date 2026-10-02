@@ -1,5 +1,5 @@
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
-import { SHARE_CAMPAIGNS, SHARE_CHANNELS, type ShareCampaign, type ShareChannel } from "@shared/shareTracking";
+import { parseShareSource, SHARE_CAMPAIGNS, type ShareCampaign, type ShareChannel } from "@shared/shareTracking";
 import { parse as parseCookieHeader } from "cookie";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
 import type { Express, Request, Response } from "express";
@@ -36,8 +36,7 @@ function safeRef(value: unknown): string | undefined {
 }
 
 function safeChannel(value: unknown): ShareChannel | undefined {
-  const up = typeof value === "string" ? value.toUpperCase() : "";
-  return (SHARE_CHANNELS as readonly string[]).includes(up) ? (up as ShareChannel) : undefined;
+  return parseShareSource(value);
 }
 
 function safeCampaign(value: unknown): ShareCampaign | undefined {
@@ -222,7 +221,7 @@ export function registerGoogleAuthRoutes(app: Express) {
       verifier: b64url(randomBytes(48)),
       returnTo: safeReturnTo(req.query.returnTo),
       ref: safeRef(req.query.ref),
-      source: safeChannel(req.query.source),
+      source: safeChannel(req.query.src ?? req.query.source),
       campaign: safeCampaign(req.query.campaign),
     };
     const packed = encodeOAuthState(state);

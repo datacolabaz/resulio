@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import type { Express, Request, Response } from "express";
 import multer from "multer";
 import { WORKSPACE_HEADER } from "@shared/const";
+import { parseShareCampaign, parseShareSource, VISITOR_ID_PATTERN } from "@shared/shareTracking";
 import type { User } from "../../drizzle/schema";
 import { tasks } from "../../drizzle/schema";
 import { requireDb } from "../db";
@@ -43,6 +44,22 @@ const STATUS: Partial<Record<AppErrorCode, number>> = {
   NO_WORKSPACE: 403,
   RATE_LIMITED: 429,
 };
+
+/** `?share=TASK&code=<shareCode>&src=<channel>&campaign=..&vid=..`, appended by the public task/material page's download links. */
+function shareDownloadParams(req: Request) {
+  const one = (v: unknown) => (typeof v === "string" ? v : undefined);
+  const targetType = one(req.query.share);
+  const shareCode = one(req.query.code)?.trim() ?? "";
+  if ((targetType !== "TASK" && targetType !== "MATERIAL") || !/^[A-Za-z0-9]{4,32}$/.test(shareCode)) return null;
+  const visitorId = one(req.query.vid);
+  return {
+    targetType,
+    shareCode,
+    channel: parseShareSource(one(req.query.src)) ?? "DIRECT",
+    campaign: parseShareCampaign(one(req.query.campaign)),
+    visitorId: visitorId && VISITOR_ID_PATTERN.test(visitorId) ? visitorId : undefined,
+  } as const;
+}
 
 function sendError(res: Response, error: unknown) {
   if (error instanceof AppError) {
@@ -138,6 +155,8 @@ export function registerFileRoutes(app: Express) {
         return;
       }
       if (user) await filesModule.recordDownload(file, user.id);
+      const share = shareDownloadParams(req);
+      if (share) await filesModule.recordShareDownload(file, share, user?.id ?? null);
       const buffer = Buffer.from(file.dataBase64, "base64");
       const asciiName = file.fileName.replace(/[^\x20-\x7E]/g, "_");
       res.setHeader("Content-Type", file.mimeType);

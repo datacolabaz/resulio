@@ -27,7 +27,7 @@ export function safeReturnTo(value: string | null | undefined): string {
 
 /**
  * Start Google sign-in; the server handles state, PKCE and the callback. Whatever `ref` (a
- * partner's referral code), `source`, or `campaign` is sitting in the CURRENT page's query string
+ * partner's referral code), `src`/`source`, or `campaign` is sitting in the CURRENT page's query string
  * rides along to /api/auth/google/start regardless of what `returnTo` is, so a fresh signup can
  * still be attributed to it even when the caller passes an explicit returnTo that doesn't carry
  * its own query (see server/_core/googleAuth.ts, which signs these into the OAuth state).
@@ -37,7 +37,7 @@ export const startLogin = (returnTo?: string) => {
   const here = new URLSearchParams(window.location.search);
   const url = new URL(`${getApiBase()}/api/auth/google/start`, window.location.origin);
   url.searchParams.set("returnTo", target === "/" ? "/app" : target);
-  for (const key of ["ref", "source", "campaign"]) {
+  for (const key of ["ref", "src", "source", "campaign"]) {
     const value = here.get(key);
     if (value) url.searchParams.set(key, value);
   }

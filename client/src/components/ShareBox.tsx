@@ -2,60 +2,78 @@ import { Button } from "@/components/ui/button";
 import { t } from "@/i18n/messages";
 import { shareChannelLabel } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
-import { SHARE_CHANNELS, type ShareCampaign, type ShareChannel, type ShareFunnel, type ShareTargetType } from "@shared/shareTracking";
+import {
+  DEFAULT_SHARE_CAMPAIGN,
+  SHARE_CHANNELS,
+  SHARE_SOURCE_PARAM,
+  type ShareCampaign,
+  type ShareChannel,
+  type ShareChannelStats,
+  type ShareFunnel,
+  type ShareTargetType,
+} from "@shared/shareTracking";
 import QRCode from "qrcode";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-/** Appends ?source=<channel> (and &campaign=<campaign>, when given) so the receiving page can attribute an open/join to the right button. */
-function tagged(url: string, channel: ShareChannel, campaign?: ShareCampaign) {
+/**
+ * Appends ?src=<channel> (plus &campaign=, unless it's the one the target type already implies)
+ * so the receiving page can attribute an open/download/join to the button that produced the link.
+ */
+function tagged(url: string, channel: ShareChannel, targetType: ShareTargetType, campaign?: ShareCampaign) {
   const u = new URL(url);
-  u.searchParams.set("source", channel.toLowerCase());
-  if (campaign) u.searchParams.set("campaign", campaign);
+  u.searchParams.set("src", SHARE_SOURCE_PARAM[channel]);
+  if (campaign && campaign !== DEFAULT_SHARE_CAMPAIGN[targetType]) u.searchParams.set("campaign", campaign);
   return u.toString();
 }
 
 /**
  * Share link plus a QR code rendered locally (no third-party QR service). When `tracking` is
- * given, each channel's link is tagged with its own source/campaign and a best-effort
- * `share_clicked` event is logged on click -- silently, never blocking the share action itself.
+ * given, every way the link leaves this box is tagged with its own channel -- including the link
+ * text shown here (people copy it by hand) and the QR on screen (people scan it straight off the
+ * screen) -- and a best-effort `CLICKED` event is logged on each button press, silently, never
+ * blocking the share action itself.
  */
 export function ShareBox({
   path,
   fileName = "resulio-qr",
   tracking,
   onAction,
+  onTracked,
 }: {
   path: string;
   fileName?: string;
   tracking?: { targetType: ShareTargetType; targetId: string; campaign?: ShareCampaign };
   /** Fires on any share action (a channel button, or copying the link) -- e.g. to dismiss a one-time onboarding card once the person has actually done something with it. */
   onAction?: () => void;
+  /** Fires once a share action has been recorded, so a stats view next to this box can refresh. */
+  onTracked?: () => void;
 }) {
   const url = `${window.location.origin}${path}`;
   const [qr, setQr] = useState<string | null>(null);
-  const logClick = trpc.public.shareEvent.useMutation();
+  const logClick = trpc.public.shareEvent.useMutation({ onSuccess: () => onTracked?.() });
+
+  const link = (channel: ShareChannel) => (tracking ? tagged(url, channel, tracking.targetType, tracking.campaign) : url);
+  const whatsappUrl = link("WHATSAPP");
+  const telegramUrl = link("TELEGRAM");
+  const copyUrl = link("COPY_LINK");
+  const qrTargetUrl = link("QR");
 
   useEffect(() => {
     let alive = true;
-    QRCode.toDataURL(url, { width: 480, margin: 1, errorCorrectionLevel: "M" })
+    QRCode.toDataURL(qrTargetUrl, { width: 480, margin: 1, errorCorrectionLevel: "M" })
       .then((data) => alive && setQr(data))
       .catch(() => alive && setQr(null));
     return () => {
       alive = false;
     };
-  }, [url]);
+  }, [qrTargetUrl]);
 
   const track = (channel: ShareChannel) => {
     onAction?.();
     if (!tracking) return;
     logClick.mutate({ targetType: tracking.targetType, targetId: tracking.targetId, channel, eventType: "CLICKED", campaign: tracking.campaign });
   };
-
-  const whatsappUrl = tracking ? tagged(url, "WHATSAPP", tracking.campaign) : url;
-  const telegramUrl = tracking ? tagged(url, "TELEGRAM", tracking.campaign) : url;
-  const copyUrl = tracking ? tagged(url, "COPY_LINK", tracking.campaign) : url;
-  const qrTargetUrl = tracking ? tagged(url, "QR", tracking.campaign) : url;
 
   const copy = async () => {
     try {
@@ -67,24 +85,11 @@ export function ShareBox({
     }
   };
 
-  const [qrForDownload, setQrForDownload] = useState<string | null>(null);
-  useEffect(() => {
-    if (!tracking) return;
-    let alive = true;
-    QRCode.toDataURL(qrTargetUrl, { width: 480, margin: 1, errorCorrectionLevel: "M" })
-      .then((data) => alive && setQrForDownload(data))
-      .catch(() => alive && setQrForDownload(null));
-    return () => {
-      alive = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qrTargetUrl]);
-
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
       {qr && <img src={qr} alt={t("share.qrAlt")} className="h-36 w-36 rounded-xl border bg-card p-1" />}
       <div className="min-w-0 flex-1 space-y-2">
-        <div className="break-all rounded-lg border bg-muted px-3 py-2 font-mono text-xs">{url}</div>
+        <div className="break-all rounded-lg border bg-muted px-3 py-2 font-mono text-xs">{copyUrl}</div>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" onClick={() => void copy()}>{t("common.copyLink")}</Button>
           <Button asChild size="sm" variant="outline">
@@ -99,7 +104,7 @@ export function ShareBox({
           </Button>
           {qr && (
             <Button asChild size="sm" variant="outline">
-              <a href={tracking ? qrForDownload ?? qr : qr} download={`${fileName}.png`} onClick={() => track("QR")}>
+              <a href={qr} download={`${fileName}.png`} onClick={() => track("QR")}>
                 {t("share.downloadQr")}
               </a>
             </Button>
@@ -110,47 +115,74 @@ export function ShareBox({
   );
 }
 
+/** "5 (3)": raw count, then how many distinct people that was, when it differs. */
+function CountCell({ total, unique }: { total: number; unique: number }) {
+  return (
+    <td className="py-1">
+      {total}
+      {total > 0 && unique !== total && <span className="text-muted-foreground"> ({unique})</span>}
+    </td>
+  );
+}
+
 /**
- * Small, honest channel breakdown for one share link: how many times the sender shared it
- * through each channel ("Paylaşıldı" -- this is the sender's own button presses, not a
- * recipient's click, which this app has no way to observe), how many times the destination
- * page actually loaded for a recipient ("Açılış"), how many times a recipient opened/downloaded
- * an attached file from it ("Yükləndi"), and how many recipients went through with joining or
- * claiming it ("Qoşulma"). No funnel stage beyond that is shown, because this app doesn't track
- * anything past it.
+ * Channel breakdown for one share link: how many times the sender shared it through each channel
+ * ("Paylaşıldı" -- the sender's own button presses, not a recipient's click, which happens inside
+ * WhatsApp/Telegram and is never observable here), how many times the page actually loaded for a
+ * recipient ("Açılış"), how many times an attached file was downloaded from it ("Yükləndi"), how
+ * many recipients joined/claimed it ("Qoşulma") and, for tasks, how many of them then submitted.
+ * "Direct" collects visits through untagged links (typed by hand, or shared before tagging existed).
  */
-export function ShareFunnelSummary({ data }: { data: ShareFunnel | undefined }) {
+export function ShareFunnelSummary({ data, showSubmitted = false }: { data: ShareFunnel | undefined; showSubmitted?: boolean }) {
   if (!data) return null;
-  const rows = SHARE_CHANNELS.filter((c) => c !== "DIRECT").map((c) => ({ channel: c, ...data.byChannel[c] }));
+  const rows = SHARE_CHANNELS.map((c) => ({ channel: c, ...data.byChannel[c] })).filter(
+    (r) => r.channel !== "DIRECT" || r.opened > 0 || r.downloaded > 0 || r.joined > 0 || r.submitted > 0,
+  );
   const hasAny = data.totals.clicked > 0 || data.totals.opened > 0 || data.totals.downloaded > 0 || data.totals.joined > 0;
+  const cells = (r: ShareChannelStats, isDirect: boolean) => (
+    <>
+      <td className="py-1">{isDirect ? "—" : r.clicked}</td>
+      <CountCell total={r.opened} unique={r.openedUnique} />
+      <CountCell total={r.downloaded} unique={r.downloadedUnique} />
+      <td className="py-1">{r.joined}</td>
+      {showSubmitted && <td className="py-1">{r.submitted}</td>}
+    </>
+  );
   return (
     <div className="mt-3 rounded-lg border bg-muted/30 p-3">
       <h4 className="text-xs font-medium text-foreground-secondary">{t("share.funnelTitle")}</h4>
       {!hasAny ? (
         <p className="mt-1 text-xs text-muted-foreground">{t("share.funnelEmpty")}</p>
       ) : (
-        <table className="mt-2 w-full text-xs">
-          <thead>
-            <tr className="text-left text-muted-foreground">
-              <th className="py-1 font-normal">{t("share.funnelChannel")}</th>
-              <th className="py-1 font-normal">{t("share.funnelClicked")}</th>
-              <th className="py-1 font-normal">{t("share.funnelOpened")}</th>
-              <th className="py-1 font-normal">{t("share.funnelDownloaded")}</th>
-              <th className="py-1 font-normal">{t("share.funnelJoined")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.channel} className="border-t border-border/60">
-                <td className="py-1">{shareChannelLabel(r.channel)}</td>
-                <td className="py-1">{r.clicked}</td>
-                <td className="py-1">{r.opened}</td>
-                <td className="py-1">{r.downloaded}</td>
-                <td className="py-1">{r.joined}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <>
+          <div className="overflow-x-auto">
+            <table className="mt-2 w-full text-xs">
+              <thead>
+                <tr className="text-left text-muted-foreground">
+                  <th className="py-1 font-normal">{t("share.funnelChannel")}</th>
+                  <th className="py-1 font-normal">{t("share.funnelClicked")}</th>
+                  <th className="py-1 font-normal">{t("share.funnelOpened")}</th>
+                  <th className="py-1 font-normal">{t("share.funnelDownloaded")}</th>
+                  <th className="py-1 font-normal">{t("share.funnelJoined")}</th>
+                  {showSubmitted && <th className="py-1 font-normal">{t("share.funnelSubmitted")}</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.channel} className="border-t border-border/60">
+                    <td className="py-1">{shareChannelLabel(r.channel)}</td>
+                    {cells(r, r.channel === "DIRECT")}
+                  </tr>
+                ))}
+                <tr className="border-t border-border font-medium">
+                  <td className="py-1">{t("share.funnelTotal")}</td>
+                  {cells(data.totals, false)}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">{t("share.funnelNote")}</p>
+        </>
       )}
     </div>
   );

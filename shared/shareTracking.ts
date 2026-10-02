@@ -13,6 +13,10 @@
  *  - OPENED, DOWNLOADED and JOINED are all fired by the RECIPIENT: the public page actually loaded,
  *    an attached file was actually opened/downloaded from it, and the recipient went through with
  *    joining/claiming. These three are the real "did anyone on the other end do anything" signal.
+ *    The owner's own visits to their link are never counted as recipient activity.
+ *
+ * For tasks, "submitted" is derived (not logged here): a submission is credited to the channel the
+ * student first arrived through, using the user id / anonymous visitor id on these rows.
  */
 export const SHARE_TARGET_TYPES = ["GROUP", "TASK", "EXAM", "MATERIAL", "REFERRAL"] as const;
 export type ShareTargetType = (typeof SHARE_TARGET_TYPES)[number];
@@ -35,7 +39,53 @@ export const SHARE_CAMPAIGNS = [
 ] as const;
 export type ShareCampaign = (typeof SHARE_CAMPAIGNS)[number];
 
+/** The campaign implied by a target type, so tagged links don't have to repeat it in the URL. */
+export const DEFAULT_SHARE_CAMPAIGN: Partial<Record<ShareTargetType, ShareCampaign>> = {
+  GROUP: "group_join",
+  TASK: "task_share",
+  EXAM: "exam_share",
+  MATERIAL: "material_share",
+};
+
+/** Short, readable `?src=` values carried by tagged share links (e.g. /task/ABC?src=telegram). */
+export const SHARE_SOURCE_PARAM: Record<ShareChannel, string> = {
+  TELEGRAM: "telegram",
+  WHATSAPP: "whatsapp",
+  COPY_LINK: "link",
+  QR: "qr",
+  DIRECT: "direct",
+};
+
+/** Accepts the short `src` values above as well as the legacy `source=copy_link`/`TELEGRAM` form already out in the wild. */
+export function parseShareSource(value: unknown): ShareChannel | undefined {
+  if (typeof value !== "string" || !value) return undefined;
+  const lower = value.trim().toLowerCase();
+  const short = (Object.entries(SHARE_SOURCE_PARAM) as [ShareChannel, string][]).find(([, v]) => v === lower);
+  if (short) return short[0];
+  const upper = lower.toUpperCase();
+  return (SHARE_CHANNELS as readonly string[]).includes(upper) ? (upper as ShareChannel) : undefined;
+}
+
+export function parseShareCampaign(value: unknown): ShareCampaign | undefined {
+  return typeof value === "string" && (SHARE_CAMPAIGNS as readonly string[]).includes(value) ? (value as ShareCampaign) : undefined;
+}
+
+/** Anonymous per-browser id sent with recipient events, so repeat visits can be de-duplicated without an account. */
+export const VISITOR_ID_PATTERN = /^[A-Za-z0-9_-]{8,40}$/;
+
+export interface ShareChannelStats {
+  clicked: number;
+  opened: number;
+  /** Distinct people behind `opened` (signed-in user, else anonymous browser). */
+  openedUnique: number;
+  downloaded: number;
+  downloadedUnique: number;
+  joined: number;
+  /** TASK only: recipients who first arrived through this channel and then submitted. */
+  submitted: number;
+}
+
 export interface ShareFunnel {
-  byChannel: Record<ShareChannel, { clicked: number; opened: number; downloaded: number; joined: number }>;
-  totals: { clicked: number; opened: number; downloaded: number; joined: number };
+  byChannel: Record<ShareChannel, ShareChannelStats>;
+  totals: ShareChannelStats;
 }

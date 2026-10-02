@@ -344,6 +344,7 @@ function InviteDialog({
               path={`/join/${inviteCode}`}
               fileName={`resulio-group-${inviteCode}`}
               tracking={{ targetType: "GROUP", targetId: inviteCode, campaign: "group_join" }}
+              onTracked={() => void shareFunnel.refetch()}
             />
             <div className="mt-3 flex items-center gap-2">
               <span className="text-xs text-foreground-secondary">{t("groups.inviteCodeLabel")}:</span>

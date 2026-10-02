@@ -18,33 +18,45 @@ import {
   typeLabel,
 } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
-import { fileDownloadUrl } from "@/lib/uploadFile";
+import { sharedFileDownloadUrl } from "@/lib/uploadFile";
+import { visitorId } from "@/lib/visitor";
 import type { ClassScheduleEntry } from "@shared/schedule";
-import { SHARE_CAMPAIGNS, SHARE_CHANNELS, type ShareCampaign, type ShareChannel, type ShareTargetType } from "@shared/shareTracking";
-import { useEffect, useRef } from "react";
+import { DEFAULT_SHARE_CAMPAIGN, parseShareCampaign, parseShareSource, type ShareTargetType } from "@shared/shareTracking";
+import { useEffect, useMemo, useRef } from "react";
 import { Link, useParams, useSearch } from "wouter";
 
 /**
- * Reads ?source=&campaign= off the current public share link (tagged by ShareBox), fires a
- * single best-effort "opened" event once the target has actually loaded, and hands back the
- * channel/campaign so the page's own join/claim mutation can tag the resulting "joined" event
- * with the same attribution.
+ * Reads ?src= (or the older ?source=) and ?campaign= off the current public share link (tagged by
+ * ShareBox), fires a best-effort "opened" event once the target has loaded and the session is
+ * known, and hands back the channel/campaign/visitor id so the page's join/claim mutation and file
+ * downloads carry the same attribution.
+ *
+ * One "opened" per tab session, link and identity: refreshes and the sign-in round trip don't
+ * inflate it, but signing in records one more so the anonymous visit is tied to the account.
  */
 function useShareAttribution(targetType: ShareTargetType, targetId: string, ready: boolean) {
+  const { user, loading } = useAuth();
   const params = new URLSearchParams(useSearch());
-  const rawChannel = params.get("source")?.toUpperCase() ?? "";
-  const channel = (SHARE_CHANNELS as readonly string[]).includes(rawChannel) ? (rawChannel as ShareChannel) : undefined;
-  const rawCampaign = params.get("campaign") ?? "";
-  const campaign = (SHARE_CAMPAIGNS as readonly string[]).includes(rawCampaign) ? (rawCampaign as ShareCampaign) : undefined;
+  const channel = parseShareSource(params.get("src") ?? params.get("source"));
+  const campaign = parseShareCampaign(params.get("campaign")) ?? DEFAULT_SHARE_CAMPAIGN[targetType];
+  const visitor = useMemo(() => visitorId(), []);
   const logOpen = trpc.public.shareEvent.useMutation();
-  const fired = useRef(false);
+  const fired = useRef<string | null>(null);
+  const identity = user ? `u:${user.id}` : "anon";
   useEffect(() => {
-    if (!ready || fired.current || !targetId) return;
-    fired.current = true;
-    logOpen.mutate({ targetType, targetId, channel: channel ?? "DIRECT", eventType: "OPENED", campaign });
+    if (!ready || loading || !targetId || fired.current === identity) return;
+    fired.current = identity;
+    const key = `resulio.opened:${targetType}:${targetId}`;
+    try {
+      if (sessionStorage.getItem(key) === identity) return;
+      sessionStorage.setItem(key, identity);
+    } catch {
+      // Storage blocked: the ref above still keeps it to one event per page load.
+    }
+    logOpen.mutate({ targetType, targetId, channel: channel ?? "DIRECT", eventType: "OPENED", campaign, visitorId: visitor });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, targetId]);
-  return { channel, campaign };
+  }, [ready, loading, targetId, identity]);
+  return { channel, campaign, visitorId: visitor };
 }
 
 /** Extra group facts shown on a join-preview screen, only for the fields the teacher chose to share. */
@@ -110,7 +122,7 @@ export function JoinGroupPage() {
   const utils = trpc.useUtils();
   const join = trpc.student.join.useMutation({ onSuccess: () => utils.auth.me.invalidate() });
   const g = invite.data;
-  const { channel, campaign } = useShareAttribution("GROUP", inviteCode, Boolean(g));
+  const { channel, campaign, visitorId: vid } = useShareAttribution("GROUP", inviteCode, Boolean(g));
   return (
     <Card>
       <h1 className="mt-4 text-xl font-semibold">{t("public.join.title")}</h1>
@@ -135,7 +147,7 @@ export function JoinGroupPage() {
             ) : join.error ? (
               <JoinErrorNote error={join.error} />
             ) : (
-              <Button className="w-full" disabled={join.isPending} onClick={() => join.mutate({ inviteCode, channel, campaign })}>
+              <Button className="w-full" disabled={join.isPending} onClick={() => join.mutate({ inviteCode, channel, campaign, visitorId: vid })}>
                 {g.joinPolicy === "AUTO" ? t("public.join.joinNow") : t("public.join.request")}
               </Button>
             )}
@@ -237,9 +249,8 @@ export function PublicTaskPage() {
   const { user, loading } = useAuth();
   const task = trpc.public.task.useQuery({ shareCode }, { enabled: shareCode.length >= 4, retry: false });
   const claim = trpc.student.claimTask.useMutation();
-  const logDownload = trpc.public.shareEvent.useMutation();
   const a = task.data;
-  const { channel, campaign } = useShareAttribution("TASK", shareCode, Boolean(a));
+  const { channel, campaign, visitorId: vid } = useShareAttribution("TASK", shareCode, Boolean(a));
   const returnTo = `/task/${shareCode}${window.location.search}`;
   return (
     <Card>
@@ -256,8 +267,7 @@ export function PublicTaskPage() {
               {a.attachments.map((file) => (
                 <a
                   key={file.fileId}
-                  href={fileDownloadUrl(file.fileId)}
-                  onClick={() => logDownload.mutate({ targetType: "TASK", targetId: shareCode, channel: channel ?? "DIRECT", eventType: "DOWNLOADED", campaign })}
+                  href={sharedFileDownloadUrl(file.fileId, { targetType: "TASK", shareCode, channel, campaign, visitorId: vid })}
                   className="block rounded-lg border border-border bg-muted px-3 py-1.5 text-sm text-link underline-offset-2 hover:underline"
                 >
                   {t("common.download")}: {file.name}
@@ -282,7 +292,7 @@ export function PublicTaskPage() {
               </div>
             ) : (
               <>
-                <Button className="w-full" disabled={claim.isPending} onClick={() => claim.mutate({ shareCode, channel, campaign })}>{t("public.task.claim")}</Button>
+                <Button className="w-full" disabled={claim.isPending} onClick={() => claim.mutate({ shareCode, channel, campaign, visitorId: vid })}>{t("public.task.claim")}</Button>
                 {claim.error && <p role="alert" className="mt-2 text-sm text-destructive">{errorText(claim.error)}</p>}
               </>
             )}
@@ -298,9 +308,8 @@ export function PublicMaterialPage() {
   const { user, loading } = useAuth();
   const material = trpc.public.material.useQuery({ shareCode }, { enabled: shareCode.length >= 4, retry: false });
   const claim = trpc.student.claimMaterial.useMutation();
-  const logDownload = trpc.public.shareEvent.useMutation();
   const m = material.data;
-  const { channel, campaign } = useShareAttribution("MATERIAL", shareCode, Boolean(m));
+  const { channel, campaign, visitorId: vid } = useShareAttribution("MATERIAL", shareCode, Boolean(m));
   const returnTo = `/material/${shareCode}${window.location.search}`;
   return (
     <Card>
@@ -313,8 +322,7 @@ export function PublicMaterialPage() {
           <p className="mt-3 text-sm text-muted-foreground">{[m.subject, m.topic].filter(Boolean).join(" · ")}</p>
           {m.fileId && (
             <a
-              href={fileDownloadUrl(m.fileId)}
-              onClick={() => logDownload.mutate({ targetType: "MATERIAL", targetId: shareCode, channel: channel ?? "DIRECT", eventType: "DOWNLOADED", campaign })}
+              href={sharedFileDownloadUrl(m.fileId, { targetType: "MATERIAL", shareCode, channel, campaign, visitorId: vid })}
               className="mt-3 inline-block rounded-lg border border-border bg-muted px-3 py-1.5 text-sm text-link underline-offset-2 hover:underline"
             >
               {t("common.download")}: {m.fileName}
@@ -337,7 +345,7 @@ export function PublicMaterialPage() {
               </div>
             ) : (
               <>
-                <Button className="w-full" disabled={claim.isPending} onClick={() => claim.mutate({ shareCode, channel, campaign })}>{t("public.material.claim")}</Button>
+                <Button className="w-full" disabled={claim.isPending} onClick={() => claim.mutate({ shareCode, channel, campaign, visitorId: vid })}>{t("public.material.claim")}</Button>
                 {claim.error && <p role="alert" className="mt-2 text-sm text-destructive">{errorText(claim.error)}</p>}
               </>
             )}
