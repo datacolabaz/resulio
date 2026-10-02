@@ -125,9 +125,12 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
 export function AssignmentsPage() {
   const utils = trpc.useUtils();
   const list = trpc.teacher.tasks.list.useQuery();
+  const students = trpc.teacher.students.useQuery();
+  const studentByI = new Map((students.data ?? []).map((s) => [s.id, s]));
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<AssignmentInitial | null>(null);
   const [shareId, setShareId] = useState<string | null>(null);
+  const [submissionsId, setSubmissionsId] = useState<string | null>(null);
   const remove = trpc.teacher.tasks.remove.useMutation({
     onSuccess: () => void utils.teacher.tasks.list.invalidate(),
     onError: (e) => toast.error(errorText(e)),
@@ -143,7 +146,21 @@ export function AssignmentsPage() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
             {list.data.map((a) => (
-              <Panel key={a.id} title={a.title} action={<Pill>{t("modules.submissions", { count: a.submissions.length })}</Pill>}>
+              <Panel
+                key={a.id}
+                title={a.title}
+                action={
+                  <button
+                    type="button"
+                    className="cursor-pointer disabled:cursor-default"
+                    aria-label={t("modules.viewSubmissions")}
+                    onClick={() => setSubmissionsId(submissionsId === a.id ? null : a.id)}
+                    disabled={!a.submissions.length}
+                  >
+                    <Pill>{t("modules.submissions", { count: a.submissions.length })}</Pill>
+                  </button>
+                }
+              >
                 <p className="break-words text-sm text-foreground-secondary">{a.description}</p>
                 <p className="mt-2 text-xs text-muted-foreground">{t("modules.deadlineValue", { date: fmtDateTime(a.deadline) })}</p>
                 {a.attachments.length > 0 && (
@@ -155,6 +172,33 @@ export function AssignmentsPage() {
                         </a>
                       </li>
                     ))}
+                  </ul>
+                )}
+                {submissionsId === a.id && a.submissions.length > 0 && (
+                  <ul className="mt-3 divide-y divide-border rounded-xl border border-border">
+                    {a.submissions.map((s) => {
+                      const student = studentByI.get(s.studentId);
+                      return (
+                        <li key={s.id} className="p-2.5 text-sm">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="min-w-0 break-words font-medium">{student?.name ?? student?.email ?? `#${s.studentId}`}</span>
+                            {s.status === "LATE" ? <StatusBadge tone="warning">{t("student.late")}</StatusBadge> : <StatusBadge tone="success">{t("student.onTime")}</StatusBadge>}
+                          </div>
+                          {s.submittedAt && <p className="mt-1 text-xs text-muted-foreground">{t("modules.submittedAt", { date: fmtDateTime(s.submittedAt) })}</p>}
+                          {s.files.length > 0 && (
+                            <ul className="mt-1.5 flex flex-wrap gap-1.5">
+                              {s.files.map((file) => (
+                                <li key={file.fileId}>
+                                  <a href={fileDownloadUrl(file.fileId)} className="rounded-lg border border-border bg-muted px-2 py-1 text-xs text-link underline-offset-2 hover:underline">
+                                    {file.name}
+                                  </a>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
                 <div className="mt-3 flex flex-wrap gap-2">
