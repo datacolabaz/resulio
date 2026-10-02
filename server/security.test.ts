@@ -280,6 +280,21 @@ describe("context resolution", () => {
     expect(access.defaultContext(accessOf({ contexts: { learning: false, teaching: true, partner: false } }), "learning")).toBe("teaching");
     expect(access.defaultContext(accessOf(), null)).toBeNull();
   });
+
+  it("never lands on partner, even as a remembered last context the user can actually enter", () => {
+    // This is the Google-login regression: an older build let lastActiveContext get stamped
+    // "partner" just from visiting /partner once. If that stale value (or any future bug that
+    // writes it again) were honored here, every login after that -- including the Google OAuth
+    // callback, which calls this to pick the post-login redirect -- would open straight to
+    // Partner instead of the user's real workspace.
+    const approvedPartner = accessOf({ contexts: { learning: true, teaching: true, partner: true }, activeMemberships: 1 });
+    expect(access.defaultContext(approvedPartner, "partner")).toBe("learning");
+    // Even a user who (somehow) can ONLY enter partner never lands there automatically -- same as
+    // a brand-new user with nothing set up yet, they get the onboarding screen instead.
+    const onlyPartner = accessOf({ contexts: { learning: false, teaching: false, partner: true } });
+    expect(access.defaultContext(onlyPartner, "partner")).toBeNull();
+    expect(access.defaultContext(onlyPartner, null)).toBeNull();
+  });
 });
 
 describe("input validation and rate limits", () => {
