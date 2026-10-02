@@ -275,6 +275,8 @@ export const teacher = {
   "modules.submissions": ["{count} təslim", "{count} {count|submission|submissions}", "{count} {count|сдача|сдачи|сдач}"],
   "modules.deadline": ["Son tarix", "Deadline", "Срок"],
   "modules.deadlineValue": ["Son tarix: {date}", "Deadline: {date}", "Срок: {date}"],
+  "modules.submittedAt": ["Təhvil tarixi: {date}", "Submitted: {date}", "Сдано: {date}"],
+  "modules.viewSubmissions": ["Təhvilləri göstər/gizlət", "Show/hide submissions", "Показать/скрыть сдачи"],
   "modules.attachments": ["Fayllar", "Attachments", "Файлы"],
   "modules.noGroups": ["Qrup yoxdur", "No groups", "Групп нет"],
   "modules.noStudents": ["Tələbə yoxdur", "No students", "Студентов нет"],
