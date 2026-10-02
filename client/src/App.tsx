@@ -55,7 +55,12 @@ function Guard({ context, children }: { context: UiContext; children: React.Reac
   }
 
   useEffect(() => {
-    if (!allowed || user.lastActiveContext === context || remember.isPending) return;
+    // "partner" is never remembered as the last active space: unlike teaching/learning, it isn't
+    // a space of its own to land back in later -- it's one page reachable from inside whichever
+    // space (teaching/learning) the user is actually working in (see PartnerPage's `area`).
+    // Letting a /partner visit overwrite lastActiveContext would flip the sidebar away from that
+    // space the moment this mutation resolves.
+    if (!allowed || context === "partner" || user.lastActiveContext === context || remember.isPending) return;
     remember.mutate(
       { context },
       { onSuccess: () => utils.auth.me.setData(undefined, (old) => (old ? { ...old, lastActiveContext: context } : old)) },

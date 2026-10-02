@@ -1,14 +1,22 @@
+import { useAuth } from "@/_core/hooks/useAuth";
 import { AppShell, Loading, Panel } from "@/components/AppShell";
 import { ShareBox, ShareFunnelSummary } from "@/components/ShareBox";
 import { t } from "@/i18n/messages";
+import { canEnter } from "@/lib/contexts";
 import { fmtDateTime, shareChannelLabel } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 
 export default function PartnerPage() {
+  const { user } = useAuth();
   const dash = trpc.partner.dashboard.useQuery();
   const stats = trpc.partner.referralStats.useQuery();
+  // Partner isn't its own "space" to switch into -- it's one more item inside whichever sidebar
+  // (teaching or learning) the user is already in, exactly like Settings. Only a user with
+  // neither (no groups, no workspace) falls back to the bare context-switcher nav, same as
+  // SettingsPage.
+  const area = user?.lastActiveContext && canEnter(user, user.lastActiveContext) ? user.lastActiveContext : undefined;
   return (
-    <AppShell area="partner" title={t("context.partner")}>
+    <AppShell area={area} title={t("context.partner")}>
       {dash.isLoading ? (
         <Loading />
       ) : dash.data ? (
