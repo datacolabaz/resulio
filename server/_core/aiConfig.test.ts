@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_AI_API_URL, DEFAULT_AI_MODEL, DEFAULT_GEMINI_MODEL, openAiEndpoint, resolveLlmConfig } from "./aiConfig";
 import { ENV } from "./env";
-import { invokeLLM } from "./llm";
+import { invokeLLM, LlmHttpError, llmFailureReason } from "./llm";
 
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
@@ -52,6 +52,14 @@ describe("openAiEndpoint", () => {
     expect(openAiEndpoint(base, "chat/completions")).toBe(expected);
   });
 
+  it("never appends /v1 to the Gemini base, whatever the trailing slash or spaces", () => {
+    for (const base of ["https://generativelanguage.googleapis.com/v1beta/openai", "https://generativelanguage.googleapis.com/v1beta/openai/", "  https://generativelanguage.googleapis.com/v1beta/openai//  ", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"]) {
+      expect(openAiEndpoint(base, "chat/completions")).toBe("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions");
+    }
+    const config = resolveLlmConfig({ AI_API_KEY: " AIzaTest \n", AI_API_URL: ' "https://generativelanguage.googleapis.com/v1beta/openai/" ', AI_MODEL: " gemini-3.8-flash " });
+    expect(config).toEqual({ source: "ai", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/", apiKey: "AIzaTest", model: "gemini-3.8-flash" });
+  });
+
   it("joins other paths the same way", () => {
     expect(openAiEndpoint("https://api.openai.com", "models")).toBe("https://api.openai.com/v1/models");
     expect(openAiEndpoint("https://generativelanguage.googleapis.com/v1beta/openai", "/models")).toBe("https://generativelanguage.googleapis.com/v1beta/openai/models");
@@ -95,5 +103,82 @@ describe("ENV wiring", () => {
     const [url, init] = request.mock.calls[0];
     expect(url).toBe("https://api.openai.com/v1/chat/completions");
     expect(JSON.parse(String(init.body)).model).toBe("gpt-4.1");
+  });
+});
+
+describe("Gemini OpenAI-compatible requests", () => {
+  const okResponse = () => new Response(JSON.stringify({ id: "1", created: 0, model: "m", choices: [] }), { status: 200 });
+  const stubGemini = (model = "gemini-3.8-flash") => {
+    vi.stubEnv("AI_API_KEY", "AIzaSecretKey"); vi.stubEnv("AI_API_URL", "https://generativelanguage.googleapis.com/v1beta/openai/"); vi.stubEnv("AI_MODEL", model);
+  };
+
+  it("sends only fields Gemini supports, with low thinking effort", async () => {
+    stubGemini();
+    const request = vi.fn(async (_url: string, _init: RequestInit) => okResponse());
+    vi.stubGlobal("fetch", request);
+    await invokeLLM({ messages: [{ role: "system", content: "s" }, { role: "user", content: "u" }], responseFormat: { type: "json_object" }, maxTokens: 4096 });
+    const [url, init] = request.mock.calls[0];
+    expect(url).toBe("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions");
+    expect(JSON.parse(String(init.body))).toEqual({
+      messages: [{ role: "system", content: "s" }, { role: "user", content: "u" }],
+      model: "gemini-3.8-flash",
+      max_tokens: 4096,
+      reasoning_effort: "low",
+      response_format: { type: "json_object" },
+    });
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("does not send reasoning_effort to other providers", async () => {
+    vi.stubEnv("AI_API_KEY", "sk-test"); vi.stubEnv("AI_API_URL", ""); vi.stubEnv("AI_MODEL", "");
+    const request = vi.fn(async (_url: string, _init: RequestInit) => okResponse());
+    vi.stubGlobal("fetch", request);
+    await invokeLLM({ messages: [{ role: "user", content: "hi" }] });
+    expect(JSON.parse(String(request.mock.calls[0][1].body))).not.toHaveProperty("reasoning_effort");
+  });
+
+  it("does not retry Gemini's 400 for a bad key, and reports it as an invalid key without leaking it", async () => {
+    stubGemini();
+    const body = JSON.stringify([{ error: { code: 400, message: "API key not valid. Please pass a valid API key.", status: "INVALID_ARGUMENT", details: "x".repeat(2000) } }]);
+    const request = vi.fn(async () => new Response(body, { status: 400, statusText: "Bad Request" }));
+    vi.stubGlobal("fetch", request);
+    const error = await invokeLLM({ messages: [{ role: "user", content: "hi" }] }).catch((e: unknown) => e);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(error).toBeInstanceOf(LlmHttpError);
+    expect(llmFailureReason(error)).toBe("AI_KEY_INVALID");
+    const message = (error as Error).message;
+    expect(message).toContain("400");
+    expect(message).toContain("gemini-3.8-flash");
+    expect(message).toContain("generativelanguage.googleapis.com");
+    expect(message).not.toContain("AIzaSecretKey");
+    expect(message.length).toBeLessThan(800);
+  });
+
+  it("does not retry a 404 for an unknown model", async () => {
+    stubGemini("gemini-2.0-flash");
+    const request = vi.fn(async () => new Response('{"error":{"code":404,"message":"models/gemini-2.0-flash is not found","status":"NOT_FOUND"}}', { status: 404 }));
+    vi.stubGlobal("fetch", request);
+    const error = await invokeLLM({ messages: [{ role: "user", content: "hi" }] }).catch((e: unknown) => e);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(llmFailureReason(error)).toBe("AI_NOT_FOUND");
+  });
+});
+
+describe("llmFailureReason", () => {
+  it.each([
+    [new LlmHttpError(401, "x"), "AI_KEY_INVALID"],
+    [new LlmHttpError(403, "PERMISSION_DENIED"), "AI_KEY_INVALID"],
+    [new LlmHttpError(400, "LLM invoke failed: 400 – API key not valid"), "AI_KEY_INVALID"],
+    [new LlmHttpError(400, "LLM invoke failed: 400 – Please pass a valid API_KEY"), "AI_KEY_INVALID"],
+    [new LlmHttpError(404, "x"), "AI_NOT_FOUND"],
+    [new LlmHttpError(400, "LLM invoke failed: 400 – models/gemini-x is not found for API version v1beta"), "AI_NOT_FOUND"],
+    [new LlmHttpError(400, "LLM invoke failed: 400 (model gemini-x, host) – seed is not supported"), "AI_REQUEST_FAILED"],
+    [new LlmHttpError(429, "RESOURCE_EXHAUSTED"), "AI_QUOTA"],
+    [new LlmHttpError(400, "LLM invoke failed: 400 – Invalid JSON payload"), "AI_REQUEST_FAILED"],
+    [new LlmHttpError(500, "x"), "AI_REQUEST_FAILED"],
+    [Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" }), "AI_REQUEST_FAILED"],
+    [new Error("fetch failed"), "AI_REQUEST_FAILED"],
+  ])("%s", (error, expected) => {
+    expect(llmFailureReason(error)).toBe(expected);
   });
 });

@@ -5,7 +5,8 @@ function envString(key: string, env: NodeJS.ProcessEnv): string {
 
 export const DEFAULT_AI_API_URL = "https://api.openai.com";
 export const DEFAULT_AI_MODEL = "gpt-4o-mini";
-export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+/** gemini-2.0-flash is shut down and gemini-2.5-flash is closed to new Gemini API projects. */
+export const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash";
 
 export type LlmConfig = {
   /** "ai" = AI_API_* vars, "manus" = MANUS_API_* fallback, null = AI disabled. */
@@ -16,13 +17,16 @@ export type LlmConfig = {
   model: string;
 };
 
-function defaultModelFor(baseUrl: string): string {
+export function isGeminiUrl(baseUrl: string): boolean {
   try {
-    if (new URL(baseUrl).hostname.endsWith("generativelanguage.googleapis.com")) return DEFAULT_GEMINI_MODEL;
+    return new URL(baseUrl.trim()).hostname.endsWith("generativelanguage.googleapis.com");
   } catch {
-    // fall through
+    return false;
   }
-  return DEFAULT_AI_MODEL;
+}
+
+function defaultModelFor(baseUrl: string): string {
+  return isGeminiUrl(baseUrl) ? DEFAULT_GEMINI_MODEL : DEFAULT_AI_MODEL;
 }
 
 /**

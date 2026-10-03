@@ -12,7 +12,7 @@ import { toast } from "sonner";
 type Review = RouterOutputs["teacher"]["tasks"]["reviews"]["reviews"][number];
 type Submission = RouterOutputs["teacher"]["tasks"]["list"][number]["submissions"][number];
 
-const REASONS = ["NO_TEXT", "AI_NOT_CONFIGURED", "DAILY_LIMIT", "AI_REQUEST_FAILED", "AI_INVALID_OUTPUT", "INTERNAL"] as const;
+const REASONS = ["NO_TEXT", "AI_NOT_CONFIGURED", "DAILY_LIMIT", "AI_REQUEST_FAILED", "AI_KEY_INVALID", "AI_NOT_FOUND", "AI_QUOTA", "AI_INVALID_OUTPUT", "INTERNAL"] as const;
 type Reason = (typeof REASONS)[number];
 const isReason = (code: string | null): code is Reason => REASONS.includes(code as Reason);
 

@@ -4,7 +4,7 @@ import { nanoid } from "nanoid";
 import { z } from "zod";
 import { aiUsageEvents, files, submissionAiReviews, taskSubmissions, tasks, type SubmissionAiReview } from "../../drizzle/schema";
 import { ENV } from "../_core/env";
-import { invokeLLM, type InvokeParams, type InvokeResult, type Message } from "../_core/llm";
+import { invokeLLM, llmFailureReason, type InvokeParams, type InvokeResult, type LlmFailureReason, type Message } from "../_core/llm";
 import { requireDb } from "../db";
 import { managedWorkspaces, type TeacherScope } from "./access";
 import { extractJson } from "./ai";
@@ -183,7 +183,7 @@ export async function reviewWithModel(
   opts: { invoke?: Invoke; model?: string; suspicious?: boolean } = {},
 ): Promise<
   | { ok: true; review: ParsedAiReview; model: string }
-  | { ok: false; errorCode: "AI_REQUEST_FAILED" | "AI_INVALID_OUTPUT"; providerAlert?: "PROVIDER_AUTH" | "PROVIDER_QUOTA" }
+  | { ok: false; errorCode: LlmFailureReason | "AI_INVALID_OUTPUT"; providerAlert?: "PROVIDER_AUTH" | "PROVIDER_QUOTA" }
 > {
   const invoke = opts.invoke ?? invokeLLM;
   let result: InvokeResult;
@@ -191,17 +191,23 @@ export async function reviewWithModel(
     result = await invoke({
       messages: buildReviewMessages(task, answer, randomBytes(8).toString("hex")),
       responseFormat: { type: "json_object" },
-      maxTokens: 900,
+      // Thinking models spend part of this on reasoning before the JSON answer.
+      maxTokens: 4096,
       ...(opts.model ? { model: opts.model } : {}),
     });
   } catch (error) {
-    console.error("[aiReview] model request failed", error instanceof Error ? error.message : error);
+    const errorCode = llmFailureReason(error);
+    console.error("[aiReview] model request failed", errorCode, error instanceof Error ? `${error.name}: ${error.message}` : error);
     const providerAlert = providerAlertFor(error);
-    return { ok: false, errorCode: "AI_REQUEST_FAILED", ...(providerAlert ? { providerAlert } : {}) };
+    return { ok: false, errorCode, ...(providerAlert ? { providerAlert } : {}) };
   }
-  const content = result.choices?.[0]?.message?.content;
-  const review = parseAiReview(extractJson(typeof content === "string" ? content : ""));
-  if (!review) return { ok: false, errorCode: "AI_INVALID_OUTPUT" };
+  const choice = result.choices?.[0];
+  const content = typeof choice?.message?.content === "string" ? choice.message.content : "";
+  const review = parseAiReview(extractJson(content));
+  if (!review) {
+    console.warn("[aiReview] unusable model output", { finishReason: choice?.finish_reason ?? null, chars: content.length, model: result.model });
+    return { ok: false, errorCode: "AI_INVALID_OUTPUT" };
+  }
   if (opts.suspicious) review.needsTeacherReview = true;
   return { ok: true, review, model: (result.model || opts.model || "").slice(0, 120) };
 }

@@ -20,7 +20,7 @@ Code: `server/notifications/` — `events.ts` (events and their channels), `temp
 | `GRADE_UPDATED` | student | EMAIL, PUSH | released score changes |
 | `AI_LIMIT_80` | workspace owner | IN_APP, PUSH | 80% of the daily AI cap (`modules/aiAlerts.ts`) |
 | `AI_LIMIT_REACHED` | workspace owner | IN_APP, PUSH | daily AI cap reached |
-| `AI_PROVIDER_ERROR` | workspace owner | IN_APP, PUSH | AI provider answered 401/403 (key) or 429 (quota) |
+| `AI_PROVIDER_ERROR` | workspace owner | IN_APP, PUSH | AI provider rejected the key or hit its quota |
 
 Throttling that belongs to the domain stays there: grade e-mails are decided by `grade_email_log`
 (only on release or a changed score), AI alerts by `notification_dedupe` (24 h / 6 h per workspace).

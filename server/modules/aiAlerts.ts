@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { providerWorkspaces } from "../../drizzle/schema";
-import { LlmHttpError } from "../_core/llm";
+import { llmFailureReason } from "../_core/llm";
 import { requireDb } from "../db";
 import { dispatch } from "../notifications/dispatcher";
 import type { AiAlertKind } from "../notifications/templates";
@@ -31,11 +31,11 @@ export function usageAlertFor(used: number, limit: number): "USAGE_80" | "LIMIT_
   return null;
 }
 
-/** 401/403 = key rejected, 429 = quota or rate limit; anything else is not worth an alert. */
+/** Key rejected or quota / rate limit hit; anything else is not worth an alert. */
 export function providerAlertFor(error: unknown): "PROVIDER_AUTH" | "PROVIDER_QUOTA" | null {
-  if (!(error instanceof LlmHttpError)) return null;
-  if (error.status === 401 || error.status === 403) return "PROVIDER_AUTH";
-  if (error.status === 429) return "PROVIDER_QUOTA";
+  const reason = llmFailureReason(error);
+  if (reason === "AI_KEY_INVALID") return "PROVIDER_AUTH";
+  if (reason === "AI_QUOTA") return "PROVIDER_QUOTA";
   return null;
 }
 

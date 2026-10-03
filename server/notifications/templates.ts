@@ -225,7 +225,7 @@ const AI_ALERT: Record<ServerLocale, Record<AiAlertKind, { title: string; body: 
     },
     PROVIDER_AUTH: {
       title: "AI xidməti API açarını qəbul etmədi",
-      body: "{workspace}: AI provayderi 401/403 xətası qaytardı — açar yanlışdır və ya ləğv edilib. AI_API_KEY dəyərini yoxlayın.",
+      body: "{workspace}: AI provayderi açarı rədd etdi — açar yanlışdır və ya ləğv edilib. AI_API_KEY dəyərini yoxlayın.",
     },
     PROVIDER_QUOTA: {
       title: "AI xidmətinin limiti bitib",
@@ -243,7 +243,7 @@ const AI_ALERT: Record<ServerLocale, Record<AiAlertKind, { title: string; body: 
     },
     PROVIDER_AUTH: {
       title: "The AI service rejected the API key",
-      body: "{workspace}: the AI provider returned 401/403 — the key is invalid or revoked. Check AI_API_KEY.",
+      body: "{workspace}: the AI provider rejected the key — it is invalid or revoked. Check AI_API_KEY.",
     },
     PROVIDER_QUOTA: {
       title: "AI service quota exhausted",
@@ -261,7 +261,7 @@ const AI_ALERT: Record<ServerLocale, Record<AiAlertKind, { title: string; body: 
     },
     PROVIDER_AUTH: {
       title: "Сервис ИИ отклонил API-ключ",
-      body: "{workspace}: провайдер ИИ вернул ошибку 401/403 — ключ неверный или отозван. Проверьте AI_API_KEY.",
+      body: "{workspace}: провайдер ИИ отклонил ключ — он неверный или отозван. Проверьте AI_API_KEY.",
     },
     PROVIDER_QUOTA: {
       title: "Исчерпан лимит сервиса ИИ",
