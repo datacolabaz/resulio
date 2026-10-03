@@ -1,3 +1,4 @@
+import { type LlmConfig, openAiEndpoint } from "./aiConfig";
 import { ENV } from "./env";
 
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
@@ -212,16 +213,12 @@ const normalizeToolChoice = (
   return toolChoice;
 };
 
-const platformApiBase = () => {
-  if (!ENV.forgeApiUrl.trim()) throw new Error("MANUS_API_URL is not configured");
-  return ENV.forgeApiUrl.replace(/\/$/, "");
-};
-const resolveApiUrl = () => `${platformApiBase()}/v1/chat/completions`;
-
-const assertApiKey = () => {
-  if (!ENV.forgeApiKey) {
-    throw new Error("MANUS_API_KEY is not configured");
+const requireLlmConfig = (): LlmConfig => {
+  const config = ENV.llm;
+  if (!config.source) {
+    throw new Error("LLM is not configured: set AI_API_KEY (and optionally AI_API_URL), or MANUS_API_URL and MANUS_API_KEY");
   }
+  return config;
 };
 
 const normalizeResponseFormat = ({
@@ -341,7 +338,7 @@ const fetchWithBackoff = async (
 };
 
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
-  assertApiKey();
+  const config = requireLlmConfig();
 
   const {
     messages,
@@ -363,8 +360,9 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     messages: messages.map(normalizeMessage),
   };
 
-  if (model) {
-    payload.model = model;
+  const resolvedModel = model || config.model;
+  if (resolvedModel) {
+    payload.model = resolvedModel;
   }
 
   if (tools && tools.length > 0) {
@@ -402,11 +400,11 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.response_format = normalizedResponseFormat;
   }
 
-  const response = await fetchWithBackoff(resolveApiUrl(), {
+  const response = await fetchWithBackoff(openAiEndpoint(config.baseUrl, "chat/completions"), {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      authorization: `Bearer ${ENV.forgeApiKey}`,
+      authorization: `Bearer ${config.apiKey}`,
     },
     body: JSON.stringify(payload),
   });
@@ -434,12 +432,10 @@ export type ModelsResponse = {
 };
 
 export async function listLLMModels(): Promise<ModelsResponse> {
-  assertApiKey();
+  const config = requireLlmConfig();
 
-  const url = `${platformApiBase()}/v1/models`;
-
-  const response = await fetchWithBackoff(url, {
-    headers: { authorization: `Bearer ${ENV.forgeApiKey}` },
+  const response = await fetchWithBackoff(openAiEndpoint(config.baseUrl, "models"), {
+    headers: { authorization: `Bearer ${config.apiKey}` },
   });
 
   if (!response.ok) {

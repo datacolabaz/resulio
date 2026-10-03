@@ -70,7 +70,7 @@ export function validateAiQuestions(raw: unknown, input: AiGenerateInput): Quest
 }
 
 export async function generateQuestions(scope: TeacherScope, input: AiGenerateInput) {
-  if (!ENV.forgeApiUrl || !ENV.forgeApiKey) throw new AppError("AI_UNAVAILABLE");
+  if (!ENV.llmConfigured) throw new AppError("AI_UNAVAILABLE");
   const usage = store.usageOf(scope.workspaceId);
   if (usage.used + input.count > usage.limit) throw new AppError("AI_USAGE_LIMIT_REACHED");
 

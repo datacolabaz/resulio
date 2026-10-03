@@ -1,3 +1,5 @@
+import { type LlmConfig, resolveLlmConfig } from "./aiConfig";
+
 function toOrigin(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return "";
@@ -92,11 +94,15 @@ export const ENV = {
   },
   get isProduction() { return process.env.NODE_ENV === "production"; },
   get enableDemoLogin() { return process.env.NODE_ENV !== "production" && process.env.DISABLE_DEMO_LOGIN !== "1"; },
+  /** Manus Forge pair: file-storage/notification helpers, and the LLM fallback when AI_API_KEY is unset. */
   get forgeApiUrl() { return process.env.MANUS_API_URL ?? ""; },
   get forgeApiKey() { return process.env.MANUS_API_KEY ?? ""; },
+  /** Chat-completions provider: AI_API_URL / AI_API_KEY / AI_MODEL, else MANUS_API_*. */
+  get llm(): LlmConfig { return resolveLlmConfig(); },
+  get llmConfigured() { return this.llm.source !== null; },
   /** Submission pre-review runs only when the LLM is configured and AI_REVIEW_DISABLED is not "1". */
-  get aiReviewEnabled() { return Boolean(this.forgeApiUrl.trim() && this.forgeApiKey) && envString("AI_REVIEW_DISABLED") !== "1"; },
-  /** Optional model name for submission pre-review; empty = the provider default. */
+  get aiReviewEnabled() { return this.llmConfigured && envString("AI_REVIEW_DISABLED") !== "1"; },
+  /** Optional model name for submission pre-review; empty = AI_MODEL / the provider default. */
   get aiReviewModel() { return envString("AI_REVIEW_MODEL"); },
   /** Max AI pre-reviews per workspace in a rolling 24 hours. */
   get aiReviewDailyLimit() {

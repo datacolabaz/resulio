@@ -18,7 +18,7 @@ describe("platform integration", () => {
     expect(appended).toHaveLength(0);
   });
   it("does not guess a production LLM API when none is configured", async () => {
-    vi.stubEnv("MANUS_API_URL", ""); vi.stubEnv("MANUS_API_KEY", "test-only");
+    vi.stubEnv("AI_API_KEY", ""); vi.stubEnv("MANUS_API_URL", ""); vi.stubEnv("MANUS_API_KEY", "test-only");
     const request = vi.fn(); vi.stubGlobal("fetch", request);
     await expect(listLLMModels()).rejects.toThrow("MANUS_API_URL");
     expect(request).not.toHaveBeenCalled();

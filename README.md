@@ -27,6 +27,24 @@ Google is the primary sign-in; email + password is the secondary option under it
 - Google sign-in for an email that has a password-only account links to that same user and drops the password, because sign-up does not verify email ownership; the user gets a notification and can set a new one in Settings.
 - There is no "forgot password" email: Resulio has no email provider configured. Users whose email is a Google account recover by signing in with Google and setting a new password; anyone else needs an admin. Emailed reset links need an email provider (e.g. SMTP or Resend) to be added first.
 
+## AI provider
+
+AI question generation and submission pre-review call any OpenAI-compatible `chat/completions` API (`server/_core/aiConfig.ts`). They stay off until a key is set. On Railway, add these to **resulio-api**:
+
+| Provider | Variables | Key |
+| --- | --- | --- |
+| OpenAI | `AI_API_KEY=sk-...` (optional: `AI_API_URL=https://api.openai.com/v1`, `AI_MODEL=gpt-4o-mini`) | https://platform.openai.com/api-keys |
+| Google Gemini (free tier) | `AI_API_KEY=...`, `AI_API_URL=https://generativelanguage.googleapis.com/v1beta/openai`, `AI_MODEL=gemini-2.5-flash` | https://aistudio.google.com/apikey |
+
+- `AI_API_URL` works with or without `/v1`; `/v1` is added only when the URL has no version segment. Empty = OpenAI. `AI_MODEL` empty = `gpt-4o-mini` (`gemini-2.5-flash` for the Gemini URL).
+- `AI_REVIEW_MODEL` overrides the model for pre-review only; `AI_REVIEW_DISABLED=1` turns pre-review off; `AI_REVIEW_DAILY_LIMIT` caps it per workspace (default 100/24h).
+- Without `AI_API_KEY` the legacy `MANUS_API_URL` / `MANUS_API_KEY` pair is used if both are set.
+- The unused voice-transcription helper uses the same provider's `audio/transcriptions` (OpenAI has it, Gemini's compatible API does not).
+
+## File storage
+
+Uploads (task attachments, materials, submissions; max 8 MB) are stored in MySQL, base64 in the `files` table (`server/modules/files.ts`), and served by `GET /api/files/:id`. No S3 or `MANUS_*` variables are involved; `server/storage.ts` and `server/_core/storageProxy.ts` are unused Manus template code.
+
 ## Scripts
 
 - `pnpm dev`: development server; honors `PORT` (default 3000).

@@ -25,6 +25,7 @@
  * });
  * ```
  */
+import { openAiEndpoint } from "./aiConfig";
 import { ENV } from "./env";
 
 export type TranscribeOptions = {
@@ -75,18 +76,12 @@ export async function transcribeAudio(
 ): Promise<TranscriptionResponse | TranscriptionError> {
   try {
     // Step 1: Validate environment configuration
-    if (!ENV.forgeApiUrl) {
+    const llm = ENV.llm;
+    if (!llm.source) {
       return {
         error: "Voice transcription service is not configured",
         code: "SERVICE_ERROR",
-        details: "MANUS_API_URL is not set"
-      };
-    }
-    if (!ENV.forgeApiKey) {
-      return {
-        error: "Voice transcription service authentication is missing",
-        code: "SERVICE_ERROR",
-        details: "MANUS_API_KEY is not set"
+        details: "Set AI_API_KEY (OpenAI-compatible provider with /audio/transcriptions), or MANUS_API_URL and MANUS_API_KEY"
       };
     }
 
@@ -143,19 +138,12 @@ export async function transcribeAudio(
     formData.append("prompt", prompt);
 
     // Step 4: Call the transcription service
-    const baseUrl = ENV.forgeApiUrl.endsWith("/")
-      ? ENV.forgeApiUrl
-      : `${ENV.forgeApiUrl}/`;
-
-    const fullUrl = new URL(
-      "v1/audio/transcriptions",
-      baseUrl
-    ).toString();
+    const fullUrl = openAiEndpoint(llm.baseUrl, "audio/transcriptions");
 
     const response = await fetch(fullUrl, {
       method: "POST",
       headers: {
-        authorization: `Bearer ${ENV.forgeApiKey}`,
+        authorization: `Bearer ${llm.apiKey}`,
         "Accept-Encoding": "identity",
       },
       body: formData,
