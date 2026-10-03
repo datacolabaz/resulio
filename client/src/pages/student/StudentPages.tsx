@@ -4,6 +4,7 @@ import { SingleFileUpload } from "@/components/FileUpload";
 import { StatusBadge, toneSurface } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { t } from "@/i18n/messages";
 import {
   answerText,
@@ -19,9 +20,9 @@ import {
 } from "@/lib/format";
 import { normalizeJoinInput, resolveJoinInput } from "@/lib/joinInput";
 import { itemStatus, liveStatus } from "@/lib/status";
-import { trpc } from "@/lib/trpc";
+import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { fileDownloadUrl, type UploadedFile } from "@/lib/uploadFile";
-import { CheckCircle2, Clock, History, X } from "lucide-react";
+import { CheckCircle2, Clock, History, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useParams, useSearch } from "wouter";
@@ -459,10 +460,34 @@ function GroupProgressPanel({ groupId }: { groupId: string }) {
   );
 }
 
+type ReleasedGradeData = NonNullable<NonNullable<RouterOutputs["student"]["tasks"][number]["submission"]>["grade"]>;
+
+function ReleasedGrade({ grade }: { grade: ReleasedGradeData }) {
+  return (
+    <div className="space-y-1.5 rounded-lg border border-border p-2.5 text-sm">
+      {grade.score !== null && <p className="font-semibold">{t("student.taskScore", { score: grade.score })}</p>}
+      {!!grade.feedback && <p className="whitespace-pre-wrap break-words">{grade.feedback}</p>}
+      {grade.ai && (
+        <div className="space-y-1 rounded-lg bg-muted/40 p-2 text-xs">
+          <p className="inline-flex items-center gap-1 font-medium text-foreground-secondary">
+            <Sparkles className="h-3.5 w-3.5" aria-hidden />
+            {t("student.aiFeedbackTitle")}
+          </p>
+          <p className="whitespace-pre-wrap break-words">{grade.ai.feedback}</p>
+          {grade.ai.improvements.length > 0 && (
+            <ul className="ml-4 list-disc">{grade.ai.improvements.map((s, i) => <li key={i} className="break-words">{s}</li>)}</ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function StudentTasks() {
   const utils = trpc.useUtils();
   const list = trpc.student.tasks.useQuery();
   const [files, setFiles] = useState<Record<string, UploadedFile | null>>({});
+  const [answers, setAnswers] = useState<Record<string, string>>({});
   const submit = trpc.student.submitTask.useMutation({
     onSuccess: () => { toast.success(t("student.taskSubmitted")); void utils.student.tasks.invalidate(); },
     onError: (e) => toast.error(errorText(e)),
@@ -496,17 +521,32 @@ export function StudentTasks() {
                   ))}
                 </ul>
               )}
-              {a.submission?.files?.length ? (
-                <p className="mt-3 text-xs text-muted-foreground">{t("student.submittedFiles", { names: a.submission.files.map((f) => f.name).join(", ") })}</p>
+              {a.submission ? (
+                <div className="mt-3 space-y-2">
+                  {a.submission.files.length > 0 && (
+                    <p className="text-xs text-muted-foreground">{t("student.submittedFiles", { names: a.submission.files.map((f) => f.name).join(", ") })}</p>
+                  )}
+                  {!!a.submission.answerText && (
+                    <p className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-muted/40 p-2 text-sm">{a.submission.answerText}</p>
+                  )}
+                  {a.submission.grade ? <ReleasedGrade grade={a.submission.grade} /> : <p className="text-xs text-muted-foreground">{t("student.awaitingReview")}</p>}
+                </div>
               ) : (
                 <div className="mt-3 space-y-2">
+                  <label className="block text-xs">
+                    <span className="text-foreground-secondary">{t("student.answerLabel")}</span>
+                    <Textarea rows={4} className="mt-1" maxLength={20000} placeholder={t("student.answerPlaceholder")} value={answers[a.id] ?? ""} onChange={(e) => setAnswers({ ...answers, [a.id]: e.target.value })} />
+                  </label>
                   <SingleFileUpload context="submission" taskId={a.id} value={files[a.id] ?? null} onChange={(file) => setFiles({ ...files, [a.id]: file })} />
                   <Button
-                    disabled={!files[a.id] || submit.isPending}
+                    disabled={(!files[a.id] && !(answers[a.id] ?? "").trim()) || submit.isPending}
                     onClick={() => {
                       const file = files[a.id];
-                      if (!file) return;
-                      submit.mutate({ assignmentId: a.id, files: [{ fileId: file.fileId, name: file.name, size: file.size }] });
+                      submit.mutate({
+                        assignmentId: a.id,
+                        files: file ? [{ fileId: file.fileId, name: file.name, size: file.size }] : [],
+                        answerText: answers[a.id] ?? "",
+                      });
                     }}
                   >
                     {t("common.send")}

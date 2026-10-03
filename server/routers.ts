@@ -39,6 +39,7 @@ import { canEnterContext, defaultContext, ensurePartnerProfile, resolveAccess, t
 import * as activity from "./modules/activity";
 import { adminView } from "./modules/admin/authz";
 import * as ai from "./modules/ai";
+import * as aiReview from "./modules/aiReview";
 import * as analytics from "./modules/analytics";
 import * as assessments from "./modules/assessments";
 import * as attempts from "./modules/attempts";
@@ -604,6 +605,23 @@ const teacherTasksRouter = router({
     const row = await tasks.assignmentOf(ctx.scope, input.id);
     return shareTracking.shareFunnel("TASK", row.shareCode, { excludeUserIds: [ctx.user.id, row.createdBy] });
   }),
+  /** AI pre-reviews of this task's submissions (advisory) plus the workspace's AI quota. */
+  reviews: teacherProcedure.input(z.object({ taskId: entityId })).query(({ ctx, input }) => aiReview.reviewsForTask(ctx.scope, input.taskId)),
+  rerunReview: teacherProcedure
+    .use(rateLimit("rerunAiReview", 10, MINUTE))
+    .input(z.object({ submissionId: entityId }))
+    .mutation(({ ctx, input }) => aiReview.rerunReview(ctx.scope, input.submissionId)),
+  grade: teacherProcedure
+    .input(
+      z.object({
+        submissionId: entityId,
+        score: z.number().min(0).max(100).nullable(),
+        feedback: z.string().max(4000).default(""),
+        release: z.boolean(),
+        shareAiFeedback: z.boolean().default(false),
+      }),
+    )
+    .mutation(({ ctx, input }) => tasks.gradeSubmission(ctx.scope, input)),
   /** Share funnel (incl. submissions per channel) plus who opened, downloaded and submitted this task. */
   engagement: teacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => activity.taskEngagement(ctx.scope, input.id)),
   /** Clicks/opens/joins on this material's share link, broken down by channel. */
@@ -770,13 +788,14 @@ const studentRouter = router({
         assignmentId: z.string().min(1).max(32),
         files: z
           .array(z.object({ fileId: z.string().trim().min(1).max(32), name: z.string().max(255), size: z.number().int().nonnegative() }))
-          .min(1)
-          .max(10),
+          .max(10)
+          .default([]),
+        answerText: z.string().max(tasks.MAX_ANSWER_TEXT).default(""),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const groupIds = await groups.activeGroupIdsOfStudent(ctx.user.id);
-      return tasks.submitAssignment(ctx.user.id, groupIds, input.assignmentId, input.files);
+      return tasks.submitAssignment(ctx.user.id, groupIds, input.assignmentId, input.files, input.answerText);
     }),
   materials: studentProcedure.query(async ({ ctx }) => {
     const rows = await tasks.studentMaterials(ctx.user.id, await groups.activeGroupIdsOfStudent(ctx.user.id));

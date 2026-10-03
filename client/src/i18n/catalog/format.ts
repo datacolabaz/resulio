@@ -18,6 +18,8 @@ export const format = {
   "error.STUDENT_NOT_FOUND": ["Bu e-poçtla hesab tapılmadı. İstifadəçi əvvəlcə Resulio-ya daxil olmalıdır.", "No account found for this email. The user must sign in to Resulio first.", "Аккаунт с этим адресом не найден. Пользователь должен сначала войти в Resulio."],
   "error.ALREADY_MEMBER": ["Artıq qrupun üzvüdür.", "Already a member of the group.", "Уже состоит в группе."],
   "error.EMAIL_INVITE_NOT_FOUND": ["Bu dəvət linki etibarlı deyil və ya artıq ləğv edilib.", "This invite link is not valid, or it has already been revoked.", "Эта ссылка-приглашение недействительна или уже отозвана."],
+  "error.SUBMISSION_EMPTY": ["Cavab yazın və ya fayl əlavə edin.", "Type an answer or attach a file.", "Напишите ответ или приложите файл."],
+  "error.SUBMISSION_ALREADY_GRADED": ["Müəllim bu işi artıq qiymətləndirib; yenidən göndərmək olmaz.", "Your teacher has already graded this; it can't be resubmitted.", "Преподаватель уже оценил работу; повторно отправить нельзя."],
   "error.INVITE_LINK_NOT_FOUND": ["Dəvət linki tapılmadı.", "Invite link not found.", "Ссылка-приглашение не найдена."],
   "error.INVITE_LINK_USED": ["Bu link artıq istifadə olunub. Müəllimdən özünüzə aid yeni link istəyin.", "This link has already been used. Ask your teacher for a new link of your own.", "Эта ссылка уже использована. Попросите у преподавателя свою новую ссылку."],
   "error.INVITE_LINK_EXPIRED": ["Bu linkin vaxtı bitib. Müəllimdən yeni link istəyin.", "This link has expired. Ask your teacher for a new one.", "Срок действия ссылки истёк. Попросите у преподавателя новую."],

@@ -3,6 +3,7 @@ import { MultiFileUpload, SingleFileUpload } from "@/components/FileUpload";
 import { draftFromQuestion, QuestionEditor } from "@/components/QuestionEditor";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ShareBox, ShareFunnelSummary } from "@/components/ShareBox";
+import { SubmissionReview } from "@/components/SubmissionReview";
 import { TaskEngagementList } from "@/components/TaskEngagementList";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -186,6 +187,12 @@ export function AssignmentsPage() {
   const [shareId, setShareId] = useState<string | null>(null);
   const [submissionsId, setSubmissionsId] = useState<string | null>(null);
   const activityQ = trpc.teacher.tasks.activity.useQuery({ id: submissionsId ?? "" }, { enabled: !!submissionsId });
+  const reviewsQ = trpc.teacher.tasks.reviews.useQuery(
+    { taskId: submissionsId ?? "" },
+    { enabled: !!submissionsId, refetchInterval: (q) => (q.state.data?.reviews.some((r) => r.status === "PENDING" && !r.stale) ? 4000 : false) },
+  );
+  const reviewBySubmission = new Map((reviewsQ.data?.reviews ?? []).map((r) => [r.submissionId, r]));
+  const refreshReviews = () => { void utils.teacher.tasks.list.invalidate(); void reviewsQ.refetch(); };
   const engagementQ = trpc.teacher.tasks.engagement.useQuery({ id: shareId ?? "" }, { enabled: !!shareId, refetchInterval: 30_000 });
   const remove = trpc.teacher.tasks.remove.useMutation({
     onSuccess: () => void utils.teacher.tasks.list.invalidate(),
@@ -252,10 +259,14 @@ export function AssignmentsPage() {
                               ))}
                             </ul>
                           )}
+                          <SubmissionReview key={`${s.id}:${s.gradedAt ?? ""}`} submission={s} review={reviewBySubmission.get(s.id)} onChanged={refreshReviews} />
                         </li>
                       );
                     })}
                   </ul>
+                )}
+                {submissionsId === a.id && a.submissions.length > 0 && reviewsQ.data && !reviewsQ.data.ai.enabled && (
+                  <p className="mt-2 text-xs text-muted-foreground">{t("aiReview.disabledNote")}</p>
                 )}
                 {submissionsId === a.id && !!activityQ.data?.eligible.length && (() => {
                   const submittedIds = new Set(a.submissions.map((s) => s.studentId));

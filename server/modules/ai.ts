@@ -31,7 +31,7 @@ const SHAPES: Record<(typeof AI_QUESTION_TYPES)[number], string> = {
 
 const LANGUAGE_NAMES = { az: "Azerbaijani", ru: "Russian", en: "English", de: "German" } as const;
 
-function extractJson(text: string): unknown {
+export function extractJson(text: string): unknown {
   const cleaned = text.replace(/```json|```/g, "").trim();
   try {
     return JSON.parse(cleaned);

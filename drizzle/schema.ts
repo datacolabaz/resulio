@@ -707,9 +707,59 @@ export const taskSubmissions = mysqlTable(
     status: mysqlEnum("status", TASK_SUBMISSION_STATUSES).notNull(),
     files: json("files").$type<Array<{ fileId: string; name: string; size: number }>>().notNull(),
     submittedAt: timestamp("submittedAt"),
+    /** The student's typed answer (optional when files are attached). */
     comment: text("comment"),
+    /** Teacher's final score on a 0–100 scale; the AI suggestion never lands here by itself. */
+    score: double("score"),
+    teacherFeedback: text("teacherFeedback"),
+    gradedAt: timestamp("gradedAt"),
+    gradedByUserId: int("gradedByUserId"),
+    /** Null = the grade is still private to the teacher. */
+    feedbackReleasedAt: timestamp("feedbackReleasedAt"),
+    /** The AI pre-review text is shown to the student only when the teacher opts in on release. */
+    aiFeedbackReleased: boolean("aiFeedbackReleased").notNull().default(false),
   },
   (t) => [uniqueIndex("task_submissions_task_student_unique").on(t.taskId, t.studentId)],
+);
+
+export const SUBMISSION_AI_REVIEW_STATUSES = ["PENDING", "DONE", "FAILED", "SKIPPED"] as const;
+export type SubmissionAiReviewStatus = (typeof SUBMISSION_AI_REVIEW_STATUSES)[number];
+
+/** Automated pre-check of a task submission. Advisory only: the teacher decides the grade. */
+export const submissionAiReviews = mysqlTable(
+  "submission_ai_reviews",
+  {
+    id: id("id").primaryKey(),
+    submissionId: id("submissionId").notNull().unique(),
+    taskId: id("taskId").notNull(),
+    workspaceId: id("workspaceId").notNull(),
+    status: mysqlEnum("status", SUBMISSION_AI_REVIEW_STATUSES).notNull().default("PENDING"),
+    /** Changes on every (re)run so a stale run cannot overwrite a newer one. */
+    runId: varchar("runId", { length: 32 }).notNull(),
+    checks: json("checks").$type<Array<{ code: string; level: "ok" | "warn" | "fail"; value?: string | number }>>().notNull(),
+    model: varchar("model", { length: 120 }),
+    suggestedScore: double("suggestedScore"),
+    feedback: text("feedback"),
+    details: json("details").$type<{ strengths: string[]; improvements: string[]; confidence: "low" | "medium" | "high"; needsTeacherReview: boolean }>(),
+    errorCode: varchar("errorCode", { length: 40 }),
+    inputChars: int("inputChars").notNull().default(0),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    completedAt: timestamp("completedAt"),
+  },
+  (t) => [index("submission_ai_reviews_task_idx").on(t.taskId)],
+);
+
+/** Append-only log of paid AI calls, used for the per-workspace daily cap. */
+export const aiUsageEvents = mysqlTable(
+  "ai_usage_events",
+  {
+    id: bigint("id", { mode: "number" }).autoincrement().primaryKey(),
+    workspaceId: id("workspaceId").notNull(),
+    kind: varchar("kind", { length: 40 }).notNull(),
+    refId: varchar("refId", { length: 64 }).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [index("ai_usage_events_workspace_idx").on(t.workspaceId, t.createdAt)],
 );
 
 /** A file a teacher shares with a group and/or individual students. The actual bytes live in `files`
@@ -787,3 +837,5 @@ export type Result = typeof results.$inferSelect;
 export type ResultItem = typeof resultItems.$inferSelect;
 export type AssessmentAssignment = typeof assessmentAssignments.$inferSelect;
 export type FileRow = typeof files.$inferSelect;
+export type TaskSubmission = typeof taskSubmissions.$inferSelect;
+export type SubmissionAiReview = typeof submissionAiReviews.$inferSelect;

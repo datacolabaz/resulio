@@ -94,4 +94,13 @@ export const ENV = {
   get enableDemoLogin() { return process.env.NODE_ENV !== "production" && process.env.DISABLE_DEMO_LOGIN !== "1"; },
   get forgeApiUrl() { return process.env.MANUS_API_URL ?? ""; },
   get forgeApiKey() { return process.env.MANUS_API_KEY ?? ""; },
+  /** Submission pre-review runs only when the LLM is configured and AI_REVIEW_DISABLED is not "1". */
+  get aiReviewEnabled() { return Boolean(this.forgeApiUrl.trim() && this.forgeApiKey) && envString("AI_REVIEW_DISABLED") !== "1"; },
+  /** Optional model name for submission pre-review; empty = the provider default. */
+  get aiReviewModel() { return envString("AI_REVIEW_MODEL"); },
+  /** Max AI pre-reviews per workspace in a rolling 24 hours. */
+  get aiReviewDailyLimit() {
+    const n = Number.parseInt(envString("AI_REVIEW_DAILY_LIMIT"), 10);
+    return Number.isFinite(n) && n >= 0 ? n : 100;
+  },
 };

@@ -1,8 +1,9 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { materials, taskSubmissions, tasks, type TaskAccessMode } from "../../drizzle/schema";
+import { files, materials, submissionAiReviews, taskSubmissions, tasks, type SubmissionAiReview, type TaskAccessMode, type TaskSubmission } from "../../drizzle/schema";
 import { requireDb } from "../db";
 import { managedWorkspaces, type TeacherScope } from "./access";
+import { clampScore, scheduleAiReview, submissionInScope } from "./aiReview";
 import { AppError } from "./errors";
 import { activeGroupIdsOfStudent } from "./groups";
 import * as notifications from "./notifications";
@@ -80,9 +81,29 @@ export async function updateAssignment(scope: TeacherScope, id: string, patch: P
 export async function deleteAssignment(scope: TeacherScope, id: string) {
   await assignmentOf(scope, id);
   const db = requireDb();
+  await db.delete(submissionAiReviews).where(eq(submissionAiReviews.taskId, id));
   await db.delete(taskSubmissions).where(eq(taskSubmissions.taskId, id));
   await db.delete(tasks).where(eq(tasks.id, id));
   return { ok: true };
+}
+
+/**
+ * What a student may see of their own submission: the grade only once the teacher released it,
+ * and the AI pre-review text only if the teacher chose to share it on release.
+ */
+export function studentSubmissionView(s: TaskSubmission, review: Pick<SubmissionAiReview, "status" | "feedback" | "details"> | undefined) {
+  const released = s.feedbackReleasedAt !== null;
+  const ai = released && s.aiFeedbackReleased && review?.status === "DONE" && review.feedback
+    ? { feedback: review.feedback, strengths: review.details?.strengths ?? [], improvements: review.details?.improvements ?? [] }
+    : null;
+  return {
+    id: s.id,
+    status: s.status,
+    files: s.files,
+    submittedAt: s.submittedAt,
+    answerText: s.comment ?? "",
+    grade: released ? { score: s.score, feedback: s.teacherFeedback ?? "", releasedAt: s.feedbackReleasedAt, ai } : null,
+  };
 }
 
 /** Assignments reaching this student (by group membership or direct targeting), each with its own submission if any. */
@@ -95,38 +116,90 @@ export async function studentAssignments(studentId: number, groupIds: string[]) 
     .select()
     .from(taskSubmissions)
     .where(and(eq(taskSubmissions.studentId, studentId), inArray(taskSubmissions.taskId, relevant.map((t) => t.id))));
+  const sharedAi = subs.filter((s) => s.feedbackReleasedAt && s.aiFeedbackReleased).map((s) => s.id);
+  const reviews = sharedAi.length
+    ? await db
+        .select({ submissionId: submissionAiReviews.submissionId, status: submissionAiReviews.status, feedback: submissionAiReviews.feedback, details: submissionAiReviews.details })
+        .from(submissionAiReviews)
+        .where(inArray(submissionAiReviews.submissionId, sharedAi))
+    : [];
+  const reviewBySub = new Map(reviews.map((r) => [r.submissionId, r]));
   const byTask = new Map(subs.map((s) => [s.taskId, s]));
-  return relevant.map((t) => ({ ...t, submission: byTask.get(t.id) }));
+  return relevant.map((t) => {
+    const s = byTask.get(t.id);
+    return { ...t, submission: s ? studentSubmissionView(s, reviewBySub.get(s.id)) : undefined };
+  });
 }
 
+export const MAX_ANSWER_TEXT = 20_000;
+
+/**
+ * Files must be the student's own uploads for this task's workspace (names and sizes come from
+ * the stored rows, not the client). A graded submission is final; a typed answer, files, or both.
+ */
 export async function submitAssignment(
   studentId: number,
   groupIds: string[],
   assignmentId: string,
-  files: Array<{ fileId: string; name: string; size: number }>,
+  fileRefs: Array<{ fileId: string }>,
+  answerText = "",
 ) {
   const db = requireDb();
   const [task] = await db.select().from(tasks).where(eq(tasks.id, assignmentId)).limit(1);
   if (!task) throw new AppError("NOT_FOUND");
   if (!taskReachesStudent(task, studentId, groupIds)) throw new AppError(task.accessMode === "GROUPS" ? "TASK_NO_ACCESS" : "NOT_FOUND");
 
+  const text = answerText.trim().slice(0, MAX_ANSWER_TEXT);
+  const ids = [...new Set(fileRefs.map((f) => f.fileId))];
+  const owned = ids.length ? await db.select({ id: files.id, fileName: files.fileName, sizeBytes: files.sizeBytes, uploadedBy: files.uploadedBy, workspaceId: files.workspaceId }).from(files).where(inArray(files.id, ids)) : [];
+  if (owned.length !== ids.length || owned.some((f) => f.uploadedBy !== studentId || f.workspaceId !== task.providerWorkspaceId)) {
+    throw new AppError("FORBIDDEN");
+  }
+  const byId = new Map(owned.map((f) => [f.id, f]));
+  const filesJson = ids.map((id) => ({ fileId: id, name: byId.get(id)!.fileName, size: byId.get(id)!.sizeBytes }));
+  if (!filesJson.length && !text) throw new AppError("SUBMISSION_EMPTY");
+
   const status = task.deadline.getTime() < Date.now() ? ("LATE" as const) : ("SUBMITTED" as const);
-  const filesJson = files;
   const [existing] = await db
     .select()
     .from(taskSubmissions)
     .where(and(eq(taskSubmissions.taskId, assignmentId), eq(taskSubmissions.studentId, studentId)))
     .limit(1);
+  if (existing?.gradedAt) throw new AppError("SUBMISSION_ALREADY_GRADED");
+  const now = new Date();
   if (existing) {
-    await db.update(taskSubmissions).set({ status, files: filesJson, submittedAt: new Date() }).where(eq(taskSubmissions.id, existing.id));
+    await db.update(taskSubmissions).set({ status, files: filesJson, comment: text || null, submittedAt: now }).where(eq(taskSubmissions.id, existing.id));
   } else {
-    await db.insert(taskSubmissions).values({ id: nanoid(), taskId: assignmentId, studentId, status, files: filesJson, submittedAt: new Date() });
+    await db.insert(taskSubmissions).values({ id: nanoid(), taskId: assignmentId, studentId, status, files: filesJson, comment: text || null, submittedAt: now });
   }
   const ownerId = await workspaceOwnerId(task.providerWorkspaceId);
   if (ownerId) await notifications.notify(ownerId, "Yeni təslim", "Tələbə tapşırıq göndərdi");
 
   const [row] = await db.select().from(taskSubmissions).where(and(eq(taskSubmissions.taskId, assignmentId), eq(taskSubmissions.studentId, studentId))).limit(1);
-  return row;
+  await scheduleAiReview(row.id);
+  return studentSubmissionView(row, undefined);
+}
+
+/** The teacher's final word. `release` makes score and feedback visible to the student. */
+export async function gradeSubmission(
+  scope: TeacherScope,
+  input: { submissionId: string; score: number | null; feedback: string; release: boolean; shareAiFeedback: boolean },
+) {
+  const current = await submissionInScope(scope, input.submissionId);
+  const now = new Date();
+  await requireDb()
+    .update(taskSubmissions)
+    .set({
+      score: input.score === null ? null : clampScore(input.score),
+      teacherFeedback: input.feedback.trim() || null,
+      gradedAt: now,
+      gradedByUserId: scope.userId,
+      feedbackReleasedAt: input.release ? (current.feedbackReleasedAt ?? now) : null,
+      aiFeedbackReleased: input.release && input.shareAiFeedback,
+    })
+    .where(eq(taskSubmissions.id, input.submissionId));
+  if (input.release && !current.feedbackReleasedAt) await notifications.notify(current.studentId, "Tapşırıq qiymətləndirildi", "Müəllim rəy yazdı");
+  return submissionInScope(scope, input.submissionId);
 }
 
 export async function assignmentByShareCode(shareCode: string) {

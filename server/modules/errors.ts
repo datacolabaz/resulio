@@ -61,7 +61,9 @@ export type AppErrorCode =
   | "INVITE_LINK_USED"
   | "INVITE_LINK_EXPIRED"
   | "INVITE_LINK_REVOKED"
-  | "INVITE_LINK_BATCH_TOO_LARGE";
+  | "INVITE_LINK_BATCH_TOO_LARGE"
+  | "SUBMISSION_EMPTY"
+  | "SUBMISSION_ALREADY_GRADED";
 
 export class AppError extends Error {
   constructor(public readonly code: AppErrorCode) {
@@ -128,6 +130,8 @@ const HTTP: Partial<Record<AppErrorCode, TRPCError["code"]>> = {
   INVITE_LINK_EXPIRED: "PRECONDITION_FAILED",
   INVITE_LINK_REVOKED: "PRECONDITION_FAILED",
   INVITE_LINK_BATCH_TOO_LARGE: "BAD_REQUEST",
+  SUBMISSION_EMPTY: "BAD_REQUEST",
+  SUBMISSION_ALREADY_GRADED: "CONFLICT",
 };
 
 /** Convert domain errors into tRPC errors; the message stays a stable machine code. */
