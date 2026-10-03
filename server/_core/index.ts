@@ -16,6 +16,7 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { getDb, warnIfGoogleAuthSchemaMissing } from "../db";
 import { sweepExpiredAttempts } from "../modules/attempts";
+import { startNotificationWorker } from "../notifications/dispatcher";
 
 const SWEEP_INTERVAL_MS = 30_000;
 
@@ -72,6 +73,7 @@ async function startServer() {
   }
 
   startAttemptSweeper();
+  startNotificationWorker();
 
   const port = Number(process.env.PORT || "3000");
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid PORT");

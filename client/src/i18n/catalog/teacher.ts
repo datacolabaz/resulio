@@ -372,6 +372,12 @@ export const teacher = {
   "aiReview.released": ["Tələbəyə göstərildi", "Shown to the student", "Показано студенту"],
   "aiReview.visibleToStudent": ["Tələbə qiyməti görür", "The student can see the grade", "Студент видит оценку"],
   "aiReview.hiddenFromStudent": ["Qaralama — tələbə hələ görmür", "Draft — not visible to the student yet", "Черновик — студент пока не видит"],
+  "aiReview.emailToStudent": ["AI rəyini tələbəyə avtomatik göndər", "Automatically send the AI feedback to the student", "Автоматически отправлять студенту отзыв ИИ"],
+  "aiReview.emailToStudentHelp": [
+    "Tələbə e-poçtla ilkin AI rəyini alır (bal olmadan). Qiymət verdikdən sonra göndərilmir.",
+    "The student gets the preliminary AI feedback by e-mail (no score). Not sent once you have graded.",
+    "Студент получает предварительный отзыв ИИ по почте (без балла). После выставления оценки не отправляется.",
+  ],
   "aiReview.disabledNote": ["AI ilkin yoxlama qoşulmayıb; avtomatik yoxlamalar yenə də işləyir.", "AI pre-check is not configured; the automatic checks still run.", "Предпроверка ИИ не подключена; автоматические проверки всё равно работают."],
   "modules.viewSubmissions": ["Təhvilləri göstər/gizlət", "Show/hide submissions", "Показать/скрыть сдачи"],
   "modules.viewedNotSubmitted": ["Baxıb, hələ göndərməyib:", "Viewed, not yet submitted:", "Открыли, но ещё не сдали:"],

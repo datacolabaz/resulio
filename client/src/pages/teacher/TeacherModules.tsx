@@ -203,6 +203,10 @@ export function AssignmentsPage() {
   );
   const reviewBySubmission = new Map((reviewsQ.data?.reviews ?? []).map((r) => [r.submissionId, r]));
   const refreshReviews = () => { void utils.teacher.tasks.list.invalidate(); void reviewsQ.refetch(); };
+  const setAiFeedback = trpc.teacher.tasks.setAiFeedbackToStudent.useMutation({
+    onSuccess: () => void reviewsQ.refetch(),
+    onError: (e) => toast.error(errorText(e)),
+  });
   const engagementQ = trpc.teacher.tasks.engagement.useQuery({ id: shareId ?? "" }, { enabled: !!shareId, refetchInterval: 30_000 });
   const remove = trpc.teacher.tasks.remove.useMutation({
     onSuccess: () => void utils.teacher.tasks.list.invalidate(),
@@ -281,6 +285,18 @@ export function AssignmentsPage() {
                 )}
                 {submissionsId === a.id && a.submissions.length > 0 && reviewsQ.data && !reviewsQ.data.ai.enabled && (
                   <p className="mt-2 text-xs text-muted-foreground">{t("aiReview.disabledNote")}</p>
+                )}
+                {submissionsId === a.id && reviewsQ.data?.ai.enabled && (
+                  <label className="mt-2 flex items-center gap-2 text-xs" title={t("aiReview.emailToStudentHelp")}>
+                    <input
+                      type="checkbox"
+                      className="accent-link"
+                      disabled={setAiFeedback.isPending}
+                      checked={reviewsQ.data.aiFeedbackToStudent}
+                      onChange={(e) => setAiFeedback.mutate({ taskId: a.id, enabled: e.target.checked })}
+                    />
+                    {t("aiReview.emailToStudent")}
+                  </label>
                 )}
                 {submissionsId === a.id && !!activityQ.data?.eligible.length && (() => {
                   const submittedIds = new Set(a.submissions.map((s) => s.studentId));

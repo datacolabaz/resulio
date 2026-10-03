@@ -12,6 +12,7 @@ import { trpc } from "@/lib/trpc";
 import { PASSWORD_MIN_LENGTH } from "@shared/auth";
 import { Check } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { Link, Redirect } from "wouter";
 
 const linkClass = "font-medium text-link underline underline-offset-4";
@@ -98,6 +99,58 @@ function AiUsagePanel() {
   );
 }
 
+const STUDENT_EVENTS = ["AI_FEEDBACK_READY", "GRADE_RELEASED", "GRADE_UPDATED"];
+const SHOWN_CHANNELS = ["IN_APP", "EMAIL"] as const;
+
+/** Which notifications reach this user in the app and by e-mail. Push choices live in the mobile app. */
+function NotificationPreferencesPanel({ teaching }: { teaching: boolean }) {
+  const prefs = trpc.inbox.preferences.useQuery();
+  const set = trpc.inbox.setPreference.useMutation({
+    onSuccess: () => void prefs.refetch(),
+    onError: (e) => toast.error(errorText(e)),
+  });
+  if (!prefs.data) return null;
+  const rows = prefs.data.filter((p) => teaching || STUDENT_EVENTS.includes(p.event));
+  return (
+    <Panel title={t("settings.notifications")}>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-xs text-muted-foreground">
+            <th className="py-1 font-normal" />
+            {SHOWN_CHANNELS.map((c) => <th key={c} className="w-20 py-1 text-center font-normal">{t(`settings.channel.${c}`)}</th>)}
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {rows.map((p) => (
+            <tr key={p.event}>
+              <td className="py-2 pr-3 break-words">{t(`settings.event.${p.event}`)}</td>
+              {SHOWN_CHANNELS.map((c) => {
+                const pref = p.channels.find((x) => x.channel === c);
+                return (
+                  <td key={c} className="py-2 text-center">
+                    {pref ? (
+                      <input
+                        type="checkbox"
+                        className="accent-link"
+                        aria-label={`${t(`settings.event.${p.event}`)} · ${t(`settings.channel.${c}`)}`}
+                        disabled={set.isPending}
+                        checked={pref.enabled}
+                        onChange={(e) => set.mutate({ event: p.event, channel: c, enabled: e.target.checked })}
+                      />
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Panel>
+  );
+}
+
 export default function SettingsPage() {
   const { user, loading, logout } = useAuth();
   const { locale } = useI18n();
@@ -158,6 +211,8 @@ export default function SettingsPage() {
         </Panel>
 
         {user.workspaces.length > 0 && <AiUsagePanel />}
+
+        <NotificationPreferencesPanel teaching={user.workspaces.length > 0} />
 
         <Panel title={t("settings.partner")}>
           {user.partnerStatus ? (

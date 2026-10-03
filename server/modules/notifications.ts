@@ -13,11 +13,11 @@ export function dedupeCutoff(now: Date, windowMs: number): Date {
 }
 
 /**
- * Like `notify`, but skipped if this user already got the notification `dedupeKey` within
- * `windowMs`. The claim is a single INSERT IGNORE / conditional UPDATE, so concurrent callers
- * (several reviews finishing at once, several server instances) send it once.
+ * True at most once per `windowMs` for this user and `dedupeKey` (throttle for repeating alerts).
+ * The claim is a single INSERT IGNORE / conditional UPDATE, so concurrent callers (several
+ * reviews finishing at once, several server instances) get true once.
  */
-export async function notifyOnce(userId: number, dedupeKey: string, windowMs: number, title: string, body: string): Promise<boolean> {
+export async function claimOnce(userId: number, dedupeKey: string, windowMs: number): Promise<boolean> {
   const db = requireDb();
   const now = new Date();
   const [inserted] = await db.insert(notificationDedupe).ignore().values({ userId, dedupeKey, lastSentAt: now });
@@ -28,7 +28,6 @@ export async function notifyOnce(userId: number, dedupeKey: string, windowMs: nu
       .where(and(eq(notificationDedupe.userId, userId), eq(notificationDedupe.dedupeKey, dedupeKey), lte(notificationDedupe.lastSentAt, dedupeCutoff(now, windowMs))));
     if (renewed.affectedRows !== 1) return false;
   }
-  await notify(userId, title, body);
   return true;
 }
 

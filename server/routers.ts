@@ -22,7 +22,7 @@ import { clearNamedCookie } from "./_core/cookies";
 import { ENV } from "./_core/env";
 import { requestMeta } from "./_core/requestMeta";
 import { systemRouter } from "./_core/systemRouter";
-import { GROUP_FORMATS, GROUP_JOIN_POLICIES, PROVIDER_TYPES, TASK_ACCESS_MODES, UI_CONTEXTS, type TaskAccessMode } from "../drizzle/schema";
+import { GROUP_FORMATS, GROUP_JOIN_POLICIES, PROVIDER_TYPES, PUSH_PLATFORMS, TASK_ACCESS_MODES, UI_CONTEXTS, type TaskAccessMode } from "../drizzle/schema";
 import { adminRouter } from "./adminRouter";
 import {
   limited,
@@ -39,6 +39,7 @@ import { canEnterContext, defaultContext, ensurePartnerProfile, resolveAccess, t
 import * as activity from "./modules/activity";
 import { adminView } from "./modules/admin/authz";
 import * as ai from "./modules/ai";
+import * as aiFeedbackNotify from "./modules/aiFeedbackNotify";
 import * as aiReview from "./modules/aiReview";
 import * as analytics from "./modules/analytics";
 import * as assessments from "./modules/assessments";
@@ -56,6 +57,9 @@ import * as shareTracking from "./modules/shareTracking";
 import { canSeeTaskContent, rosterStudentIds } from "./modules/taskAccess";
 import * as tasks from "./modules/tasks";
 import * as workspaces from "./modules/workspaces";
+import { CHANNELS, EVENT_TYPES } from "./notifications/events";
+import * as notificationPreferences from "./notifications/preferences";
+import * as push from "./notifications/push";
 import { store } from "./resulioStore";
 import { SHARE_CAMPAIGNS, SHARE_CHANNELS, SHARE_TARGET_TYPES, VISITOR_ID_PATTERN } from "../shared/shareTracking";
 
@@ -623,6 +627,10 @@ const teacherTasksRouter = router({
     .use(rateLimit("rerunAiReview", 10, MINUTE))
     .input(z.object({ submissionId: entityId }))
     .mutation(({ ctx, input }) => aiReview.rerunReview(ctx.scope, input.submissionId)),
+  /** Whether finished AI pre-reviews of this task are e-mailed to the student (on by default). */
+  setAiFeedbackToStudent: teacherProcedure
+    .input(z.object({ taskId: entityId, enabled: z.boolean() }))
+    .mutation(({ ctx, input }) => aiFeedbackNotify.setAiFeedbackToStudent(ctx.scope, input.taskId, input.enabled)),
   grade: teacherProcedure
     .input(
       z.object({
@@ -937,6 +945,40 @@ const inboxRouter = router({
     await notifications.markRead(ctx.user.id, input.id);
     return { ok: true };
   }),
+  /** Which events reach this user on which channel (all on unless turned off). */
+  preferences: protectedProcedure.query(({ ctx }) => notificationPreferences.preferencesFor(ctx.user.id)),
+  setPreference: protectedProcedure
+    .use(rateLimit("notificationPreference", 60, MINUTE))
+    .input(z.object({ event: z.enum(EVENT_TYPES), channel: z.enum(CHANNELS), enabled: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      await notificationPreferences.setPreference(ctx.user.id, input.event, input.channel, input.enabled);
+      return { ok: true };
+    }),
+});
+
+/** Mobile push tokens; the app registers after sign-in and unregisters on sign-out. See docs/NOTIFICATIONS.md. */
+const pushToken = z
+  .string()
+  .trim()
+  .min(8)
+  .max(255)
+  .regex(/^[\x21-\x7e]+$/, "INVALID_TOKEN");
+
+const devicesRouter = router({
+  register: protectedProcedure
+    .use(rateLimit("registerDevice", 20, MINUTE))
+    .input(z.object({ platform: z.enum(PUSH_PLATFORMS), token: pushToken, provider: z.enum(push.PUSH_PROVIDERS).default("expo") }))
+    .mutation(async ({ ctx, input }) => {
+      await push.registerDevice(ctx.user.id, input);
+      return { ok: true, pushEnabled: push.pushEnabled() };
+    }),
+  unregister: protectedProcedure
+    .use(rateLimit("unregisterDevice", 20, MINUTE))
+    .input(z.object({ token: pushToken }))
+    .mutation(async ({ ctx, input }) => {
+      await push.unregisterDevice(ctx.user.id, input.token);
+      return { ok: true };
+    }),
 });
 
 // ---------------------------------------------------------------------------
@@ -1005,6 +1047,7 @@ export const appRouter = router({
   student: studentRouter,
   public: publicRouter,
   inbox: inboxRouter,
+  devices: devicesRouter,
 });
 
 export type AppRouter = typeof appRouter;

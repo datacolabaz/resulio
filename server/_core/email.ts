@@ -48,8 +48,23 @@ export function escapeHtml(value: string): string {
 }
 
 /** One-column layout with a single call-to-action button; every argument must already be escaped. */
-export function emailLayout(input: { heading: string; paragraphs: string[]; buttonLabel: string; buttonUrl: string; footer: string }): string {
-  const p = input.paragraphs.map((x) => `<p style="margin:0 0 12px;font-size:15px;line-height:1.5;color:#1f2937">${x}</p>`).join("");
+export function emailLayout(input: {
+  heading: string;
+  paragraphs: string[];
+  lists?: Array<{ heading: string; items: string[] }>;
+  buttonLabel: string;
+  buttonUrl: string;
+  footer: string;
+}): string {
+  const p =
+    input.paragraphs.map((x) => `<p style="margin:0 0 12px;font-size:15px;line-height:1.5;color:#1f2937">${x}</p>`).join("") +
+    (input.lists ?? [])
+      .filter((l) => l.items.length)
+      .map(
+        (l) =>
+          `<p style="margin:16px 0 6px;font-size:15px;font-weight:bold;color:#111827">${l.heading}</p><ul style="margin:0 0 12px;padding-left:20px;font-size:15px;line-height:1.5;color:#1f2937">${l.items.map((i) => `<li>${i}</li>`).join("")}</ul>`,
+      )
+      .join("");
   return `<!doctype html><html><body style="margin:0;padding:24px;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:12px;padding:28px">
@@ -76,11 +91,14 @@ export function emailEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return false;
 }
 
-export type SendResult = { ok: true; id: string | null } | { ok: false; reason: "NOT_CONFIGURED" | "HTTP_ERROR" | "NETWORK_ERROR" };
+/** `retryable`: a later attempt may succeed (timeouts, 429, 5xx); 4xx and missing config will not. */
+export type SendResult =
+  | { ok: true; id: string | null }
+  | { ok: false; reason: "NOT_CONFIGURED" | "HTTP_ERROR" | "NETWORK_ERROR"; retryable: boolean };
 
 export async function sendEmail(message: EmailMessage, deps: { fetch?: typeof fetch; env?: NodeJS.ProcessEnv } = {}): Promise<SendResult> {
   const config = emailEnabled(deps.env) ? emailConfig(deps.env) : null;
-  if (!config) return { ok: false, reason: "NOT_CONFIGURED" };
+  if (!config) return { ok: false, reason: "NOT_CONFIGURED", retryable: false };
   try {
     const response = await (deps.fetch ?? fetch)(RESEND_ENDPOINT, {
       method: "POST",
@@ -91,13 +109,13 @@ export async function sendEmail(message: EmailMessage, deps: { fetch?: typeof fe
     if (!response.ok) {
       const body = (await response.text().catch(() => "")).slice(0, 300);
       console.error(`[email] Resend responded ${response.status}`, body);
-      return { ok: false, reason: "HTTP_ERROR" };
+      return { ok: false, reason: "HTTP_ERROR", retryable: response.status === 429 || response.status >= 500 };
     }
     const json = (await response.json().catch(() => ({}))) as { id?: unknown };
     return { ok: true, id: typeof json.id === "string" ? json.id : null };
   } catch (error) {
     console.error("[email] send failed", error instanceof Error ? error.name : "unknown");
-    return { ok: false, reason: "NETWORK_ERROR" };
+    return { ok: false, reason: "NETWORK_ERROR", retryable: true };
   }
 }
 

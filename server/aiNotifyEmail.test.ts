@@ -147,7 +147,7 @@ describe("Resend client", () => {
   it("skips without a key and never calls the API", async () => {
     const request = vi.fn();
     vi.spyOn(console, "info").mockImplementation(() => undefined);
-    expect(await sendEmail(message, { fetch: request, env: {} })).toEqual({ ok: false, reason: "NOT_CONFIGURED" });
+    expect(await sendEmail(message, { fetch: request, env: {} })).toEqual({ ok: false, reason: "NOT_CONFIGURED", retryable: false });
     expect(request).not.toHaveBeenCalled();
   });
 
@@ -155,7 +155,7 @@ describe("Resend client", () => {
     const request = vi.fn(async (_url: string, _init: RequestInit) => new Response("bad", { status: 422 }));
     const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const env = { RESEND_API_KEY: "re_secret_123", EMAIL_FROM: "Resulio <noreply@resulio.co>" };
-    expect(await sendEmail(message, { fetch: request as unknown as typeof fetch, env })).toEqual({ ok: false, reason: "HTTP_ERROR" });
+    expect(await sendEmail(message, { fetch: request as unknown as typeof fetch, env })).toEqual({ ok: false, reason: "HTTP_ERROR", retryable: false });
     const [url, init] = request.mock.calls[0];
     expect(url).toBe(RESEND_ENDPOINT);
     expect((init.headers as Record<string, string>).authorization).toBe("Bearer re_secret_123");
@@ -170,6 +170,8 @@ describe("Resend client", () => {
     expect(await sendEmail(message, { fetch: ok as unknown as typeof fetch, env })).toEqual({ ok: true, id: "msg_1" });
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const down = vi.fn(async () => { throw new DOMException("timeout", "TimeoutError"); });
-    expect(await sendEmail(message, { fetch: down as unknown as typeof fetch, env })).toEqual({ ok: false, reason: "NETWORK_ERROR" });
+    expect(await sendEmail(message, { fetch: down as unknown as typeof fetch, env })).toEqual({ ok: false, reason: "NETWORK_ERROR", retryable: true });
+    const busy = vi.fn(async () => new Response("slow down", { status: 429 }));
+    expect(await sendEmail(message, { fetch: busy as unknown as typeof fetch, env })).toEqual({ ok: false, reason: "HTTP_ERROR", retryable: true });
   });
 });

@@ -9,6 +9,7 @@ import { requireDb } from "../db";
 import { managedWorkspaces, type TeacherScope } from "./access";
 import { extractJson } from "./ai";
 import { providerAlertFor, sendAiAlert, usageAlertFor } from "./aiAlerts";
+import { aiFeedbackEnabledForTask, notifyAiFeedbackReady } from "./aiFeedbackNotify";
 import { AppError } from "./errors";
 import { ALLOWED_FILE_TYPES, extensionOf, MAX_FILE_BYTES } from "./files";
 import { extractSubmissionText } from "./textExtract";
@@ -294,6 +295,7 @@ export async function runAiReview(submissionId: string, runId: string) {
   }
   const { score, feedback, ...details } = outcome.review;
   await finishRun(submissionId, runId, { ...base, status: "DONE", model: outcome.model || null, suggestedScore: score, feedback, details });
+  await notifyAiFeedbackReady(submissionId);
 }
 
 /** Records PENDING now and runs the review after the response; failures are logged, never thrown. */
@@ -327,6 +329,7 @@ export async function reviewsForTask(scope: TeacherScope, taskId: string) {
   const now = Date.now();
   return {
     ai: { enabled: ENV.aiReviewEnabled, dailyLimit: ENV.aiReviewDailyLimit, usedToday: ENV.aiReviewEnabled ? await usedInLastDay(scope.workspaceId) : 0 },
+    aiFeedbackToStudent: await aiFeedbackEnabledForTask(taskId),
     reviews: rows.map((r) => ({
       submissionId: r.submissionId,
       status: r.status,

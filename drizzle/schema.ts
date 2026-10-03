@@ -844,6 +844,75 @@ export const notificationDedupe = mysqlTable(
   (t) => [primaryKey({ columns: [t.userId, t.dedupeKey] })],
 );
 
+/**
+ * Outbox and audit log of the notification dispatcher (server/notifications): one row per
+ * (event, user, channel). `dedupeKey` is unique so the same notice is never delivered twice.
+ */
+export const notificationDeliveries = mysqlTable(
+  "notification_deliveries",
+  {
+    id: bigint("id", { mode: "number" }).autoincrement().primaryKey(),
+    dedupeKey: varchar("dedupeKey", { length: 191 }).notNull().unique(),
+    event: varchar("event", { length: 40 }).notNull(),
+    userId: int("userId").notNull(),
+    channel: varchar("channel", { length: 16 }).notNull(),
+    /** QUEUED | SENDING | SENT | SKIPPED | FAILED */
+    status: varchar("status", { length: 16 }).notNull().default("QUEUED"),
+    attempts: int("attempts").notNull().default(0),
+    nextAttemptAt: timestamp("nextAttemptAt"),
+    /** Event data needed to render the message; never secrets. */
+    payload: json("payload").$type<Record<string, unknown>>().notNull(),
+    error: varchar("error", { length: 255 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [
+    index("notification_deliveries_status_idx").on(t.status, t.nextAttemptAt),
+    index("notification_deliveries_user_idx").on(t.userId, t.createdAt),
+  ],
+);
+
+/** Per user opt-outs (and opt-ins) by event type and channel; no row = the event's default. */
+export const notificationPreferences = mysqlTable(
+  "notification_preferences",
+  {
+    userId: int("userId").notNull(),
+    event: varchar("event", { length: 40 }).notNull(),
+    channel: varchar("channel", { length: 16 }).notNull(),
+    enabled: boolean("enabled").notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.event, t.channel] })],
+);
+
+export const PUSH_PLATFORMS = ["ios", "android", "web"] as const;
+
+/**
+ * Push tokens of a user's devices (mobile app). Stored as-is because the push provider needs
+ * them; treat as sensitive and never return them to clients or logs.
+ */
+export const pushDevices = mysqlTable(
+  "push_devices",
+  {
+    id: id("id").primaryKey(),
+    userId: int("userId").notNull(),
+    platform: mysqlEnum("platform", PUSH_PLATFORMS).notNull(),
+    provider: varchar("provider", { length: 16 }).notNull(),
+    token: varchar("token", { length: 255 }).notNull().unique(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    lastSeenAt: timestamp("lastSeenAt").defaultNow().notNull(),
+    revokedAt: timestamp("revokedAt"),
+  },
+  (t) => [index("push_devices_user_idx").on(t.userId)],
+);
+
+/** Teacher's per-task notification switches; no row = defaults (AI feedback e-mail on). */
+export const taskNotificationSettings = mysqlTable("task_notification_settings", {
+  taskId: id("taskId").primaryKey(),
+  aiFeedbackToStudent: boolean("aiFeedbackToStudent").notNull().default(true),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 /** Last "your grade is ready" e-mail per submission and the score it announced; dedupes re-saves. */
 export const gradeEmailLog = mysqlTable("grade_email_log", {
   submissionId: id("submissionId").primaryKey(),

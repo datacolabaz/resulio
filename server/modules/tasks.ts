@@ -3,6 +3,7 @@ import { nanoid } from "nanoid";
 import { files, materials, submissionAiReviews, taskSubmissions, tasks, type SubmissionAiReview, type TaskAccessMode, type TaskSubmission } from "../../drizzle/schema";
 import { sendEmailInBackground } from "../_core/email";
 import { requireDb } from "../db";
+import { dispatch } from "../notifications/dispatcher";
 import { managedWorkspaces, type TeacherScope } from "./access";
 import { clampScore, scheduleAiReview, submissionInScope } from "./aiReview";
 import { AppError } from "./errors";
@@ -204,7 +205,16 @@ export async function gradeSubmission(
       aiFeedbackReleased: input.release && input.shareAiFeedback,
     })
     .where(eq(taskSubmissions.id, input.submissionId));
-  if (input.release && !current.feedbackReleasedAt) await notifications.notify(current.studentId, "Tapşırıq qiymətləndirildi", "Müəllim rəy yazdı");
+  if (input.release && !current.feedbackReleasedAt) {
+    const [task] = await requireDb().select({ title: tasks.title }).from(tasks).where(eq(tasks.id, current.taskId)).limit(1);
+    dispatch({
+      event: "GRADE_RELEASED",
+      userId: current.studentId,
+      dedupeKey: `grade-inapp:${input.submissionId}:${now.getTime()}`,
+      channels: ["IN_APP"],
+      data: { taskTitle: task?.title ?? "", score },
+    });
+  }
   const save = { before: { wasReleased: current.feedbackReleasedAt !== null, score: current.score }, after: { release: input.release, score } };
   if (gradeEmailKind(save, undefined)) sendEmailInBackground(() => deliverGradeEmail(input.submissionId, save));
   return submissionInScope(scope, input.submissionId);

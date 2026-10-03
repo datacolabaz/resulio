@@ -53,6 +53,10 @@ AI question generation and submission pre-review call any OpenAI-compatible `cha
 
 Current e-mail: when a teacher clicks **Yadda saxla və tələbəyə göstər**, the student gets "your task was graded" with the task title, score and a link to `/student/assignments` — never the feedback text. A later change of the released score sends an "updated" e-mail; re-saving the same score sends nothing (`grade_email_log`, migration `0022`; alerts dedupe in `notification_dedupe`, same migration). Until `0022` is applied, alerts and e-mails are skipped (logged) and everything else keeps working. Language: the student's saved UI language (AZ/EN/RU), default AZ. Sending happens after the save, with a 10 s timeout, and never fails the grading request.
 
+When an AI pre-review finishes, the student also gets the AI feedback by e-mail (summary, strengths, improvements — never the suggested score), marked as preliminary with the final grade coming from the teacher. Not sent if prompt injection was flagged, the review failed/was skipped, the work is already graded, or the teacher unticked **AI rəyini tələbəyə avtomatik göndər** for the task (on by default). At most once per submission.
+
+All of these go through one dispatcher with a delivery log, retries and per-user preferences (Settings → Notifications); mobile push is prepared but off. See [docs/NOTIFICATIONS.md](docs/NOTIFICATIONS.md).
+
 ## File storage
 
 Uploads (task attachments, materials, submissions; max 8 MB) are stored in MySQL, base64 in the `files` table (`server/modules/files.ts`), and served by `GET /api/files/:id`. No S3 or `MANUS_*` variables are involved; `server/storage.ts` and `server/_core/storageProxy.ts` are unused Manus template code.
