@@ -224,6 +224,12 @@ export const teacher = {
   "weekday.full.SAT": ["Şənbə", "Saturday", "Суббота"],
   "weekday.full.SUN": ["Bazar", "Sunday", "Воскресенье"],
   "groups.scheduleVisibleLabel": ["Cədvəli tələbələrə göstər", "Show schedule to students", "Показывать расписание студентам"],
+  "groups.scoresVisibleLabel": ["Ballar qrupda görünsün", "Show scores within the group", "Показывать баллы внутри группы"],
+  "groups.scoresVisibleHint": [
+    "Tələbələr qrup yoldaşlarının tələbəyə göstərdiyiniz tapşırıq ballarını görür. Söndürsəniz, hər kəs yalnız öz balını görür.",
+    "Students see the task scores you have shown to their groupmates. When off, everyone sees only their own scores.",
+    "Студенты видят баллы одногруппников, которые вы им показали. Если выключено, каждый видит только свои баллы.",
+  ],
   "groups.scheduleVisibleHint": [
     "Aktiv olduqda başlama tarixi, dərs günləri və saatı qoşulma preview-ündə görünür.",
     "When on, the start date, class days and time appear on the join-preview screen.",

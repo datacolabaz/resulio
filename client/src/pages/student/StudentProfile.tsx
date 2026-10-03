@@ -1,5 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
-import { ActivityChart } from "@/components/ActivityBlocks";
+import { ActivityChart, ScoreBoardTable } from "@/components/ActivityBlocks";
 import { AppShell, ErrorNote, Loading, Panel, StatCard } from "@/components/AppShell";
 import { t } from "@/i18n/messages";
 import { fmtDateTime } from "@/lib/format";
@@ -53,12 +53,29 @@ export default function StudentProfile() {
                 <p className="text-sm text-muted-foreground">{t("student.noGroups")}</p>
               ) : (
                 <ul className="divide-y">
-                  {q.data.groups.map((g) => (
-                    <li key={g.groupId} className="flex items-center justify-between gap-2 py-2 text-sm">
-                      <span className="min-w-0 break-words">{g.name}</span>
-                      <span className="shrink-0 font-semibold">{t("motivation.rankOf", { rank: g.rank, of: g.of })}</span>
-                    </li>
-                  ))}
+                  {q.data.groups.map((g) => {
+                    const mine = g.scores.rows.find((r) => r.isYou);
+                    const ranked = g.scores.rows.filter((r) => r.rank !== null).length;
+                    return (
+                      <li key={g.groupId} className="space-y-2 py-2 text-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="min-w-0 break-words">{g.name}</span>
+                          <span className="shrink-0 text-right">
+                            <span className="block font-semibold">{t("motivation.rankOf", { rank: g.rank, of: g.of })}</span>
+                            {g.scores.visible && mine?.rank && (
+                              <span className="block text-xs text-muted-foreground">{t("motivation.scoreRank", { rank: mine.rank, of: ranked })}</span>
+                            )}
+                          </span>
+                        </div>
+                        {g.scores.tasks.length > 0 && (
+                          <details>
+                            <summary className="cursor-pointer text-xs text-link">{g.scores.visible ? t("motivation.groupScores") : t("motivation.myScores")}</summary>
+                            <div className="mt-2"><ScoreBoardTable data={g.scores} /></div>
+                          </details>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
               <Link href="/student/groups" className="mt-2 inline-block text-xs text-link underline-offset-2 hover:underline">{t("nav.myGroups")}</Link>

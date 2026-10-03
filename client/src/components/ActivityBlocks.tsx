@@ -36,6 +36,57 @@ export function PlaceBadge({ place }: { place: number }) {
   );
 }
 
+interface ScoreBoardData {
+  visible: boolean;
+  tasks: { id: string; title: string }[];
+  rows: { name: string | null; isYou: boolean; scores: (number | null)[]; total: number; average: number | null; gradedCount: number; rank: number | null }[];
+}
+
+/** Released task scores: student x task, with average and total. With group visibility off it holds only the viewer's row. */
+export function ScoreBoardTable({ data }: { data: ScoreBoardData }) {
+  return (
+    <div className="space-y-1.5">
+      {!data.visible && <p className="text-xs text-muted-foreground">{t("motivation.scoresHidden")}</p>}
+      {!data.tasks.length ? (
+        <p className="text-xs text-muted-foreground">{t("motivation.noReleasedScores")}</p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-border bg-card">
+          <table className="w-full text-sm">
+            <caption className="sr-only">{t("motivation.scoreTable")}</caption>
+            <thead className="text-left text-xs text-muted-foreground">
+              <tr>
+                <th scope="col" className="px-2 py-1.5">#</th>
+                <th scope="col" className="px-2">{t("common.student")}</th>
+                {data.tasks.map((task) => (
+                  <th key={task.id} scope="col" className="max-w-32 px-2 font-normal">
+                    <span className="line-clamp-2 break-words" title={task.title}>{task.title}</span>
+                  </th>
+                ))}
+                <th scope="col" className="px-2">{t("motivation.averageScore")}</th>
+                <th scope="col" className="px-2">{t("motivation.totalScore")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {data.rows.map((r, i) => (
+                <tr key={i} className={r.isYou ? "bg-muted/60 font-semibold" : ""}>
+                  <td className="px-2 py-1.5 text-muted-foreground">{r.rank ?? "—"}</td>
+                  <td className="break-words px-2">
+                    {r.name ?? t("common.student")}
+                    {r.isYou && <span className="ml-1 text-xs font-normal text-muted-foreground">{t("motivation.you")}</span>}
+                  </td>
+                  {r.scores.map((s, j) => <td key={j} className="px-2 tabular-nums">{s ?? "—"}</td>)}
+                  <td className="px-2 tabular-nums">{r.average ?? "—"}</td>
+                  <td className="px-2 tabular-nums">{r.gradedCount ? r.total : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** "Who turned it in first" for one task: up to three names with their place. */
 export function FirstSubmittersList({ items }: { items: { place: number; name: string | null; isYou?: boolean }[] }) {
   if (!items.length) return <p className="text-xs text-muted-foreground">{t("motivation.noSubmissionsYet")}</p>;

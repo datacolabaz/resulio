@@ -50,6 +50,7 @@ export interface GroupScheduleInput {
   startDate: Date | null;
   classSchedule: ClassScheduleEntry[];
   scheduleVisible: boolean;
+  scoresVisibleToGroup: boolean;
 }
 
 export async function createGroup(

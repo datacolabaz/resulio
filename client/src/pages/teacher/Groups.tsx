@@ -158,6 +158,7 @@ interface GroupFormInitial {
   startDate: string | Date | null;
   classSchedule: ClassScheduleEntry[];
   scheduleVisible: boolean;
+  scoresVisibleToGroup: boolean;
 }
 
 /** `startDate` ↔ a bare YYYY-MM-DD for <input type="date">; the server stores it as a timestamp. */
@@ -191,6 +192,7 @@ function GroupFormDialog({
     startDate: dateOnly(initial?.startDate),
     classSchedule: initial?.classSchedule ?? ([] as ClassScheduleEntry[]),
     scheduleVisible: initial?.scheduleVisible ?? false,
+    scoresVisibleToGroup: initial?.scoresVisibleToGroup ?? true,
   });
   const done = () => { void utils.teacher.groups.invalidate(); onOpenChange(false); };
   const create = trpc.teacher.groups.create.useMutation({
@@ -281,6 +283,13 @@ function GroupFormDialog({
               </label>
               <Switch id="schedule-visible" checked={f.scheduleVisible} onCheckedChange={(v) => setF({ ...f, scheduleVisible: v })} />
             </div>
+          </div>
+          <div className="flex items-center justify-between gap-3 rounded-xl border p-3">
+            <label htmlFor="scores-visible" className="flex-1 text-sm">
+              <span className="block font-medium">{t("groups.scoresVisibleLabel")}</span>
+              <span className="block text-xs text-muted-foreground">{t("groups.scoresVisibleHint")}</span>
+            </label>
+            <Switch id="scores-visible" checked={f.scoresVisibleToGroup} onCheckedChange={(v) => setF({ ...f, scoresVisibleToGroup: v })} />
           </div>
         </div>
         <DialogFooter>

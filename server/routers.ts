@@ -289,6 +289,7 @@ const groupInput = z.object({
     .refine((entries) => new Set(entries.map((e) => e.day)).size === entries.length, { message: "Duplicate day" })
     .default([]),
   scheduleVisible: z.boolean().default(false),
+  scoresVisibleToGroup: z.boolean().default(true),
 });
 
 /** Turns the wire-format ISO string into a Date for Drizzle, passing through null/undefined untouched. */
@@ -301,7 +302,13 @@ const teacherGroupsRouter = router({
   overview: teacherProcedure.query(({ ctx }) => analytics.groupsOverview(ctx.scope)),
   create: teacherProcedure.input(groupInput).mutation(({ ctx, input }) => groups.createGroup(ctx.scope, groupPatchForDb(input))),
   update: teacherProcedure
-    .input(z.object({ id: entityId, patch: groupInput.partial() }))
+    .input(
+      z.object({
+        id: entityId,
+        // Without these overrides `.partial()` would still fill in defaults and flip settings the patch never mentioned.
+        patch: groupInput.partial().extend({ scheduleVisible: z.boolean().optional(), scoresVisibleToGroup: z.boolean().optional() }),
+      }),
+    )
     .mutation(({ ctx, input }) => groups.renameGroup(ctx.scope, input.id, groupPatchForDb(input.patch))),
   detail: teacherProcedure.input(z.object({ id: entityId })).query(async ({ ctx, input }) => {
     const group = await groups.assertGroupOwner(ctx.scope, input.id);

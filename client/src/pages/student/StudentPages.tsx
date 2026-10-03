@@ -1,4 +1,4 @@
-import { FirstSubmittersList } from "@/components/ActivityBlocks";
+import { FirstSubmittersList, ScoreBoardTable } from "@/components/ActivityBlocks";
 import { ProgressChart, TopicBars } from "@/components/AnalyticsBlocks";
 import { AppShell, ChoiceChip, EmptyState, ErrorNote, Loading, Panel, Pill, StatCard } from "@/components/AppShell";
 import { SingleFileUpload } from "@/components/FileUpload";
@@ -450,9 +450,13 @@ export function StudentGroups() {
 function GroupBoardPanel({ groupId }: { groupId: string }) {
   const b = trpc.student.groupBoard.useQuery({ groupId });
   if (!b.data) return b.error ? <ErrorNote error={b.error} /> : <Loading />;
-  const { me, leaderboard, tasks } = b.data;
+  const { me, leaderboard, tasks, scores } = b.data;
   return (
     <div className="mt-2 space-y-3 rounded-lg bg-muted/40 p-3">
+      <div>
+        <h4 className="mb-1.5 text-xs font-medium text-foreground-secondary">{scores.visible ? t("motivation.groupScores") : t("motivation.myScores")}</h4>
+        <ScoreBoardTable data={scores} />
+      </div>
       {me && (
         <div className="grid grid-cols-3 gap-2">
           <StatCard label={t("motivation.yourPlace")} value={t("motivation.rankOf", { rank: me.rank, of: me.of })} />

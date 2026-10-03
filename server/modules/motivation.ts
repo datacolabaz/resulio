@@ -138,6 +138,78 @@ export function rankStudents<T extends StudentStats>(rows: T[]): Array<T & { ran
 
 export const onTimeRate = (s: Pick<StudentStats, "submitted" | "onTime">) => (s.submitted ? Math.round((s.onTime / s.submitted) * 100) : 0);
 
+export interface GradeFact {
+  taskId: string;
+  studentId: number;
+  score: number | null;
+  feedbackReleasedAt: Date | null;
+}
+
+export interface ScoreBoardRow {
+  name: string | null;
+  isYou: boolean;
+  /** One entry per column in `tasks`; null = no released score. */
+  scores: Array<number | null>;
+  total: number;
+  average: number | null;
+  gradedCount: number;
+  rank: number | null;
+}
+
+const round1 = (n: number) => Math.round(n * 10) / 10;
+
+/**
+ * Released task scores of a group as students may see them. Only grades the teacher released
+ * count. With `visible` off the board holds the viewer's own row only. Rows carry names and
+ * numbers — never ids, e-mails, feedback or AI output.
+ */
+export function groupScoreBoard(input: {
+  visible: boolean;
+  viewerId: number;
+  members: Array<{ studentId: number; name: string | null }>;
+  tasks: Array<{ id: string; title: string }>;
+  grades: GradeFact[];
+}): { visible: boolean; tasks: Array<{ id: string; title: string }>; rows: ScoreBoardRow[] } {
+  const subjects = input.visible ? input.members : input.members.filter((m) => m.studentId === input.viewerId);
+  const subjectIds = new Set(subjects.map((m) => m.studentId));
+  const taskIds = new Set(input.tasks.map((t) => t.id));
+  const released = new Map<string, number>();
+  for (const g of input.grades) {
+    if (!g.feedbackReleasedAt || g.score === null || !Number.isFinite(g.score)) continue;
+    if (!subjectIds.has(g.studentId) || !taskIds.has(g.taskId)) continue;
+    released.set(`${g.studentId}:${g.taskId}`, g.score);
+  }
+  const columns = input.tasks.filter((t) => subjects.some((m) => released.has(`${m.studentId}:${t.id}`)));
+  const rows = subjects.map((m) => {
+    const scores = columns.map((t) => released.get(`${m.studentId}:${t.id}`) ?? null);
+    const graded = scores.filter((s): s is number => s !== null);
+    const sum = graded.reduce((a, b) => a + b, 0);
+    return { studentId: m.studentId, name: m.name, isYou: m.studentId === input.viewerId, scores, total: round1(sum), average: graded.length ? round1(sum / graded.length) : null, gradedCount: graded.length };
+  });
+  const ranked = rows
+    .filter((r) => r.average !== null)
+    .sort((a, b) => b.average! - a.average! || b.total - a.total || a.studentId - b.studentId);
+  const rankOf = new Map<number, number>();
+  ranked.forEach((r, i) => {
+    const prev = ranked[i - 1];
+    rankOf.set(r.studentId, prev && prev.average === r.average && prev.total === r.total ? rankOf.get(prev.studentId)! : i + 1);
+  });
+  const ordered = [...ranked, ...rows.filter((r) => r.average === null).sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))];
+  return {
+    visible: input.visible,
+    tasks: columns.map((t) => ({ id: t.id, title: t.title })),
+    rows: ordered.map((r) => ({
+      name: r.name,
+      isYou: r.isYou,
+      scores: r.scores,
+      total: r.total,
+      average: r.average,
+      gradedCount: r.gradedCount,
+      rank: rankOf.get(r.studentId) ?? null,
+    })),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Loading
 // ---------------------------------------------------------------------------
@@ -154,9 +226,16 @@ async function groupData(groupId: string, workspaceId: string) {
     .map(({ groupIds: _g, ...t }) => t);
   const taskIds = groupTasks.map((t) => t.id);
   const memberIds = members.map((m) => m.studentId);
-  const subs: SubmissionFact[] = taskIds.length
+  const subs: Array<SubmissionFact & GradeFact> = taskIds.length
     ? await db
-        .select({ taskId: taskSubmissions.taskId, studentId: taskSubmissions.studentId, firstSubmittedAt: taskSubmissions.firstSubmittedAt, submittedAt: taskSubmissions.submittedAt })
+        .select({
+          taskId: taskSubmissions.taskId,
+          studentId: taskSubmissions.studentId,
+          firstSubmittedAt: taskSubmissions.firstSubmittedAt,
+          submittedAt: taskSubmissions.submittedAt,
+          score: taskSubmissions.score,
+          feedbackReleasedAt: taskSubmissions.feedbackReleasedAt,
+        })
         .from(taskSubmissions)
         .where(inArray(taskSubmissions.taskId, taskIds))
     : [];
@@ -210,7 +289,7 @@ export async function teacherGroupActivity(scope: TeacherScope, groupId: string,
 
 async function activeMembership(userId: number, groupId: string) {
   const [row] = await requireDb()
-    .select({ id: groups.id, name: groups.name, workspaceId: groups.providerWorkspaceId })
+    .select({ id: groups.id, name: groups.name, workspaceId: groups.providerWorkspaceId, scoresVisible: groups.scoresVisibleToGroup })
     .from(groupMembers)
     .innerJoin(groups, eq(groups.id, groupMembers.groupId))
     .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId), eq(groupMembers.status, "ACTIVE"), eq(groupMembers.membershipRole, "STUDENT")))
@@ -218,7 +297,19 @@ async function activeMembership(userId: number, groupId: string) {
   return row ?? null;
 }
 
-/** Leaderboard for a group member: names, ranks and first places of classmates; full stats only for themselves. */
+const scoreBoardOf = (d: Awaited<ReturnType<typeof groupData>>, visible: boolean, viewerId: number) =>
+  groupScoreBoard({
+    visible,
+    viewerId,
+    members: d.members,
+    tasks: [...d.groupTasks].sort((a, b) => a.deadline.getTime() - b.deadline.getTime()),
+    grades: d.subs,
+  });
+
+/**
+ * Leaderboard for a group member: classmates' names, ranks and first places, plus their released
+ * scores when the teacher allows it for this group; full activity stats only for themselves.
+ */
 export async function studentGroupBoard(userId: number, groupId: string) {
   const group = await activeMembership(userId, groupId);
   if (!group) throw new AppError("NOT_FOUND");
@@ -227,6 +318,7 @@ export async function studentGroupBoard(userId: number, groupId: string) {
   const me = d.ranked.find((r) => r.studentId === userId) ?? null;
   return {
     group: { id: group.id, name: group.name },
+    scores: scoreBoardOf(d, group.scoresVisible, userId),
     me: me ? { rank: me.rank, of: d.ranked.length, submitted: me.submitted, onTime: me.onTime, onTimeRate: onTimeRate(me), firstPlaces: me.firstPlaces, podiums: me.podiums } : null,
     leaderboard: d.ranked.map((r) => ({ rank: r.rank, name: nameOf.get(r.studentId) ?? null, firstPlaces: r.firstPlaces, isYou: r.studentId === userId })),
     tasks: tasksNewestFirst(d.groupTasks).slice(0, 10).map((t) => ({
@@ -246,7 +338,7 @@ export async function studentGroupBoard(userId: number, groupId: string) {
 export async function studentProfile(userId: number) {
   const db = requireDb();
   const memberships = await db
-    .select({ id: groups.id, name: groups.name, workspaceId: groups.providerWorkspaceId })
+    .select({ id: groups.id, name: groups.name, workspaceId: groups.providerWorkspaceId, scoresVisible: groups.scoresVisibleToGroup })
     .from(groupMembers)
     .innerJoin(groups, eq(groups.id, groupMembers.groupId))
     .where(and(eq(groupMembers.userId, userId), eq(groupMembers.status, "ACTIVE"), eq(groupMembers.membershipRole, "STUDENT")));
@@ -267,13 +359,13 @@ export async function studentProfile(userId: number) {
 
   const own = studentStats([userId], mySubs.map((s) => ({ id: s.taskId, deadline: s.deadline })), mySubs.map((s) => ({ ...s, studentId: userId })))[0];
 
-  const groupRanks: Array<{ groupId: string; name: string; rank: number; of: number }> = [];
+  const groupRanks: Array<{ groupId: string; name: string; rank: number; of: number; scores: ReturnType<typeof groupScoreBoard> }> = [];
   const firstPlaceTasks = new Set<string>();
   const podiumTasks = new Set<string>();
   for (const g of memberships) {
     const d = await groupData(g.id, g.workspaceId);
     const me = d.ranked.find((r) => r.studentId === userId);
-    if (me) groupRanks.push({ groupId: g.id, name: g.name, rank: me.rank, of: d.ranked.length });
+    if (me) groupRanks.push({ groupId: g.id, name: g.name, rank: me.rank, of: d.ranked.length, scores: scoreBoardOf(d, g.scoresVisible, userId) });
     for (const t of d.groupTasks) {
       for (const f of firstSubmitters(d.subs.filter((s) => s.taskId === t.id), d.memberSet)) {
         if (f.studentId !== userId) continue;

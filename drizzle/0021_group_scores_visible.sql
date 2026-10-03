@@ -1,0 +1,1 @@
+ALTER TABLE `study_groups` ADD `scoresVisibleToGroup` boolean DEFAULT true NOT NULL;

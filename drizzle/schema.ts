@@ -163,6 +163,8 @@ export const groups = mysqlTable(
     classSchedule: json("classSchedule").$type<ClassScheduleEntry[]>().notNull().default([]),
     /** Whether classSchedule/startDate are shown on the public join-preview screen. */
     scheduleVisible: boolean("scheduleVisible").notNull().default(false),
+    /** Whether members see each other's released task scores; their own released scores are always visible. */
+    scoresVisibleToGroup: boolean("scoresVisibleToGroup").notNull().default(true),
     inviteCode: varchar("inviteCode", { length: 32 }).notNull().unique(),
     joinPolicy: mysqlEnum("joinPolicy", GROUP_JOIN_POLICIES).notNull().default("APPROVAL"),
     /** Deactivating stops new joins without burning the code value the way regenerating does. */

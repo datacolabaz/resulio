@@ -148,6 +148,13 @@
       "when": 1791049788226,
       "tag": "0020_task_first_submitted",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "5",
+      "when": 1791050717507,
+      "tag": "0021_group_scores_visible",
+      "breakpoints": true
     }
   ]
 }
