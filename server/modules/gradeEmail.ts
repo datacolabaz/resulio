@@ -1,9 +1,8 @@
 import { and, eq, sql } from "drizzle-orm";
-import { gradeEmailLog, taskSubmissions, tasks, users } from "../../drizzle/schema";
-import { emailEnabled } from "../_core/email";
+import { gradeEmailLog, taskSubmissions, tasks } from "../../drizzle/schema";
 import { requireDb } from "../db";
 import { dispatchNow } from "../notifications/dispatcher";
-import { pushEnabled } from "../notifications/push";
+import { isMissingTable } from "../notifications/preferences";
 import type { GradeEmailKind } from "../notifications/templates";
 
 export type { GradeEmailKind } from "../notifications/templates";
@@ -11,7 +10,8 @@ export { buildGradeEmail } from "../notifications/templates";
 
 /**
  * "Your grade is ready" e-mail (and push) to the student when the teacher releases a grade, and
- * an "updated" one when the released score later changes. The teacher's feedback text is never included.
+ * an "updated" one (also in-app) when the released score later changes. The teacher's feedback
+ * text is never included.
  */
 
 const sameScore = (a: number | null, b: number | null) => a === b;
@@ -38,19 +38,17 @@ export function gradeEmailKind({ before, after }: GradeSave, emailedScore: numbe
  * once), then sends. Runs in the background after the grade is saved; the caller swallows errors.
  */
 export async function deliverGradeEmail(submissionId: string, save: GradeSave) {
-  const push = pushEnabled();
-  if (gradeEmailKind(save, undefined) === null || (!emailEnabled() && !push)) return;
+  if (gradeEmailKind(save, undefined) === null) return;
   const db = requireDb();
   const score = save.after.score;
   const [row] = await db
-    .select({ title: tasks.title, studentId: taskSubmissions.studentId, email: users.email, score: taskSubmissions.score, releasedAt: taskSubmissions.feedbackReleasedAt })
+    .select({ title: tasks.title, studentId: taskSubmissions.studentId, score: taskSubmissions.score, releasedAt: taskSubmissions.feedbackReleasedAt })
     .from(taskSubmissions)
     .innerJoin(tasks, eq(tasks.id, taskSubmissions.taskId))
-    .innerJoin(users, eq(users.id, taskSubmissions.studentId))
     .where(eq(taskSubmissions.id, submissionId))
     .limit(1);
   // A newer save may already have hidden the grade or changed the score; that save decides then.
-  if (!row || (!row.email?.trim() && !push) || !row.releasedAt || !sameScore(row.score, score)) return;
+  if (!row || !row.releasedAt || !sameScore(row.score, score)) return;
 
   const [log] = await db.select({ score: gradeEmailLog.score }).from(gradeEmailLog).where(eq(gradeEmailLog.submissionId, submissionId)).limit(1);
   const kind = gradeEmailKind(save, log ? log.score : undefined);
@@ -68,7 +66,18 @@ export async function deliverGradeEmail(submissionId: string, save: GradeSave) {
     event: kind === "released" ? "GRADE_RELEASED" : "GRADE_UPDATED",
     userId: row.studentId,
     dedupeKey: `grade-email:${submissionId}:${now.getTime()}`,
-    channels: ["EMAIL", "PUSH"],
+    // The in-app "graded" message of a first release is sent by the grading request itself.
+    channels: kind === "released" ? ["EMAIL", "PUSH"] : ["IN_APP", "EMAIL", "PUSH"],
     data: { taskTitle: row.title, score },
   });
+}
+
+/** Remembers a score announced outside this flow (automatic AI grade), so re-saving it sends nothing. */
+export async function recordAnnouncedScore(submissionId: string, score: number | null) {
+  const sentAt = new Date();
+  try {
+    await requireDb().insert(gradeEmailLog).values({ submissionId, score, sentAt }).onDuplicateKeyUpdate({ set: { score, sentAt } });
+  } catch (error) {
+    if (!isMissingTable(error)) throw error;
+  }
 }

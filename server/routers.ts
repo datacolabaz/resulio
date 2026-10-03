@@ -39,8 +39,8 @@ import { canEnterContext, defaultContext, ensurePartnerProfile, resolveAccess, t
 import * as activity from "./modules/activity";
 import { adminView } from "./modules/admin/authz";
 import * as ai from "./modules/ai";
-import * as aiFeedbackNotify from "./modules/aiFeedbackNotify";
 import * as aiReview from "./modules/aiReview";
+import * as autoGrade from "./modules/autoGrade";
 import * as analytics from "./modules/analytics";
 import * as assessments from "./modules/assessments";
 import * as attempts from "./modules/attempts";
@@ -627,10 +627,10 @@ const teacherTasksRouter = router({
     .use(rateLimit("rerunAiReview", 10, MINUTE))
     .input(z.object({ submissionId: entityId }))
     .mutation(({ ctx, input }) => aiReview.rerunReview(ctx.scope, input.submissionId)),
-  /** Whether finished AI pre-reviews of this task are e-mailed to the student (on by default). */
-  setAiFeedbackToStudent: teacherProcedure
+  /** Whether a clean AI review of this task's submissions becomes the released grade at once (on by default). */
+  setAutoGrade: teacherProcedure
     .input(z.object({ taskId: entityId, enabled: z.boolean() }))
-    .mutation(({ ctx, input }) => aiFeedbackNotify.setAiFeedbackToStudent(ctx.scope, input.taskId, input.enabled)),
+    .mutation(({ ctx, input }) => autoGrade.setAutoGrade(ctx.scope, input.taskId, input.enabled)),
   grade: teacherProcedure
     .input(
       z.object({

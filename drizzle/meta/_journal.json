@@ -169,6 +169,13 @@
       "when": 1791055237711,
       "tag": "0023_notification_delivery",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "5",
+      "when": 1791057824314,
+      "tag": "0024_ai_auto_grade",
+      "breakpoints": true
     }
   ]
 }

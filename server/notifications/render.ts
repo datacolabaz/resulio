@@ -1,7 +1,7 @@
 import type { EmailMessage } from "../_core/email";
 import type { ServerLocale } from "../_core/locale";
 import type { EventData, EventType } from "./events";
-import { aiAlertText, aiFeedbackPushText, buildAiFeedbackEmail, buildGradeEmail, gradeInAppText } from "./templates";
+import { aiAlertText, aiGradeInAppText, buildAiGradeEmail, buildGradeEmail, gradeInAppText } from "./templates";
 
 export interface Recipient {
   locale: ServerLocale;
@@ -21,10 +21,10 @@ export function renderNotification<E extends EventType>(event: E, data: EventDat
   const { locale } = recipient;
   const to = recipient.email ?? "";
   switch (event) {
-    case "AI_FEEDBACK_READY": {
-      const d = data as EventData["AI_FEEDBACK_READY"];
-      const email = buildAiFeedbackEmail({ to, locale, appUrl, taskTitle: d.taskTitle, feedback: d.feedback, strengths: d.strengths, improvements: d.improvements });
-      return { ...aiFeedbackPushText(locale, d.taskTitle), path: "/student/assignments", email };
+    case "AI_GRADE_READY": {
+      const d = data as EventData["AI_GRADE_READY"];
+      const email = buildAiGradeEmail({ to, locale, appUrl, taskTitle: d.taskTitle, score: d.score, feedback: d.feedback, strengths: d.strengths, improvements: d.improvements });
+      return { ...aiGradeInAppText(locale, d.taskTitle, d.score), path: "/student/assignments", email };
     }
     case "GRADE_RELEASED":
     case "GRADE_UPDATED": {

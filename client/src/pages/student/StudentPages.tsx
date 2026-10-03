@@ -523,6 +523,9 @@ type ReleasedGradeData = NonNullable<NonNullable<RouterOutputs["student"]["tasks
 function ReleasedGrade({ grade }: { grade: ReleasedGradeData }) {
   return (
     <div className="space-y-1.5 rounded-lg border border-border p-2.5 text-sm">
+      {grade.source === "AI" && (
+        <div><StatusBadge tone="info"><Sparkles className="mr-1 inline h-3 w-3" aria-hidden />{t("student.gradedByAi")}</StatusBadge></div>
+      )}
       {grade.score !== null && <p className="font-semibold">{t("student.taskScore", { score: grade.score })}</p>}
       {!!grade.feedback && <p className="whitespace-pre-wrap break-words">{grade.feedback}</p>}
       {grade.ai && (
@@ -543,7 +546,9 @@ function ReleasedGrade({ grade }: { grade: ReleasedGradeData }) {
 
 export function StudentTasks() {
   const utils = trpc.useUtils();
-  const list = trpc.student.tasks.useQuery();
+  const list = trpc.student.tasks.useQuery(undefined, {
+    refetchInterval: (q) => (q.state.data?.some((a) => a.submission?.pending === "AI_CHECKING") ? 4000 : false),
+  });
   const [files, setFiles] = useState<Record<string, UploadedFile | null>>({});
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const submit = trpc.student.submitTask.useMutation({
@@ -587,7 +592,15 @@ export function StudentTasks() {
                   {!!a.submission.answerText && (
                     <p className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-muted/40 p-2 text-sm">{a.submission.answerText}</p>
                   )}
-                  {a.submission.grade ? <ReleasedGrade grade={a.submission.grade} /> : <p className="text-xs text-muted-foreground">{t("student.awaitingReview")}</p>}
+                  {a.submission.grade ? (
+                    <ReleasedGrade grade={a.submission.grade} />
+                  ) : a.submission.pending === "AI_CHECKING" ? (
+                    <p className="text-xs text-muted-foreground">{t("student.aiChecking")}</p>
+                  ) : a.submission.pending === "TEACHER_REVIEW" ? (
+                    <StatusBadge tone="warning">{t("student.teacherReviewPending")}</StatusBadge>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">{t("student.awaitingReview")}</p>
+                  )}
                 </div>
               ) : (
                 <div className="mt-3 space-y-2">

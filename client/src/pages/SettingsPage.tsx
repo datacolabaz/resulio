@@ -99,7 +99,7 @@ function AiUsagePanel() {
   );
 }
 
-const STUDENT_EVENTS = ["AI_FEEDBACK_READY", "GRADE_RELEASED", "GRADE_UPDATED"];
+const STUDENT_EVENTS = ["AI_GRADE_READY", "GRADE_RELEASED", "GRADE_UPDATED"];
 const SHOWN_CHANNELS = ["IN_APP", "EMAIL"] as const;
 
 /** Which notifications reach this user in the app and by e-mail. Push choices live in the mobile app. */

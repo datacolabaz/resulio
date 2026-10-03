@@ -906,10 +906,38 @@ export const pushDevices = mysqlTable(
   (t) => [index("push_devices_user_idx").on(t.userId)],
 );
 
-/** Teacher's per-task notification switches; no row = defaults (AI feedback e-mail on). */
+/** Superseded by `taskGradingSettings` (0024 copied its values there); kept because migrations only add. */
 export const taskNotificationSettings = mysqlTable("task_notification_settings", {
   taskId: id("taskId").primaryKey(),
   aiFeedbackToStudent: boolean("aiFeedbackToStudent").notNull().default(true),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+/** Teacher's per-task grading switches; no row = defaults (AI auto-grade on). */
+export const taskGradingSettings = mysqlTable("task_grading_settings", {
+  taskId: id("taskId").primaryKey(),
+  autoGrade: boolean("autoGrade").notNull().default(true),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const GRADE_SOURCES = ["AI", "TEACHER"] as const;
+export type GradeSource = (typeof GRADE_SOURCES)[number];
+export const AUTO_GRADE_STATUSES = ["AI_GRADED", "NEEDS_TEACHER"] as const;
+export type AutoGradeStatus = (typeof AUTO_GRADE_STATUSES)[number];
+
+/**
+ * Who set a submission's grade and what automatic grading decided. Kept beside task_submissions
+ * (add-only migrations). An AI grade also has `task_submissions.gradedByUserId` null.
+ */
+export const submissionGrading = mysqlTable("submission_grading", {
+  submissionId: id("submissionId").primaryKey(),
+  source: mysqlEnum("source", GRADE_SOURCES),
+  autoStatus: mysqlEnum("autoStatus", AUTO_GRADE_STATUSES),
+  /** Why automatic grading left it to the teacher (AutoGradeBlock), else null. */
+  autoReason: varchar("autoReason", { length: 40 }),
+  /** Score the AI released or last updated to. */
+  aiScore: double("aiScore"),
+  reviewRunId: varchar("reviewRunId", { length: 32 }),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
@@ -936,3 +964,4 @@ export type AssessmentAssignment = typeof assessmentAssignments.$inferSelect;
 export type FileRow = typeof files.$inferSelect;
 export type TaskSubmission = typeof taskSubmissions.$inferSelect;
 export type SubmissionAiReview = typeof submissionAiReviews.$inferSelect;
+export type SubmissionGrading = typeof submissionGrading.$inferSelect;

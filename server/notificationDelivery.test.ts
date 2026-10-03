@@ -1,8 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { aiFeedbackBlockedBy } from "./modules/aiFeedbackNotify";
 import type { ChannelAdapter, ChannelResult } from "./notifications/channels";
 import {
-  canRequeue,
   createDispatcher,
   deliveryKey,
   MAX_ATTEMPTS,
@@ -19,7 +17,7 @@ import { EVENTS, type Channel } from "./notifications/events";
 import { channelEnabled, isMissingTable, type PreferenceMap } from "./notifications/preferences";
 import { EXPO_PUSH_ENDPOINT, expoProvider, pushEnabled, pushProvider } from "./notifications/push";
 import { renderNotification } from "./notifications/render";
-import { AI_FEEDBACK_MAX_CHARS, AI_FEEDBACK_MAX_ITEMS, buildAiFeedbackEmail, cleanModelText } from "./notifications/templates";
+import { AI_FEEDBACK_MAX_CHARS, AI_FEEDBACK_MAX_ITEMS, buildAiGradeEmail, cleanModelText } from "./notifications/templates";
 
 const noPrefs: PreferenceMap = new Map();
 
@@ -32,7 +30,7 @@ describe("routing and preferences", () => {
 
   it("restricts to the requested channels, never adding unsupported ones", () => {
     expect(planDeliveries({ event: "GRADE_RELEASED", dedupeKey: "k", channels: ["IN_APP"] }, noPrefs).map((p) => p.channel)).toEqual(["IN_APP"]);
-    expect(planDeliveries({ event: "AI_FEEDBACK_READY", dedupeKey: "k", channels: ["IN_APP", "EMAIL"] }, noPrefs).map((p) => p.channel)).toEqual(["EMAIL"]);
+    expect(planDeliveries({ event: "AI_LIMIT_80", dedupeKey: "k", channels: ["IN_APP", "EMAIL"] }, noPrefs).map((p) => p.channel)).toEqual(["IN_APP"]);
     expect(planDeliveries({ event: "AI_LIMIT_80", dedupeKey: "k" }, noPrefs).map((p) => p.channel)).toEqual(["IN_APP", "PUSH"]);
   });
 
@@ -44,9 +42,9 @@ describe("routing and preferences", () => {
   });
 
   it("defaults every supported channel on and unsupported ones off", () => {
-    expect(channelEnabled(noPrefs, "AI_FEEDBACK_READY", "EMAIL")).toBe(true);
-    expect(channelEnabled(noPrefs, "AI_FEEDBACK_READY", "IN_APP")).toBe(false);
-    expect(channelEnabled(new Map([["AI_FEEDBACK_READY:IN_APP", true]]), "AI_FEEDBACK_READY", "IN_APP")).toBe(false);
+    expect(channelEnabled(noPrefs, "AI_GRADE_READY", "EMAIL")).toBe(true);
+    expect(channelEnabled(noPrefs, "AI_LIMIT_80", "EMAIL")).toBe(false);
+    expect(channelEnabled(new Map([["AI_LIMIT_80:EMAIL", true]]), "AI_LIMIT_80", "EMAIL")).toBe(false);
     expect(channelEnabled(new Map([["AI_LIMIT_80:IN_APP", false]]), "AI_LIMIT_80", "IN_APP")).toBe(false);
   });
 
@@ -64,14 +62,6 @@ describe("dedupe keys and retries", () => {
     expect(long.length).toBeLessThanOrEqual(191);
     expect(long).toBe(deliveryKey("x".repeat(300), "PUSH"));
     expect(long).not.toBe(deliveryKey("x".repeat(300), "EMAIL"));
-  });
-
-  it("revives only unsent deliveries of resend-capable events", () => {
-    expect(canRequeue("AI_FEEDBACK_READY", "SKIPPED")).toBe(true);
-    expect(canRequeue("AI_FEEDBACK_READY", "FAILED")).toBe(true);
-    expect(canRequeue("AI_FEEDBACK_READY", "SENT")).toBe(false);
-    expect(canRequeue("AI_FEEDBACK_READY", "QUEUED")).toBe(false);
-    expect(canRequeue("GRADE_RELEASED", "FAILED")).toBe(false);
   });
 
   it("backs off on transient failures and stops after the last attempt", () => {
@@ -99,12 +89,6 @@ function memoryStore(opts: { missingTable?: boolean } = {}) {
       if (rows.some((r) => r.dedupeKey === row.dedupeKey)) return null;
       rows.push({ ...row, id: rows.length + 1, attempts: 0, nextAttemptAt: null });
       return rows.length;
-    },
-    async requeue(dedupeKey, from, payload) {
-      const row = rows.find((r) => r.dedupeKey === dedupeKey && from.includes(r.status));
-      if (!row) return null;
-      Object.assign(row, { status: "QUEUED", attempts: 0, error: null, nextAttemptAt: null, payload });
-      return row.id;
     },
     async claim(id) {
       const row = rows.find((r) => r.id === id && r.status === "QUEUED");
@@ -143,12 +127,12 @@ function harness(results: Partial<Record<Channel, ChannelResult[]>> = {}, opts: 
   return { ...dispatcher, rows, sent };
 }
 
-const feedbackData = { submissionId: "s1", taskTitle: "Essay", feedback: "Good structure.", strengths: ["Clear"], improvements: ["Cite sources"] };
+const gradeData = { submissionId: "s1", taskTitle: "Essay", score: 85, feedback: "Good structure.", strengths: ["Clear"], improvements: ["Cite sources"] };
 
 describe("dispatcher", () => {
   it("delivers every channel once and ignores a duplicate dispatch", async () => {
     const h = harness();
-    const input = { event: "GRADE_RELEASED" as const, userId: 7, dedupeKey: "grade:1", data: { taskTitle: "Essay", score: 90 } };
+    const input = { event: "AI_GRADE_READY" as const, userId: 7, dedupeKey: "ai-grade:s1", data: gradeData };
     await h.dispatchNow(input);
     await h.dispatchNow(input);
     expect(h.sent.map((s) => s.channel)).toEqual(["IN_APP", "EMAIL", "PUSH"]);
@@ -158,13 +142,13 @@ describe("dispatcher", () => {
   it("skips opted-out channels without calling the adapter", async () => {
     const h = harness({}, { prefs: new Map([["GRADE_UPDATED:EMAIL", false]]) });
     await h.dispatchNow({ event: "GRADE_UPDATED", userId: 7, dedupeKey: "u:1", data: { taskTitle: "Essay", score: 80 } });
-    expect(h.sent.map((s) => s.channel)).toEqual(["PUSH"]);
+    expect(h.sent.map((s) => s.channel)).toEqual(["IN_APP", "PUSH"]);
     expect(h.rows.find((r) => r.channel === "EMAIL")).toMatchObject({ status: "SKIPPED", error: "OPTED_OUT" });
   });
 
   it("queues a transient failure for retry and sends it when due", async () => {
     const h = harness({ EMAIL: [{ status: "FAILED", reason: "HTTP_ERROR", retryable: true }] });
-    await h.dispatchNow({ event: "AI_FEEDBACK_READY", userId: 7, dedupeKey: "ai-feedback:s1", data: feedbackData, channels: ["EMAIL"] });
+    await h.dispatchNow({ event: "AI_GRADE_READY", userId: 7, dedupeKey: "ai-grade:s1", data: gradeData, channels: ["EMAIL"] });
     expect(h.rows[0]).toMatchObject({ status: "QUEUED", attempts: 1, error: "HTTP_ERROR" });
     await h.runDeliveryWorker(new Date(Date.now() + 30_000));
     expect(h.sent).toHaveLength(0);
@@ -181,28 +165,17 @@ describe("dispatcher", () => {
     expect(h.rows[0]).toMatchObject({ status: "FAILED", attempts: MAX_ATTEMPTS });
   });
 
-  it("re-sends AI feedback on a rerun only if the earlier one was not sent", async () => {
-    const h = harness({ EMAIL: [{ status: "SKIPPED", reason: "EMAIL_NOT_CONFIGURED" }] });
-    const input = { event: "AI_FEEDBACK_READY" as const, userId: 7, dedupeKey: "ai-feedback:s1", data: feedbackData, channels: ["EMAIL" as const] };
-    await h.dispatchNow(input);
-    expect(h.rows[0].status).toBe("SKIPPED");
-    await h.dispatchNow(input);
-    expect(h.rows[0].status).toBe("SENT");
-    await h.dispatchNow(input);
-    expect(h.sent).toHaveLength(1);
-  });
-
-  it("drops a queued retry when its send guard says no (e.g. graded in the meantime)", async () => {
-    let graded = false;
-    const h = harness({ EMAIL: [{ status: "FAILED", reason: "NETWORK_ERROR", retryable: true }] }, { guards: { AI_FEEDBACK_READY: async () => (graded ? "ALREADY_GRADED" : null) } });
-    await h.dispatchNow({ event: "AI_FEEDBACK_READY", userId: 7, dedupeKey: "ai-feedback:s1", data: feedbackData, channels: ["EMAIL"] });
-    graded = true;
+  it("drops a queued retry when its send guard says no (teacher changed the grade meanwhile)", async () => {
+    let changed = false;
+    const h = harness({ EMAIL: [{ status: "FAILED", reason: "NETWORK_ERROR", retryable: true }] }, { guards: { AI_GRADE_READY: async () => (changed ? "GRADE_CHANGED" : null) } });
+    await h.dispatchNow({ event: "AI_GRADE_READY", userId: 7, dedupeKey: "ai-grade:s1", data: gradeData, channels: ["EMAIL"] });
+    changed = true;
     await h.runDeliveryWorker(new Date(Date.now() + 60 * 60_000));
-    expect(h.rows[0]).toMatchObject({ status: "SKIPPED", error: "ALREADY_GRADED" });
+    expect(h.rows[0]).toMatchObject({ status: "SKIPPED", error: "GRADE_CHANGED" });
     expect(h.sent).toHaveLength(0);
   });
 
-  it("does not re-send grade notices with a used key", async () => {
+  it("never re-sends with a used key, even after a failure", async () => {
     const h = harness({ EMAIL: [{ status: "FAILED", reason: "HTTP_ERROR", retryable: false }] });
     const input = { event: "GRADE_RELEASED" as const, userId: 7, dedupeKey: "g:1", channels: ["EMAIL" as const], data: { taskTitle: "T", score: 1 } };
     await h.dispatchNow(input);
@@ -210,17 +183,17 @@ describe("dispatcher", () => {
     expect(h.sent).toHaveLength(0);
   });
 
-  it("without the outbox table delivers legacy events directly and skips new ones", async () => {
+  it("without the outbox table delivers directly", async () => {
     const h = harness({}, { missingTable: true });
     await h.dispatchNow({ event: "GRADE_RELEASED", userId: 7, dedupeKey: "g:1", channels: ["IN_APP"], data: { taskTitle: "T", score: 1 } });
-    await h.dispatchNow({ event: "AI_FEEDBACK_READY", userId: 7, dedupeKey: "ai-feedback:s1", data: feedbackData });
-    expect(h.sent.map((s) => s.channel)).toEqual(["IN_APP"]);
+    await h.dispatchNow({ event: "AI_GRADE_READY", userId: 7, dedupeKey: "ai-grade:s1", channels: ["EMAIL"], data: gradeData });
+    expect(h.sent.map((s) => s.channel)).toEqual(["IN_APP", "EMAIL"]);
   });
 
   it("covers every declared event with a renderer", () => {
     for (const event of Object.keys(EVENTS) as Array<keyof typeof EVENTS>) {
       const data = {
-        AI_FEEDBACK_READY: feedbackData,
+        AI_GRADE_READY: gradeData,
         GRADE_RELEASED: { taskTitle: "T", score: 1 },
         GRADE_UPDATED: { taskTitle: "T", score: 2 },
         AI_LIMIT_80: { workspace: "W", used: 80, limit: 100 },
@@ -234,27 +207,14 @@ describe("dispatcher", () => {
   });
 });
 
-describe("AI feedback to the student", () => {
-  const ready = { status: "DONE", checks: [], feedback: "Nice", gradedAt: null, feedbackReleasedAt: null, enabledForTask: true };
-
-  it("sends only for a finished, clean, ungraded review the teacher allows", () => {
-    expect(aiFeedbackBlockedBy(ready)).toBeNull();
-    expect(aiFeedbackBlockedBy({ ...ready, status: "FAILED" })).toBe("NOT_DONE");
-    expect(aiFeedbackBlockedBy({ ...ready, status: "SKIPPED" })).toBe("NOT_DONE");
-    expect(aiFeedbackBlockedBy({ ...ready, checks: [{ code: "LATE" }, { code: "INJECTION_SUSPECTED" }] })).toBe("INJECTION_SUSPECTED");
-    expect(aiFeedbackBlockedBy({ ...ready, feedback: "  " })).toBe("NO_FEEDBACK");
-    expect(aiFeedbackBlockedBy({ ...ready, gradedAt: new Date() })).toBe("ALREADY_GRADED");
-    expect(aiFeedbackBlockedBy({ ...ready, feedbackReleasedAt: new Date() })).toBe("ALREADY_GRADED");
-    expect(aiFeedbackBlockedBy({ ...ready, enabledForTask: false })).toBe("DISABLED_BY_TEACHER");
-    expect(aiFeedbackBlockedBy({ ...ready, checks: [{ code: "LATE" }] })).toBeNull();
-  });
-
-  it("escapes model output, states it is not a grade and carries no score", () => {
-    const mail = buildAiFeedbackEmail({
+describe("AI grade e-mail", () => {
+  it("escapes model output and shows the score with the AI label", () => {
+    const mail = buildAiGradeEmail({
       to: "s@example.com",
       locale: "az",
       taskTitle: "<b>Essay</b>\r\nBcc: x",
-      feedback: '<script>alert("x")</script> Score: try <img src=x onerror=1>',
+      score: 85,
+      feedback: '<script>alert("x")</script> try <img src=x onerror=1>',
       strengths: ["<a href='javascript:1'>link</a>"],
       improvements: ["a & b"],
       appUrl: "https://resulio.co",
@@ -263,17 +223,17 @@ describe("AI feedback to the student", () => {
     expect(mail.html).toContain("&lt;script&gt;");
     expect(mail.html).toContain("a &amp; b");
     expect(mail.subject).not.toMatch(/[\r\n]/);
-    expect(mail.html).toContain("qiymət deyil");
-    expect(mail.text).toContain("Yekun qiyməti müəlliminiz verəcək");
-    expect(mail.html).not.toMatch(/\/100/);
-    expect(mail.text).not.toMatch(/\/100/);
+    expect(mail.html).toContain("85/100");
+    expect(mail.html).toContain("AI tərəfindən qiymətləndirilib");
+    expect(mail.text).toContain("Müəlliminiz onu yoxlayıb dəyişə bilər");
   });
 
   it("bounds the length of model text and lists", () => {
-    const mail = buildAiFeedbackEmail({
+    const mail = buildAiGradeEmail({
       to: "s@example.com",
       locale: "en",
       taskTitle: "T",
+      score: 40,
       feedback: "x".repeat(10_000),
       strengths: Array.from({ length: 20 }, (_, i) => `s${i} ${"y".repeat(1000)}`),
       improvements: [],
@@ -281,10 +241,11 @@ describe("AI feedback to the student", () => {
     });
     expect(mail.text).not.toContain("x".repeat(AI_FEEDBACK_MAX_CHARS + 1));
     expect(mail.text.match(/^- s\d+/gm)).toHaveLength(AI_FEEDBACK_MAX_ITEMS);
-    expect(mail.text).toContain("not a grade");
+    expect(mail.text).toContain("Graded by AI");
     expect(cleanModelText("a\u0000b\r\n\n\n\nc", 100)).toBe("ab\n\nc");
   });
 });
+
 
 describe("push", () => {
   it("is off unless a provider is configured", () => {

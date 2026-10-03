@@ -353,7 +353,7 @@ export const app = {
   "settings.notifications": ["Bildirişlər", "Notifications", "Уведомления"],
   "settings.channel.IN_APP": ["Saytda", "In app", "На сайте"],
   "settings.channel.EMAIL": ["E-poçt", "E-mail", "Почта"],
-  "settings.event.AI_FEEDBACK_READY": ["İşimə ilkin AI rəyi", "Preliminary AI feedback on my work", "Предварительный отзыв ИИ о моей работе"],
+  "settings.event.AI_GRADE_READY": ["AI işimi qiymətləndirdi", "AI graded my work", "ИИ оценил мою работу"],
   "settings.event.GRADE_RELEASED": ["Tapşırığım qiymətləndirildi", "My task was graded", "Моё задание оценено"],
   "settings.event.GRADE_UPDATED": ["Qiymətim yeniləndi", "My grade was updated", "Моя оценка обновлена"],
   "settings.event.AI_LIMIT_80": ["AI yoxlama limitinin 80%-i", "80% of the AI check limit used", "80% лимита проверок ИИ"],

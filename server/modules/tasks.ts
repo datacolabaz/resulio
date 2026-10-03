@@ -5,7 +5,8 @@ import { sendEmailInBackground } from "../_core/email";
 import { requireDb } from "../db";
 import { dispatch } from "../notifications/dispatcher";
 import { managedWorkspaces, type TeacherScope } from "./access";
-import { clampScore, scheduleAiReview, submissionInScope } from "./aiReview";
+import { scheduleAiReview, STALE_PENDING_MS, submissionInScope } from "./aiReview";
+import { aiOverrideNeedsNotice, autoGradeEnabledForTasks, clampScore, gradeOwner, recordTeacherGrade } from "./autoGrade";
 import { AppError } from "./errors";
 import { deliverGradeEmail, gradeEmailKind } from "./gradeEmail";
 import { activeGroupIdsOfStudent } from "./groups";
@@ -90,22 +91,42 @@ export async function deleteAssignment(scope: TeacherScope, id: string) {
   return { ok: true };
 }
 
+/** While ungraded: the AI is still checking, or (auto-grade on) it was left to the teacher. */
+export type SubmissionPending = "AI_CHECKING" | "TEACHER_REVIEW" | null;
+
+export function pendingState(
+  s: Pick<TaskSubmission, "feedbackReleasedAt">,
+  review: Pick<SubmissionAiReview, "status" | "createdAt"> | undefined,
+  autoGrade: boolean,
+  now: number,
+): SubmissionPending {
+  if (s.feedbackReleasedAt || !autoGrade || !review) return null;
+  if (review.status === "PENDING") return now - review.createdAt.getTime() <= STALE_PENDING_MS ? "AI_CHECKING" : "TEACHER_REVIEW";
+  return "TEACHER_REVIEW";
+}
+
 /**
- * What a student may see of their own submission: the grade only once the teacher released it,
- * and the AI pre-review text only if the teacher chose to share it on release.
+ * What a student may see of their own submission: the grade only once released (by the teacher,
+ * or automatically by the AI), and the AI review text only if the teacher shared it on release.
  */
-export function studentSubmissionView(s: TaskSubmission, review: Pick<SubmissionAiReview, "status" | "feedback" | "details"> | undefined) {
+export function studentSubmissionView(
+  s: TaskSubmission,
+  review: Pick<SubmissionAiReview, "status" | "feedback" | "details"> | undefined,
+  pending: SubmissionPending = null,
+) {
   const released = s.feedbackReleasedAt !== null;
   const ai = released && s.aiFeedbackReleased && review?.status === "DONE" && review.feedback
     ? { feedback: review.feedback, strengths: review.details?.strengths ?? [], improvements: review.details?.improvements ?? [] }
     : null;
+  const source = gradeOwner(s) === "AI" ? ("AI" as const) : ("TEACHER" as const);
   return {
     id: s.id,
     status: s.status,
     files: s.files,
     submittedAt: s.submittedAt,
     answerText: s.comment ?? "",
-    grade: released ? { score: s.score, feedback: s.teacherFeedback ?? "", releasedAt: s.feedbackReleasedAt, ai } : null,
+    grade: released ? { score: s.score, feedback: s.teacherFeedback ?? "", releasedAt: s.feedbackReleasedAt, source, ai } : null,
+    pending: released ? null : pending,
   };
 }
 
@@ -119,18 +140,27 @@ export async function studentAssignments(studentId: number, groupIds: string[]) 
     .select()
     .from(taskSubmissions)
     .where(and(eq(taskSubmissions.studentId, studentId), inArray(taskSubmissions.taskId, relevant.map((t) => t.id))));
-  const sharedAi = subs.filter((s) => s.feedbackReleasedAt && s.aiFeedbackReleased).map((s) => s.id);
-  const reviews = sharedAi.length
+  const reviews = subs.length
     ? await db
-        .select({ submissionId: submissionAiReviews.submissionId, status: submissionAiReviews.status, feedback: submissionAiReviews.feedback, details: submissionAiReviews.details })
+        .select({
+          submissionId: submissionAiReviews.submissionId,
+          status: submissionAiReviews.status,
+          createdAt: submissionAiReviews.createdAt,
+          feedback: submissionAiReviews.feedback,
+          details: submissionAiReviews.details,
+        })
         .from(submissionAiReviews)
-        .where(inArray(submissionAiReviews.submissionId, sharedAi))
+        .where(inArray(submissionAiReviews.submissionId, subs.map((s) => s.id)))
     : [];
   const reviewBySub = new Map(reviews.map((r) => [r.submissionId, r]));
+  const autoGraded = await autoGradeEnabledForTasks(subs.filter((s) => !s.feedbackReleasedAt).map((s) => s.taskId));
   const byTask = new Map(subs.map((s) => [s.taskId, s]));
+  const now = Date.now();
   return relevant.map((t) => {
     const s = byTask.get(t.id);
-    return { ...t, submission: s ? studentSubmissionView(s, reviewBySub.get(s.id)) : undefined };
+    if (!s) return { ...t, submission: undefined };
+    const review = reviewBySub.get(s.id);
+    return { ...t, submission: studentSubmissionView(s, review, pendingState(s, review, autoGraded.has(t.id), now)) };
   });
 }
 
@@ -194,26 +224,32 @@ export async function gradeSubmission(
   const current = await submissionInScope(scope, input.submissionId);
   const now = new Date();
   const score = input.score === null ? null : clampScore(input.score);
+  const feedback = input.feedback.trim() || null;
   await requireDb()
     .update(taskSubmissions)
     .set({
       score,
-      teacherFeedback: input.feedback.trim() || null,
+      teacherFeedback: feedback,
       gradedAt: now,
       gradedByUserId: scope.userId,
       feedbackReleasedAt: input.release ? (current.feedbackReleasedAt ?? now) : null,
       aiFeedbackReleased: input.release && input.shareAiFeedback,
     })
     .where(eq(taskSubmissions.id, input.submissionId));
+  await recordTeacherGrade(input.submissionId);
+  const taskTitle = async () => (await requireDb().select({ title: tasks.title }).from(tasks).where(eq(tasks.id, current.taskId)).limit(1))[0]?.title ?? "";
   if (input.release && !current.feedbackReleasedAt) {
-    const [task] = await requireDb().select({ title: tasks.title }).from(tasks).where(eq(tasks.id, current.taskId)).limit(1);
     dispatch({
       event: "GRADE_RELEASED",
       userId: current.studentId,
       dedupeKey: `grade-inapp:${input.submissionId}:${now.getTime()}`,
       channels: ["IN_APP"],
-      data: { taskTitle: task?.title ?? "", score },
+      data: { taskTitle: await taskTitle(), score },
     });
+  }
+  const before = { owner: gradeOwner(current), released: current.feedbackReleasedAt !== null, score: current.score, feedback: current.teacherFeedback };
+  if (aiOverrideNeedsNotice(before, { release: input.release, score, feedback })) {
+    dispatch({ event: "GRADE_UPDATED", userId: current.studentId, dedupeKey: `grade-override:${input.submissionId}`, data: { taskTitle: await taskTitle(), score } });
   }
   const save = { before: { wasReleased: current.feedbackReleasedAt !== null, score: current.score }, after: { release: input.release, score } };
   if (gradeEmailKind(save, undefined)) sendEmailInBackground(() => deliverGradeEmail(input.submissionId, save));

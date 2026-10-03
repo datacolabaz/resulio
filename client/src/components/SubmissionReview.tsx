@@ -20,7 +20,7 @@ const STATUS_TONE: Record<Review["status"], Tone> = { PENDING: "info", DONE: "su
 const CHECK_ICON = { ok: CheckCircle2, warn: Info, fail: AlertTriangle } as const;
 const CHECK_CLASS = { ok: "text-success", warn: "text-warning", fail: "text-destructive" } as const;
 
-function AiReviewBox({ review, onRerun, rerunning }: { review: Review | undefined; onRerun: () => void; rerunning: boolean }) {
+function AiReviewBox({ review, autoGrade, onRerun, rerunning }: { review: Review | undefined; autoGrade: boolean; onRerun: () => void; rerunning: boolean }) {
   if (!review) {
     return (
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-border p-2.5 text-xs">
@@ -83,7 +83,7 @@ function AiReviewBox({ review, onRerun, rerunning }: { review: Review | undefine
         </ul>
       )}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-muted-foreground">{t("aiReview.advisoryNote")}</p>
+        <p className="text-muted-foreground">{t(autoGrade ? "aiReview.autoNote" : "aiReview.advisoryNote")}</p>
         {canRerun && (
           <Button size="sm" variant="ghost" disabled={rerunning} onClick={onRerun}>{t("aiReview.rerun")}</Button>
         )}
@@ -93,7 +93,7 @@ function AiReviewBox({ review, onRerun, rerunning }: { review: Review | undefine
 }
 
 /** The teacher's grade for one submission, with the AI pre-review as a starting point. */
-export function SubmissionReview({ submission, review, onChanged }: { submission: Submission; review: Review | undefined; onChanged: () => void }) {
+export function SubmissionReview({ submission, review, autoGrade, onChanged }: { submission: Submission; review: Review | undefined; autoGrade: boolean; onChanged: () => void }) {
   const [score, setScore] = useState(submission.score === null ? "" : String(submission.score));
   const [feedback, setFeedback] = useState(submission.teacherFeedback ?? "");
   const [shareAi, setShareAi] = useState(submission.aiFeedbackReleased);
@@ -103,6 +103,7 @@ export function SubmissionReview({ submission, review, onChanged }: { submission
   });
   const rerun = trpc.teacher.tasks.rerunReview.useMutation({ onSuccess: onChanged, onError: (e) => toast.error(errorText(e)) });
   const aiReady = review?.status === "DONE" && review.suggestedScore !== null;
+  const gradedByAi = !!submission.gradedAt && submission.gradedByUserId === null;
   const parsed = score.trim() === "" ? null : Number(score);
   const invalid = parsed !== null && (!Number.isFinite(parsed) || parsed < 0 || parsed > 100);
   const save = (release: boolean) =>
@@ -116,8 +117,17 @@ export function SubmissionReview({ submission, review, onChanged }: { submission
           <p className="mt-1.5 max-h-60 overflow-y-auto whitespace-pre-wrap break-words text-sm">{submission.comment}</p>
         </details>
       )}
-      <AiReviewBox review={review} rerunning={rerun.isPending} onRerun={() => rerun.mutate({ submissionId: submission.id })} />
+      <AiReviewBox review={review} autoGrade={autoGrade} rerunning={rerun.isPending} onRerun={() => rerun.mutate({ submissionId: submission.id })} />
       <div className="grid gap-2 rounded-lg border border-border p-2.5">
+        {gradedByAi && (
+          <div><StatusBadge tone="info"><Sparkles className="mr-1 inline h-3 w-3" aria-hidden />{t("aiReview.gradedByAi")}</StatusBadge></div>
+        )}
+        {!submission.gradedAt && review?.needsTeacher && (
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <StatusBadge tone="warning">{t("aiReview.needsTeacher")}</StatusBadge>
+            <span className="text-muted-foreground">{t(`aiReview.block.${review.needsTeacher}`)}</span>
+          </div>
+        )}
         <div className="flex flex-wrap items-end gap-2">
           <label className="text-xs">
             <span className="text-foreground-secondary">{t("aiReview.scoreLabel")}</span>

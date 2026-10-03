@@ -15,9 +15,9 @@ Code: `server/notifications/` — `events.ts` (events and their channels), `temp
 
 | Event | Recipient | Channels | Raised by |
 | --- | --- | --- | --- |
-| `AI_FEEDBACK_READY` | student | EMAIL, PUSH | AI pre-review finished (`modules/aiFeedbackNotify.ts`) |
+| `AI_GRADE_READY` | student | IN_APP, EMAIL, PUSH | AI graded and released a submission automatically (`modules/autoGrade.ts`) |
 | `GRADE_RELEASED` | student | IN_APP, EMAIL, PUSH | teacher releases a grade (`modules/tasks.ts`, `modules/gradeEmail.ts`) |
-| `GRADE_UPDATED` | student | EMAIL, PUSH | released score changes |
+| `GRADE_UPDATED` | student | IN_APP, EMAIL, PUSH | released score changes; teacher edits an AI grade; AI rerun changes an AI score |
 | `AI_LIMIT_80` | workspace owner | IN_APP, PUSH | 80% of the daily AI cap (`modules/aiAlerts.ts`) |
 | `AI_LIMIT_REACHED` | workspace owner | IN_APP, PUSH | daily AI cap reached |
 | `AI_PROVIDER_ERROR` | workspace owner | IN_APP, PUSH | AI provider rejected the key or hit its quota |
@@ -25,16 +25,31 @@ Code: `server/notifications/` — `events.ts` (events and their channels), `temp
 Throttling that belongs to the domain stays there: grade e-mails are decided by `grade_email_log`
 (only on release or a changed score), AI alerts by `notification_dedupe` (24 h / 6 h per workspace).
 
-### AI feedback to the student
+### Automatic AI grading
 
-Sent when the review is `DONE` and none of these hold: prompt injection was flagged
-(`INJECTION_SUSPECTED`), no feedback text, the submission is already graded or released, the
-teacher turned off **AI rəyini tələbəyə avtomatik göndər** for the task (`task_notification_settings`,
-on by default). The same checks run again right before each send/retry. The e-mail contains the
-summary, strengths and improvements (control characters stripped, length-capped, HTML-escaped),
-says it is preliminary and that the teacher gives the final grade, and never contains the
-suggested score or teacher notes. Dedupe key `ai-feedback:<submissionId>`: a rerun re-sends only
-if the earlier delivery was skipped or failed (e.g. e-mail was not configured yet).
+Per task, **AI avtomatik qiymətləndirsin** (`task_grading_settings.autoGrade`, on by default;
+migration 0024 copied the old "AI feedback to the student" setting). When the AI review of a
+submission finishes, `modules/autoGrade.ts`:
+
+- releases the AI score (0–100, one decimal) and the formatted feedback as the grade
+  (`gradedByUserId` null = AI grade; `submission_grading.source = AI`), and sends **one**
+  `AI_GRADE_READY` notice (score + summary, strengths, improvements; HTML-escaped, length-capped;
+  labelled "AI tərəfindən qiymətləndirilib"). Dedupe key `ai-grade:<submissionId>`; no
+  `GRADE_RELEASED` is sent for it.
+- leaves the submission to the teacher (`submission_grading.autoStatus = NEEDS_TEACHER`, shown as
+  **Müəllim yoxlaması gözləyir**) if: the submission is empty, a deterministic check failed (e.g.
+  a file that is not the student's), a file could not be read, prompt injection was suspected, the
+  AI failed or was skipped, it gave no feedback, or it asked for the teacher. Late work is graded.
+- never overwrites a teacher's grade (the write is conditional on `gradedByUserId IS NULL`).
+  A **Yenidən yoxla** rerun may update an AI grade; it sends `GRADE_UPDATED` (key
+  `ai-regrade:<submissionId>:<runId>`) only if the score changed, and a failed/doubtful rerun keeps
+  the AI grade.
+
+When the teacher edits an AI grade it becomes a teacher grade (`source = TEACHER`) and the student
+gets one `GRADE_UPDATED`: via the grade e-mail flow if the score changed, otherwise (feedback only)
+with key `grade-override:<submissionId>`. A queued `AI_GRADE_READY` retry is dropped
+(`GRADE_CHANGED`) if the grade changed meanwhile. With auto-grade off nothing is sent until the
+teacher grades.
 
 ## Delivery log (outbox)
 
@@ -47,14 +62,15 @@ never secrets or addresses), and the event payload.
 - A worker (every 60 s, started in `server/_core/index.ts`) sends due retries, picks up rows left
   `QUEUED` by a restart, and re-queues rows stuck in `SENDING` for 10 min.
 - `SKIPPED` reasons: `OPTED_OUT`, `NO_EMAIL`, `EMAIL_NOT_CONFIGURED`, `PUSH_NOT_CONFIGURED`,
-  `NO_DEVICE`, or a send-guard reason such as `ALREADY_GRADED`.
+  `NO_DEVICE`, or a send-guard reason such as `GRADE_CHANGED`.
+- A dedupe key is used once: a second dispatch with it never sends again.
 
-### Before migration 0023 is applied
+### Before migrations 0023 / 0024 are applied
 
-All new tables are additive. Without them: grade and AI-alert notices are delivered directly (as
-before, just unlogged and without retries), AI-feedback e-mails are not sent, preferences read as
-"all on" and saving them returns an error, device registration returns an error. The worker logs
-one warning.
+All new tables are additive. Without 0023: notices are delivered directly (unlogged and without
+retries), preferences read as "all on" and saving them returns an error, device registration
+returns an error. The worker logs one warning. Without 0024: auto-grade is off for every task (the
+teacher grades as before) and the toggle is disabled with a note.
 
 ## Preferences
 
@@ -68,7 +84,7 @@ Settings → Notifications shows IN_APP and EMAIL; PUSH choices belong in the mo
 
 ## Adding an event
 
-1. Add it to `EVENT_TYPES`, `EventData` and `EVENTS` in `events.ts` (channels, fallback, resend rule).
+1. Add it to `EVENT_TYPES`, `EventData` and `EVENTS` in `events.ts` (channels).
 2. Add texts in `templates.ts` and a case in `render.ts`.
 3. Call `dispatch({ event, userId, dedupeKey, data })` where it happens. Pick a dedupe key that is
    the same for retries of the same notice and new for a new notice.

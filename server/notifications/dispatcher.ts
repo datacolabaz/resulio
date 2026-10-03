@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, gte, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { notificationDeliveries, users } from "../../drizzle/schema";
 import { publicAppUrl } from "../_core/email";
 import { serverLocale } from "../_core/locale";
@@ -58,11 +58,6 @@ export function planDeliveries(input: Pick<DispatchInput, "event" | "dedupeKey" 
   });
 }
 
-/** A duplicate dispatch may revive an earlier delivery only for resend-capable events that never got through. */
-export function canRequeue(event: EventType, existing: DeliveryStatus): boolean {
-  return EVENTS[event].resendUnlessSent && (existing === "SKIPPED" || existing === "FAILED");
-}
-
 /** Row state after an attempt; transient failures are retried until MAX_ATTEMPTS. */
 export function settle(result: ChannelResult, attempts: number, now: Date): { status: DeliveryStatus; error: string | null; nextAttemptAt: Date | null } {
   if (result.status === "SENT") return { status: "SENT", error: null, nextAttemptAt: null };
@@ -104,8 +99,6 @@ export interface NewDelivery {
 export interface OutboxStore {
   /** Inserts unless the dedupe key exists; the new id, or null for a duplicate. */
   insert(row: NewDelivery): Promise<number | null>;
-  /** Puts the row back to QUEUED with a fresh payload if its status is one of `from`; its id, or null. */
-  requeue(dedupeKey: string, from: DeliveryStatus[], payload: Record<string, unknown>): Promise<number | null>;
   /** QUEUED -> SENDING with attempts + 1; null if not QUEUED (another worker has it). */
   claim(id: number): Promise<DeliveryRow | null>;
   finish(id: number, outcome: ReturnType<typeof settle>): Promise<void>;
@@ -152,25 +145,17 @@ export function createDispatcher(deps: DispatcherDeps) {
 
   /** Records the deliveries and sends the queued ones now. Prefer `dispatch` from request handlers. */
   async function dispatchNow<E extends EventType>(input: DispatchInput<E>) {
-    const def = EVENTS[input.event];
     const plan = planDeliveries(input, await deps.preferences(input.userId));
     const payload = input.data as unknown as Record<string, unknown>;
     const queued: number[] = [];
     for (const p of plan) {
       try {
         const id = await deps.store.insert({ dedupeKey: p.dedupeKey, event: input.event, userId: input.userId, channel: p.channel, status: p.status, error: p.error, payload });
-        if (id !== null) {
-          if (p.status === "QUEUED") queued.push(id);
-          continue;
-        }
-        const revivable = (["SKIPPED", "FAILED"] as const).filter((s) => canRequeue(input.event, s));
-        if (p.status !== "QUEUED" || !revivable.length) continue;
-        const revived = await deps.store.requeue(p.dedupeKey, revivable, payload);
-        if (revived !== null) queued.push(revived);
+        if (id !== null && p.status === "QUEUED") queued.push(id);
       } catch (error) {
         if (!isMissingTable(error)) throw error;
-        // Migration not applied yet: keep events that worked before the outbox existed, unlogged.
-        if (def.fallbackWithoutOutbox && p.status === "QUEUED") await attempt(p.channel, input.event, input.userId, input.data);
+        // Migration not applied yet: deliver directly, unlogged and without retries.
+        if (p.status === "QUEUED") await attempt(p.channel, input.event, input.userId, input.data);
       }
     }
     for (const id of queued) await processDelivery(id);
@@ -188,17 +173,6 @@ const mysqlStore: OutboxStore = {
   async insert(row) {
     const [result] = await requireDb().insert(notificationDeliveries).ignore().values(row);
     return result.affectedRows === 1 ? Number(result.insertId) : null;
-  },
-  async requeue(dedupeKey, from, payload) {
-    const db = requireDb();
-    const t = notificationDeliveries;
-    const [result] = await db
-      .update(t)
-      .set({ status: "QUEUED", attempts: 0, error: null, nextAttemptAt: null, payload })
-      .where(and(eq(t.dedupeKey, dedupeKey), inArray(t.status, from)));
-    if (result.affectedRows !== 1) return null;
-    const [row] = await db.select({ id: t.id }).from(t).where(eq(t.dedupeKey, dedupeKey)).limit(1);
-    return row?.id ?? null;
   },
   async claim(id) {
     const db = requireDb();

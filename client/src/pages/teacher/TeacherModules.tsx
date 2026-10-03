@@ -17,7 +17,7 @@ import { fileDownloadUrl } from "@/lib/uploadFile";
 import { trpc } from "@/lib/trpc";
 import { QUESTION_TYPES } from "@shared/assessment";
 import { Sparkles } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const fieldLabel = "text-foreground-secondary";
@@ -202,8 +202,15 @@ export function AssignmentsPage() {
     { enabled: !!submissionsId, refetchInterval: (q) => (q.state.data?.reviews.some((r) => r.status === "PENDING" && !r.stale) ? 4000 : false) },
   );
   const reviewBySubmission = new Map((reviewsQ.data?.reviews ?? []).map((r) => [r.submissionId, r]));
+  // A finished review may have auto-graded its submission; reload the grades shown on the cards.
+  const pendingReviews = (reviewsQ.data?.reviews ?? []).filter((r) => r.status === "PENDING").length;
+  const lastPending = useRef(pendingReviews);
+  useEffect(() => {
+    if (pendingReviews < lastPending.current) void utils.teacher.tasks.list.invalidate();
+    lastPending.current = pendingReviews;
+  }, [pendingReviews, utils]);
   const refreshReviews = () => { void utils.teacher.tasks.list.invalidate(); void reviewsQ.refetch(); };
-  const setAiFeedback = trpc.teacher.tasks.setAiFeedbackToStudent.useMutation({
+  const setAutoGrade = trpc.teacher.tasks.setAutoGrade.useMutation({
     onSuccess: () => void reviewsQ.refetch(),
     onError: (e) => toast.error(errorText(e)),
   });
@@ -277,7 +284,13 @@ export function AssignmentsPage() {
                               ))}
                             </ul>
                           )}
-                          <SubmissionReview key={`${s.id}:${s.gradedAt ?? ""}`} submission={s} review={reviewBySubmission.get(s.id)} onChanged={refreshReviews} />
+                          <SubmissionReview
+                            key={`${s.id}:${s.gradedAt ?? ""}`}
+                            submission={s}
+                            review={reviewBySubmission.get(s.id)}
+                            autoGrade={!!reviewsQ.data?.autoGrade.enabled}
+                            onChanged={refreshReviews}
+                          />
                         </li>
                       );
                     })}
@@ -287,16 +300,19 @@ export function AssignmentsPage() {
                   <p className="mt-2 text-xs text-muted-foreground">{t("aiReview.disabledNote")}</p>
                 )}
                 {submissionsId === a.id && reviewsQ.data?.ai.enabled && (
-                  <label className="mt-2 flex items-center gap-2 text-xs" title={t("aiReview.emailToStudentHelp")}>
-                    <input
-                      type="checkbox"
-                      className="accent-link"
-                      disabled={setAiFeedback.isPending}
-                      checked={reviewsQ.data.aiFeedbackToStudent}
-                      onChange={(e) => setAiFeedback.mutate({ taskId: a.id, enabled: e.target.checked })}
-                    />
-                    {t("aiReview.emailToStudent")}
-                  </label>
+                  <div className="mt-2 text-xs">
+                    <label className="flex items-center gap-2" title={t("aiReview.autoGradeHelp")}>
+                      <input
+                        type="checkbox"
+                        className="accent-link"
+                        disabled={setAutoGrade.isPending || !reviewsQ.data.autoGrade.available}
+                        checked={reviewsQ.data.autoGrade.enabled}
+                        onChange={(e) => setAutoGrade.mutate({ taskId: a.id, enabled: e.target.checked })}
+                      />
+                      {t("aiReview.autoGrade")}
+                    </label>
+                    {!reviewsQ.data.autoGrade.available && <p className="mt-1 text-muted-foreground">{t("aiReview.autoGradeUnavailable")}</p>}
+                  </div>
                 )}
                 {submissionsId === a.id && !!activityQ.data?.eligible.length && (() => {
                   const submittedIds = new Set(a.submissions.map((s) => s.studentId));

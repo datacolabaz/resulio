@@ -94,62 +94,74 @@ export function buildGradeEmail(input: { to: string; locale: ServerLocale; kind:
 }
 
 // ---------------------------------------------------------------------------
-// AI pre-review feedback to the student (no score)
+// Automatic AI grade: the student's "result ready" notice
 // ---------------------------------------------------------------------------
 
 export const AI_FEEDBACK_MAX_CHARS = 1500;
 export const AI_FEEDBACK_MAX_ITEMS = 5;
 export const AI_FEEDBACK_MAX_ITEM_CHARS = 300;
+/** Same cap as the teacher's feedback field. */
+export const GRADE_FEEDBACK_MAX_CHARS = 4000;
 
-const AI_FEEDBACK: Record<ServerLocale, {
+const AI_GRADE: Record<ServerLocale, {
   subject: (title: string) => string;
   heading: string;
   intro: (title: string) => string;
-  disclaimer: string;
+  score: (score: string) => string;
+  label: string;
+  note: string;
   feedback: string;
   strengths: string;
   improvements: string;
   button: string;
   footer: string;
-  push: { title: string; body: (title: string) => string };
+  inApp: { title: string; body: (title: string, score: string) => string };
 }> = {
   az: {
-    subject: (t) => `İlkin AI rəyi: ${t}`,
-    heading: "İşiniz üçün ilkin AI rəyi",
-    intro: (t) => `«${t}» tapşırığı üzrə göndərdiyiniz işə süni intellekt ilkin rəy yazdı.`,
-    disclaimer: "Bu, avtomatik ilkin rəydir, qiymət deyil. Yekun qiyməti müəlliminiz verəcək.",
+    subject: (t) => `Nəticəniz hazırdır: ${t}`,
+    heading: "Nəticəniz hazırdır",
+    intro: (t) => `«${t}» tapşırığı üzrə göndərdiyiniz iş yoxlanıldı.`,
+    score: (s) => `Balınız: ${s}`,
+    label: "AI tərəfindən qiymətləndirilib",
+    note: "Bu qiyməti süni intellekt avtomatik verib. Müəlliminiz onu yoxlayıb dəyişə bilər.",
     feedback: "Rəy",
     strengths: "Güclü tərəflər",
     improvements: "İnkişaf üçün",
-    button: "Tapşırığa bax",
-    footer: "Bu məktub avtomatik göndərilib. Müəlliminiz bu məktubları söndürə bilər.",
-    push: { title: "İlkin AI rəyi hazırdır", body: (t) => `«${t}» üzrə ilkin rəy e-poçtunuza göndərildi.` },
+    button: "Nəticəyə bax",
+    footer: "Bu məktub Resulio tərəfindən avtomatik göndərilib.",
+    inApp: { title: "Nəticəniz hazırdır", body: (t, s) => `«${t}»: ${s} · AI tərəfindən qiymətləndirilib` },
   },
   en: {
-    subject: (t) => `Preliminary AI feedback: ${t}`,
-    heading: "Preliminary AI feedback on your work",
-    intro: (t) => `An AI wrote preliminary feedback on what you submitted for “${t}”.`,
-    disclaimer: "This is automatic preliminary feedback, not a grade. Your teacher will give the final grade.",
+    subject: (t) => `Your result is ready: ${t}`,
+    heading: "Your result is ready",
+    intro: (t) => `Your submission for “${t}” has been checked.`,
+    score: (s) => `Your score: ${s}`,
+    label: "Graded by AI",
+    note: "This grade was given automatically by AI. Your teacher may review and change it.",
     feedback: "Feedback",
     strengths: "Strengths",
     improvements: "To improve",
-    button: "View task",
-    footer: "This e-mail was sent automatically. Your teacher can turn these e-mails off.",
-    push: { title: "Preliminary AI feedback is ready", body: (t) => `Feedback on “${t}” was sent to your e-mail.` },
+    button: "View result",
+    footer: "Resulio sent this e-mail automatically.",
+    inApp: { title: "Your result is ready", body: (t, s) => `“${t}”: ${s} · Graded by AI` },
   },
   ru: {
-    subject: (t) => `Предварительный отзыв ИИ: ${t}`,
-    heading: "Предварительный отзыв ИИ о вашей работе",
-    intro: (t) => `ИИ написал предварительный отзыв о работе, которую вы отправили по заданию «${t}».`,
-    disclaimer: "Это автоматический предварительный отзыв, а не оценка. Итоговую оценку поставит преподаватель.",
+    subject: (t) => `Ваш результат готов: ${t}`,
+    heading: "Ваш результат готов",
+    intro: (t) => `Ваша работа по заданию «${t}» проверена.`,
+    score: (s) => `Ваш балл: ${s}`,
+    label: "Оценено ИИ",
+    note: "Эту оценку автоматически поставил ИИ. Преподаватель может проверить и изменить её.",
     feedback: "Отзыв",
     strengths: "Сильные стороны",
     improvements: "Что улучшить",
-    button: "Открыть задание",
-    footer: "Письмо отправлено автоматически. Преподаватель может отключить такие письма.",
-    push: { title: "Предварительный отзыв ИИ готов", body: (t) => `Отзыв по заданию «${t}» отправлен вам на почту.` },
+    button: "Посмотреть результат",
+    footer: "Это письмо отправлено Resulio автоматически.",
+    inApp: { title: "Ваш результат готов", body: (t, s) => `«${t}»: ${s} · Оценено ИИ` },
   },
 };
+
+const scoreText = (score: number) => `${score}/100`;
 
 export function cleanAiFeedback(input: { feedback: string; strengths: string[]; improvements: string[] }) {
   const list = (items: string[]) =>
@@ -157,24 +169,35 @@ export function cleanAiFeedback(input: { feedback: string; strengths: string[]; 
   return { feedback: cleanModelText(input.feedback, AI_FEEDBACK_MAX_CHARS), strengths: list(input.strengths), improvements: list(input.improvements) };
 }
 
-export function buildAiFeedbackEmail(input: {
+/** The AI review as the plain-text feedback stored on the submission (the teacher can edit it later). */
+export function formatAiGradeFeedback(locale: ServerLocale, input: { feedback: string; strengths: string[]; improvements: string[] }): string {
+  const tx = AI_GRADE[locale];
+  const { feedback, strengths, improvements } = cleanAiFeedback(input);
+  const section = (heading: string, items: string[]) => (items.length ? [`${heading}:\n${items.map((i) => `- ${i}`).join("\n")}`] : []);
+  return [feedback, ...section(tx.strengths, strengths), ...section(tx.improvements, improvements)].filter(Boolean).join("\n\n").slice(0, GRADE_FEEDBACK_MAX_CHARS);
+}
+
+export function buildAiGradeEmail(input: {
   to: string;
   locale: ServerLocale;
   taskTitle: string;
+  score: number;
   feedback: string;
   strengths: string[];
   improvements: string[];
   appUrl: string;
 }): EmailMessage {
-  const tx = AI_FEEDBACK[input.locale];
+  const tx = AI_GRADE[input.locale];
   const title = cleanTitle(input.taskTitle);
   const { feedback, strengths, improvements } = cleanAiFeedback(input);
+  const score = tx.score(scoreText(input.score));
   const url = `${input.appUrl}/student/assignments`;
   const html = emailLayout({
     heading: escapeHtml(tx.heading),
     paragraphs: [
       escapeHtml(tx.intro(title)),
-      `<em>${escapeHtml(tx.disclaimer)}</em>`,
+      `<strong>${escapeHtml(score)}</strong> · ${escapeHtml(tx.label)}`,
+      `<em>${escapeHtml(tx.note)}</em>`,
       ...(feedback ? [`<strong>${escapeHtml(tx.feedback)}:</strong><br>${htmlText(feedback)}`] : []),
     ],
     lists: [
@@ -190,7 +213,8 @@ export function buildAiFeedbackEmail(input: {
     tx.heading,
     "",
     tx.intro(title),
-    tx.disclaimer,
+    `${score} · ${tx.label}`,
+    tx.note,
     ...(feedback ? ["", `${tx.feedback}:`, feedback] : []),
     ...bullets(tx.strengths, strengths),
     ...bullets(tx.improvements, improvements),
@@ -202,10 +226,11 @@ export function buildAiFeedbackEmail(input: {
   return { to: input.to, subject: tx.subject(title), html, text };
 }
 
-export function aiFeedbackPushText(locale: ServerLocale, taskTitle: string) {
-  const tx = AI_FEEDBACK[locale].push;
-  return { title: tx.title, body: tx.body(cleanTitle(taskTitle, 80)) };
+export function aiGradeInAppText(locale: ServerLocale, taskTitle: string, score: number) {
+  const tx = AI_GRADE[locale].inApp;
+  return { title: tx.title, body: tx.body(cleanTitle(taskTitle, 80), scoreText(score)) };
 }
+
 
 // ---------------------------------------------------------------------------
 // AI usage / provider alerts to the workspace owner

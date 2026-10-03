@@ -9,8 +9,9 @@ import {
   parseAiReview,
   reviewWithModel,
   sanitizeForPrompt,
+  STALE_PENDING_MS,
 } from "./modules/aiReview";
-import { studentSubmissionView } from "./modules/tasks";
+import { pendingState, studentSubmissionView } from "./modules/tasks";
 import { extractSubmissionText, officeXmlToText } from "./modules/textExtract";
 
 /** Minimal ZIP writer (deflate) — enough to produce .docx/.pptx fixtures. */
@@ -248,5 +249,22 @@ describe("student view of a submission", () => {
     const released = { ...base, feedbackReleasedAt: new Date() };
     expect(studentSubmissionView(released, review).grade).toMatchObject({ score: 80, feedback: "Yaxşı", ai: null });
     expect(studentSubmissionView({ ...released, aiFeedbackReleased: true }, review).grade?.ai).toEqual({ feedback: "AI rəyi", strengths: ["s"], improvements: ["i"] });
+  });
+
+  it("labels an automatic AI grade and a teacher grade", () => {
+    const released = { ...base, feedbackReleasedAt: new Date() };
+    expect(studentSubmissionView({ ...released, gradedByUserId: null }, review).grade?.source).toBe("AI");
+    expect(studentSubmissionView(released, review).grade?.source).toBe("TEACHER");
+  });
+
+  it("tells the student whether the AI is still checking or the teacher has to look", () => {
+    const now = Date.now();
+    const pending = { status: "PENDING" as const, createdAt: new Date(now - 10_000) };
+    expect(pendingState(base, pending, true, now)).toBe("AI_CHECKING");
+    expect(pendingState(base, { ...pending, createdAt: new Date(now - STALE_PENDING_MS - 1) }, true, now)).toBe("TEACHER_REVIEW");
+    expect(pendingState(base, { status: "DONE", createdAt: new Date(now) }, true, now)).toBe("TEACHER_REVIEW");
+    expect(pendingState(base, pending, false, now)).toBeNull();
+    expect(pendingState({ feedbackReleasedAt: new Date() }, pending, true, now)).toBeNull();
+    expect(pendingState(base, undefined, true, now)).toBeNull();
   });
 });
