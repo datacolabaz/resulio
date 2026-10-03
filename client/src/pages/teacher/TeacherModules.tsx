@@ -127,10 +127,60 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
     accessMode: initial?.accessMode ?? ("PUBLIC" as TaskAccessMode),
   });
   const done = () => { void utils.teacher.tasks.list.invalidate(); onOpenChange(false); };
-  const create = trpc.teacher.tasks.create.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
-  const update = trpc.teacher.tasks.update.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
+  const create = trpc.teacher.tasks.create.useMutation({ onError: (e) => toast.error(errorText(e)) });
+  const update = trpc.teacher.tasks.update.useMutation({ onError: (e) => toast.error(errorText(e)) });
+  const keyQ = trpc.teacher.tasks.answerKey.useQuery({ taskId: initial?.id }, { enabled: open, refetchOnWindowFocus: false });
+  const [answerKey, setAnswerKey] = useState<string | null>(null);
+  const [keyFromAi, setKeyFromAi] = useState(false);
+  const keyText = answerKey ?? keyQ.data?.text ?? "";
+  useEffect(() => {
+    if (open) return;
+    setAnswerKey(null);
+    setKeyFromAi(false);
+  }, [open]);
+  const saveKey = trpc.teacher.tasks.saveAnswerKey.useMutation();
+  const draftKey = trpc.teacher.tasks.draftAnswerKey.useMutation({
+    onSuccess: (r) => {
+      setAnswerKey(r.text);
+      setKeyFromAi(true);
+      toast.success(t("modules.answerKeyAiDone"));
+    },
+    onError: (e) => toast.error(errorText(e)),
+  });
+  const keyAvailable = !!keyQ.data?.available;
+  const showAiDraftBadge = keyFromAi || (keyQ.data?.source === "AI_DRAFT" && answerKey === null);
+  // Saving the form marks an AI draft as reviewed.
+  const keyNeedsSave = keyAvailable && (keyText.trim() !== (keyQ.data?.text ?? "").trim() || keyQ.data?.source === "AI_DRAFT");
   const deadline = fromLocalInput(f.deadline);
   const missingGroups = f.accessMode === "GROUPS" && !f.groupIds.length;
+  const submit = async () => {
+    if (!deadline) return;
+    const attachments = f.attachments.map(({ fileId, name, size }) => ({ fileId, name, size }));
+    const payload = {
+      title: f.title,
+      description: f.description,
+      instructions: f.instructions,
+      deadline,
+      groupIds: f.groupIds,
+      studentIds: f.studentIds,
+      attachments,
+      accessMode: f.accessMode,
+    };
+    let row: { id: string };
+    try {
+      row = initial ? await update.mutateAsync({ id: initial.id, patch: payload }) : await create.mutateAsync(payload);
+    } catch {
+      return;
+    }
+    if (keyNeedsSave && (initial || keyText.trim())) {
+      try {
+        await saveKey.mutateAsync({ taskId: row.id, text: keyText });
+      } catch {
+        toast.error(t("modules.answerKeySaveFailed"));
+      }
+    }
+    done();
+  };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl">
@@ -143,6 +193,48 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
             <p className={`mb-1 text-sm ${fieldLabel}`}>{t("modules.attachments")}</p>
             <MultiFileUpload context="task-attachment" value={f.attachments} onChange={(attachments) => setF({ ...f, attachments })} />
           </div>
+          <div className="text-sm">
+            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+              <label htmlFor="task-answer-key" className={fieldLabel}>{t("modules.answerKey")}</label>
+              {showAiDraftBadge && <StatusBadge tone="warning">{t("modules.answerKeyAiDraftBadge")}</StatusBadge>}
+            </div>
+            <Textarea
+              id="task-answer-key"
+              rows={5}
+              maxLength={8000}
+              disabled={!keyAvailable || draftKey.isPending}
+              placeholder={t("modules.answerKeyPlaceholder")}
+              value={keyText}
+              onChange={(e) => setAnswerKey(e.target.value)}
+            />
+            {keyQ.data && !keyAvailable && <p className="mt-1 text-xs text-muted-foreground">{t("modules.answerKeyUnavailable")}</p>}
+            {keyAvailable && (
+              <>
+                <p className="mt-1 text-xs text-muted-foreground">{t("modules.answerKeyHelp")}</p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!keyQ.data?.aiEnabled || f.title.trim().length < 2 || draftKey.isPending}
+                    onClick={() => {
+                      if (keyText.trim() && !confirm(t("modules.answerKeyReplaceConfirm"))) return;
+                      draftKey.mutate({
+                        title: f.title,
+                        description: [f.description, f.instructions].filter(Boolean).join("\n\n"),
+                        attachments: f.attachments.map(({ fileId, name }) => ({ fileId, name })),
+                      });
+                    }}
+                  >
+                    <Sparkles className="mr-1 h-4 w-4" />
+                    {draftKey.isPending ? t("modules.answerKeyAiWorking") : t("modules.answerKeyAi")}
+                  </Button>
+                  {!keyQ.data?.aiEnabled && <span className="text-xs text-muted-foreground">{t("aiReview.disabledNote")}</span>}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{t("modules.answerKeyDatasetNote")}</p>
+              </>
+            )}
+          </div>
           <AccessModePicker value={f.accessMode} onChange={(accessMode) => setF({ ...f, accessMode })} />
           <RecipientPicker groupIds={f.groupIds} studentIds={f.studentIds} groupsOnly={f.accessMode === "GROUPS"} onChange={(v) => setF({ ...f, ...v })} />
           {missingGroups && <p role="alert" className="text-xs text-destructive">{t("modules.accessGroupsRequired")}</p>}
@@ -150,23 +242,8 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
           <Button
-            disabled={f.title.trim().length < 2 || !deadline || missingGroups || create.isPending || update.isPending}
-            onClick={() => {
-              if (!deadline) return;
-              const attachments = f.attachments.map(({ fileId, name, size }) => ({ fileId, name, size }));
-              const payload = {
-                title: f.title,
-                description: f.description,
-                instructions: f.instructions,
-                deadline,
-                groupIds: f.groupIds,
-                studentIds: f.studentIds,
-                attachments,
-                accessMode: f.accessMode,
-              };
-              if (initial) update.mutate({ id: initial.id, patch: payload });
-              else create.mutate(payload);
-            }}
+            disabled={f.title.trim().length < 2 || !deadline || missingGroups || create.isPending || update.isPending || saveKey.isPending || draftKey.isPending}
+            onClick={() => void submit()}
           >
             {t("common.save")}
           </Button>
@@ -246,7 +323,15 @@ export function AssignmentsPage() {
               >
                 <p className="break-words text-sm text-foreground-secondary">{a.description}</p>
                 <p className="mt-2 text-xs text-muted-foreground">{t("modules.deadlineValue", { date: fmtDateTime(a.deadline) })}</p>
-                <div className="mt-2"><AccessBadge accessMode={a.accessMode} groupIds={a.groupIds} groupNames={groupNames} /></div>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <AccessBadge accessMode={a.accessMode} groupIds={a.groupIds} groupNames={groupNames} />
+                  {a.answerKeyState === "AI_DRAFT" && (
+                    <button type="button" className="cursor-pointer" onClick={() => setEditing(a)}>
+                      <StatusBadge tone="warning">{t("modules.answerKeyAiDraftBadge")}</StatusBadge>
+                    </button>
+                  )}
+                  {a.answerKeyState === "GENERATING" && <span className="text-xs text-muted-foreground">{t("modules.answerKeyGenerating")}</span>}
+                </div>
                 {a.attachments.length > 0 && (
                   <ul className="mt-2 flex flex-wrap gap-1.5">
                     {a.attachments.map((file) => (

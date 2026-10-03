@@ -13,6 +13,7 @@ export const EVENT_TYPES = [
   "AI_LIMIT_80",
   "AI_LIMIT_REACHED",
   "AI_PROVIDER_ERROR",
+  "ANSWER_KEY_DRAFTED",
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -23,6 +24,8 @@ export interface EventData {
   AI_LIMIT_80: { workspace: string; used: number; limit: number };
   AI_LIMIT_REACHED: { workspace: string; used: number; limit: number };
   AI_PROVIDER_ERROR: { workspace: string; problem: "AUTH" | "QUOTA" };
+  /** Never carries the key itself. */
+  ANSWER_KEY_DRAFTED: { taskId: string; taskTitle: string };
 }
 
 export interface EventDefinition {
@@ -38,6 +41,8 @@ export const EVENTS: Record<EventType, EventDefinition> = {
   AI_LIMIT_80: { channels: ["IN_APP", "PUSH"] },
   AI_LIMIT_REACHED: { channels: ["IN_APP", "PUSH"] },
   AI_PROVIDER_ERROR: { channels: ["IN_APP", "PUSH"] },
+  // To the task's teacher: the AI drafted a missing answer key and grades with it; please review.
+  ANSWER_KEY_DRAFTED: { channels: ["IN_APP", "PUSH"] },
 };
 
 export const isEventType = (v: string): v is EventType => (EVENT_TYPES as readonly string[]).includes(v);

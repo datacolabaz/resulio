@@ -300,3 +300,27 @@ export function aiAlertText(locale: ServerLocale, kind: AiAlertKind, values: { w
   const v = { workspace: values.workspace, used: values.used ?? 0, limit: values.limit ?? 0 };
   return { title: fillTemplate(t.title, v), body: fillTemplate(t.body, v) };
 }
+
+// ---------------------------------------------------------------------------
+// AI-drafted answer key, to the task's teacher
+// ---------------------------------------------------------------------------
+
+const ANSWER_KEY_DRAFTED: Record<ServerLocale, { title: string; body: string }> = {
+  az: {
+    title: "AI cavab açarı layihəsi hazırladı — yoxlayın",
+    body: "«{task}» üçün cavab açarı yox idi. AI layihə hazırladı və təhvilləri onunla qiymətləndirir. Tapşırığı redaktə edib açarı yoxlayın və yadda saxlayın.",
+  },
+  en: {
+    title: "AI drafted an answer key — please review",
+    body: "“{task}” had no answer key. The AI drafted one and grades submissions with it. Edit the task to review and save the key.",
+  },
+  ru: {
+    title: "ИИ подготовил черновик ключа ответов — проверьте",
+    body: "У задания «{task}» не было ключа ответов. ИИ подготовил черновик и оценивает работы по нему. Откройте задание, проверьте ключ и сохраните.",
+  },
+};
+
+export function answerKeyDraftedText(locale: ServerLocale, taskTitle: string) {
+  const t = ANSWER_KEY_DRAFTED[locale];
+  return { title: t.title, body: fillTemplate(t.body, { task: cleanTitle(taskTitle, 120) }) };
+}

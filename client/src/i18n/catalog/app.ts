@@ -359,6 +359,7 @@ export const app = {
   "settings.event.AI_LIMIT_80": ["AI yoxlama limitinin 80%-i", "80% of the AI check limit used", "80% лимита проверок ИИ"],
   "settings.event.AI_LIMIT_REACHED": ["AI yoxlama limiti doldu", "AI check limit reached", "Лимит проверок ИИ исчерпан"],
   "settings.event.AI_PROVIDER_ERROR": ["AI xidməti xətası (açar və ya kvota)", "AI service error (key or quota)", "Ошибка сервиса ИИ (ключ или квота)"],
+  "settings.event.ANSWER_KEY_DRAFTED": ["AI cavab açarı layihəsi hazırladı", "AI drafted an answer key", "ИИ подготовил черновик ключа ответов"],
   "settings.partner": ["Partner proqramı", "Partner programme", "Партнёрская программа"],
   "settings.partnerStatus": ["Status: {status}", "Status: {status}", "Статус: {status}"],
   "settings.partnerPanel": ["Partner paneli →", "Partner panel →", "Панель партнёра →"],

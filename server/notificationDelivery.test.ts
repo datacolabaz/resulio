@@ -199,6 +199,7 @@ describe("dispatcher", () => {
         AI_LIMIT_80: { workspace: "W", used: 80, limit: 100 },
         AI_LIMIT_REACHED: { workspace: "W", used: 100, limit: 100 },
         AI_PROVIDER_ERROR: { workspace: "W", problem: "AUTH" as const },
+        ANSWER_KEY_DRAFTED: { taskId: "t1", taskTitle: "T" },
       }[event];
       const rendered = renderNotification(event, data, { locale: "az", email: "a@b.c" }, "https://resulio.co");
       expect(rendered.title.length).toBeGreaterThan(0);

@@ -1,7 +1,7 @@
 import type { EmailMessage } from "../_core/email";
 import type { ServerLocale } from "../_core/locale";
 import type { EventData, EventType } from "./events";
-import { aiAlertText, aiGradeInAppText, buildAiGradeEmail, buildGradeEmail, gradeInAppText } from "./templates";
+import { aiAlertText, aiGradeInAppText, answerKeyDraftedText, buildAiGradeEmail, buildGradeEmail, gradeInAppText } from "./templates";
 
 export interface Recipient {
   locale: ServerLocale;
@@ -42,6 +42,10 @@ export function renderNotification<E extends EventType>(event: E, data: EventDat
     case "AI_PROVIDER_ERROR": {
       const d = data as EventData["AI_PROVIDER_ERROR"];
       return { ...aiAlertText(locale, d.problem === "AUTH" ? "PROVIDER_AUTH" : "PROVIDER_QUOTA", d), path: "/settings", email: null };
+    }
+    case "ANSWER_KEY_DRAFTED": {
+      const d = data as EventData["ANSWER_KEY_DRAFTED"];
+      return { ...answerKeyDraftedText(locale, d.taskTitle), path: "/teacher/assignments", email: null };
     }
     default:
       throw new Error(`No renderer for ${String(event)}`);

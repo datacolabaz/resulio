@@ -40,6 +40,7 @@ import * as activity from "./modules/activity";
 import { adminView } from "./modules/admin/authz";
 import * as ai from "./modules/ai";
 import * as aiReview from "./modules/aiReview";
+import * as answerKey from "./modules/answerKey";
 import * as autoGrade from "./modules/autoGrade";
 import * as analytics from "./modules/analytics";
 import * as assessments from "./modules/assessments";
@@ -570,7 +571,29 @@ async function assertPatchedRecipients(
 }
 
 const teacherTasksRouter = router({
-  list: teacherProcedure.query(({ ctx }) => tasks.listForWorkspace(ctx.scope.workspaceId)),
+  list: teacherProcedure.query(async ({ ctx }) => {
+    const rows = await tasks.listForWorkspace(ctx.scope.workspaceId);
+    const keyStates = await answerKey.answerKeyStates(rows.map((r) => r.id));
+    return rows.map((r) => ({ ...r, answerKeyState: keyStates.get(r.id) ?? null }));
+  }),
+  /** The hidden answer key / grading criteria for the task form (teacher only, never students). */
+  answerKey: teacherProcedure
+    .input(z.object({ taskId: entityId.optional() }))
+    .query(({ ctx, input }) => answerKey.answerKeyForTeacher(ctx.scope, input.taskId)),
+  saveAnswerKey: teacherProcedure
+    .input(z.object({ taskId: entityId, text: z.string().max(answerKey.ANSWER_KEY_MAX_CHARS) }))
+    .mutation(({ ctx, input }) => answerKey.saveAnswerKey(ctx.scope, input.taskId, input.text)),
+  /** "AI ilə cavab açarı hazırla": a draft from the form's current title, description and files; not saved. */
+  draftAnswerKey: teacherProcedure
+    .use(rateLimit("draftAnswerKey", 5, MINUTE))
+    .input(
+      z.object({
+        title: z.string().trim().max(255),
+        description: z.string().trim().max(10_000).default(""),
+        attachments: z.array(z.object({ fileId: z.string().trim().min(1).max(32), name: z.string().max(255) })).max(20).default([]),
+      }),
+    )
+    .mutation(({ ctx, input }) => answerKey.draftAnswerKeyForTeacher(ctx.scope, input)),
   create: teacherProcedure
     .input(assignmentInput)
     .mutation(async ({ ctx, input }) => {
@@ -594,7 +617,11 @@ const teacherTasksRouter = router({
       if (after && before) for (const sid of after) if (!before.has(sid)) await notifications.notify(sid, "Yeni tapşırıq", row.title);
       return row;
     }),
-  remove: teacherProcedure.input(z.object({ id: entityId })).mutation(({ ctx, input }) => tasks.deleteAssignment(ctx.scope, input.id)),
+  remove: teacherProcedure.input(z.object({ id: entityId })).mutation(async ({ ctx, input }) => {
+    const result = await tasks.deleteAssignment(ctx.scope, input.id);
+    await answerKey.deleteAnswerKey(input.id);
+    return result;
+  }),
   /** Who among the students this task reaches has opened it (submission status comes separately, from `list`). */
   activity: teacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => activity.taskActivity(ctx.scope, input.id)),
   materials: teacherProcedure.query(({ ctx }) => tasks.listMaterialsForWorkspace(ctx.scope.workspaceId)),

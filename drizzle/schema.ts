@@ -948,6 +948,26 @@ export const gradeEmailLog = mysqlTable("grade_email_log", {
   sentAt: timestamp("sentAt").notNull(),
 });
 
+export const ANSWER_KEY_SOURCES = ["TEACHER", "AI_DRAFT"] as const;
+export type AnswerKeySource = (typeof ANSWER_KEY_SOURCES)[number];
+export const ANSWER_KEY_DRAFT_STATUSES = ["GENERATING", "READY", "FAILED"] as const;
+
+/**
+ * A task's hidden answer key / grading criteria, used only for AI grading and never sent to
+ * students. AI_DRAFT = generated automatically and not yet saved by the teacher; the row also
+ * guards against generating it twice. Its own table so task reads can never include it.
+ */
+export const taskAnswerKeys = mysqlTable("task_answer_keys", {
+  taskId: id("taskId").primaryKey(),
+  answerKey: text("answerKey"),
+  source: mysqlEnum("source", ANSWER_KEY_SOURCES).notNull(),
+  /** Only for AI_DRAFT. */
+  draftStatus: mysqlEnum("draftStatus", ANSWER_KEY_DRAFT_STATUSES),
+  updatedByUserId: int("updatedByUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export type ProviderWorkspace = typeof providerWorkspaces.$inferSelect;
 export type PartnerProfile = typeof partnerProfiles.$inferSelect;
 export type Group = typeof groups.$inferSelect;
