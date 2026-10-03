@@ -5,8 +5,8 @@ import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Too
 import { Link } from "wouter";
 
 /** Chart chrome drawn from theme tokens so both themes stay readable. */
-const AXIS = { fontSize: 11, tick: { fill: "var(--muted-foreground)" }, stroke: "var(--border-strong)" } as const;
-const TOOLTIP = {
+export const AXIS = { fontSize: 11, tick: { fill: "var(--muted-foreground)" }, stroke: "var(--border-strong)" } as const;
+export const TOOLTIP = {
   contentStyle: { background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 12, color: "var(--popover-foreground)" },
   labelStyle: { color: "var(--popover-foreground)" },
   itemStyle: { color: "var(--popover-foreground)" },

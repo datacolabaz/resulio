@@ -707,6 +707,8 @@ export const taskSubmissions = mysqlTable(
     status: mysqlEnum("status", TASK_SUBMISSION_STATUSES).notNull(),
     files: json("files").$type<Array<{ fileId: string; name: string; size: number }>>().notNull(),
     submittedAt: timestamp("submittedAt"),
+    /** First time this student turned the task in; resubmissions leave it alone (first-submitter ranking). */
+    firstSubmittedAt: timestamp("firstSubmittedAt"),
     /** The student's typed answer (optional when files are attached). */
     comment: text("comment"),
     /** Teacher's final score on a 0–100 scale; the AI suggestion never lands here by itself. */
@@ -719,7 +721,10 @@ export const taskSubmissions = mysqlTable(
     /** The AI pre-review text is shown to the student only when the teacher opts in on release. */
     aiFeedbackReleased: boolean("aiFeedbackReleased").notNull().default(false),
   },
-  (t) => [uniqueIndex("task_submissions_task_student_unique").on(t.taskId, t.studentId)],
+  (t) => [
+    uniqueIndex("task_submissions_task_student_unique").on(t.taskId, t.studentId),
+    index("task_submissions_task_first_idx").on(t.taskId, t.firstSubmittedAt),
+  ],
 );
 
 export const SUBMISSION_AI_REVIEW_STATUSES = ["PENDING", "DONE", "FAILED", "SKIPPED"] as const;

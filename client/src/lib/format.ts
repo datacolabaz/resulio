@@ -1,5 +1,5 @@
 import { getLocale, isMessageKey, t } from "@/i18n/messages";
-import { formatDateTime, formatDay, formatDuration, formatRelative, formatTime, type DateInput } from "@/lib/dates";
+import { formatDateTime, formatDay, formatDayKeyShort, formatDuration, formatRelative, formatTime, type DateInput } from "@/lib/dates";
 import { sortBySchedule, type ClassScheduleEntry } from "@shared/schedule";
 
 export function errorText(error: unknown): string {
@@ -11,6 +11,7 @@ export function errorText(error: unknown): string {
 
 export const fmtDateTime = (value: DateInput) => formatDateTime(value, getLocale());
 export const fmtDay = (value: DateInput) => formatDay(value, getLocale());
+export const fmtDayKeyShort = (key: string) => formatDayKeyShort(key, getLocale());
 export const fmtTime = (value: DateInput) => formatTime(value, getLocale());
 export const fmtRelative = (value: DateInput, now: DateInput = Date.now()) => formatRelative(value, getLocale(), now);
 export const fmtDuration = (seconds: number | null | undefined) => formatDuration(seconds, getLocale());

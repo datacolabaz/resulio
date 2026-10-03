@@ -1,3 +1,4 @@
+import { PlaceBadge } from "@/components/ActivityBlocks";
 import { AppShell, EmptyState, Loading, Panel, Pill } from "@/components/AppShell";
 import { MultiFileUpload, SingleFileUpload } from "@/components/FileUpload";
 import { draftFromQuestion, QuestionEditor } from "@/components/QuestionEditor";
@@ -175,6 +176,15 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
   );
 }
 
+/** Places 1–3 by first submission time (resubmissions don't count). */
+function submissionPlaces(subs: Array<{ id: string; firstSubmittedAt: Date | null; submittedAt: Date | null }>) {
+  const timed = subs
+    .map((s) => ({ id: s.id, at: s.firstSubmittedAt ?? s.submittedAt }))
+    .filter((s): s is { id: string; at: Date } => !!s.at)
+    .sort((x, y) => new Date(x.at).getTime() - new Date(y.at).getTime());
+  return new Map(timed.slice(0, 3).map((s, i) => [s.id, i + 1]));
+}
+
 export function AssignmentsPage() {
   const utils = trpc.useUtils();
   const list = trpc.teacher.tasks.list.useQuery();
@@ -241,10 +251,14 @@ export function AssignmentsPage() {
                   <ul className="mt-3 divide-y divide-border rounded-xl border border-border">
                     {a.submissions.map((s) => {
                       const student = studentByI.get(s.studentId);
+                      const place = submissionPlaces(a.submissions).get(s.id);
                       return (
                         <li key={s.id} className="p-2.5 text-sm">
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="min-w-0 break-words font-medium">{student?.name ?? student?.email ?? `#${s.studentId}`}</span>
+                            <span className="flex min-w-0 flex-wrap items-center gap-2">
+                              <span className="min-w-0 break-words font-medium">{student?.name ?? student?.email ?? `#${s.studentId}`}</span>
+                              {place && <PlaceBadge place={place} />}
+                            </span>
                             {s.status === "LATE" ? <StatusBadge tone="warning">{t("student.late")}</StatusBadge> : <StatusBadge tone="success">{t("student.onTime")}</StatusBadge>}
                           </div>
                           {s.submittedAt && <p className="mt-1 text-xs text-muted-foreground">{t("modules.submittedAt", { date: fmtDateTime(s.submittedAt) })}</p>}

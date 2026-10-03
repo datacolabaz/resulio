@@ -38,6 +38,7 @@ import {
   Shield,
   Sun,
   TrendingUp,
+  Trophy,
   Users,
   X,
 } from "lucide-react";
@@ -79,6 +80,7 @@ const STUDENT_NAV: typeof TEACHER_NAV = [
   { href: "/student/groups", key: "nav.myGroups", icon: Users },
   { href: "/student/results", key: "nav.myResults", icon: ListChecks },
   { href: "/student/progress", key: "nav.myProgress", icon: TrendingUp },
+  { href: "/student/profile", key: "nav.myProfile", icon: Trophy },
   { href: "/partner", key: "nav.referral", icon: Handshake },
   { href: "/settings", key: "nav.settings", icon: Settings },
 ];

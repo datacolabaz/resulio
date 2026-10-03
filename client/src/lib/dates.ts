@@ -80,6 +80,14 @@ export function formatTime(value: DateInput, _locale: Locale, opts: DateOptions 
 
 const dayKey = (p: Parts) => `${p.year}-${p.month}-${p.day}`;
 
+/** Compact axis label for a calendar day key (YYYY-MM-DD): az/ru "29.09", en "Sep 29". */
+export function formatDayKeyShort(key: string, locale: Locale): string {
+  const d = toDate(`${key}T12:00:00Z`);
+  if (!d) return key;
+  const p = parts(d, "UTC");
+  return locale === "en" ? `${p.monthShort} ${Number(p.day)}` : `${p.day}.${p.month}`;
+}
+
 /** "just now", "5 min ago", "Today, 14:32", "Yesterday, 21:40", else the full date-time. `now` should be server-aligned. */
 export function formatRelative(value: DateInput, locale: Locale, now: DateInput = Date.now(), opts: DateOptions = {}): string {
   const d = toDate(value);

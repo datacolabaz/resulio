@@ -168,9 +168,12 @@ export async function submitAssignment(
   if (existing?.gradedAt) throw new AppError("SUBMISSION_ALREADY_GRADED");
   const now = new Date();
   if (existing) {
-    await db.update(taskSubmissions).set({ status, files: filesJson, comment: text || null, submittedAt: now }).where(eq(taskSubmissions.id, existing.id));
+    await db
+      .update(taskSubmissions)
+      .set({ status, files: filesJson, comment: text || null, submittedAt: now, firstSubmittedAt: existing.firstSubmittedAt ?? existing.submittedAt ?? now })
+      .where(eq(taskSubmissions.id, existing.id));
   } else {
-    await db.insert(taskSubmissions).values({ id: nanoid(), taskId: assignmentId, studentId, status, files: filesJson, comment: text || null, submittedAt: now });
+    await db.insert(taskSubmissions).values({ id: nanoid(), taskId: assignmentId, studentId, status, files: filesJson, comment: text || null, submittedAt: now, firstSubmittedAt: now });
   }
   const ownerId = await workspaceOwnerId(task.providerWorkspaceId);
   if (ownerId) await notifications.notify(ownerId, "Yeni təslim", "Tələbə tapşırıq göndərdi");

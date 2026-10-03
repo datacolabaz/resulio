@@ -23,6 +23,7 @@ import {
   StudentResults,
   StudentTasks,
 } from "@/pages/student/StudentPages";
+import StudentProfile from "@/pages/student/StudentProfile";
 import StudentSession from "@/pages/student/StudentSession";
 import { AnalyticsPage } from "@/pages/teacher/Analytics";
 import { AssessmentDetailPage, AssessmentsPage } from "@/pages/teacher/Assessments";
@@ -168,7 +169,7 @@ function Router() {
       <Route path="/student/bsq"><Redirect to="/student/assessments?type=BSQ" /></Route>
       <Route path="/student/exam/:id" component={LegacySessionRedirect} />
       <Route path="/student/library"><Redirect to="/student/materials" /></Route>
-      <Route path="/student/profile"><Redirect to="/settings" /></Route>
+      <Route path="/student/profile">{student(<StudentProfile />)}</Route>
 
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />

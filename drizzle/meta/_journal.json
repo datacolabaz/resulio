@@ -141,6 +141,13 @@
       "when": 1791047142661,
       "tag": "0019_submission_ai_review",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "5",
+      "when": 1791049788226,
+      "tag": "0020_task_first_submitted",
+      "breakpoints": true
     }
   ]
 }

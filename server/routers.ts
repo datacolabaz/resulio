@@ -47,6 +47,7 @@ import { AppError } from "./modules/errors";
 import * as groupEmailInvites from "./modules/groupEmailInvites";
 import * as groupInviteLinks from "./modules/groupInviteLinks";
 import * as groups from "./modules/groups";
+import * as motivation from "./modules/motivation";
 import * as notifications from "./modules/notifications";
 import * as partners from "./modules/partners";
 import * as passwordAuth from "./modules/passwordAuth";
@@ -348,6 +349,10 @@ const teacherGroupsRouter = router({
     .use(rateLimit("emailInviteResend", 20, MINUTE))
     .input(z.object({ groupId: entityId, inviteId: entityId }))
     .mutation(({ ctx, input }) => groupEmailInvites.resendEmailInvite(ctx.scope, input.groupId, input.inviteId)),
+  /** Opens/submissions per day, per-student stats and first submitters for this group's tasks. */
+  activity: teacherProcedure
+    .input(z.object({ groupId: entityId, days: z.union([z.literal(7), z.literal(14), z.literal(30)]).default(14) }))
+    .query(({ ctx, input }) => motivation.teacherGroupActivity(ctx.scope, input.groupId, input.days)),
   inviteLinkList: teacherProcedure
     .input(z.object({ groupId: entityId }))
     .query(({ ctx, input }) => groupInviteLinks.listInviteLinks(ctx.scope, input.groupId)),
@@ -778,6 +783,12 @@ const studentRouter = router({
     return rows;
   }),
   /** Exam progress scoped to one of the student's groups — see analytics.studentGroupProgress. */
+  /** Group leaderboard: classmates' names, ranks and first places only. */
+  groupBoard: studentProcedure
+    .input(z.object({ groupId: entityId }))
+    .query(({ ctx, input }) => motivation.studentGroupBoard(ctx.user.id, input.groupId)),
+  /** The student's own activity, on-time rate, first places, released scores and group positions. */
+  profile: studentProcedure.query(({ ctx }) => motivation.studentProfile(ctx.user.id)),
   groupProgress: studentProcedure
     .input(z.object({ groupId: entityId }))
     .query(({ ctx, input }) => analytics.studentGroupProgress(ctx.user.id, input.groupId)),

@@ -1,3 +1,4 @@
+import { FirstSubmittersList } from "@/components/ActivityBlocks";
 import { ProgressChart, TopicBars } from "@/components/AnalyticsBlocks";
 import { AppShell, ChoiceChip, EmptyState, ErrorNote, Loading, Panel, Pill, StatCard } from "@/components/AppShell";
 import { SingleFileUpload } from "@/components/FileUpload";
@@ -394,7 +395,12 @@ export function StudentGroups() {
                         )}
                       </span>
                     </div>
-                    {progressId === g.id && <GroupProgressPanel groupId={g.id} />}
+                    {progressId === g.id && (
+                      <>
+                        <GroupProgressPanel groupId={g.id} />
+                        <GroupBoardPanel groupId={g.id} />
+                      </>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -437,6 +443,54 @@ export function StudentGroups() {
         </div>
       )}
     </AppShell>
+  );
+}
+
+/** Group leaderboard and first submitters; classmates appear only by name, rank and first places. */
+function GroupBoardPanel({ groupId }: { groupId: string }) {
+  const b = trpc.student.groupBoard.useQuery({ groupId });
+  if (!b.data) return b.error ? <ErrorNote error={b.error} /> : <Loading />;
+  const { me, leaderboard, tasks } = b.data;
+  return (
+    <div className="mt-2 space-y-3 rounded-lg bg-muted/40 p-3">
+      {me && (
+        <div className="grid grid-cols-3 gap-2">
+          <StatCard label={t("motivation.yourPlace")} value={t("motivation.rankOf", { rank: me.rank, of: me.of })} />
+          <StatCard label={t("motivation.col.onTime")} value={me.submitted ? `${me.onTimeRate}%` : "—"} />
+          <StatCard label={t("motivation.col.firstPlaces")} value={me.firstPlaces} />
+        </div>
+      )}
+      <div>
+        <h4 className="mb-1.5 text-xs font-medium text-foreground-secondary">{t("motivation.leaderboard")}</h4>
+        <ol className="divide-y divide-border rounded-lg border border-border bg-card">
+          {leaderboard.slice(0, 10).map((r, i) => (
+            <li key={i} className={`flex items-center justify-between gap-2 px-2.5 py-1.5 text-sm ${r.isYou ? "font-semibold" : ""}`}>
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="w-6 shrink-0 text-muted-foreground">{r.rank}</span>
+                <span className="min-w-0 break-words">
+                  {r.name ?? t("common.student")}
+                  {r.isYou && <span className="ml-1 text-xs font-normal text-muted-foreground">{t("motivation.you")}</span>}
+                </span>
+              </span>
+              {r.firstPlaces > 0 && <span className="shrink-0 text-xs text-muted-foreground">{t("motivation.firstPlacesCount", { count: r.firstPlaces })}</span>}
+            </li>
+          ))}
+        </ol>
+      </div>
+      {tasks.length > 0 && (
+        <div>
+          <h4 className="mb-1.5 text-xs font-medium text-foreground-secondary">{t("motivation.firstSubmittersTitle")}</h4>
+          <ul className="space-y-2">
+            {tasks.map((task) => (
+              <li key={task.id} className="space-y-1">
+                <p className="break-words text-sm">{task.title}</p>
+                <FirstSubmittersList items={task.firstSubmitters} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
 

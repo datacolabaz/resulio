@@ -1,3 +1,4 @@
+import { ActivityChart, FirstSubmittersList } from "@/components/ActivityBlocks";
 import { ProgressChart, RankingTable, TopicBars } from "@/components/AnalyticsBlocks";
 import { AppShell, ChoiceChip, EmptyState, ErrorNote, Loading, Panel, Pill, StatCard } from "@/components/AppShell";
 import { CompactShareLink, ShareBox, ShareFunnelSummary } from "@/components/ShareBox";
@@ -22,6 +23,87 @@ const fieldLabel = "text-foreground-secondary";
 const GROUP_FORMATS = ["ONLINE", "IN_PERSON", "HYBRID"] as const;
 const JOIN_POLICIES = ["AUTO", "APPROVAL", "MANUAL"] as const;
 type JoinPolicy = (typeof JOIN_POLICIES)[number];
+
+const ACTIVITY_RANGES = [7, 14, 30] as const;
+
+/** Day-by-day opens/submissions, a per-student table and first submitters of recent tasks. */
+function GroupActivityTab({ groupId }: { groupId: string }) {
+  const [days, setDays] = useState<(typeof ACTIVITY_RANGES)[number]>(14);
+  const q = trpc.teacher.groups.activity.useQuery({ groupId, days });
+  if (q.error) return <ErrorNote error={q.error} />;
+  if (!q.data) return <Loading />;
+  const { students, tasks } = q.data;
+  return (
+    <div className="space-y-4">
+      <Panel
+        title={t("motivation.chartTitle")}
+        action={
+          <div className="flex gap-1.5">
+            {ACTIVITY_RANGES.map((n) => (
+              <ChoiceChip key={n} selected={days === n} onClick={() => setDays(n)}>{t("motivation.lastDays", { count: n })}</ChoiceChip>
+            ))}
+          </div>
+        }
+      >
+        <ActivityChart data={q.data.days} />
+        <p className="mt-1 text-xs text-muted-foreground">{t("motivation.opensHint")}</p>
+      </Panel>
+      <Panel title={t("motivation.studentsTitle")}>
+        {!students.length ? (
+          <p className="text-sm text-muted-foreground">{t("groups.noStudents")}</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-left text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th scope="col" className="py-2">#</th>
+                  <th scope="col">{t("common.student")}</th>
+                  <th scope="col">{t("motivation.col.submitted")}</th>
+                  <th scope="col">{t("motivation.col.onTime")}</th>
+                  <th scope="col">{t("motivation.col.firstPlaces")}</th>
+                  <th scope="col">{t("motivation.col.opened")}</th>
+                  <th scope="col">{t("motivation.col.lastSubmission")}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {students.map((s) => (
+                  <tr key={s.studentId}>
+                    <td className="py-2 pr-2 font-semibold">{s.rank}</td>
+                    <td className="break-words pr-3">{s.name ?? s.email ?? `#${s.studentId}`}</td>
+                    <td className="pr-3">{t("motivation.ofTasks", { done: s.submitted, total: q.data.taskCount })}</td>
+                    <td className="pr-3">{s.submitted ? `${s.onTimeRate}%` : "—"}</td>
+                    <td className="pr-3">{s.firstPlaces}</td>
+                    <td className="pr-3">{s.opened}</td>
+                    <td className="whitespace-nowrap text-muted-foreground">{s.lastSubmittedAt ? fmtDateTime(s.lastSubmittedAt) : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
+      <Panel title={t("motivation.firstSubmittersTitle")}>
+        {!tasks.length ? (
+          <p className="text-sm text-muted-foreground">{t("motivation.noGroupTasks")}</p>
+        ) : (
+          <ul className="divide-y">
+            {tasks.map((task) => (
+              <li key={task.id} className="space-y-1.5 py-2.5">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="min-w-0 break-words font-medium">{task.title}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {t("motivation.ofTasks", { done: task.submittedCount, total: students.length })} · {t("modules.deadlineValue", { date: fmtDateTime(task.deadline) })}
+                  </span>
+                </div>
+                <FirstSubmittersList items={task.firstSubmitters} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
+    </div>
+  );
+}
 
 export function GroupsPage() {
   const groups = trpc.teacher.groups.list.useQuery();
@@ -617,7 +699,11 @@ export function GroupDetailPage() {
               <TabsTrigger value="assessments">{t("common.exams")}</TabsTrigger>
               <TabsTrigger value="tasks">{t("groups.tab.tasks")}</TabsTrigger>
               <TabsTrigger value="analytics">{t("common.analytics")}</TabsTrigger>
+              <TabsTrigger value="activity">{t("motivation.tab")}</TabsTrigger>
             </TabsList>
+            <TabsContent value="activity" className="pt-3">
+              <GroupActivityTab groupId={id} />
+            </TabsContent>
             <TabsContent value="students" className="pt-3">
               <Panel>
                 {!active.length ? (
