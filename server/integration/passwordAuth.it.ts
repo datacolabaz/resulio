@@ -26,11 +26,11 @@ describe("email + password accounts", () => {
     await testDb().insert(authAccounts).values({ userId: google.id, provider: "google", providerAccountId: `g_${Date.now()}`, providerEmail: google.email });
 
     await expect(passwordAuth.registerWithPassword({ email: google.email!, password: "attacker-pass", name: "Attacker" })).rejects.toThrow(
-      "REGISTRATION_UNAVAILABLE",
+      "GOOGLE_ACCOUNT_NO_PASSWORD",
     );
     const [row] = await testDb().select().from(users).where(eq(users.id, google.id));
     expect(row.passwordHash).toBeNull();
-    await expect(passwordAuth.loginWithPassword({ email: google.email!, password: "attacker-pass" })).rejects.toThrow("INVALID_CREDENTIALS");
+    await expect(passwordAuth.loginWithPassword({ email: google.email!, password: "attacker-pass" })).rejects.toThrow("GOOGLE_ACCOUNT_NO_PASSWORD");
   });
 
   it("Google sign-in for a password account's email reaches the same user and drops the unverified password", async () => {
@@ -44,7 +44,7 @@ describe("email + password accounts", () => {
     expect(linked.user.passwordHash).toBeNull();
     expect(linked.user.sessionsValidAfter).not.toBeNull();
 
-    await expect(passwordAuth.loginWithPassword({ email, password: "squatter-pass" })).rejects.toThrow("INVALID_CREDENTIALS");
+    await expect(passwordAuth.loginWithPassword({ email, password: "squatter-pass" })).rejects.toThrow("GOOGLE_ACCOUNT_NO_PASSWORD");
     const links = await testDb().select().from(authAccounts).where(eq(authAccounts.userId, created.user.id));
     expect(links.map((l) => l.provider)).toEqual(["google"]);
   });

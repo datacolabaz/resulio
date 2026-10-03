@@ -134,7 +134,7 @@ export default function Home() {
                 </a>
               </Button>
             </div>
-            <EmailSignIn className="max-w-sm" />
+            <EmailSignIn className="max-w-sm" googleReturnTo={returnTo} />
             {demoAvailable.data && (
               <div className="mt-4 flex flex-wrap gap-3">
                 <Button variant="ghost" size="sm" disabled={demo.isPending} onClick={() => void enterDemo("TEACHER")}>

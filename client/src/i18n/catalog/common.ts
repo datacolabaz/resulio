@@ -48,9 +48,9 @@ export const common = {
   "auth.toSignIn": ["Artıq hesabınız var? Daxil olun", "Already have an account? Sign in", "Уже есть аккаунт? Войдите"],
   "auth.checkFields": ["Xanaları yoxlayın və yenidən cəhd edin.", "Check the fields and try again.", "Проверьте поля и попробуйте снова."],
   "auth.forgotPasswordHint": [
-    "Parolu unutmusunuz? Bu e-poçt Google hesabınızdırsa, Google ilə daxil olun və Tənzimləmələrdən yeni parol təyin edin.",
-    "Forgot your password? If this email is your Google account, continue with Google, then set a new password in Settings.",
-    "Забыли пароль? Если этот адрес — ваш аккаунт Google, войдите через Google и задайте новый пароль в настройках.",
+    "Diqqət: Gmail parolunuz burada işləmir. Burada yalnız Resulio-da özünüz yaratdığınız parol işləyir. Google ilə qeydiyyatdan keçmisinizsə, Google ilə daxil olun.",
+    "Note: your Gmail password doesn't work here. Only a password you created yourself in Resulio works here. If you signed up with Google, continue with Google.",
+    "Внимание: пароль от Gmail здесь не работает. Здесь работает только пароль, который вы сами создали в Resulio. Если вы регистрировались через Google, войдите через Google.",
   ],
   "common.required": ["{label} *", "{label} *", "{label} *"],
   "common.name": ["Ad", "Name", "Название"],

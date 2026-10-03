@@ -95,6 +95,13 @@ describe("auth.passwordLogin", () => {
     expect(res.cookie).not.toHaveBeenCalled();
   });
 
+  it("tells a Google-only account to use Google, without setting a cookie", async () => {
+    mocked.loginWithPassword.mockRejectedValue(new AppError("GOOGLE_ACCOUNT_NO_PASSWORD"));
+    const { api, res } = caller(null);
+    expect(await codeOf(api.auth.passwordLogin({ email: "google.user@gmail.com", password: "gmail-pass" }))).toBe("BAD_REQUEST:GOOGLE_ACCOUNT_NO_PASSWORD");
+    expect(res.cookie).not.toHaveBeenCalled();
+  });
+
   it("limits attempts per email across IP addresses and email spellings", async () => {
     mocked.loginWithPassword.mockRejectedValue(new AppError("INVALID_CREDENTIALS"));
     for (let i = 0; i < 10; i++) {
@@ -128,6 +135,15 @@ describe("auth.passwordRegister", () => {
     const { api, res } = caller(null);
     expect(await codeOf(api.auth.passwordRegister({ name: "Xəyal", email: "google.user@gmail.com", password: "long-enough" }))).toBe(
       "CONFLICT:REGISTRATION_UNAVAILABLE",
+    );
+    expect(res.cookie).not.toHaveBeenCalled();
+  });
+
+  it("passes GOOGLE_ACCOUNT_NO_PASSWORD through for a Google-only email", async () => {
+    mocked.registerWithPassword.mockRejectedValue(new AppError("GOOGLE_ACCOUNT_NO_PASSWORD"));
+    const { api, res } = caller(null);
+    expect(await codeOf(api.auth.passwordRegister({ name: "Xəyal", email: "google.user@gmail.com", password: "long-enough" }))).toBe(
+      "BAD_REQUEST:GOOGLE_ACCOUNT_NO_PASSWORD",
     );
     expect(res.cookie).not.toHaveBeenCalled();
   });

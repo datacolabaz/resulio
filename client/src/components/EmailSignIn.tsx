@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { startLogin } from "@/const";
 import { isMessageKey, t } from "@/i18n/messages";
 import { errorText } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
@@ -77,7 +78,7 @@ export function PasswordField({
  * the new session (e.g. a restricted task's access check), so the page carries on exactly as after
  * a Google round trip back to the same URL.
  */
-export function EmailSignIn({ className = "" }: { className?: string }) {
+export function EmailSignIn({ className = "", googleReturnTo }: { className?: string; googleReturnTo?: string }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"signIn" | "signUp">("signIn");
   const [name, setName] = useState("");
@@ -134,9 +135,14 @@ export function EmailSignIn({ className = "" }: { className?: string }) {
             hint={mode === "signUp" ? t("auth.passwordHint", { count: PASSWORD_MIN_LENGTH }) : undefined}
           />
           {active.error && (
-            <p role="alert" className="text-sm text-destructive">
-              {authErrorText(active.error, mode === "signIn" ? t("error.INVALID_CREDENTIALS") : t("auth.checkFields"))}
-            </p>
+            <div role="alert" className="grid gap-2 text-sm text-destructive">
+              <p>{authErrorText(active.error, mode === "signIn" ? t("error.INVALID_CREDENTIALS") : t("auth.checkFields"))}</p>
+              {active.error.message === "GOOGLE_ACCOUNT_NO_PASSWORD" && (
+                <Button type="button" variant="outline" className="w-full" onClick={() => startLogin(googleReturnTo)}>
+                  {t("common.signInGoogle")}
+                </Button>
+              )}
+            </div>
           )}
           <Button type="submit" className="w-full" disabled={active.isPending}>
             {mode === "signIn" ? t("auth.signIn") : t("auth.createAccount")}
