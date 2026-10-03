@@ -175,7 +175,7 @@ const authRouter = router({
 
   /**
    * Email + password sign-in, the alternative to Google. Unknown email and wrong password give the
-   * same INVALID_CREDENTIALS. Limited per IP (generous: a whole class may share one school NAT) and
+   * same INVALID_CREDENTIALS; a Google-only account's email gets GOOGLE_ACCOUNT_NO_PASSWORD. Limited per IP (generous: a whole class may share one school NAT) and
    * per email, so one account can't be brute-forced from many addresses.
    */
   passwordLogin: publicProcedure

@@ -1,4 +1,4 @@
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { authAccounts, users, type User } from "../../drizzle/schema";
 import { REAUTH_WINDOW_MS } from "../../shared/adminPermissions";
@@ -22,7 +22,8 @@ function isDuplicateKey(error: unknown): boolean {
 /**
  * Email + password sign-up. Refuses any email that already belongs to a user -- Google, legacy or
  * password -- so knowing someone's email is never enough to attach a password to their account.
- * Existing Google users add a password from Settings instead (setOwnPassword). The unique
+ * Existing Google users add a password from Settings instead (setOwnPassword), and are told so
+ * (GOOGLE_ACCOUNT_NO_PASSWORD) -- a deliberate, product-approved enumeration tradeoff. The unique
  * (provider, providerAccountId) index on auth_accounts settles concurrent sign-ups for one email.
  */
 export async function registerWithPassword(input: { email: string; password: string; name: string }): Promise<{ user: User; isNew: true }> {
@@ -31,8 +32,12 @@ export async function registerWithPassword(input: { email: string; password: str
   const passwordHash = await hashPassword(input.password);
   try {
     return await requireDb().transaction(async (tx) => {
-      const [existing] = await tx.select({ id: users.id }).from(users).where(sql`lower(${users.email}) = ${email}`).limit(1);
-      if (existing) throw new AppError("REGISTRATION_UNAVAILABLE");
+      const [existing] = await tx
+        .select({ id: users.id, passwordHash: users.passwordHash })
+        .from(users)
+        .where(sql`lower(${users.email}) = ${email}`)
+        .limit(1);
+      if (existing) throw new AppError(existing.passwordHash ? "REGISTRATION_UNAVAILABLE" : "GOOGLE_ACCOUNT_NO_PASSWORD");
       const [inserted] = await tx
         .insert(users)
         .values({ openId: `usr_${nanoid(21)}`, name: input.name, email, loginMethod: PASSWORD_PROVIDER, lastSignedIn: new Date(), passwordHash })
@@ -47,7 +52,11 @@ export async function registerWithPassword(input: { email: string; password: str
   }
 }
 
-/** One error for unknown email and wrong password, with the same scrypt work on both paths. */
+/**
+ * One error for unknown email and wrong password, with the same scrypt work on both paths. An email
+ * that belongs to a passwordless (Google-only) account gets GOOGLE_ACCOUNT_NO_PASSWORD instead, so
+ * students who type their Gmail password learn to use the Google button.
+ */
 export async function loginWithPassword(input: { email: string; password: string }): Promise<{ user: User; isNew: false }> {
   const email = normalizeEmail(input.email);
   const db = requireDb();
@@ -59,7 +68,15 @@ export async function loginWithPassword(input: { email: string; password: string
     .limit(1);
   const user = row?.user;
   const ok = await verifyPassword(input.password, user?.passwordHash);
-  if (!user?.passwordHash || !ok) throw new AppError("INVALID_CREDENTIALS");
+  if (!user?.passwordHash) {
+    const [passwordless] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(sql`lower(${users.email}) = ${email}`, isNull(users.passwordHash)))
+      .limit(1);
+    throw new AppError(passwordless ? "GOOGLE_ACCOUNT_NO_PASSWORD" : "INVALID_CREDENTIALS");
+  }
+  if (!ok) throw new AppError("INVALID_CREDENTIALS");
   const rehashed = needsRehash(user.passwordHash) ? await hashPassword(input.password) : undefined;
   await db
     .update(users)

@@ -166,6 +166,12 @@ describe("loginWithPassword", () => {
     await expect(loginWithPassword({ email: "aysel@example.az", password: "wrong-password" })).rejects.toThrow("INVALID_CREDENTIALS");
   });
 
+  it("tells an email of a passwordless (Google-only) account to use Google, and signs nobody in", async () => {
+    const log = fakeDb({ selects: [[], [{ id: 5 }]] });
+    await expect(loginWithPassword({ email: "Google.User@gmail.com", password: "gmail-password" })).rejects.toThrow("GOOGLE_ACCOUNT_NO_PASSWORD");
+    expect(log).toEqual([]);
+  });
+
   it("signs in a returning user and records the sign-in time", async () => {
     const passwordHash = await hashPassword("right-password");
     const log = fakeDb({ selects: [[{ user: userRow({ passwordHash }) }]] });
@@ -187,9 +193,15 @@ describe("loginWithPassword", () => {
 });
 
 describe("registerWithPassword", () => {
-  it("refuses an email that already has any account, without attaching a password to it", async () => {
-    const log = fakeDb({ selects: [[{ id: 1 }]] });
-    await expect(registerWithPassword({ email: "Google.User@gmail.com", password: "attacker-pass", name: "X" })).rejects.toThrow("REGISTRATION_UNAVAILABLE");
+  it("refuses an email that already has a password account, without attaching a password to it", async () => {
+    const log = fakeDb({ selects: [[{ id: 1, passwordHash: "scrypt$x" }]] });
+    await expect(registerWithPassword({ email: "taken@example.az", password: "attacker-pass", name: "X" })).rejects.toThrow("REGISTRATION_UNAVAILABLE");
+    expect(log).toEqual([]);
+  });
+
+  it("refuses a Google-only email with GOOGLE_ACCOUNT_NO_PASSWORD, without attaching a password to it", async () => {
+    const log = fakeDb({ selects: [[{ id: 1, passwordHash: null }]] });
+    await expect(registerWithPassword({ email: "Google.User@gmail.com", password: "attacker-pass", name: "X" })).rejects.toThrow("GOOGLE_ACCOUNT_NO_PASSWORD");
     expect(log).toEqual([]);
   });
 
