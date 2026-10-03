@@ -1,6 +1,6 @@
 import { ProgressChart, RankingTable, TopicBars } from "@/components/AnalyticsBlocks";
 import { AppShell, ChoiceChip, EmptyState, ErrorNote, Loading, Panel, Pill, StatCard } from "@/components/AppShell";
-import { ShareBox, ShareFunnelSummary } from "@/components/ShareBox";
+import { CompactShareLink, ShareBox, ShareFunnelSummary } from "@/components/ShareBox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,6 +13,7 @@ import { errorText, fmtDateTime, liveLabel } from "@/lib/format";
 import { liveStatus } from "@/lib/status";
 import { trpc } from "@/lib/trpc";
 import { GROUP_LANGUAGES, WEEK_DAYS, type ClassScheduleEntry, type GroupLanguage, type WeekDay } from "@shared/schedule";
+import { SHARE_SOURCE_PARAM } from "@shared/shareTracking";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useParams, useSearch } from "wouter";
@@ -292,6 +293,144 @@ function EmailInviteSection({ groupId }: { groupId: string }) {
   );
 }
 
+type InviteLinkStatus = "ACTIVE" | "USED" | "EXPIRED" | "REVOKED";
+type FreshInviteLink = { id: string; label: string; token: string; expiresAt: string | Date };
+const INVITE_LINK_EXPIRY_DAYS = [1, 3, 7, 14, 30] as const;
+
+function InviteLinkStatusBadge({ status }: { status: InviteLinkStatus }) {
+  const tone = status === "USED" ? "success" : status === "ACTIVE" ? "info" : "neutral";
+  return <StatusBadge tone={tone}>{t(`groups.inviteLinkStatus.${status}`)}</StatusBadge>;
+}
+
+/**
+ * Single-use links: each one admits exactly one student, instantly. Raw links exist only in the
+ * create/reissue response (the server keeps a hash), so they're listed here until the dialog closes;
+ * an older link can be reissued to get a copyable one again.
+ */
+function InviteLinksSection({ groupId }: { groupId: string }) {
+  const utils = trpc.useUtils();
+  const [byName, setByName] = useState(false);
+  const [count, setCount] = useState(5);
+  const [names, setNames] = useState("");
+  const [days, setDays] = useState<number>(7);
+  const [fresh, setFresh] = useState<FreshInviteLink[]>([]);
+  const list = trpc.teacher.groups.inviteLinkList.useQuery({ groupId });
+  const refresh = () => {
+    void utils.teacher.groups.inviteLinkList.invalidate({ groupId });
+    void utils.teacher.groups.shareFunnel.invalidate({ groupId });
+  };
+  const create = trpc.teacher.groups.inviteLinkCreate.useMutation({
+    onSuccess: (rows) => { setFresh(rows); setNames(""); refresh(); },
+    onError: (e) => toast.error(errorText(e)),
+  });
+  const revoke = trpc.teacher.groups.inviteLinkRevoke.useMutation({ onSuccess: refresh, onError: (e) => toast.error(errorText(e)) });
+  const reissue = trpc.teacher.groups.inviteLinkReissue.useMutation({
+    onSuccess: (row) => { setFresh([row]); refresh(); },
+    onError: (e) => toast.error(errorText(e)),
+  });
+  const labels = names.split("\n").map((s) => s.trim()).filter(Boolean);
+  const canCreate = byName ? labels.length > 0 && labels.length <= 50 : count >= 1 && count <= 50;
+  const urlOf = (token: string) => `${window.location.origin}/g/${token}?src=${SHARE_SOURCE_PARAM.COPY_LINK}`;
+  const copyAll = async () => {
+    try {
+      await navigator.clipboard.writeText(fresh.map((f) => (f.label ? `${f.label}: ${urlOf(f.token)}` : urlOf(f.token))).join("\n"));
+      toast.success(t("share.copied"));
+    } catch {
+      toast.error(t("share.copyFailed"));
+    }
+  };
+
+  return (
+    <section aria-labelledby="invite-single-use">
+      <h3 id="invite-single-use" className="mb-1 text-sm font-medium">{t("groups.inviteLinks.title")}</h3>
+      <p className="mb-3 text-xs text-muted-foreground">{t("groups.inviteLinks.hint")}</p>
+      <div className="space-y-3 rounded-xl border p-3">
+        <div className="flex flex-wrap gap-2">
+          <ChoiceChip selected={!byName} onClick={() => setByName(false)}>{t("groups.inviteLinks.byCount")}</ChoiceChip>
+          <ChoiceChip selected={byName} onClick={() => setByName(true)}>{t("groups.inviteLinks.byName")}</ChoiceChip>
+        </div>
+        {byName ? (
+          <label className="block text-sm">
+            <span className={fieldLabel}>{t("groups.inviteLinks.namesLabel")}</span>
+            <Textarea rows={4} value={names} placeholder={t("groups.inviteLinks.namesPlaceholder")} onChange={(e) => setNames(e.target.value)} />
+            <span className="mt-1 block text-xs text-muted-foreground">{t("groups.inviteLinks.namesHint", { count: labels.length })}</span>
+          </label>
+        ) : (
+          <label className="block text-sm">
+            <span className={fieldLabel}>{t("groups.inviteLinks.countLabel")}</span>
+            <Input type="number" min={1} max={50} value={count} onChange={(e) => setCount(Math.max(0, Math.min(50, Number(e.target.value) || 0)))} />
+          </label>
+        )}
+        <label className="block text-sm">
+          <span className={fieldLabel}>{t("groups.inviteLinks.expiryLabel")}</span>
+          <select
+            className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground"
+            value={days}
+            onChange={(e) => setDays(Number(e.target.value))}
+          >
+            {INVITE_LINK_EXPIRY_DAYS.map((d) => (
+              <option key={d} value={d}>{t("groups.inviteLinks.expiryDays", { count: d })}</option>
+            ))}
+          </select>
+        </label>
+        <Button
+          disabled={!canCreate || create.isPending}
+          onClick={() => create.mutate(byName ? { groupId, labels, expiresInDays: days } : { groupId, count, expiresInDays: days })}
+        >
+          {t("groups.inviteLinks.generate")}
+        </Button>
+      </div>
+
+      {fresh.length > 0 && (
+        <div className="mt-3 space-y-2 rounded-xl border bg-muted/40 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-foreground-secondary">{t("groups.inviteLinks.freshNote")}</p>
+            {fresh.length > 1 && <Button size="sm" variant="outline" onClick={() => void copyAll()}>{t("groups.inviteLinks.copyAll")}</Button>}
+          </div>
+          <ul className="space-y-2">
+            {fresh.map((f) => (
+              <li key={f.id} className="space-y-1">
+                {!!f.label && <div className="break-words text-xs font-medium">{f.label}</div>}
+                <CompactShareLink path={`/g/${f.token}`} tracking={{ targetType: "GROUP", targetId: `link:${f.id}` }} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {!!list.data?.length && (
+        <ul className="mt-4 max-h-72 divide-y overflow-y-auto text-sm">
+          {list.data.map((l) => (
+            <li key={l.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+              <div className="min-w-0">
+                <div className="break-words">{l.label || t("groups.inviteLinks.unlabeled")}</div>
+                <div className="text-xs text-muted-foreground">
+                  {l.status === "USED" && l.usedBy
+                    ? t("groups.inviteLinks.usedBy", { name: l.usedBy.name ?? l.usedBy.email ?? `#${l.usedBy.id}`, date: fmtDateTime(l.usedAt) })
+                    : t("groups.inviteLinks.expiresAt", { date: fmtDateTime(l.expiresAt) })}
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <InviteLinkStatusBadge status={l.status} />
+                {l.status !== "USED" && (
+                  <Button size="sm" variant="outline" disabled={reissue.isPending} onClick={() => reissue.mutate({ groupId, linkId: l.id, expiresInDays: days })}>
+                    {t("groups.inviteLinks.reissue")}
+                  </Button>
+                )}
+                {l.status === "ACTIVE" && (
+                  <Button size="sm" variant="ghost" className="text-destructive" disabled={revoke.isPending} onClick={() => revoke.mutate({ groupId, linkId: l.id })}>
+                    {t("groups.revokeInvite")}
+                  </Button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function InviteDialog({
   open,
   onOpenChange,
@@ -338,8 +477,10 @@ function InviteDialog({
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{t("groups.inviteTitle")}</DialogTitle></DialogHeader>
         <div className="space-y-5">
+          <InviteLinksSection groupId={groupId} />
           <section aria-labelledby="invite-link">
-            <h3 id="invite-link" className="mb-2 text-sm font-medium">{t("groups.inviteByLink")}</h3>
+            <h3 id="invite-link" className="mb-1 text-sm font-medium">{t("groups.inviteByLink")}</h3>
+            <p className="mb-2 text-xs text-muted-foreground">{t("groups.inviteByLinkMultiUse")}</p>
             <ShareBox
               path={`/join/${inviteCode}`}
               fileName={`resulio-group-${inviteCode}`}

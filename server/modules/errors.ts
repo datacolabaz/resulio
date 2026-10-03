@@ -56,7 +56,12 @@ export type AppErrorCode =
   | "INVALID_CURRENT_PASSWORD"
   | "REAUTH_REQUIRED"
   | "PASSWORD_EMAIL_IN_USE"
-  | "PASSWORD_NO_EMAIL";
+  | "PASSWORD_NO_EMAIL"
+  | "INVITE_LINK_NOT_FOUND"
+  | "INVITE_LINK_USED"
+  | "INVITE_LINK_EXPIRED"
+  | "INVITE_LINK_REVOKED"
+  | "INVITE_LINK_BATCH_TOO_LARGE";
 
 export class AppError extends Error {
   constructor(public readonly code: AppErrorCode) {
@@ -118,6 +123,11 @@ const HTTP: Partial<Record<AppErrorCode, TRPCError["code"]>> = {
   REAUTH_REQUIRED: "FORBIDDEN",
   PASSWORD_EMAIL_IN_USE: "CONFLICT",
   PASSWORD_NO_EMAIL: "BAD_REQUEST",
+  INVITE_LINK_NOT_FOUND: "NOT_FOUND",
+  INVITE_LINK_USED: "CONFLICT",
+  INVITE_LINK_EXPIRED: "PRECONDITION_FAILED",
+  INVITE_LINK_REVOKED: "PRECONDITION_FAILED",
+  INVITE_LINK_BATCH_TOO_LARGE: "BAD_REQUEST",
 };
 
 /** Convert domain errors into tRPC errors; the message stays a stable machine code. */

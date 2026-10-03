@@ -6,6 +6,8 @@
  */
 const JOIN_CODE_IN_LINK = /\/join\/([^/?#\s]+)/i;
 const INVITE_TOKEN_IN_LINK = /\/invite\/([^/?#\s]+)/i;
+/** Case-sensitive: single-use link tokens are base64url. */
+const SINGLE_USE_TOKEN_IN_LINK = /\/g\/([A-Za-z0-9_-]{43})(?=[/?#\s]|$)/;
 
 /** Route to navigate to for a pasted code or link, or null when there's nothing usable yet. */
 export function resolveJoinInput(raw: string): string | null {
@@ -17,6 +19,9 @@ export function resolveJoinInput(raw: string): string | null {
 
   const inviteMatch = trimmed.match(INVITE_TOKEN_IN_LINK);
   if (inviteMatch) return `/invite/${encodeURIComponent(decodeURIComponent(inviteMatch[1]))}`;
+
+  const singleUseMatch = trimmed.match(SINGLE_USE_TOKEN_IN_LINK);
+  if (singleUseMatch) return `/g/${singleUseMatch[1]}`;
 
   const code = trimmed.toUpperCase().replace(/\s+/g, "");
   return code.length >= 4 ? `/join/${encodeURIComponent(code)}` : null;

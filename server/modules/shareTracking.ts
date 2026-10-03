@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { shareEvents } from "../../drizzle/schema";
 import type {
   ShareCampaign,
@@ -67,7 +67,9 @@ export type ShareEventRow = {
   createdAt: Date;
 };
 
-export async function shareEventsFor(targetType: ShareTargetType, targetId: string): Promise<ShareEventRow[]> {
+export async function shareEventsFor(targetType: ShareTargetType, targetId: string | string[]): Promise<ShareEventRow[]> {
+  const ids = Array.isArray(targetId) ? targetId : [targetId];
+  if (!ids.length) return [];
   return requireDb()
     .select({
       id: shareEvents.id,
@@ -78,7 +80,7 @@ export async function shareEventsFor(targetType: ShareTargetType, targetId: stri
       createdAt: shareEvents.createdAt,
     })
     .from(shareEvents)
-    .where(and(eq(shareEvents.targetType, targetType), eq(shareEvents.targetId, targetId)))
+    .where(and(eq(shareEvents.targetType, targetType), inArray(shareEvents.targetId, ids)))
     .orderBy(shareEvents.createdAt, shareEvents.id);
 }
 
@@ -153,7 +155,7 @@ export function buildFunnel(rows: ShareEventRow[], opts: { excludeUserIds?: numb
   return { byChannel, totals };
 }
 
-/** Teacher/partner-facing read: what each channel produced for one share target, excluding the owner's own visits. */
-export async function shareFunnel(targetType: ShareTargetType, targetId: string, opts: { excludeUserIds?: number[] } = {}): Promise<ShareFunnel> {
+/** Teacher/partner-facing read: what each channel produced for one share target (or several merged), excluding the owner's own visits. */
+export async function shareFunnel(targetType: ShareTargetType, targetId: string | string[], opts: { excludeUserIds?: number[] } = {}): Promise<ShareFunnel> {
   return buildFunnel(await shareEventsFor(targetType, targetId), opts);
 }

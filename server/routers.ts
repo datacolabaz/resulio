@@ -17,6 +17,7 @@ import {
   targetsSchema,
 } from "../shared/assessment";
 import { completeSignIn, issueSessionCookie, safeCampaign, safeChannel, safeRef } from "./_core/authSession";
+import type { TrpcContext } from "./_core/context";
 import { clearNamedCookie } from "./_core/cookies";
 import { ENV } from "./_core/env";
 import { requestMeta } from "./_core/requestMeta";
@@ -43,6 +44,7 @@ import * as assessments from "./modules/assessments";
 import * as attempts from "./modules/attempts";
 import { AppError } from "./modules/errors";
 import * as groupEmailInvites from "./modules/groupEmailInvites";
+import * as groupInviteLinks from "./modules/groupInviteLinks";
 import * as groups from "./modules/groups";
 import * as notifications from "./modules/notifications";
 import * as partners from "./modules/partners";
@@ -107,6 +109,12 @@ async function assertRecipients(scope: TeacherScope, groupIds: string[], student
   if (!studentIds.every((s) => own.has(s))) throw new AppError("FORBIDDEN");
   const fromGroups = await groups.activeStudentIdsOfGroups(groupIds);
   return rosterStudentIds({ accessMode, groupIds, studentIds }, fromGroups);
+}
+
+/** Unknown single-use tokens are unguessable (256 bits), but repeated misses from one caller are still cut off. */
+function limitInviteLinkMisses(ctx: TrpcContext) {
+  const who = ctx.user ? `u:${ctx.user.id}` : `ip:${ctx.req.ip ?? "unknown"}`;
+  limited(ctx, `inviteLinkMiss:${who}`, 20, 15 * MINUTE, "inviteLinkMiss");
 }
 
 function assertAccessGroups(accessMode: TaskAccessMode, groupIds: string[]) {
@@ -339,10 +347,34 @@ const teacherGroupsRouter = router({
     .use(rateLimit("emailInviteResend", 20, MINUTE))
     .input(z.object({ groupId: entityId, inviteId: entityId }))
     .mutation(({ ctx, input }) => groupEmailInvites.resendEmailInvite(ctx.scope, input.groupId, input.inviteId)),
-  /** Clicks/opens/joins on this group's own invite link, broken down by channel (Telegram, WhatsApp, QR, copy link). */
+  inviteLinkList: teacherProcedure
+    .input(z.object({ groupId: entityId }))
+    .query(({ ctx, input }) => groupInviteLinks.listInviteLinks(ctx.scope, input.groupId)),
+  /** One link per label when labels are given, else `count` unlabeled links. Raw links are returned only here. */
+  inviteLinkCreate: teacherProcedure
+    .use(rateLimit("inviteLinkCreate", 20, MINUTE))
+    .input(
+      z.object({
+        groupId: entityId,
+        count: z.number().int().min(1).max(groupInviteLinks.MAX_INVITE_LINKS_PER_BATCH).optional(),
+        labels: z.array(z.string().trim().max(120)).max(groupInviteLinks.MAX_INVITE_LINKS_PER_BATCH).optional(),
+        expiresInDays: z.number().int().min(1).max(groupInviteLinks.MAX_INVITE_LINK_EXPIRY_DAYS).optional(),
+      }),
+    )
+    .mutation(({ ctx, input }) => groupInviteLinks.createInviteLinks(ctx.scope, input.groupId, input)),
+  inviteLinkRevoke: teacherProcedure
+    .use(rateLimit("inviteLinkRevoke", 60, MINUTE))
+    .input(z.object({ groupId: entityId, linkId: entityId }))
+    .mutation(({ ctx, input }) => groupInviteLinks.revokeInviteLink(ctx.scope, input.groupId, input.linkId)),
+  inviteLinkReissue: teacherProcedure
+    .use(rateLimit("inviteLinkReissue", 30, MINUTE))
+    .input(z.object({ groupId: entityId, linkId: entityId, expiresInDays: z.number().int().min(1).max(groupInviteLinks.MAX_INVITE_LINK_EXPIRY_DAYS).optional() }))
+    .mutation(({ ctx, input }) => groupInviteLinks.reissueInviteLink(ctx.scope, input.groupId, input.linkId, input.expiresInDays)),
+  /** Clicks/opens/joins on this group's invite code link and its single-use links, broken down by channel (Telegram, WhatsApp, QR, copy link). */
   shareFunnel: teacherProcedure.input(z.object({ groupId: entityId })).query(async ({ ctx, input }) => {
     const group = await groups.assertGroupOwner(ctx.scope, input.groupId);
-    return shareTracking.shareFunnel("GROUP", group.inviteCode, { excludeUserIds: [ctx.user.id] });
+    const targets = [group.inviteCode, ...(await groupInviteLinks.inviteLinkShareTargets(group.id))];
+    return shareTracking.shareFunnel("GROUP", targets, { excludeUserIds: [ctx.user.id] });
   }),
 });
 
@@ -692,6 +724,32 @@ const studentRouter = router({
       });
       return { groupId: joined.groupId, groupName: joined.groupName, status: joined.status };
     }),
+  /** Single-use invite link: the first signed-in redeemer joins as ACTIVE at once; nobody else can use it afterwards. */
+  redeemInviteLink: studentProcedure
+    .use(rateLimit("redeemInviteLink", 10, MINUTE))
+    .input(z.object({ token: z.string().trim().min(16).max(128) }).merge(shareAttribution))
+    .mutation(async ({ ctx, input }) => {
+      let joined: groupInviteLinks.RedeemResult;
+      try {
+        joined = await groupInviteLinks.redeemInviteLink(ctx.user.id, input.token);
+      } catch (error) {
+        if (error instanceof AppError && error.code === "INVITE_LINK_NOT_FOUND") limitInviteLinkMisses(ctx);
+        throw error;
+      }
+      if (joined.outcome === "JOINED") {
+        await notifications.notify(joined.ownerUserId, "Yeni tələbə qoşuldu", `${ctx.user.name ?? "Tələbə"} → ${joined.groupName}`);
+        await shareTracking.recordShareEvent({
+          targetType: "GROUP",
+          targetId: groupInviteLinks.inviteLinkShareTarget(joined.linkId),
+          channel: input.channel ?? "DIRECT",
+          eventType: "JOINED",
+          campaign: input.campaign,
+          actorUserId: ctx.user.id,
+          visitorId: input.visitorId,
+        });
+      }
+      return { groupId: joined.groupId, groupName: joined.groupName, outcome: joined.outcome };
+    }),
   acceptEmailInvite: studentProcedure
     .use(rateLimit("acceptEmailInvite", 10, MINUTE))
     .input(z.object({ token: z.string().trim().min(16).max(128) }))
@@ -799,6 +857,15 @@ const publicRouter = router({
     .use(rateLimit("publicEmailInvite", 60, MINUTE))
     .input(z.object({ token: z.string().trim().min(16).max(128) }))
     .query(({ input }) => groupEmailInvites.publicEmailInvitePreview(input.token)),
+  /** Single-use link preview: group details only while the link is still redeemable (or for the person who redeemed it). */
+  inviteLink: publicProcedure
+    .use(rateLimit("publicInviteLink", 60, MINUTE))
+    .input(z.object({ token: z.string().trim().min(16).max(128) }))
+    .query(async ({ ctx, input }) => {
+      const preview = await groupInviteLinks.publicInviteLinkPreview(input.token, ctx.user?.id ?? null);
+      if (preview.state === "NOT_FOUND") limitInviteLinkMisses(ctx);
+      return preview;
+    }),
   /**
    * Fire-and-forget click/open/download logging for a share link, callable anonymously (pre-login)
    * and without a `targetId` existence check — it only ever feeds a teacher/partner-facing count,

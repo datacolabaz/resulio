@@ -115,6 +115,47 @@ export function ShareBox({
   );
 }
 
+/** One-line variant for long lists of links (e.g. a batch of single-use invites): no QR, same channel tagging and click logging. */
+export function CompactShareLink({
+  path,
+  tracking,
+}: {
+  path: string;
+  tracking?: { targetType: ShareTargetType; targetId: string; campaign?: ShareCampaign };
+}) {
+  const url = `${window.location.origin}${path}`;
+  const logClick = trpc.public.shareEvent.useMutation();
+  const link = (channel: ShareChannel) => (tracking ? tagged(url, channel, tracking.targetType, tracking.campaign) : url);
+  const track = (channel: ShareChannel) => {
+    if (tracking) logClick.mutate({ targetType: tracking.targetType, targetId: tracking.targetId, channel, eventType: "CLICKED", campaign: tracking.campaign });
+  };
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(link("COPY_LINK"));
+      toast.success(t("share.copied"));
+      track("COPY_LINK");
+    } catch {
+      toast.error(t("share.copyFailed"));
+    }
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <code className="min-w-0 flex-1 truncate rounded bg-muted px-2 py-1 font-mono text-xs" title={url}>{url}</code>
+      <Button size="sm" onClick={() => void copy()}>{t("common.copyLink")}</Button>
+      <Button asChild size="sm" variant="outline">
+        <a href={`https://wa.me/?text=${encodeURIComponent(link("WHATSAPP"))}`} target="_blank" rel="noopener noreferrer" onClick={() => track("WHATSAPP")}>
+          {t("share.whatsapp")}
+        </a>
+      </Button>
+      <Button asChild size="sm" variant="outline">
+        <a href={`https://t.me/share/url?url=${encodeURIComponent(link("TELEGRAM"))}`} target="_blank" rel="noopener noreferrer" onClick={() => track("TELEGRAM")}>
+          {t("share.telegram")}
+        </a>
+      </Button>
+    </div>
+  );
+}
+
 /** "5 (3)": raw count, then how many distinct people that was, when it differs. */
 function CountCell({ total, unique }: { total: number; unique: number }) {
   return (

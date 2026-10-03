@@ -220,6 +220,31 @@ export const groupEmailInvites = mysqlTable(
   ],
 );
 
+/**
+ * A single-use group invite link. Like `group_email_invites`, only the SHA-256 of the 256-bit token
+ * is stored — the raw link is shown to the teacher once, at creation. The first signed-in student
+ * to redeem it is bound to it (`usedByUserId`, set by one conditional UPDATE so two simultaneous
+ * redemptions can never both win) and joins as ACTIVE immediately; for everyone else the link is
+ * dead. Status is derived (see groupInviteLinks.ts), never stored.
+ */
+export const groupInviteLinks = mysqlTable(
+  "group_invite_links",
+  {
+    id: id("id").primaryKey(),
+    groupId: id("groupId").notNull(),
+    tokenHash: varchar("tokenHash", { length: 64 }).notNull().unique(),
+    /** Teacher-only note, e.g. the student the link is meant for. Never shown on the public page. */
+    label: varchar("label", { length: 120 }).notNull().default(""),
+    createdByUserId: int("createdByUserId").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    expiresAt: timestamp("expiresAt").notNull(),
+    usedByUserId: int("usedByUserId"),
+    usedAt: timestamp("usedAt"),
+    revokedAt: timestamp("revokedAt"),
+  },
+  (t) => [index("group_invite_links_group_idx").on(t.groupId, t.createdAt)],
+);
+
 export const partnerProfiles = mysqlTable("partner_profiles", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull().unique(),
@@ -752,6 +777,7 @@ export type ProviderWorkspace = typeof providerWorkspaces.$inferSelect;
 export type PartnerProfile = typeof partnerProfiles.$inferSelect;
 export type Group = typeof groups.$inferSelect;
 export type GroupEmailInvite = typeof groupEmailInvites.$inferSelect;
+export type GroupInviteLink = typeof groupInviteLinks.$inferSelect;
 export type QuestionRow = typeof questions.$inferSelect;
 export type Assessment = typeof assessments.$inferSelect;
 export type AssessmentVersion = typeof assessmentVersions.$inferSelect;

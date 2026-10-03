@@ -205,6 +205,78 @@ export function PublicEmailInvitePage() {
   );
 }
 
+/**
+ * Single-use invite link (/g/<token>). The first student to sign in and press "join" is added to
+ * the group at once; after that the link only works for that same student. Nothing about the
+ * group is shown once the link is dead.
+ */
+export function InviteLinkPage() {
+  const { token = "" } = useParams<{ token: string }>();
+  const { user, loading } = useAuth();
+  const preview = trpc.public.inviteLink.useQuery({ token }, { enabled: token.length >= 16 && !loading, retry: false });
+  const utils = trpc.useUtils();
+  const redeem = trpc.student.redeemInviteLink.useMutation({
+    onSuccess: () => {
+      void utils.auth.me.invalidate();
+      void utils.public.inviteLink.invalidate();
+    },
+  });
+  const p = preview.data;
+  const live = p && (p.state === "ACTIVE" || p.state === "REDEEMED_BY_YOU") ? p : null;
+  const { channel, campaign, visitorId: vid } = useShareAttribution("GROUP", live ? `link:${live.linkId}` : "", Boolean(live));
+  const returnTo = `/g/${token}${window.location.search}`;
+  const signIn = (
+    <>
+      <Button className="w-full" onClick={() => startLogin(returnTo)}>{t("common.signInGoogle")}</Button>
+      <EmailSignIn />
+    </>
+  );
+  const joined = (
+    <div className="space-y-3 text-sm" role="status">
+      <p className="text-success">{t("public.inviteLink.joined")}</p>
+      <Button asChild className="w-full"><Link href="/student/groups">{t("public.myGroups")}</Link></Button>
+    </div>
+  );
+  return (
+    <Card>
+      <h1 className="mt-4 text-xl font-semibold">{t("public.join.title")}</h1>
+      {loading || preview.isLoading ? (
+        <p role="status" className="mt-3 text-sm text-muted-foreground">{t("common.loading")}</p>
+      ) : !p || p.state === "NOT_FOUND" ? (
+        <p role="alert" className="mt-3 text-sm text-destructive">{t("public.inviteLink.notFound")}</p>
+      ) : !live ? (
+        <div className="mt-3 space-y-3">
+          <p role="alert" className="text-base font-medium text-destructive">{t(`public.inviteLink.state.${p.state as "USED" | "EXPIRED" | "REVOKED"}`)}</p>
+          <p className="text-sm text-foreground-secondary">{t("public.inviteLink.deadHint")}</p>
+          {!user && (
+            <div className="pt-2">
+              <p className="mb-2 text-xs text-muted-foreground">{t("public.inviteLink.wasItYou")}</p>
+              {signIn}
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
+          <div className="mt-3 break-words text-lg">{live.group.name}</div>
+          <p className="text-sm text-muted-foreground">{[live.group.subject, live.group.grade, live.group.teacherName].filter(Boolean).join(" · ")}</p>
+          <GroupPreviewDetails g={live.group} />
+          {!!live.group.description && <p className="mt-3 text-sm">{live.group.description}</p>}
+          <p className="mt-3 text-xs text-muted-foreground">{t("public.inviteLink.singleUseNote")}</p>
+          <div className="mt-6">
+            {!user ? signIn : live.state === "REDEEMED_BY_YOU" || redeem.isSuccess ? joined : redeem.error ? (
+              <JoinErrorNote error={redeem.error} />
+            ) : (
+              <Button className="w-full" disabled={redeem.isPending} onClick={() => redeem.mutate({ token, channel, campaign, visitorId: vid })}>
+                {t("public.join.joinNow")}
+              </Button>
+            )}
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
 export function PublicExamPage() {
   const { shareCode = "" } = useParams<{ shareCode: string }>();
   const { user, loading } = useAuth();
