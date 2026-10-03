@@ -34,9 +34,9 @@ AI question generation and submission pre-review call any OpenAI-compatible `cha
 | Provider | Variables | Key |
 | --- | --- | --- |
 | OpenAI | `AI_API_KEY=sk-...` (optional: `AI_API_URL=https://api.openai.com/v1`, `AI_MODEL=gpt-4o-mini`) | https://platform.openai.com/api-keys |
-| Google Gemini (free tier) | `AI_API_KEY=...`, `AI_API_URL=https://generativelanguage.googleapis.com/v1beta/openai`, `AI_MODEL=gemini-2.5-flash` | https://aistudio.google.com/apikey |
+| Google Gemini (free tier) | `AI_API_KEY=...`, `AI_API_URL=https://generativelanguage.googleapis.com/v1beta/openai`, `AI_MODEL=gemini-3.8-flash` (or `gemini-3.5-flash-lite`; `gemini-2.0-flash` is shut down and `gemini-2.5-flash` is closed to new projects) | https://aistudio.google.com/apikey |
 
-- `AI_API_URL` works with or without `/v1`; `/v1` is added only when the URL has no version segment. Empty = OpenAI. `AI_MODEL` empty = `gpt-4o-mini` (`gemini-2.5-flash` for the Gemini URL).
+- `AI_API_URL` works with or without `/v1`; `/v1` is added only when the URL has no version segment. Empty = OpenAI. `AI_MODEL` empty = `gpt-4o-mini` (`gemini-3.8-flash` for the Gemini URL). A failed AI pre-review logs the provider's HTTP status and error text as `[aiReview] model request failed` in the resulio-api logs.
 - `AI_REVIEW_MODEL` overrides the model for pre-review only; `AI_REVIEW_DISABLED=1` turns pre-review off; `AI_REVIEW_DAILY_LIMIT` caps it per workspace (default 100/24h).
 - Without `AI_API_KEY` the legacy `MANUS_API_URL` / `MANUS_API_KEY` pair is used if both are set.
 - The unused voice-transcription helper uses the same provider's `audio/transcriptions` (OpenAI has it, Gemini's compatible API does not).

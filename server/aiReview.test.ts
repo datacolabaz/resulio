@@ -1,6 +1,6 @@
 import { deflateRawSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import type { InvokeParams, InvokeResult } from "./_core/llm";
+import { LlmHttpError, type InvokeParams, type InvokeResult } from "./_core/llm";
 import {
   AI_REVIEW_MAX_ANSWER_CHARS,
   assembleReviewInput,
@@ -194,6 +194,28 @@ describe("AI output validation", () => {
     expect(ok.ok && ok.review.needsTeacherReview).toBe(true);
     expect(await reviewWithModel({ title: "T", text: "X" }, "a", { invoke: async () => fakeResult("I cannot do that") })).toEqual({ ok: false, errorCode: "AI_INVALID_OUTPUT" });
     expect(await reviewWithModel({ title: "T", text: "X" }, "a", { invoke: async () => { throw new Error("boom"); } })).toEqual({ ok: false, errorCode: "AI_REQUEST_FAILED" });
+  });
+
+  it("names the provider failure so the teacher sees why", async () => {
+    const failWith = (status: number, body: string) => reviewWithModel({ title: "T", text: "X" }, "a", { invoke: async () => { throw new LlmHttpError(status, `LLM invoke failed: ${status} – ${body}`); } });
+    expect(await failWith(400, "API key not valid. Please pass a valid API key.")).toEqual({ ok: false, errorCode: "AI_KEY_INVALID", providerAlert: "PROVIDER_AUTH" });
+    expect(await failWith(404, "models/gemini-2.0-flash is not found")).toEqual({ ok: false, errorCode: "AI_NOT_FOUND" });
+    expect(await failWith(429, "RESOURCE_EXHAUSTED")).toEqual({ ok: false, errorCode: "AI_QUOTA", providerAlert: "PROVIDER_QUOTA" });
+    expect(await failWith(503, "overloaded")).toEqual({ ok: false, errorCode: "AI_REQUEST_FAILED" });
+  });
+
+  it("treats an empty or cut-off answer (thinking used up the tokens) as invalid output", async () => {
+    const empty = { ...fakeResult(""), choices: [{ index: 0, message: { role: "assistant" as const, content: "" }, finish_reason: "length" }] };
+    expect(await reviewWithModel({ title: "T", text: "X" }, "a", { invoke: async () => empty })).toEqual({ ok: false, errorCode: "AI_INVALID_OUTPUT" });
+    const noChoices = { ...fakeResult(""), choices: [] };
+    expect(await reviewWithModel({ title: "T", text: "X" }, "a", { invoke: async () => noChoices })).toEqual({ ok: false, errorCode: "AI_INVALID_OUTPUT" });
+    expect(await reviewWithModel({ title: "T", text: "X" }, "a", { invoke: async () => fakeResult('{"score": 70, "feedback": "Yax') })).toEqual({ ok: false, errorCode: "AI_INVALID_OUTPUT" });
+  });
+
+  it("leaves room for thinking tokens", async () => {
+    let seen: InvokeParams | null = null;
+    await reviewWithModel({ title: "T", text: "X" }, "a", { invoke: async (p) => { seen = p; return fakeResult('{"score": 1, "feedback": "f"}'); } });
+    expect(seen!.maxTokens).toBeGreaterThanOrEqual(4096);
   });
 });
 

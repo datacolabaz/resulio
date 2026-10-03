@@ -1,4 +1,4 @@
-import { type LlmConfig, openAiEndpoint } from "./aiConfig";
+import { isGeminiUrl, type LlmConfig, openAiEndpoint } from "./aiConfig";
 import { ENV } from "./env";
 
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
@@ -269,8 +269,12 @@ const normalizeResponseFormat = ({
 const RETRY_MAX_RETRIES = 4;
 const RETRY_BASE_DELAY_MS = 500;
 const RETRY_MAX_DELAY_MS = 30_000;
-/** A wrong or revoked key will not start working on a retry. */
-const NO_RETRY_STATUSES = new Set([401, 403]);
+/** Per attempt; thinking models can take a while on long submissions. */
+const REQUEST_TIMEOUT_MS = 60_000;
+const ERROR_BODY_MAX_CHARS = 500;
+
+/** A wrong key, model or request body will not start working on a retry; timeouts and 429 may. */
+const isRetryableStatus = (status: number) => status >= 500 || status === 408 || status === 429;
 
 /** Non-2xx reply from the provider; `status` lets callers tell a bad key (401/403) from quota (429). */
 export class LlmHttpError extends Error {
@@ -279,6 +283,26 @@ export class LlmHttpError extends Error {
     this.name = "LlmHttpError";
   }
 }
+
+export type LlmFailureReason = "AI_KEY_INVALID" | "AI_NOT_FOUND" | "AI_QUOTA" | "AI_REQUEST_FAILED";
+
+/** Gemini answers a bad key with 400 "API key not valid", not 401/403. */
+export function llmFailureReason(error: unknown): LlmFailureReason {
+  if (!(error instanceof LlmHttpError)) return "AI_REQUEST_FAILED";
+  const { status, message } = error;
+  if (status === 401 || status === 403 || (status === 400 && /api[ _-]?key/i.test(message))) return "AI_KEY_INVALID";
+  if (status === 404 || (status === 400 && /models\/\S+ is not found/i.test(message))) return "AI_NOT_FOUND";
+  if (status === 429) return "AI_QUOTA";
+  return "AI_REQUEST_FAILED";
+}
+
+const providerError = async (response: Response, what: string, model: string, url: string) => {
+  const body = (await response.text().catch(() => "")).replace(/\s+/g, " ").trim().slice(0, ERROR_BODY_MAX_CHARS);
+  return new LlmHttpError(
+    response.status,
+    `${what} failed: ${response.status} ${response.statusText} (model ${model || "default"}, ${new URL(url).host}) – ${body}`
+  );
+};
 
 type FetchInit = NonNullable<Parameters<typeof fetch>[1]>;
 
@@ -305,7 +329,7 @@ const computeBackoffDelay = (
   return Math.min(Math.max(jittered, retryAfterMs ?? 0), RETRY_MAX_DELAY_MS);
 };
 
-// Retries non-2xx responses and network errors with exponential backoff, then
+// Retries 5xx/408/429 responses and network errors with exponential backoff, then
 // returns the final Response so callers keep their existing error handling.
 const fetchWithBackoff = async (
   url: string,
@@ -315,8 +339,8 @@ const fetchWithBackoff = async (
 
   for (let attempt = 0; attempt <= RETRY_MAX_RETRIES; attempt++) {
     try {
-      const response = await fetch(url, init);
-      if (response.ok || attempt === RETRY_MAX_RETRIES || NO_RETRY_STATUSES.has(response.status)) {
+      const response = await fetch(url, { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+      if (response.ok || attempt === RETRY_MAX_RETRIES || !isRetryableStatus(response.status)) {
         return response;
       }
 
@@ -334,7 +358,8 @@ const fetchWithBackoff = async (
       await sleep(computeBackoffDelay(attempt, retryAfterMs));
     } catch (error) {
       lastError = error;
-      if (attempt === RETRY_MAX_RETRIES) throw error;
+      // A request that timed out once will most likely time out again (and may still be billed).
+      if (attempt === RETRY_MAX_RETRIES || (error instanceof Error && error.name === "TimeoutError")) throw error;
       console.warn(
         `LLM request retry ${attempt + 1}/${RETRY_MAX_RETRIES} after network error`
       );
@@ -398,6 +423,11 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   if (reasoning) {
     payload.reasoning = reasoning;
   }
+  // Gemini 3 models always think and the thinking tokens count against max_tokens; "low" keeps
+  // short JSON answers from being cut off. Other providers may reject the field.
+  if (isGeminiUrl(config.baseUrl)) {
+    payload.reasoning_effort = "low";
+  }
 
   const normalizedResponseFormat = normalizeResponseFormat({
     responseFormat,
@@ -410,7 +440,8 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.response_format = normalizedResponseFormat;
   }
 
-  const response = await fetchWithBackoff(openAiEndpoint(config.baseUrl, "chat/completions"), {
+  const url = openAiEndpoint(config.baseUrl, "chat/completions");
+  const response = await fetchWithBackoff(url, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -420,11 +451,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new LlmHttpError(
-      response.status,
-      `LLM invoke failed: ${response.status} ${response.statusText} – ${errorText}`
-    );
+    throw await providerError(response, "LLM invoke", resolvedModel, url);
   }
 
   return (await response.json()) as InvokeResult;
@@ -445,16 +472,13 @@ export type ModelsResponse = {
 export async function listLLMModels(): Promise<ModelsResponse> {
   const config = requireLlmConfig();
 
-  const response = await fetchWithBackoff(openAiEndpoint(config.baseUrl, "models"), {
+  const url = openAiEndpoint(config.baseUrl, "models");
+  const response = await fetchWithBackoff(url, {
     headers: { authorization: `Bearer ${config.apiKey}` },
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new LlmHttpError(
-      response.status,
-      `List LLM models failed: ${response.status} ${response.statusText} – ${errorText}`
-    );
+    throw await providerError(response, "List LLM models", config.model, url);
   }
 
   return (await response.json()) as ModelsResponse;

@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { providerWorkspaces, users } from "../../drizzle/schema";
 import { fillTemplate, serverLocale, type ServerLocale } from "../_core/locale";
-import { LlmHttpError } from "../_core/llm";
+import { llmFailureReason } from "../_core/llm";
 import { requireDb } from "../db";
 import { notifyOnce } from "./notifications";
 
@@ -29,11 +29,11 @@ export function usageAlertFor(used: number, limit: number): "USAGE_80" | "LIMIT_
   return null;
 }
 
-/** 401/403 = key rejected, 429 = quota or rate limit; anything else is not worth an alert. */
+/** Key rejected or quota / rate limit hit; anything else is not worth an alert. */
 export function providerAlertFor(error: unknown): "PROVIDER_AUTH" | "PROVIDER_QUOTA" | null {
-  if (!(error instanceof LlmHttpError)) return null;
-  if (error.status === 401 || error.status === 403) return "PROVIDER_AUTH";
-  if (error.status === 429) return "PROVIDER_QUOTA";
+  const reason = llmFailureReason(error);
+  if (reason === "AI_KEY_INVALID") return "PROVIDER_AUTH";
+  if (reason === "AI_QUOTA") return "PROVIDER_QUOTA";
   return null;
 }
 
@@ -49,7 +49,7 @@ const TEXT: Record<ServerLocale, Record<AiAlertKind, { title: string; body: stri
     },
     PROVIDER_AUTH: {
       title: "AI xidməti API açarını qəbul etmədi",
-      body: "{workspace}: AI provayderi 401/403 xətası qaytardı — açar yanlışdır və ya ləğv edilib. AI_API_KEY dəyərini yoxlayın.",
+      body: "{workspace}: AI provayderi açarı rədd etdi — açar yanlışdır və ya ləğv edilib. AI_API_KEY dəyərini yoxlayın.",
     },
     PROVIDER_QUOTA: {
       title: "AI xidmətinin limiti bitib",
@@ -67,7 +67,7 @@ const TEXT: Record<ServerLocale, Record<AiAlertKind, { title: string; body: stri
     },
     PROVIDER_AUTH: {
       title: "The AI service rejected the API key",
-      body: "{workspace}: the AI provider returned 401/403 — the key is invalid or revoked. Check AI_API_KEY.",
+      body: "{workspace}: the AI provider rejected the key — it is invalid or revoked. Check AI_API_KEY.",
     },
     PROVIDER_QUOTA: {
       title: "AI service quota exhausted",
@@ -85,7 +85,7 @@ const TEXT: Record<ServerLocale, Record<AiAlertKind, { title: string; body: stri
     },
     PROVIDER_AUTH: {
       title: "Сервис ИИ отклонил API-ключ",
-      body: "{workspace}: провайдер ИИ вернул ошибку 401/403 — ключ неверный или отозван. Проверьте AI_API_KEY.",
+      body: "{workspace}: провайдер ИИ отклонил ключ — он неверный или отозван. Проверьте AI_API_KEY.",
     },
     PROVIDER_QUOTA: {
       title: "Исчерпан лимит сервиса ИИ",
