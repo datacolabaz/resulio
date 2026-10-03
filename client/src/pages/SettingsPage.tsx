@@ -70,6 +70,34 @@ function PasswordPanel({ email, hasPassword }: { email: string; hasPassword: boo
   );
 }
 
+/** Read-only: AI pre-reviews used in the last 24 hours against the per-workspace daily cap. */
+function AiUsagePanel() {
+  const usage = trpc.workspaces.aiUsage.useQuery();
+  if (!usage.data) return null;
+  const { enabled, dailyLimit, workspaces } = usage.data;
+  return (
+    <Panel title={t("settings.aiUsage")}>
+      {!enabled ? (
+        <p className="text-sm text-muted-foreground">{t("settings.aiUsageDisabled")}</p>
+      ) : (
+        <>
+          <ul className="divide-y text-sm">
+            {workspaces.map((w) => (
+              <li key={w.workspaceId} className="flex items-center justify-between gap-3 py-2">
+                <span className="min-w-0 break-words">{w.title}</span>
+                <Pill className={`shrink-0 ${w.usedToday >= dailyLimit ? "text-destructive" : ""}`}>
+                  {t("settings.aiUsageValue", { used: w.usedToday, limit: dailyLimit })}
+                </Pill>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-xs text-muted-foreground">{t("settings.aiUsageNote")}</p>
+        </>
+      )}
+    </Panel>
+  );
+}
+
 export default function SettingsPage() {
   const { user, loading, logout } = useAuth();
   const { locale } = useI18n();
@@ -128,6 +156,8 @@ export default function SettingsPage() {
             </ul>
           )}
         </Panel>
+
+        {user.workspaces.length > 0 && <AiUsagePanel />}
 
         <Panel title={t("settings.partner")}>
           {user.partnerStatus ? (

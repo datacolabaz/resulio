@@ -155,6 +155,13 @@
       "when": 1791050717507,
       "tag": "0021_group_scores_visible",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "5",
+      "when": 1791054508581,
+      "tag": "0022_ai_alerts_grade_email",
+      "breakpoints": true
     }
   ]
 }

@@ -46,6 +46,8 @@ export const format = {
   "error.AI_UNAVAILABLE": ["AI xidməti konfiqurasiya olunmayıb.", "The AI service is not configured.", "Сервис AI не настроен."],
   "error.AI_INVALID_OUTPUT": ["AI etibarlı sual qaytarmadı. Yenidən cəhd edin.", "The AI did not return valid questions. Please try again.", "AI не вернул корректные вопросы. Повторите попытку."],
   "error.AI_USAGE_LIMIT_REACHED": ["AI istifadə limiti bitib.", "The AI usage limit has been reached.", "Лимит использования AI исчерпан."],
+  "error.AI_REVIEW_IN_PROGRESS": ["AI yoxlaması artıq gedir. Bir az gözləyin.", "An AI check is already running. Please wait a moment.", "Проверка ИИ уже идёт. Подождите немного."],
+  "error.AI_REVIEW_DAILY_LIMIT": ["AI yoxlama bu gün dayandı, sabah yenilənəcək.", "AI checks stopped for today; they resume tomorrow.", "Проверка ИИ на сегодня остановлена, завтра возобновится."],
   "error.DEMO_DISABLED": ["Demo giriş söndürülüb.", "Demo sign-in is disabled.", "Демо-вход отключён."],
   "error.DATABASE_UNAVAILABLE": ["Verilənlər bazası əlçatan deyil.", "The database is unavailable.", "База данных недоступна."],
   "error.INTERNAL_ERROR": ["Gözlənilməz xəta baş verdi.", "An unexpected error occurred.", "Произошла непредвиденная ошибка."],

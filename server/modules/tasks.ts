@@ -1,10 +1,12 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { files, materials, submissionAiReviews, taskSubmissions, tasks, type SubmissionAiReview, type TaskAccessMode, type TaskSubmission } from "../../drizzle/schema";
+import { sendEmailInBackground } from "../_core/email";
 import { requireDb } from "../db";
 import { managedWorkspaces, type TeacherScope } from "./access";
 import { clampScore, scheduleAiReview, submissionInScope } from "./aiReview";
 import { AppError } from "./errors";
+import { deliverGradeEmail, gradeEmailKind } from "./gradeEmail";
 import { activeGroupIdsOfStudent } from "./groups";
 import * as notifications from "./notifications";
 import { canSeeTaskContent, taskReachesStudent, taskViewerAccess, type TaskAccessSubject, type TaskViewerAccess } from "./taskAccess";
@@ -190,10 +192,11 @@ export async function gradeSubmission(
 ) {
   const current = await submissionInScope(scope, input.submissionId);
   const now = new Date();
+  const score = input.score === null ? null : clampScore(input.score);
   await requireDb()
     .update(taskSubmissions)
     .set({
-      score: input.score === null ? null : clampScore(input.score),
+      score,
       teacherFeedback: input.feedback.trim() || null,
       gradedAt: now,
       gradedByUserId: scope.userId,
@@ -202,6 +205,8 @@ export async function gradeSubmission(
     })
     .where(eq(taskSubmissions.id, input.submissionId));
   if (input.release && !current.feedbackReleasedAt) await notifications.notify(current.studentId, "Tapşırıq qiymətləndirildi", "Müəllim rəy yazdı");
+  const save = { before: { wasReleased: current.feedbackReleasedAt !== null, score: current.score }, after: { release: input.release, score } };
+  if (gradeEmailKind(save, undefined)) sendEmailInBackground(() => deliverGradeEmail(input.submissionId, save));
   return submissionInScope(scope, input.submissionId);
 }
 

@@ -25,7 +25,7 @@ Google is the primary sign-in; email + password is the secondary option under it
 - Passwords: scrypt via Node's built-in crypto (`server/_core/password.ts`), min 8 characters; one generic error for unknown email or wrong password; rate-limited per IP and per email.
 - Sign-up refuses any email that already has an account. An existing Google user adds a password in **Settings** (needs a sign-in within the last hour, or the current password to change it).
 - Google sign-in for an email that has a password-only account links to that same user and drops the password, because sign-up does not verify email ownership; the user gets a notification and can set a new one in Settings.
-- There is no "forgot password" email: Resulio has no email provider configured. Users whose email is a Google account recover by signing in with Google and setting a new password; anyone else needs an admin. Emailed reset links need an email provider (e.g. SMTP or Resend) to be added first.
+- There is no "forgot password" email yet. Users whose email is a Google account recover by signing in with Google and setting a new password; anyone else needs an admin. Emailed reset links can be built on the Resend module (see **E-mail** below).
 
 ## AI provider
 
@@ -40,6 +40,18 @@ AI question generation and submission pre-review call any OpenAI-compatible `cha
 - `AI_REVIEW_MODEL` overrides the model for pre-review only; `AI_REVIEW_DISABLED=1` turns pre-review off; `AI_REVIEW_DAILY_LIMIT` caps it per workspace (default 100/24h).
 - Without `AI_API_KEY` the legacy `MANUS_API_URL` / `MANUS_API_KEY` pair is used if both are set.
 - The unused voice-transcription helper uses the same provider's `audio/transcriptions` (OpenAI has it, Gemini's compatible API does not).
+- Submissions without a pre-review (e.g. from before the feature) get an **AI ilə yoxla** button. **Yenidən yoxla** runs at once unless a run is still pending (then after 10 minutes); at the daily cap it is refused instead of replacing an existing review.
+- The workspace owner gets in-app notifications (`server/modules/aiAlerts.ts`, in their UI language) at 80% of the daily cap and when it is reached (each at most once per 24 h per workspace), and when the provider answers 401/403 (bad key) or 429 (quota) (at most once per 6 h per type per workspace). Settings shows the last 24 h usage per workspace.
+
+## E-mail (Resend)
+
+`server/_core/email.ts` sends through Resend's HTTP API (reusable for future e-mails such as password reset). Without `RESEND_API_KEY` nothing is sent (logged once at info level). On Railway, add to **resulio-api**:
+
+- `RESEND_API_KEY` — from https://resend.com/api-keys
+- `EMAIL_FROM` — e.g. `Resulio <noreply@resulio.co>`; the domain must be verified in Resend (https://resend.com/domains)
+- `APP_PUBLIC_URL` — optional, origin for links (default `https://resulio.co`)
+
+Current e-mail: when a teacher clicks **Yadda saxla və tələbəyə göstər**, the student gets "your task was graded" with the task title, score and a link to `/student/assignments` — never the feedback text. A later change of the released score sends an "updated" e-mail; re-saving the same score sends nothing (`grade_email_log`, migration `0022`; alerts dedupe in `notification_dedupe`, same migration). Until `0022` is applied, alerts and e-mails are skipped (logged) and everything else keeps working. Language: the student's saved UI language (AZ/EN/RU), default AZ. Sending happens after the save, with a 10 s timeout, and never fails the grading request.
 
 ## File storage
 

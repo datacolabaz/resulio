@@ -945,6 +945,8 @@ const inboxRouter = router({
 
 const workspacesRouter = router({
   mine: protectedProcedure.query(async ({ ctx }) => (await resolveAccess(ctx.user.id)).workspaces),
+  /** Today's AI pre-review usage against the daily cap, per owned workspace (read-only). */
+  aiUsage: protectedProcedure.query(({ ctx }) => aiReview.usageForOwner(ctx.user.id)),
   /** Opens (or adds) a teaching context for the same users.id. */
   create: protectedProcedure
     .use(rateLimit("createWorkspace", 5, MINUTE))

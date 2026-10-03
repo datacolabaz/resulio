@@ -21,7 +21,17 @@ const CHECK_ICON = { ok: CheckCircle2, warn: Info, fail: AlertTriangle } as cons
 const CHECK_CLASS = { ok: "text-success", warn: "text-warning", fail: "text-destructive" } as const;
 
 function AiReviewBox({ review, onRerun, rerunning }: { review: Review | undefined; onRerun: () => void; rerunning: boolean }) {
-  if (!review) return null;
+  if (!review) {
+    return (
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-border p-2.5 text-xs">
+        <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+          <Sparkles className="h-3.5 w-3.5" aria-hidden />
+          {t("aiReview.notChecked")}
+        </span>
+        <Button size="sm" variant="outline" disabled={rerunning} onClick={onRerun}>{t("aiReview.checkNow")}</Button>
+      </div>
+    );
+  }
   const canRerun = review.status !== "PENDING" || review.stale;
   return (
     <div className="mt-2 space-y-2 rounded-lg border border-border bg-muted/40 p-2.5 text-xs">

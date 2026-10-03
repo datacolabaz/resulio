@@ -269,6 +269,16 @@ const normalizeResponseFormat = ({
 const RETRY_MAX_RETRIES = 4;
 const RETRY_BASE_DELAY_MS = 500;
 const RETRY_MAX_DELAY_MS = 30_000;
+/** A wrong or revoked key will not start working on a retry. */
+const NO_RETRY_STATUSES = new Set([401, 403]);
+
+/** Non-2xx reply from the provider; `status` lets callers tell a bad key (401/403) from quota (429). */
+export class LlmHttpError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+    this.name = "LlmHttpError";
+  }
+}
 
 type FetchInit = NonNullable<Parameters<typeof fetch>[1]>;
 
@@ -306,7 +316,7 @@ const fetchWithBackoff = async (
   for (let attempt = 0; attempt <= RETRY_MAX_RETRIES; attempt++) {
     try {
       const response = await fetch(url, init);
-      if (response.ok || attempt === RETRY_MAX_RETRIES) {
+      if (response.ok || attempt === RETRY_MAX_RETRIES || NO_RETRY_STATUSES.has(response.status)) {
         return response;
       }
 
@@ -411,7 +421,8 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(
+    throw new LlmHttpError(
+      response.status,
       `LLM invoke failed: ${response.status} ${response.statusText} – ${errorText}`
     );
   }
@@ -440,7 +451,8 @@ export async function listLLMModels(): Promise<ModelsResponse> {
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(
+    throw new LlmHttpError(
+      response.status,
       `List LLM models failed: ${response.status} ${response.statusText} – ${errorText}`
     );
   }

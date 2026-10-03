@@ -358,6 +358,8 @@ export const teacher = {
   "aiReview.check.INJECTION_SUSPECTED": ["Mətndə AI-ya göstəriş vermə cəhdi var (məs., “yüksək bal ver”)", "The text tries to instruct the AI (e.g. “give a high score”)", "В тексте есть попытка дать указания ИИ (например, «поставь высокий балл»)"],
   "aiReview.advisoryNote": ["Bu yalnız təklifdir — son qərar sizindir. Tələbə bunu görmür.", "This is only a suggestion — you decide. The student doesn't see it.", "Это лишь подсказка — решение за вами. Студент её не видит."],
   "aiReview.rerun": ["Yenidən yoxla", "Check again", "Проверить снова"],
+  "aiReview.notChecked": ["Bu iş hələ AI ilə yoxlanmayıb.", "This work hasn't been AI-checked yet.", "Эта работа ещё не проверена ИИ."],
+  "aiReview.checkNow": ["AI ilə yoxla", "Check with AI", "Проверить с ИИ"],
   "aiReview.answerText": ["Tələbənin yazılı cavabı", "Student's written answer", "Письменный ответ студента"],
   "aiReview.scoreLabel": ["Bal (0–100)", "Score (0–100)", "Балл (0–100)"],
   "aiReview.scoreInvalid": ["Bal 0 ilə 100 arasında olmalıdır.", "The score must be between 0 and 100.", "Балл должен быть от 0 до 100."],

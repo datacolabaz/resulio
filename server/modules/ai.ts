@@ -5,6 +5,7 @@ import { invokeLLM } from "../_core/llm";
 import { store } from "../resulioStore";
 import { addQuestionToAssessment, createQuestion, ownedAssessment } from "./assessments";
 import type { TeacherScope } from "./access";
+import { providerAlertFor, sendAiAlert } from "./aiAlerts";
 import { AppError } from "./errors";
 
 export const AI_QUESTION_TYPES = ["MULTIPLE_CHOICE", "MULTIPLE_SELECT", "TRUE_FALSE", "SHORT_ANSWER", "FILL_BLANK", "NUMERIC"] as const;
@@ -92,6 +93,10 @@ export async function generateQuestions(scope: TeacherScope, input: AiGenerateIn
       },
     ],
     responseFormat: { type: "json_object" },
+  }).catch(async (error: unknown) => {
+    const alert = providerAlertFor(error);
+    if (alert) await sendAiAlert(scope.workspaceId, alert);
+    throw error;
   });
   const content = result.choices[0]?.message?.content;
   const text = typeof content === "string" ? content : "";

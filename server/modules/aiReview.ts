@@ -6,8 +6,9 @@ import { aiUsageEvents, files, submissionAiReviews, taskSubmissions, tasks, type
 import { ENV } from "../_core/env";
 import { invokeLLM, type InvokeParams, type InvokeResult, type Message } from "../_core/llm";
 import { requireDb } from "../db";
-import type { TeacherScope } from "./access";
+import { managedWorkspaces, type TeacherScope } from "./access";
 import { extractJson } from "./ai";
+import { providerAlertFor, sendAiAlert, usageAlertFor } from "./aiAlerts";
 import { AppError } from "./errors";
 import { ALLOWED_FILE_TYPES, extensionOf, MAX_FILE_BYTES } from "./files";
 import { extractSubmissionText } from "./textExtract";
@@ -179,7 +180,10 @@ export async function reviewWithModel(
   task: { title: string; text: string },
   answer: string,
   opts: { invoke?: Invoke; model?: string; suspicious?: boolean } = {},
-): Promise<{ ok: true; review: ParsedAiReview; model: string } | { ok: false; errorCode: "AI_REQUEST_FAILED" | "AI_INVALID_OUTPUT" }> {
+): Promise<
+  | { ok: true; review: ParsedAiReview; model: string }
+  | { ok: false; errorCode: "AI_REQUEST_FAILED" | "AI_INVALID_OUTPUT"; providerAlert?: "PROVIDER_AUTH" | "PROVIDER_QUOTA" }
+> {
   const invoke = opts.invoke ?? invokeLLM;
   let result: InvokeResult;
   try {
@@ -191,7 +195,8 @@ export async function reviewWithModel(
     });
   } catch (error) {
     console.error("[aiReview] model request failed", error instanceof Error ? error.message : error);
-    return { ok: false, errorCode: "AI_REQUEST_FAILED" };
+    const providerAlert = providerAlertFor(error);
+    return { ok: false, errorCode: "AI_REQUEST_FAILED", ...(providerAlert ? { providerAlert } : {}) };
   }
   const content = result.choices?.[0]?.message?.content;
   const review = parseAiReview(extractJson(typeof content === "string" ? content : ""));
@@ -267,17 +272,26 @@ export async function runAiReview(submissionId: string, runId: string) {
   const base = { checks, inputChars: text.length };
   if (!text) return finishRun(submissionId, runId, { ...base, status: "SKIPPED", errorCode: "NO_TEXT" });
   if (!ENV.aiReviewEnabled) return finishRun(submissionId, runId, { ...base, status: "SKIPPED", errorCode: "AI_NOT_CONFIGURED" });
-  if ((await usedInLastDay(task.providerWorkspaceId)) >= ENV.aiReviewDailyLimit) {
+  const workspaceId = task.providerWorkspaceId;
+  const limit = ENV.aiReviewDailyLimit;
+  const used = await usedInLastDay(workspaceId);
+  if (used >= limit) {
+    await sendAiAlert(workspaceId, "LIMIT_REACHED", { used, limit });
     return finishRun(submissionId, runId, { ...base, status: "SKIPPED", errorCode: "DAILY_LIMIT" });
   }
 
-  await db.insert(aiUsageEvents).values({ workspaceId: task.providerWorkspaceId, kind: AI_REVIEW_USAGE_KIND, refId: submissionId });
+  await db.insert(aiUsageEvents).values({ workspaceId, kind: AI_REVIEW_USAGE_KIND, refId: submissionId });
+  const usageAlert = usageAlertFor(used + 1, limit);
+  if (usageAlert) await sendAiAlert(workspaceId, usageAlert, { used: used + 1, limit });
   const outcome = await reviewWithModel(
     { title: task.title, text: [task.description, task.instructions].filter(Boolean).join("\n\n") },
     text,
     { model: ENV.aiReviewModel || undefined, suspicious: checks.some((c) => c.code === "INJECTION_SUSPECTED") },
   );
-  if (!outcome.ok) return finishRun(submissionId, runId, { ...base, status: "FAILED", errorCode: outcome.errorCode });
+  if (!outcome.ok) {
+    if (outcome.providerAlert) await sendAiAlert(workspaceId, outcome.providerAlert);
+    return finishRun(submissionId, runId, { ...base, status: "FAILED", errorCode: outcome.errorCode });
+  }
   const { score, feedback, ...details } = outcome.review;
   await finishRun(submissionId, runId, { ...base, status: "DONE", model: outcome.model || null, suggestedScore: score, feedback, details });
 }
@@ -340,8 +354,42 @@ export async function submissionInScope(scope: TeacherScope, submissionId: strin
   return row.submission;
 }
 
+/**
+ * Only a fresh PENDING run blocks a rerun (it would be counted twice); a stuck one may be rerun
+ * after STALE_PENDING_MS. Finished, skipped (e.g. AI was not configured yet) or missing reviews
+ * — submissions from before the feature — run right away.
+ */
+export function rerunBlockedBy(review: { status: SubmissionAiReview["status"]; createdAt: Date } | undefined, now: number): "IN_PROGRESS" | null {
+  return review?.status === "PENDING" && now - review.createdAt.getTime() <= STALE_PENDING_MS ? "IN_PROGRESS" : null;
+}
+
 export async function rerunReview(scope: TeacherScope, submissionId: string) {
   await submissionInScope(scope, submissionId);
+  const [review] = await requireDb()
+    .select({ status: submissionAiReviews.status, createdAt: submissionAiReviews.createdAt })
+    .from(submissionAiReviews)
+    .where(eq(submissionAiReviews.submissionId, submissionId))
+    .limit(1);
+  if (rerunBlockedBy(review, Date.now())) throw new AppError("AI_REVIEW_IN_PROGRESS");
+  // Refuse up front at the cap so an existing finished review is not replaced by a DAILY_LIMIT skip.
+  if (ENV.aiReviewEnabled) {
+    const used = await usedInLastDay(scope.workspaceId);
+    if (used >= ENV.aiReviewDailyLimit) {
+      await sendAiAlert(scope.workspaceId, "LIMIT_REACHED", { used, limit: ENV.aiReviewDailyLimit });
+      throw new AppError("AI_REVIEW_DAILY_LIMIT");
+    }
+  }
   await scheduleAiReview(submissionId);
   return { ok: true };
+}
+
+/** Today's AI pre-review usage for every workspace this user owns (Settings, read-only). */
+export async function usageForOwner(userId: number) {
+  const owned = await managedWorkspaces(userId);
+  const enabled = ENV.aiReviewEnabled;
+  return {
+    enabled,
+    dailyLimit: ENV.aiReviewDailyLimit,
+    workspaces: await Promise.all(owned.map(async (w) => ({ workspaceId: w.id, title: w.title, usedToday: enabled ? await usedInLastDay(w.id) : 0 }))),
+  };
 }

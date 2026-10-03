@@ -830,6 +830,27 @@ export const notifications = mysqlTable(
   (t) => [index("notifications_user_idx").on(t.userId, t.createdAt)],
 );
 
+/**
+ * When a deduplicated system notification (e.g. "ai:LIMIT_REACHED:<workspaceId>") last went to a
+ * user. Separate from `notifications` so only the alert code depends on it.
+ */
+export const notificationDedupe = mysqlTable(
+  "notification_dedupe",
+  {
+    userId: int("userId").notNull(),
+    dedupeKey: varchar("dedupeKey", { length: 120 }).notNull(),
+    lastSentAt: timestamp("lastSentAt").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.dedupeKey] })],
+);
+
+/** Last "your grade is ready" e-mail per submission and the score it announced; dedupes re-saves. */
+export const gradeEmailLog = mysqlTable("grade_email_log", {
+  submissionId: id("submissionId").primaryKey(),
+  score: double("score"),
+  sentAt: timestamp("sentAt").notNull(),
+});
+
 export type ProviderWorkspace = typeof providerWorkspaces.$inferSelect;
 export type PartnerProfile = typeof partnerProfiles.$inferSelect;
 export type Group = typeof groups.$inferSelect;

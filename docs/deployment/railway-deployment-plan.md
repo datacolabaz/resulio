@@ -68,7 +68,8 @@ production **only after explicit approval**.
 Environment variables read by the code: `DATABASE_URL`, `SESSION_SECRET`, `GOOGLE_CLIENT_ID`,
 `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `TEACHER_EMAIL_ALLOWLIST`, `SUPER_ADMIN_EMAILS`, `APP_ENV`,
 `AUDIT_HASH_SECRET`, `DISABLE_DEMO_LOGIN`, `ALLOW_SEED`, `AI_API_URL`, `AI_API_KEY`, `AI_MODEL`,
-`AI_REVIEW_*`, `MANUS_API_URL`, `MANUS_API_KEY` (+ public
+`AI_REVIEW_*`, `RESEND_API_KEY`, `EMAIL_FROM`, `APP_PUBLIC_URL` (e-mail, optional; set on resulio-api),
+`MANUS_API_URL`, `MANUS_API_KEY` (+ public
 `MANUS_PROJECT_ID`, `MANUS_OAUTH_PORTAL_URL`, `MANUS_API_BROWSER_KEY`), `PORT`, `NODE_ENV`.
 
 ### What cannot be seen from the repository
