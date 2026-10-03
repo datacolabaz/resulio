@@ -1,6 +1,7 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { LanguageSwitch, ThemeToggle } from "@/components/AppShell";
 import { BrandMark } from "@/components/BrandMark";
+import { EmailSignIn } from "@/components/EmailSignIn";
 import { AnalyticsPreview } from "@/components/landing/AnalyticsPreview";
 import { BrowserFrame } from "@/components/landing/BrowserFrame";
 import { DemoNote } from "@/components/landing/DemoNote";
@@ -133,6 +134,7 @@ export default function Home() {
                 </a>
               </Button>
             </div>
+            <EmailSignIn className="max-w-sm" />
             {demoAvailable.data && (
               <div className="mt-4 flex flex-wrap gap-3">
                 <Button variant="ghost" size="sm" disabled={demo.isPending} onClick={() => void enterDemo("TEACHER")}>

@@ -1,6 +1,7 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { LanguageSwitch, ThemeToggle } from "@/components/AppShell";
 import { BrandMark } from "@/components/BrandMark";
+import { EmailSignIn } from "@/components/EmailSignIn";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { startLogin } from "@/const";
@@ -136,7 +137,10 @@ export function JoinGroupPage() {
           {!!g.description && <p className="mt-3 text-sm">{g.description}</p>}
           <div className="mt-6">
             {loading ? null : !user ? (
-              <Button className="w-full" onClick={() => startLogin(`/join/${inviteCode}${window.location.search}`)}>{t("common.signInGoogle")}</Button>
+              <>
+                <Button className="w-full" onClick={() => startLogin(`/join/${inviteCode}${window.location.search}`)}>{t("common.signInGoogle")}</Button>
+                <EmailSignIn />
+              </>
             ) : join.isSuccess ? (
               <div className="space-y-3 text-sm" role="status">
                 <p className="text-success">{join.data.status === "ACTIVE" ? t("public.invite.joined") : t("public.join.sent")}</p>
@@ -180,7 +184,10 @@ export function PublicEmailInvitePage() {
           <p className="mt-3 text-xs text-muted-foreground">{t("public.invite.emailNote")}</p>
           <div className="mt-6">
             {loading ? null : !user ? (
-              <Button className="w-full" onClick={() => startLogin(returnTo)}>{t("common.signInGoogle")}</Button>
+              <>
+                <Button className="w-full" onClick={() => startLogin(returnTo)}>{t("common.signInGoogle")}</Button>
+                <EmailSignIn />
+              </>
             ) : accept.isSuccess ? (
               <div className="space-y-3 text-sm" role="status">
                 <p className="text-success">{t("public.invite.joined")}</p>
@@ -223,7 +230,10 @@ export function PublicExamPage() {
           </dl>
           <div className="mt-6">
             {loading ? null : !user ? (
-              <Button className="w-full" onClick={() => startLogin(returnTo)}>{t("common.signInGoogle")}</Button>
+              <>
+                <Button className="w-full" onClick={() => startLogin(returnTo)}>{t("common.signInGoogle")}</Button>
+                <EmailSignIn />
+              </>
             ) : !canEnter(user, "learning") ? (
               <p className="text-sm text-foreground-secondary">
                 {t("public.exam.joinFirst")}{" "}
@@ -270,9 +280,12 @@ export function PublicTaskPage() {
           )}
           <div className="mt-6">
             {loading ? null : (
-              <Button className="w-full" variant={user ? "outline" : "default"} onClick={() => startLogin(returnTo)}>
-                {user ? t("public.task.switchAccount") : t("common.signInGoogle")}
-              </Button>
+              <>
+                <Button className="w-full" variant={user ? "outline" : "default"} onClick={() => startLogin(returnTo)}>
+                  {user ? t("public.task.switchAccount") : t("common.signInGoogle")}
+                </Button>
+                {!user && <EmailSignIn />}
+              </>
             )}
           </div>
         </>
@@ -300,7 +313,10 @@ export function PublicTaskPage() {
           )}
           <div className="mt-6">
             {loading ? null : !user ? (
-              <Button className="w-full" onClick={() => startLogin(returnTo)}>{t("common.signInGoogle")}</Button>
+              <>
+                <Button className="w-full" onClick={() => startLogin(returnTo)}>{t("common.signInGoogle")}</Button>
+                <EmailSignIn />
+              </>
             ) : page.access === "OWNER" ? (
               <p className="text-sm text-foreground-secondary" role="status">{t("public.task.ownerNote")}</p>
             ) : claim.isSuccess ? (
@@ -355,7 +371,10 @@ export function PublicMaterialPage() {
           )}
           <div className="mt-6">
             {loading ? null : !user ? (
-              <Button className="w-full" onClick={() => startLogin(returnTo)}>{t("common.signInGoogle")}</Button>
+              <>
+                <Button className="w-full" onClick={() => startLogin(returnTo)}>{t("common.signInGoogle")}</Button>
+                <EmailSignIn />
+              </>
             ) : claim.isSuccess ? (
               <div className="space-y-3 text-sm" role="status">
                 <p className="text-success">{t("public.material.claimed")}</p>

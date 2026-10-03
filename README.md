@@ -18,6 +18,15 @@ React / Express / tRPC / Drizzle (MySQL) modular monolith.
 3. `pnpm db:migrate` — apply the checked-in migrations in `drizzle/`.
 4. Optional: `pnpm db:seed` — demo teacher/student, a group and a published assessment (refuses to run in production unless `ALLOW_SEED=1`). In development the home page then shows demo login buttons.
 
+## Sign-in
+
+Google is the primary sign-in; email + password is the secondary option under it (no extra env vars, needs migration `0017_user_password_hash`). Both end in the same session cookie, referral/`?src=` attribution and return URL (`server/_core/authSession.ts`).
+
+- Passwords: scrypt via Node's built-in crypto (`server/_core/password.ts`), min 8 characters; one generic error for unknown email or wrong password; rate-limited per IP and per email.
+- Sign-up refuses any email that already has an account. An existing Google user adds a password in **Settings** (needs a sign-in within the last hour, or the current password to change it).
+- Google sign-in for an email that has a password-only account links to that same user and drops the password, because sign-up does not verify email ownership; the user gets a notification and can set a new one in Settings.
+- There is no "forgot password" email: Resulio has no email provider configured. Users whose email is a Google account recover by signing in with Google and setting a new password; anyone else needs an admin. Emailed reset links need an email provider (e.g. SMTP or Resend) to be added first.
+
 ## Scripts
 
 - `pnpm dev`: development server; honors `PORT` (default 3000).

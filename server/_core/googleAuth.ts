@@ -1,16 +1,16 @@
-import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
-import { parseShareSource, SHARE_CAMPAIGNS, type ShareCampaign, type ShareChannel } from "@shared/shareTracking";
+import { normalizeEmail } from "@shared/auth";
+import { type ShareCampaign, type ShareChannel } from "@shared/shareTracking";
 import { parse as parseCookieHeader } from "cookie";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
 import type { Express, Request, Response } from "express";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import * as db from "../db";
+import { notify } from "../modules/notifications";
 import { recordSecurityEvent } from "../modules/securityEvents";
-import { attributeReferral } from "../modules/referrals";
+import { completeSignIn, safeCampaign, safeChannel, safeRef } from "./authSession";
 import { clearNamedCookie, getSessionCookieOptions, isSecureRequest } from "./cookies";
 import { ENV } from "./env";
 import { hashIp } from "./requestMeta";
-import { sdk } from "./sdk";
 
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -28,19 +28,6 @@ export function safeReturnTo(value: unknown): string {
   if (!value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\")) return "/app";
   if (value.startsWith("/api/")) return "/app";
   return value.slice(0, 512);
-}
-
-/** A partner referralCode is the same shape as its public link's code: short, uppercase alnum. */
-function safeRef(value: unknown): string | undefined {
-  return typeof value === "string" && /^[A-Z0-9]{4,32}$/i.test(value) ? value.toUpperCase() : undefined;
-}
-
-function safeChannel(value: unknown): ShareChannel | undefined {
-  return parseShareSource(value);
-}
-
-function safeCampaign(value: unknown): ShareCampaign | undefined {
-  return (SHARE_CAMPAIGNS as readonly string[]).includes(String(value)) ? (value as ShareCampaign) : undefined;
 }
 
 export function redirectUri(req: Request) {
@@ -304,17 +291,21 @@ export function registerGoogleAuthRoutes(app: Express) {
         return;
       }
 
-      const { user, isNew } = await db.upsertProviderUser({
+      const result = await db.upsertProviderUser({
         provider: "google",
         providerAccountId: payload.sub,
-        email: typeof payload.email === "string" ? payload.email.toLowerCase() : null,
+        email: typeof payload.email === "string" ? normalizeEmail(payload.email) : null,
         name: typeof payload.name === "string" ? payload.name : null,
         avatarUrl: typeof payload.picture === "string" ? payload.picture : null,
       });
-      await attributeReferral(user.id, isNew, state.ref, state.source ?? "DIRECT", state.campaign);
-
-      const token = await sdk.createSessionToken(user.openId, { name: user.name ?? "", expiresInMs: ONE_YEAR_MS });
-      res.cookie(COOKIE_NAME, token, { ...getSessionCookieOptions(req), maxAge: ONE_YEAR_MS });
+      await completeSignIn(req, res, result, state);
+      if (result.droppedPassword) {
+        await notify(
+          result.user.id,
+          "Parolunuz sıfırlandı",
+          "Google ilə ilk dəfə daxil olduğunuz üçün bu e-poçta əvvəl təyin olunmuş parol silindi. E-poçt və parolla da daxil olmaq istəyirsinizsə, Tənzimləmələrdən yeni parol təyin edin.",
+        ).catch((error) => console.error("[GoogleAuth] password-dropped notice failed", error));
+      }
 
       const origin = ENV.frontendUrl;
       res.redirect(302, origin ? `${origin}${state.returnTo}` : state.returnTo);

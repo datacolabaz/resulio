@@ -1,16 +1,74 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { AppShell, LanguageSwitch, Loading, Panel, Pill, THEME_OPTIONS } from "@/components/AppShell";
+import { authErrorText, PasswordField } from "@/components/EmailSignIn";
 import { Button } from "@/components/ui/button";
+import { startLogin } from "@/const";
 import { themeLabel, useTheme } from "@/contexts/ThemeContext";
 import { useI18n } from "@/i18n/locale";
 import { t } from "@/i18n/messages";
 import { availableContexts, canEnter, CONTEXT_HOME, contextLabel } from "@/lib/contexts";
 import { errorText, partnerStatusLabel, providerLabel, subscriptionLabel } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
+import { PASSWORD_MIN_LENGTH } from "@shared/auth";
 import { Check } from "lucide-react";
+import { useState } from "react";
 import { Link, Redirect } from "wouter";
 
 const linkClass = "font-medium text-link underline underline-offset-4";
+
+/** Adds a password to the account (so email + password works besides Google) or changes it. */
+function PasswordPanel({ email, hasPassword }: { email: string; hasPassword: boolean }) {
+  const utils = trpc.useUtils();
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [saved, setSaved] = useState(false);
+  const save = trpc.auth.setPassword.useMutation({
+    onMutate: () => setSaved(false),
+    onSuccess: async () => {
+      setCurrent("");
+      setNext("");
+      setSaved(true);
+      await utils.auth.me.invalidate();
+    },
+  });
+  const needsReauth = save.error?.message === "REAUTH_REQUIRED";
+  return (
+    <Panel title={t("settings.password")}>
+      <p className="break-words text-sm text-muted-foreground">
+        {hasPassword ? t("settings.passwordSet", { email }) : t("settings.passwordNone", { email })}
+      </p>
+      <form
+        className="mt-3 grid max-w-sm gap-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save.mutate({ currentPassword: hasPassword ? current : undefined, newPassword: next });
+        }}
+      >
+        {hasPassword && <PasswordField label={t("settings.currentPassword")} value={current} onChange={setCurrent} autoComplete="current-password" />}
+        <PasswordField
+          label={t("settings.newPassword")}
+          value={next}
+          onChange={setNext}
+          autoComplete="new-password"
+          minLength={PASSWORD_MIN_LENGTH}
+          hint={t("auth.passwordHint", { count: PASSWORD_MIN_LENGTH })}
+        />
+        {saved && <p role="status" className="text-sm text-success">{t("settings.passwordSaved")}</p>}
+        {save.error && (
+          <div className="space-y-2">
+            <p role="alert" className="text-sm text-destructive">{authErrorText(save.error, t("auth.checkFields"))}</p>
+            {needsReauth && (
+              <Button type="button" variant="outline" onClick={() => startLogin("/settings")}>{t("common.signInGoogle")}</Button>
+            )}
+          </div>
+        )}
+        <Button type="submit" className="justify-self-start" disabled={save.isPending}>
+          {hasPassword ? t("settings.changePassword") : t("settings.setPassword")}
+        </Button>
+      </form>
+    </Panel>
+  );
+}
 
 export default function SettingsPage() {
   const { user, loading, logout } = useAuth();
@@ -35,6 +93,8 @@ export default function SettingsPage() {
           </div>
           <p className="mt-3 text-xs text-muted-foreground">{t("settings.profileNote")}</p>
         </Panel>
+
+        {user.email && <PasswordPanel email={user.email} hasPassword={user.hasPassword} />}
 
         <Panel title={t("settings.mySpaces")}>
           {contexts.length === 0 ? (

@@ -1,10 +1,12 @@
-import { and, eq, isNull, like, ne, or, sql } from "drizzle-orm";
+import { and, eq, like, ne, sql } from "drizzle-orm";
 import { drizzle, type MySql2Database } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { nanoid } from "nanoid";
 import * as schema from "../drizzle/schema";
 import { authAccounts, users, type InsertUser, type UiContext, type User } from "../drizzle/schema";
+import { PASSWORD_PROVIDER } from "../shared/auth";
 import type { ReferralSource } from "../shared/referralSources";
+import { providerLinkPlan, type LinkCandidate } from "./_core/accountLinking";
 
 export type Db = MySql2Database<typeof schema>;
 export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -75,6 +77,7 @@ export async function markSeen(user: Pick<User, "id" | "lastSeenAt">) {
  * The provider's subject never becomes the internal user id. `isNew` tells the caller whether
  * this call actually created the account -- referral attribution (see server/modules/referrals.ts)
  * must only ever apply to that moment, never to a later login by the same person.
+ * `droppedPassword` is set when linking discarded an unverified password (see providerLinkPlan).
  */
 export async function upsertProviderUser(input: {
   provider: string;
@@ -82,7 +85,7 @@ export async function upsertProviderUser(input: {
   email: string | null;
   name: string | null;
   avatarUrl: string | null;
-}): Promise<{ user: User; isNew: boolean }> {
+}): Promise<{ user: User; isNew: boolean; droppedPassword?: boolean }> {
   const db = requireDb();
   return db.transaction(async (tx) => {
     const [link] = await tx
@@ -108,29 +111,34 @@ export async function upsertProviderUser(input: {
 
     if (link) return refresh(link.userId);
 
-    // Users created before auth_accounts existed (legacy login) have no provider link yet.
-    // Attach the verified email to that single existing row instead of creating a duplicate.
+    // Legacy rows (from before auth_accounts existed) and email + password accounts with the same
+    // verified email are attached to instead of duplicated -- see providerLinkPlan for the rules.
     if (input.email) {
-      const legacy = await tx
-        .select({ id: users.id })
+      const rows = await tx
+        .select({ id: users.id, loginMethod: users.loginMethod, passwordHash: users.passwordHash, provider: authAccounts.provider })
         .from(users)
         .leftJoin(authAccounts, eq(authAccounts.userId, users.id))
-        .where(
-          and(
-            sql`lower(${users.email}) = ${input.email.toLowerCase()}`,
-            isNull(authAccounts.id),
-            or(isNull(users.loginMethod), ne(users.loginMethod, "demo")),
-          ),
-        )
-        .limit(2);
-      if (legacy.length === 1) {
+        .where(sql`lower(${users.email}) = ${input.email.toLowerCase()}`)
+        .limit(50);
+      const candidates = new Map<number, LinkCandidate>();
+      for (const row of rows) {
+        const c = candidates.get(row.id) ?? { userId: row.id, providers: [], hasPassword: !!row.passwordHash, loginMethod: row.loginMethod };
+        if (row.provider) c.providers.push(row.provider);
+        candidates.set(row.id, c);
+      }
+      const plan = providerLinkPlan(input.provider, [...candidates.values()]);
+      if (plan.action === "LINK") {
         await tx.insert(authAccounts).values({
-          userId: legacy[0].id,
+          userId: plan.userId,
           provider: input.provider,
           providerAccountId: input.providerAccountId,
           providerEmail: input.email,
         });
-        return refresh(legacy[0].id);
+        if (plan.dropPassword) {
+          await tx.update(users).set({ passwordHash: null, sessionsValidAfter: new Date() }).where(eq(users.id, plan.userId));
+          await tx.delete(authAccounts).where(and(eq(authAccounts.userId, plan.userId), eq(authAccounts.provider, PASSWORD_PROVIDER)));
+        }
+        return { ...(await refresh(plan.userId)), droppedPassword: plan.dropPassword };
       }
     }
 

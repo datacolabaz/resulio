@@ -50,7 +50,13 @@ export type AppErrorCode =
   | "FILE_TOO_LARGE"
   | "FILE_TYPE_NOT_ALLOWED"
   | "TASK_NO_ACCESS"
-  | "TASK_GROUPS_REQUIRED";
+  | "TASK_GROUPS_REQUIRED"
+  | "INVALID_CREDENTIALS"
+  | "REGISTRATION_UNAVAILABLE"
+  | "INVALID_CURRENT_PASSWORD"
+  | "REAUTH_REQUIRED"
+  | "PASSWORD_EMAIL_IN_USE"
+  | "PASSWORD_NO_EMAIL";
 
 export class AppError extends Error {
   constructor(public readonly code: AppErrorCode) {
@@ -105,6 +111,13 @@ const HTTP: Partial<Record<AppErrorCode, TRPCError["code"]>> = {
   FILE_TYPE_NOT_ALLOWED: "BAD_REQUEST",
   TASK_NO_ACCESS: "FORBIDDEN",
   TASK_GROUPS_REQUIRED: "BAD_REQUEST",
+  // Not UNAUTHORIZED: the client treats that as "session expired" and redirects to sign-in.
+  INVALID_CREDENTIALS: "BAD_REQUEST",
+  REGISTRATION_UNAVAILABLE: "CONFLICT",
+  INVALID_CURRENT_PASSWORD: "BAD_REQUEST",
+  REAUTH_REQUIRED: "FORBIDDEN",
+  PASSWORD_EMAIL_IN_USE: "CONFLICT",
+  PASSWORD_NO_EMAIL: "BAD_REQUEST",
 };
 
 /** Convert domain errors into tRPC errors; the message stays a stable machine code. */

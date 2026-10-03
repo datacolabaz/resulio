@@ -87,7 +87,8 @@ export const partnerProcedure = protectedProcedure.use(async ({ ctx, next }) => 
   return next({ ctx: { ...ctx, partner } });
 });
 
-function limited(ctx: TrpcContext, key: string, limit: number, windowMs: number, name: string) {
+/** Fixed-window limit on an arbitrary key (e.g. a normalized email), recorded like every other limiter block. */
+export function limited(ctx: TrpcContext, key: string, limit: number, windowMs: number, name: string) {
   if (!hitRateLimit(key, limit, windowMs)) return;
   recordSecurityEvent({ type: "RATE_LIMIT_BLOCK", severity: "LOW", userId: ctx.user?.id, ipHash: requestMeta(ctx.req).ipHash, details: { limiter: name } });
   throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "RATE_LIMITED" });

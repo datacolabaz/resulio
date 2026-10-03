@@ -50,6 +50,28 @@ export const format = {
     "Select at least one group for \"Only selected groups\" access.",
     "Для режима «Только выбранные группы» выберите хотя бы одну группу.",
   ],
+  "error.INVALID_CREDENTIALS": ["E-poçt və ya parol yanlışdır.", "Incorrect email or password.", "Неверный адрес эл. почты или пароль."],
+  "error.REGISTRATION_UNAVAILABLE": [
+    "Bu e-poçt ilə yeni hesab yaratmaq mümkün olmadı. Hesabınız varsa, daxil olun və ya Google ilə davam edin.",
+    "A new account can't be created with this email. If you already have an account, sign in or continue with Google.",
+    "С этим адресом нельзя создать новый аккаунт. Если у вас уже есть аккаунт, войдите или продолжите через Google.",
+  ],
+  "error.INVALID_CURRENT_PASSWORD": ["Hazırkı parol yanlışdır.", "The current password is incorrect.", "Текущий пароль неверен."],
+  "error.REAUTH_REQUIRED": [
+    "Təhlükəsizlik üçün Google ilə yenidən daxil olun və təkrar cəhd edin.",
+    "For security, sign in with Google again and retry.",
+    "В целях безопасности снова войдите через Google и повторите попытку.",
+  ],
+  "error.PASSWORD_EMAIL_IN_USE": [
+    "Bu e-poçt artıq başqa hesabın parol girişi üçün istifadə olunur.",
+    "This email is already used for password sign-in on another account.",
+    "Этот адрес уже используется для входа по паролю в другом аккаунте.",
+  ],
+  "error.PASSWORD_NO_EMAIL": [
+    "Parol təyin etmək üçün hesabınızda e-poçt olmalıdır.",
+    "Your account needs an email address before you can set a password.",
+    "Чтобы задать пароль, в аккаунте должен быть адрес эл. почты.",
+  ],
 
   "duration.hm": ["{h} saat {m} dəq", "{h} h {m} min", "{h} ч {m} мин"],
   "duration.ms": ["{m} dəq {s} san", "{m} min {s} sec", "{m} мин {s} с"],

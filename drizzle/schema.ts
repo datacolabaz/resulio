@@ -90,6 +90,8 @@ export const users = mysqlTable(
     referralOnboardingSeenAt: timestamp("referralOnboardingSeenAt"),
     /** Set when the teacher dismisses the dashboard referral card; the card reappears once this is more than 30 days old. */
     referralCardDismissedAt: timestamp("referralCardDismissedAt"),
+    /** scrypt hash (server/_core/password.ts) for email + password sign-in; null = no password set. Never returned to clients. */
+    passwordHash: varchar("passwordHash", { length: 255 }),
   },
   (t) => [index("users_account_status_idx").on(t.accountStatus), index("users_last_seen_idx").on(t.lastSeenAt)],
 );

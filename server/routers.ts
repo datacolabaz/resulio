@@ -1,4 +1,5 @@
-import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
+import { normalizeEmail, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@shared/auth";
+import { COOKIE_NAME } from "@shared/const";
 import { REFERRAL_SOURCES } from "@shared/referralSources";
 import { CLASS_TIME_PATTERN, GROUP_LANGUAGES, WEEK_DAYS } from "@shared/schedule";
 import { TEACHING_CATEGORIES } from "@shared/teachingCategories";
@@ -15,14 +16,15 @@ import {
   studentAnswerSchema,
   targetsSchema,
 } from "../shared/assessment";
-import { clearNamedCookie, getSessionCookieOptions } from "./_core/cookies";
+import { completeSignIn, issueSessionCookie, safeCampaign, safeChannel, safeRef } from "./_core/authSession";
+import { clearNamedCookie } from "./_core/cookies";
 import { ENV } from "./_core/env";
 import { requestMeta } from "./_core/requestMeta";
-import { sdk } from "./_core/sdk";
 import { systemRouter } from "./_core/systemRouter";
 import { GROUP_FORMATS, GROUP_JOIN_POLICIES, PROVIDER_TYPES, TASK_ACCESS_MODES, UI_CONTEXTS, type TaskAccessMode } from "../drizzle/schema";
 import { adminRouter } from "./adminRouter";
 import {
+  limited,
   partnerProcedure,
   protectedProcedure,
   publicProcedure,
@@ -44,6 +46,7 @@ import * as groupEmailInvites from "./modules/groupEmailInvites";
 import * as groups from "./modules/groups";
 import * as notifications from "./modules/notifications";
 import * as partners from "./modules/partners";
+import * as passwordAuth from "./modules/passwordAuth";
 import * as referrals from "./modules/referrals";
 import * as shareTracking from "./modules/shareTracking";
 import { canSeeTaskContent, rosterStudentIds } from "./modules/taskAccess";
@@ -93,6 +96,7 @@ async function me(user: NonNullable<Awaited<ReturnType<typeof db.getUserByOpenId
     admin,
     isAdmin: !!admin,
     defaultContext: defaultContext(access, user.lastActiveContext ?? null),
+    hasPassword: !!user.passwordHash,
   };
 }
 
@@ -119,6 +123,23 @@ const csvCell = (v: unknown) => {
 // Auth
 // ---------------------------------------------------------------------------
 
+/** Same ?ref= / ?src= / ?campaign= passthrough the Google flow signs into its OAuth state; unknown values are dropped, never rejected. */
+const signInAttribution = z.object({
+  ref: z.string().max(64).optional(),
+  src: z.string().max(32).optional(),
+  campaign: z.string().max(64).optional(),
+});
+
+const attributionOf = (input: z.infer<typeof signInAttribution>) => ({
+  ref: safeRef(input.ref),
+  source: safeChannel(input.src),
+  campaign: safeCampaign(input.campaign),
+});
+
+// 191 = auth_accounts.providerAccountId, which holds the email for password sign-in.
+const signInEmail = z.string().trim().max(191).email();
+const newPassword = z.string().min(PASSWORD_MIN_LENGTH).max(PASSWORD_MAX_LENGTH);
+
 const authRouter = router({
   me: publicProcedure.query(({ ctx }) => (ctx.user ? me(ctx.user) : null)),
 
@@ -136,12 +157,46 @@ const authRouter = router({
       const openId = input.role === "TEACHER" ? "demo-teacher" : "demo-student";
       const user = await db.getUserByOpenId(openId);
       if (!user) throw new AppError("NOT_FOUND");
-      const token = await sdk.createSessionToken(openId, { name: user.name ?? "", expiresInMs: ONE_YEAR_MS });
-      ctx.res.cookie(COOKIE_NAME, token, { ...getSessionCookieOptions(ctx.req), maxAge: ONE_YEAR_MS });
+      await issueSessionCookie(ctx.req, ctx.res, user);
       return publicUser(user);
     }),
 
   demoAvailable: publicProcedure.query(() => ENV.enableDemoLogin),
+
+  /**
+   * Email + password sign-in, the alternative to Google. Unknown email and wrong password give the
+   * same INVALID_CREDENTIALS. Limited per IP (generous: a whole class may share one school NAT) and
+   * per email, so one account can't be brute-forced from many addresses.
+   */
+  passwordLogin: publicProcedure
+    .use(rateLimit("passwordLogin", 30, MINUTE))
+    .input(z.object({ email: signInEmail, password: z.string().min(1).max(PASSWORD_MAX_LENGTH) }).merge(signInAttribution))
+    .mutation(async ({ ctx, input }) => {
+      limited(ctx, `passwordLoginEmail:${normalizeEmail(input.email)}`, 10, 15 * MINUTE, "passwordLoginEmail");
+      const result = await passwordAuth.loginWithPassword(input);
+      await completeSignIn(ctx.req, ctx.res, result, attributionOf(input));
+      return { ok: true } as const;
+    }),
+
+  /** Creates a new account only; an email that already has any account is refused (see registerWithPassword). */
+  passwordRegister: publicProcedure
+    .use(rateLimit("passwordRegister", 20, 10 * MINUTE))
+    .input(z.object({ name: z.string().trim().min(2).max(120), email: signInEmail, password: newPassword }).merge(signInAttribution))
+    .mutation(async ({ ctx, input }) => {
+      const result = await passwordAuth.registerWithPassword(input);
+      await completeSignIn(ctx.req, ctx.res, result, attributionOf(input));
+      return { ok: true } as const;
+    }),
+
+  /** Settings: add a password to the signed-in account (e.g. a Google account), or change it. */
+  setPassword: protectedProcedure
+    .use(rateLimit("setPassword", 5, 10 * MINUTE))
+    .input(z.object({ currentPassword: z.string().max(PASSWORD_MAX_LENGTH).optional(), newPassword }))
+    .mutation(async ({ ctx, input }) => {
+      const { revokedOtherSessions } = await passwordAuth.setOwnPassword(ctx.user, ctx.session, input);
+      if (revokedOtherSessions) await issueSessionCookie(ctx.req, ctx.res, ctx.user);
+      return { ok: true } as const;
+    }),
 
   /**
    * Remembers which UI the user last worked in. This is a preference only: it grants nothing,

@@ -28,7 +28,8 @@ export async function getUser(userId: number) {
   const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   if (!user) throw new AppError("NOT_FOUND");
   const roles = await platformRolesOf(userId, db);
-  return { ...user, roles };
+  const { passwordHash, ...safe } = user;
+  return { ...safe, hasPassword: !!passwordHash, roles };
 }
 
 async function lockTarget(tx: Tx, admin: AdminContext, userId: number) {
