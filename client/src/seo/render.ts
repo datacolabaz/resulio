@@ -166,7 +166,7 @@ export function prerender(shell: string, page: SitePage) {
   const html = shell
     .replace(/<title>[^<]*<\/title>/, `<title>${head.title}</title>`)
     .replace(/<meta name="description" content="[^"]*" \/>/, `<meta name="description" content="${head.description}" />\n    ${head.tags}`)
-    .replace(`<div id="root"></div>`, `<div id="root">${pageBody(page)}</div>`);
+    .replace(`<div id="root"></div>`, `<div id="root"><div data-prerender>${pageBody(page)}</div></div>`);
   if (!html.includes(`<link rel="canonical"`) || !html.includes(`<h1>`)) throw new Error(`prerender: shell markers not found for ${page.path}`);
   return html;
 }

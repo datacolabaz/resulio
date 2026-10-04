@@ -39,12 +39,21 @@ describe("public site pages", () => {
       expect(html).toContain(`<link rel="canonical" href="https://resulio.co${page.path}" />`);
       expect(html.match(/<title>/g)).toHaveLength(1);
       expect(html.match(/<meta name="description"/g)).toHaveLength(1);
-      expect(html).toMatch(/<div id="root"><header>.*<h1>.+<\/h1>/);
+      expect(html).toMatch(/<div id="root"><div data-prerender><header>.*<h1>.+<\/h1>.*<\/div><\/div>/);
       expect(html).toContain("Telman Abdulla");
       ldBlocks(html);
     }
     expect(pageJsonLd(SITE_PAGES.find((p) => p.id === "faq")!)?.["@graph"].map((n: any) => n["@type"])).toEqual(["BreadcrumbList", "FAQPage"]);
     expect(pageJsonLd(SITE_PAGES.find((p) => p.id === "home")!)).toBeNull();
+  });
+
+  it("hides prerendered text from JavaScript visitors before first paint", () => {
+    const index = readFileSync(join(__dirname, "..", "client", "index.html"), "utf8");
+    const head = index.slice(index.indexOf("<head>"), index.indexOf("</head>"));
+    const addJs = head.indexOf(`<script>document.documentElement.classList.add("js");</script>`);
+    expect(addJs).toBeGreaterThan(-1);
+    expect(head).toContain("html.js [data-prerender]{display:none!important}");
+    expect(addJs).toBeLessThan(head.search(/<link|<style|<script(?!>document\.documentElement\.classList\.add)/));
   });
 
   it("lists every page in the sitemap and llms-full.txt", () => {
