@@ -519,3 +519,73 @@ export function buildSyllabusCompletedEmail(input: { to: string; locale: ServerL
   const text = [tx.heading, "", ...lines, "", `${tx.button}: ${url}`, "", tx.footer].join("\n");
   return { to: input.to, subject: tx.title(title), html, text };
 }
+
+export const teacherAnalyticsPath = (syllabusId: string) => `/teacher/syllabus/${encodeURIComponent(syllabusId)}?tab=analytics`;
+
+const SYL_RISK: Record<ServerLocale, {
+  title: (n: number) => string;
+  body: (s: string, names: string, more: number) => string;
+  heading: string;
+  intro: (s: string, n: number) => string;
+  names: (names: string, more: number) => string;
+  button: string;
+  footer: string;
+}> = {
+  az: {
+    title: (n) => `Risk altında olan tələbələr: ${n}`,
+    body: (s, names, more) => `«${s}»: ${names}${more > 0 ? ` və daha ${more} nəfər` : ""}.`,
+    heading: "Gündəlik risk xülasəsi",
+    intro: (s, n) => `«${s}» syllabus-unda ${n} tələbə risk altındadır (uzun müddət fəaliyyət yoxdur, qiymətləndirmədən keçməyib və ya qrupdan geri qalır).`,
+    names: (names, more) => `${names}${more > 0 ? ` və daha ${more} nəfər` : ""}`,
+    button: "Analitikaya bax",
+    footer: "Bu xülasəni bildiriş ayarlarından və ya syllabus analitikasından söndürə bilərsiniz.",
+  },
+  en: {
+    title: (n) => `Students at risk: ${n}`,
+    body: (s, names, more) => `“${s}”: ${names}${more > 0 ? ` and ${more} more` : ""}.`,
+    heading: "Daily at-risk digest",
+    intro: (s, n) => `${n} students in the syllabus “${s}” are at risk (no recent activity, failed assessments, or falling behind the group).`,
+    names: (names, more) => `${names}${more > 0 ? ` and ${more} more` : ""}`,
+    button: "Open analytics",
+    footer: "You can turn this digest off in notification settings or in the syllabus analytics.",
+  },
+  ru: {
+    title: (n) => `Студенты в зоне риска: ${n}`,
+    body: (s, names, more) => `«${s}»: ${names}${more > 0 ? ` и ещё ${more}` : ""}.`,
+    heading: "Ежедневная сводка по рискам",
+    intro: (s, n) => `В силлабусе «${s}» студентов в зоне риска: ${n} (нет активности, не сдана проверка или отставание от группы).`,
+    names: (names, more) => `${names}${more > 0 ? ` и ещё ${more}` : ""}`,
+    button: "Открыть аналитику",
+    footer: "Сводку можно отключить в настройках уведомлений или в аналитике силлабуса.",
+  },
+};
+
+type RiskDigest = { syllabusId: string; syllabusTitle: string; count: number; names: string[] };
+
+const digestNames = (d: RiskDigest) => {
+  const names = d.names.map((n) => cleanTitle(n, 60)).slice(0, 5);
+  return { names: names.join(", "), more: Math.max(0, d.count - names.length) };
+};
+
+export function syllabusAtRiskInApp(locale: ServerLocale, d: RiskDigest) {
+  const tx = SYL_RISK[locale];
+  const { names, more } = digestNames(d);
+  return { title: tx.title(d.count), body: tx.body(cleanTitle(d.syllabusTitle, 80), names, more) };
+}
+
+export function buildSyllabusAtRiskEmail(input: RiskDigest & { to: string; locale: ServerLocale; appUrl: string }): EmailMessage {
+  const tx = SYL_RISK[input.locale];
+  const title = cleanTitle(input.syllabusTitle);
+  const { names, more } = digestNames(input);
+  const url = `${input.appUrl}${teacherAnalyticsPath(input.syllabusId)}`;
+  const lines = [tx.intro(title, input.count), tx.names(names, more)];
+  const html = emailLayout({
+    heading: escapeHtml(tx.heading),
+    paragraphs: lines.map(escapeHtml),
+    buttonLabel: escapeHtml(tx.button),
+    buttonUrl: escapeHtml(url),
+    footer: escapeHtml(tx.footer),
+  });
+  const text = [tx.heading, "", ...lines, "", `${tx.button}: ${url}`, "", tx.footer].join("\n");
+  return { to: input.to, subject: tx.title(input.count), html, text };
+}

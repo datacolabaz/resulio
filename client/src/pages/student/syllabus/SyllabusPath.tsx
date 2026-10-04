@@ -1,5 +1,6 @@
 import { AppShell, ErrorNote, Loading, Panel, Pill } from "@/components/AppShell";
 import { StatusBadge, toneSurface } from "@/components/StatusBadge";
+import { ActivityTimeline } from "@/components/syllabus/ActivityTimeline";
 import { Button } from "@/components/ui/button";
 import { t, type MessageKey } from "@/i18n/messages";
 import { errorText, fmtDateTime, fmtDay } from "@/lib/format";
@@ -145,9 +146,28 @@ function ActivePath({ id, path, record }: { id: string; path: Path; record: Reco
         <aside className="min-w-0 space-y-4">
           <ProgressPanel path={path} />
           <GroupPanel id={id} groups={path.groups} />
+          <MyActivityPanel id={id} />
         </aside>
       </div>
     </div>
+  );
+}
+
+/** The student's own learning history (§41: only self); loaded on demand. */
+function MyActivityPanel({ id }: { id: string }) {
+  const [open, setOpen] = useState(false);
+  const q = trpc.student.syllabus.activity.useQuery({ id }, { enabled: open, retry: false });
+  return (
+    <Panel
+      title={t("sa.timeline.mine")}
+      action={
+        <Button size="sm" variant="ghost" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+          {open ? t("sa.timeline.hide") : t("sa.timeline.show")}
+        </Button>
+      }
+    >
+      {open && (q.error ? <ErrorNote error={q.error} /> : !q.data ? <Loading /> : <ActivityTimeline events={q.data.slice(0, 50)} />)}
+    </Panel>
   );
 }
 

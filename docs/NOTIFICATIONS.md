@@ -26,6 +26,7 @@ Code: `server/notifications/` — `events.ts` (events and their channels), `temp
 | `SYLLABUS_UNLOCKED` | student | IN_APP, PUSH | lessons/modules unlocked; batched per enrollment for 2 min (persisted in `syllabus_notice_batches`, survives a restart), the first lesson and anything the student already opened are left out |
 | `SYLLABUS_APPROVAL_NEEDED` | syllabus teacher | IN_APP, PUSH | a lesson, module or the whole syllabus waits for teacher approval; batched per syllabus for 2 min (persisted like `SYLLABUS_UNLOCKED`) |
 | `SYLLABUS_COMPLETED` | student | IN_APP, EMAIL, PUSH | syllabus completed (once per student and syllabus, key `syl-complete:<syllabusId>:<studentId>`) |
+| `SYLLABUS_AT_RISK_DIGEST` | syllabus creator | IN_APP, EMAIL (e-mail off by default) | daily after 08:00 Baku when students are at risk and the syllabus' digest is on (`syllabus/analytics.ts`); key `syl-risk:<syllabusId>:<YYYY-MM-DD>` |
 
 Throttling that belongs to the domain stays there: grade e-mails are decided by `grade_email_log`
 (only on release or a changed score), AI alerts by `notification_dedupe` (24 h / 6 h per workspace).
@@ -79,7 +80,8 @@ teacher grades as before) and the toggle is disabled with a note.
 
 ## Preferences
 
-`notification_preferences (userId, event, channel, enabled)`; no row = on. Enforced in the
+`notification_preferences (userId, event, channel, enabled)`; no row = on, except channels an event
+lists in `defaultOff` (opt-in, e.g. the digest e-mail). Enforced in the
 dispatcher. API (tRPC, signed in):
 
 - `inbox.preferences` (query) → `[{ event, channels: [{ channel, enabled }] }]`

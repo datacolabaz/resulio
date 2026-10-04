@@ -6,12 +6,13 @@ import {
   SYLLABUS_ITEM_KINDS,
   SYLLABUS_ITEM_SCOPES,
   SYLLABUS_NODE_STATUSES,
-  TIMESTAMP_MAX,
-  TIMESTAMP_MIN,
   UNLOCK_TARGET_TYPES,
 } from "../../shared/syllabus";
+import { analyticsSettingsSchema } from "../../shared/syllabusAnalytics";
+import { timestampDate } from "../../shared/timestamp";
 import { rateLimit, router, studentProcedure, teacherProcedure } from "../_core/trpc";
 import * as access from "./access";
+import * as analytics from "./analytics";
 import { clientActivityBatchSchema } from "./activityRules";
 import * as authoring from "./authoring";
 import { assertSyllabusEnabled, isSchemaBehind, syllabusEnabledFor } from "./availability";
@@ -81,7 +82,7 @@ const itemFields = z.object({
 
 const placement = z.object({ scope: z.enum(SYLLABUS_ITEM_SCOPES), moduleId: entityId.nullish(), lessonId: entityId.nullish() });
 const orderedIds = z.array(entityId).max(500);
-const dateOrNull = z.coerce.date().min(TIMESTAMP_MIN).max(TIMESTAMP_MAX).nullable();
+const dateOrNull = timestampDate().nullable();
 
 export const teacherSyllabusRouter = router({
   /** Lets the client show or hide the Syllabus entry for this workspace; never throws. */
@@ -241,6 +242,18 @@ export const teacherSyllabusRouter = router({
   setProgressVisibleToGroup: syllabusTeacherProcedure
     .input(z.object({ groupId: entityId, visible: z.boolean() }))
     .mutation(({ ctx, input }) => teacherViews.setProgressVisibleToGroup(ctx.scope, input.groupId, input.visible)),
+
+  analytics: syllabusTeacherProcedure
+    .use(rateLimit("syllabusAnalytics", 60, MINUTE))
+    .input(z.object({ id: entityId, groupId: entityId.nullish() }))
+    .query(({ ctx, input }) => analytics.syllabusAnalytics(ctx.scope, input.id, input.groupId ?? null)),
+  analyticsTimeline: syllabusTeacherProcedure
+    .input(z.object({ id: entityId, studentId }))
+    .query(({ ctx, input }) => analytics.studentTimeline(ctx.scope, input.id, input.studentId)),
+  analyticsSettings: syllabusTeacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => analytics.getSettings(ctx.scope, input.id)),
+  saveAnalyticsSettings: syllabusTeacherProcedure
+    .input(z.object({ id: entityId, settings: analyticsSettingsSchema }))
+    .mutation(({ ctx, input }) => analytics.saveSettings(ctx.scope, input.id, input.settings)),
 });
 
 export const studentSyllabusRouter = router({
@@ -279,4 +292,8 @@ export const studentSyllabusRouter = router({
     .use(rateLimit("syllabusGroupProgress", 60, MINUTE))
     .input(z.object({ id: entityId, groupId: entityId }))
     .query(({ ctx, input }) => learning.groupProgress(ctx.user.id, input.id, input.groupId)),
+  activity: syllabusStudentProcedure
+    .use(rateLimit("syllabusMyActivity", 30, MINUTE))
+    .input(z.object({ id: entityId }))
+    .query(({ ctx, input }) => analytics.myTimeline(ctx.user.id, input.id)),
 });

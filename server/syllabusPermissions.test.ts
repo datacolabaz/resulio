@@ -20,6 +20,7 @@ vi.mock("./modules/access", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./modules/access")>()),
   resolveWorkspace: vi.fn(),
   resolveAccess: vi.fn(),
+  platformRolesOf: vi.fn(async () => []),
 }));
 vi.mock("./modules/groups", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./modules/groups")>()),
@@ -453,3 +454,51 @@ describe("student overview and nav flag", () => {
     expect(await codeOf(c.teacher.syllabus.manualUnlock({ id: "syl1", studentId: STUDENT, targetType: "LESSON", targetId: "l2", reason: "sick leave" }))).toBe("NOT_FOUND:NOT_FOUND");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Analytics privacy (§41)
+// ---------------------------------------------------------------------------
+
+describe("analytics privacy", () => {
+  it("another teacher gets NOT_FOUND for the analytics, a timeline and the risk settings", async () => {
+    m.access.resolveWorkspace.mockResolvedValue({ id: "ws_other", ownerUserId: 99 } as never);
+    const c = caller(user(99));
+    expect(await codeOf(c.teacher.syllabus.analytics({ id: "syl1" }))).toBe("NOT_FOUND:NOT_FOUND");
+    expect(await codeOf(c.teacher.syllabus.analytics({ id: "syl1", groupId: "grp1" }))).toBe("NOT_FOUND:NOT_FOUND");
+    expect(await codeOf(c.teacher.syllabus.analyticsTimeline({ id: "syl1", studentId: STUDENT }))).toBe("NOT_FOUND:NOT_FOUND");
+    expect(await codeOf(c.teacher.syllabus.analyticsSettings({ id: "syl1" }))).toBe("NOT_FOUND:NOT_FOUND");
+    const settings = { thresholds: { inactiveDays: 7, failedAttempts: 2, progressGapPct: 25, stuckDays: 14, missingPractice: 2, practiceGraceDays: 7 }, digestEnabled: true };
+    expect(await codeOf(c.teacher.syllabus.saveAnalyticsSettings({ id: "syl1", settings }))).toBe("NOT_FOUND:NOT_FOUND");
+  });
+
+  it("a student cannot call the teacher analytics", async () => {
+    m.access.resolveWorkspace.mockResolvedValue(null);
+    const c = caller(user(STUDENT));
+    expect(await codeOf(c.teacher.syllabus.analytics({ id: "syl1" }))).toBe("FORBIDDEN:NO_WORKSPACE");
+    expect(await codeOf(c.teacher.syllabus.analyticsTimeline({ id: "syl1", studentId: STUDENT }))).toBe("FORBIDDEN:NO_WORKSPACE");
+  });
+
+  it("a student sees only their own history, and only with an enrollment in an enabled syllabus", async () => {
+    const c = caller(user(STUDENT));
+    m.store.enrollmentOf.mockResolvedValue(null);
+    expect(await codeOf(c.student.syllabus.activity({ id: "syl1" }))).toBe("NOT_FOUND:NOT_FOUND");
+    expect(m.store.enrollmentOf).toHaveBeenCalledWith("syl1", STUDENT);
+
+    m.store.enrollmentOf.mockResolvedValue(ENROLLMENT);
+    m.availability.syllabusEnabledFor.mockResolvedValue(false);
+    expect(await codeOf(c.student.syllabus.activity({ id: "syl1" }))).toBe("NOT_FOUND:NOT_FOUND");
+  });
+
+  it("rejects bad threshold values before anything is saved", async () => {
+    m.access.resolveWorkspace.mockResolvedValue({ id: "ws_teacher", ownerUserId: 7 } as never);
+    const settings = { thresholds: { inactiveDays: 0, failedAttempts: 2, progressGapPct: 25, stuckDays: 14, missingPractice: 2, practiceGraceDays: 7 }, digestEnabled: true };
+    expect(await codeOf(caller(user(7)).teacher.syllabus.saveAnalyticsSettings({ id: "syl1", settings }))).toMatch(/^BAD_REQUEST/);
+  });
+
+  it("admin analytics needs the syllabus.view permission", async () => {
+    expect(await codeOf(caller(user(5)).admin.syllabus.analytics({ syllabusId: "syl1" }))).toBe("FORBIDDEN:NOT_ADMIN");
+    m.access.platformRolesOf.mockResolvedValue(["PARTNER_ADMIN"]);
+    expect(await codeOf(caller(user(5)).admin.syllabus.analytics({ syllabusId: "syl1" }))).toBe("FORBIDDEN:NOT_ADMIN");
+  });
+});
+

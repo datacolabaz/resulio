@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { timestampDate } from "./timestamp";
 
 export const ASSESSMENT_TYPES = ["EXAM", "KSQ", "BSQ"] as const;
 export type AssessmentType = (typeof ASSESSMENT_TYPES)[number];
@@ -260,8 +261,8 @@ export type AssessmentSettingsPatch = z.infer<typeof assessmentSettingsPatchSche
 
 export const scheduleSchema = z
   .object({
-    startAt: z.coerce.date().nullable(),
-    endAt: z.coerce.date().nullable(),
+    startAt: timestampDate().nullable(),
+    endAt: timestampDate().nullable(),
     timezone: z.string().trim().min(1).max(64).default("Asia/Baku"),
   })
   .refine((s) => !s.startAt || !s.endAt || s.endAt > s.startAt, { message: "END_BEFORE_START", path: ["endAt"] });
@@ -275,8 +276,8 @@ export type Targets = z.infer<typeof targetsSchema>;
 
 /** Optional per-assignment overrides of the assessment defaults. */
 export const assignmentOverridesSchema = z.object({
-  availableFrom: z.coerce.date().nullable().default(null),
-  availableUntil: z.coerce.date().nullable().default(null),
+  availableFrom: timestampDate().nullable().default(null),
+  availableUntil: timestampDate().nullable().default(null),
   durationSeconds: z.number().int().min(60).max(60 * 60 * 12).nullable().default(null),
   attemptsAllowed: z.number().int().min(1).max(20).nullable().default(null),
 });

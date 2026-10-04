@@ -17,10 +17,11 @@ export function isMissingTable(error: unknown): boolean {
 export type PreferenceMap = Map<string, boolean>;
 const prefKey = (event: EventType, channel: Channel) => `${event}:${channel}`;
 
-/** A stored choice wins; otherwise every channel the event supports is on. Unsupported channels are always off. */
+/** A stored choice wins; otherwise a supported channel is on unless the event lists it as opt-in. Unsupported channels are always off. */
 export function channelEnabled(prefs: PreferenceMap, event: EventType, channel: Channel): boolean {
-  if (!EVENTS[event].channels.includes(channel)) return false;
-  return prefs.get(prefKey(event, channel)) ?? true;
+  const def = EVENTS[event];
+  if (!def.channels.includes(channel)) return false;
+  return prefs.get(prefKey(event, channel)) ?? !def.defaultOff?.includes(channel);
 }
 
 export async function loadPreferences(userId: number): Promise<PreferenceMap> {

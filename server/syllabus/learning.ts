@@ -1,5 +1,5 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { syllabusEnrollments, syllabusItemProgress, syllabusLessonProgress, syllabusPracticeTasks, tasks } from "../../drizzle/schema";
+import { syllabusEnrollments, syllabusItemProgress, syllabusLessonProgress, syllabusPracticeTasks, taskSubmissions, tasks } from "../../drizzle/schema";
 import { requireDb } from "../db";
 import { startAttempt } from "../modules/attempts";
 import { AppError } from "../modules/errors";
@@ -327,9 +327,15 @@ export async function submitPractice(userId: number, syllabusId: string, itemId:
   if (found.item.kind !== "STUDENT_PRACTICE" || !found.item.taskId) throw new AppError("SYLLABUS_INVALID_TARGET");
   const [task] = await requireDb().select().from(tasks).where(eq(tasks.id, found.item.taskId)).limit(1);
   if (!task) throw new AppError("NOT_FOUND");
+  const [before] = await requireDb()
+    .select({ submittedAt: taskSubmissions.submittedAt })
+    .from(taskSubmissions)
+    .where(and(eq(taskSubmissions.taskId, task.id), eq(taskSubmissions.studentId, userId)))
+    .limit(1);
   const view = await submitToTask(userId, task, files, answerText);
   await upsertItemFact(o, itemId, { openedAt: new Date(), startedAt: new Date() });
-  await logActivity([{ ...activityBase(o), moduleId: found.module?.id, lessonId: found.lesson?.id, itemId, taskId: task.id, activityType: "PRACTICE_SUBMITTED", source: "SERVER" }]);
+  const activityType = before?.submittedAt ? "PRACTICE_RESUBMITTED" : "PRACTICE_SUBMITTED";
+  await logActivity([{ ...activityBase(o), moduleId: found.module?.id, lessonId: found.lesson?.id, itemId, taskId: task.id, activityType, source: "SERVER" }]);
   await progression.recompute(o.enrollment.id);
   return view;
 }

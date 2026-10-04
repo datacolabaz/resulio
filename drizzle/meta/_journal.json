@@ -204,6 +204,13 @@
       "when": 1791107060718,
       "tag": "0028_syllabus_notice_batches",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "5",
+      "when": 1791108064486,
+      "tag": "0029_syllabus_analytics",
+      "breakpoints": true
     }
   ]
 }

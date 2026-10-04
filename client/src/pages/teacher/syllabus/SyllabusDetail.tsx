@@ -13,6 +13,7 @@ import type { CompletionRulesPatch, SyllabusItemKind } from "@shared/syllabus";
 import { ArrowLeft, ChevronDown, ChevronRight, Copy, Eye, Pencil, Plus, Rocket, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "wouter";
+import { AnalyticsTab } from "./AnalyticsTab";
 import { ItemCard, useCreateItem } from "./ItemCard";
 import { StudentsTab } from "./StudentsTab";
 import { AccessTab, PublishDialog, SettingsTab, VersionsTab } from "./SyllabusTabs";
@@ -318,7 +319,7 @@ function StructureTab({ tree }: { tree: Tree }) {
 // Page
 // ---------------------------------------------------------------------------
 
-const TABS = ["structure", "settings", "versions", "access", "students"] as const;
+const TABS = ["structure", "settings", "versions", "access", "students", "analytics"] as const;
 type Tab = (typeof TABS)[number];
 
 function DetailBody({ id }: { id: string }) {
@@ -366,6 +367,7 @@ function DetailBody({ id }: { id: string }) {
         <TabsContent value="versions"><VersionsTab tree={tree.data} /></TabsContent>
         <TabsContent value="access"><AccessTab tree={tree.data} /></TabsContent>
         <TabsContent value="students"><StudentsTab tree={tree.data} /></TabsContent>
+        <TabsContent value="analytics"><AnalyticsTab tree={tree.data} /></TabsContent>
       </Tabs>
       <PublishDialog syllabusId={id} open={publishOpen} onOpenChange={setPublishOpen} />
     </div>

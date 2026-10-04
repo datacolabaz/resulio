@@ -1,6 +1,6 @@
 # Syllabus / Structured Learning Architecture — analysis, design and plan
 
-Status: **approved by the owner** (all 12 recommended defaults, with one change to Q7 — see §15). **Phase 1 (database + backend) implemented** behind the `SYLLABUS` feature flag — see §16. **Phase 2 (teacher builder UI) implemented** — see §17. **Phase 3 (student progression UI) implemented** — see §18. Phase 4 (assessment integration) is next.
+Status: **approved by the owner** (all 12 recommended defaults, with one change to Q7 — see §15). **Phase 1 (database + backend) implemented** behind the `SYLLABUS` feature flag — see §16. **Phase 2 (teacher builder UI) implemented** — see §17. **Phase 3 (student progression UI) implemented** — see §18. **Phase 4 (assessment integration) implemented** — see §19. **Phase 5 (analytics) implemented** — see §20. Phase 6 (UX polish) is next.
 Spec: [`docs/specs/SYLLABUS-SPEC.md`](specs/SYLLABUS-SPEC.md) (the owner's 45-section specification, Azerbaijani).
 Baseline analysed: `main` at `fc649af` (migrations up to `0025_task_answer_keys`).
 
@@ -654,7 +654,7 @@ Hooks are **after-commit and best-effort**: they first set `syllabus_enrollments
 - Results flow back via `syllabusHooks.onResult`.
 
 ### 9.3 Tasks / submissions / AI grading / answer keys (reuse for Student Practice)
-- Each STUDENT_PRACTICE item has a hidden `tasks` row: `accessMode = GROUPS`, `groupIds = []`, `studentIds = []` (so it reaches nobody through the normal task paths, never appears in `/student/assignments`, group boards or share pages), `deadline = 2099-12-31` sentinel (per-student relative deadlines and lateness are computed by the syllabus layer).
+- Each STUDENT_PRACTICE item has a hidden `tasks` row: `accessMode = GROUPS`, `groupIds = []`, `studentIds = []` (so it reaches nobody through the normal task paths, never appears in `/student/assignments`, group boards or share pages), `deadline = TIMESTAMP_MAX` (2037-12-31) sentinel — MySQL `TIMESTAMP` ends in January 2038, so no far-future dates (per-student relative deadlines and lateness are computed by the syllabus layer).
 - Submission goes through a syllabus endpoint that checks syllabus access + unlock, then calls the **extracted core** of `tasks.submitAssignment` (refactor: split access check from the write; behaviour of the existing path unchanged). That core already triggers `aiReview.scheduleAiReview` → AI pre-review → `autoGrade` (release when clean, teacher queue otherwise) using the hidden answer key in `task_answer_keys`.
 - Teacher grading reuses `SubmissionReview.tsx` and `teacher.tasks.grade` (scope-checked by workspace — works because containers live in the same workspace).
 - Student upload context `submission` currently checks `taskReachesStudent`; it gets one extra rule: syllabus container tasks are allowed when the item is unlocked for that student.
@@ -815,7 +815,7 @@ Sizes are rough developer-day estimates for one experienced developer (including
 - **Acceptance**: 82 % → passed → next module unlocked; 58 % → retry allowed with remaining attempts and cooldown; locked assessment cannot be started via direct API; open-answer exam waits for teacher grading then unlocks; completion record created exactly once.
 - **Tests**: integration with real attempts engine (start/submit/sweeper auto-submit), retry/cooldown edge cases.
 
-### Phase 5 — Analytics (≈ 6–8 days)
+### Phase 5 — Analytics (≈ 6–8 days) — ✅ delivered (see §20)
 - **Scope**: syllabus overview (§32), student table (§33), group comparison (§34), module (§35), lesson (§36), practice task (§37), funnel (§38), at-risk (§39), insights (§40), student timeline (§30), last activity (§31), daily at-risk digest, retention job; measure and add rollups only if needed.
 - **Acceptance**: numbers match hand-computed fixtures; teacher sees only own syllabi/groups/students; Access, Progress, Completion and Mastery (scores) are shown as separate metrics (§43); dashboards load < 1 s for 500 students.
 - **Tests**: analytics fixtures, privacy tests (other workspace, student calling teacher endpoints), risk/insight rule unit tests.
@@ -896,7 +896,7 @@ Hooks in existing code (no behaviour change for non-syllabus data): task submiss
 3. The migrations must have been applied (`pnpm db:migrate`); otherwise the API answers `SYLLABUS_DB_NOT_READY` and nothing else changes (auto-migrate applies them on deploy).
 
 ### 16.4 Implementation decisions made in Phase 1
-- **Practice items** are hidden container tasks (no groups, no students, deadline 2099-12-31), registered in `syllabus_practice_tasks`. Submissions go through the existing task core, so AI review, auto-grade and answer keys work unchanged. A published version references a frozen copy; editing the draft never changes what started students submit to.
+- **Practice items** are hidden container tasks (no groups, no students, deadline `TIMESTAMP_MAX` = 2037-12-31, see §19.1), registered in `syllabus_practice_tasks`. Submissions go through the existing task core, so AI review, auto-grade and answer keys work unchanged. A published version references a frozen copy; editing the draft never changes what started students submit to.
 - **Assessments**: when an assessment item becomes available to a student, a per-student `assessment_assignments` row is created just in time (attempt limit = the item's max attempts, `availableFrom` = cooldown end). Every attempt of the student on that assessment counts toward the item, consistent with the engine's attempt limit.
 - **Manual unlock** opens exactly the chosen node for that student; it does not complete it. Unlocking one lesson inside a still-locked module opens only that lesson; to let a student continue through a module, unlock the module. Revoking re-locks it unless the student already completed it.
 - **Group setting** `progressVisibleToGroup` is read with the default ON when no row exists (Q7).
@@ -1036,3 +1036,40 @@ Student progression UI behind the same `SYLLABUS` flag. **No migrations.** Chang
 ### 19.7 Known limitations
 - No local MySQL: the integration suite was written and type-checked but runs only with `TEST_DATABASE_URL` (`pnpm test:db`).
 - Sweeper auto-submit and open-answer grading → unlock are covered by the existing hooks/reconciler and unit tests, not by a new MySQL scenario.
+
+## 20. Phase 5 — what was implemented
+
+### 20.1 Date audit (MySQL `TIMESTAMP` ends 2038-01-19)
+- No other hard-coded far-future dates (2099 / 9999) were found; the practice-container sentinel was already `TIMESTAMP_MAX` (§19.1).
+- Every user-entered date that lands in a `TIMESTAMP` column is now range-checked (1970-01-02 … 2037-12-31) with `shared/timestamp.ts` (`timestampDate()`, `timestampIso()`): assessment schedule start/end, assignment overrides (available from/until), task deadline, group start date, student target exam date, invite expiry, syllabus grant dates. Out of range → zod message `DATE_OUT_OF_RANGE` → the UI says "The date must be between 1970 and 2037" (AZ/EN/RU) instead of a 500.
+
+### 20.2 What the teacher sees — the **Analytics** tab of a syllabus
+- **Overview**, in four separate blocks (§43): *Access* (students, active, starts later, ended) · *Progress* (opened the syllabus, average progress, lessons completed, active / inactive, on track, stuck, at risk) · *Completion* (completed, completion rate) · *Mastery* (average assessment score, pass rate, assessed students). Optional group filter.
+- **Insights** (§40): rule-based sentences in AZ/EN/RU from codes + numbers (at risk, awaiting review, inactive, not started, low practice completion, low lesson score, hard lesson, high retry module, one group ahead of another). Small samples (< 3) never trigger an insight.
+- **Learning funnel** (§38): access → syllabus opened → module started → lesson opened → theory completed → practice started → practice submitted → assessment attempted → assessment passed → module completed (distinct students, recharts).
+- **Student table** (§33): progress, current lesson/module, practice %, assessment average and passed/attempted, last activity, at-risk flag with reasons; search, filters (at risk / inactive / not started / on track / completed with counts), sortable columns; **Activity** opens the student's timeline.
+- **Group comparison** (§34), **modules** (§35: started, completed, rate, avg score, avg start→completion time, practice completion, pass rate, retry rate), **lessons** (§36: opened, completed, rate, practice completion, avg score, avg attempts, avg active time), **practice tasks** (§37: reached / opened / started / submitted / completed with rates, avg score, avg submissions, avg open→submit time, needs help = awaiting review or graded below the pass mark).
+- **Risk rules** dialog: thresholds per syllabus (`syllabus_analytics_settings`; no row = defaults) and the daily digest switch.
+
+### 20.3 At-risk rules (§39), `server/syllabus/risk.ts`
+Only students with active access who have not completed are flagged. Defaults (configurable): no activity for more than **7** days · **2** failed graded assessment attempts on items not yet passed · progress **25** points below the average of the student's group(s) (groups of ≥ 3 enrolled; students without a group compare with everyone) · **14** days on the same lesson since opening it · **2** required practice tasks not submitted **7** days after their lesson opened · access for more than 7 days but never started. Every fired rule is returned with its value ("20 days without activity").
+
+### 20.4 Computation and performance
+- `server/syllabus/analytics.ts` loads one syllabus with a fixed number of indexed queries (grants, enrollments, own groups and their active student members, names, module/lesson/practice progress, theory facts, practice submissions by container task, submission counts from `learning_activity`, attempts + results of the syllabus' assessments for enrolled students) and hands them to the pure `analyticsCompute.ts`. Everything is computed per request in memory, no rollup tables: a few hundred students is a few thousand rows. Version structures come from the existing cache; older versions' lessons are merged into the outline (`mergedOutline`).
+- Practice and assessment outcomes use the same reading as the progression engine (`practiceDone`, `assessmentOutcome`: BEST/LATEST policy, pending manual review not counted as a score, voided attempts ignored).
+- Migration **`0029_syllabus_analytics`** (add-only, applied by auto-migrate): table `syllabus_analytics_settings`, index `learning_activity_time_idx (occurredAt)` for the retention job. Before it runs analytics works with default thresholds; saving settings answers `SYLLABUS_DB_NOT_READY`.
+
+### 20.5 Timeline, digest, retention
+- **Timeline** (§30, §31): newest 300 `learning_activity` events of one student in one syllabus with module/lesson/item titles, plus assessment outcomes (passed / failed / being graded with %) taken from results. Teacher: `teacher.syllabus.analyticsTimeline` (only a student this syllabus reaches or has enrolled). Student: "My activity" on the learning path (`student.syllabus.activity`, own enrollment only, readable after access ends). Practice resubmissions are now logged as `PRACTICE_RESUBMITTED`.
+- **Daily at-risk digest**: event `SYLLABUS_AT_RISK_DIGEST` to the syllabus creator once a day after 08:00 Baku when at least one student is at risk and the digest is on; names up to five students and links to the Analytics tab. In-app on by default; **e-mail is opt-in** (new `EventDefinition.defaultOff`). Dedupe `syl-risk:<syllabusId>:<YYYY-MM-DD>`, so several instances never double-send.
+- **Retention**: raw `learning_activity` rows older than **24 months** are deleted daily in batches of 5 000 (`SYLLABUS_ACTIVITY_RETENTION_MONTHS` overrides). Progress, completion and audit records are never deleted.
+
+### 20.6 Privacy (§41)
+- Teacher: every analytics call starts from `ownedSyllabus` (another workspace → `NOT_FOUND`); only groups of the teacher's workspace count, even if a grant ever pointed elsewhere; the group filter must be one of them; a timeline is only for a student of this syllabus.
+- Student: only their own timeline; no endpoint returns other students' analytics (groupmate progress stays governed by Q7).
+- Admin: `admin.syllabus.analytics` (`syllabus.view`) returns aggregate overview and funnel only — no names.
+
+### 20.7 Tests
+- `server/syllabusAnalytics.test.ts` — hand-computed five-student class (overview, reasons, table row, lesson/module/practice stats, funnel, groups, insights, group filter, custom thresholds), risk rules and thresholds, insight rules and small samples, BEST/LATEST/pending/voided scoring, practice rules, version merge, population privacy (foreign groups and their members excluded, best grant state), digest payload and 08:00 gate, retention batching and missing table, timestamp guards (2099 / 9999 / pre-1970 rejected), i18n coverage of every code.
+- `server/syllabusPermissions.test.ts` — another teacher gets `NOT_FOUND` on analytics / timeline / settings; a student cannot call teacher analytics; a student's own timeline needs their enrollment and the flag; bad thresholds are rejected; admin analytics needs `syllabus.view`.
+- `server/notificationDelivery.test.ts` — the digest renders in every channel; its e-mail is off until the user turns it on.

@@ -18,6 +18,7 @@ export const EVENT_TYPES = [
   "SYLLABUS_UNLOCKED",
   "SYLLABUS_APPROVAL_NEEDED",
   "SYLLABUS_COMPLETED",
+  "SYLLABUS_AT_RISK_DIGEST",
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -37,11 +38,15 @@ export interface EventData {
   /** To the teacher: students waiting for an approval in one syllabus. */
   SYLLABUS_APPROVAL_NEEDED: { syllabusId: string; syllabusTitle: string; count: number; studentName: string | null };
   SYLLABUS_COMPLETED: { syllabusId: string; syllabusTitle: string; verificationCode: string | null };
+  /** To the teacher, once a day: students flagged at risk in one syllabus (`names` holds at most five). */
+  SYLLABUS_AT_RISK_DIGEST: { syllabusId: string; syllabusTitle: string; count: number; names: string[] };
 }
 
 export interface EventDefinition {
   /** Channels this event can go to; all are on by default unless the user opts out. */
   channels: readonly Channel[];
+  /** Channels that stay off until the user turns them on. */
+  defaultOff?: readonly Channel[];
 }
 
 export const EVENTS: Record<EventType, EventDefinition> = {
@@ -59,6 +64,8 @@ export const EVENTS: Record<EventType, EventDefinition> = {
   SYLLABUS_UNLOCKED: { channels: ["IN_APP", "PUSH"] },
   SYLLABUS_APPROVAL_NEEDED: { channels: ["IN_APP", "PUSH"] },
   SYLLABUS_COMPLETED: { channels: ["IN_APP", "EMAIL", "PUSH"] },
+  // Daily teacher digest: in-app by default, e-mail only when the teacher opts in.
+  SYLLABUS_AT_RISK_DIGEST: { channels: ["IN_APP", "EMAIL"], defaultOff: ["EMAIL"] },
 };
 
 export const isEventType = (v: string): v is EventType => (EVENT_TYPES as readonly string[]).includes(v);

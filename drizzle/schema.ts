@@ -1365,8 +1365,20 @@ export const learningActivity = mysqlTable(
     index("learning_activity_user_idx").on(t.userId, t.syllabusId, t.occurredAt),
     index("learning_activity_lesson_idx").on(t.syllabusId, t.lessonId, t.activityType),
     index("learning_activity_item_idx").on(t.syllabusId, t.itemId, t.activityType),
+    /** Retention job: delete events older than ACTIVITY_RETENTION_MONTHS in small batches. */
+    index("learning_activity_time_idx").on(t.occurredAt),
   ],
 );
+
+/** Per-syllabus analytics settings (at-risk thresholds, daily digest). No row = defaults. */
+export const syllabusAnalyticsSettings = mysqlTable("syllabus_analytics_settings", {
+  syllabusId: id("syllabusId").primaryKey(),
+  /** Partial RiskThresholds (shared/syllabusAnalytics.ts); invalid or missing fields fall back to the defaults. */
+  thresholds: json("thresholds").$type<Record<string, unknown>>().notNull(),
+  digestEnabled: boolean("digestEnabled").notNull().default(true),
+  updatedBy: int("updatedBy").notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
 
 export const SYLLABUS_NOTICE_KINDS = ["UNLOCK", "APPROVAL"] as const;
 

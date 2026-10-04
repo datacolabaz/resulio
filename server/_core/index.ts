@@ -18,6 +18,7 @@ import { serveStatic, setupVite } from "./vite";
 import { getDb, warnIfGoogleAuthSchemaMissing } from "../db";
 import { sweepExpiredAttempts } from "../modules/attempts";
 import { startNotificationWorker } from "../notifications/dispatcher";
+import { runDailyDigest, runDailyRetention } from "../syllabus/analytics";
 import { flushDueNotices } from "../syllabus/notify";
 import { installSyllabusHooks, reconcileDirty } from "../syllabus/progression";
 
@@ -43,6 +44,8 @@ function startAttemptSweeper() {
 }
 
 const SYLLABUS_RECONCILE_MS = 2 * 60_000;
+/** The at-risk digest (after 08:00 Baku) and activity retention each run once a day; this is only how often we check. */
+const SYLLABUS_DAILY_CHECK_MS = 15 * 60_000;
 
 /** Progress recompute hooks plus a safety net for enrollments a crashed hook left dirty. */
 function startSyllabusProgression() {
@@ -72,6 +75,19 @@ function startSyllabusProgression() {
       flushing = false;
     }
   }, SWEEP_INTERVAL_MS).unref();
+  let daily = false;
+  setInterval(async () => {
+    if (daily) return;
+    daily = true;
+    try {
+      await runDailyDigest();
+      await runDailyRetention();
+    } catch (error) {
+      console.error("[Syllabus] Daily jobs failed", error);
+    } finally {
+      daily = false;
+    }
+  }, SYLLABUS_DAILY_CHECK_MS).unref();
 }
 
 async function startServer() {

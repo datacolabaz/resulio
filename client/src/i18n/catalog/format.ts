@@ -52,6 +52,7 @@ export const format = {
   "error.DEMO_DISABLED": ["Demo giriş söndürülüb.", "Demo sign-in is disabled.", "Демо-вход отключён."],
   "error.DATABASE_UNAVAILABLE": ["Verilənlər bazası əlçatan deyil.", "The database is unavailable.", "База данных недоступна."],
   "error.INTERNAL_ERROR": ["Gözlənilməz xəta baş verdi.", "An unexpected error occurred.", "Произошла непредвиденная ошибка."],
+  "error.DATE_OUT_OF_RANGE": ["Tarix 1970 – 2037 aralığında olmalıdır.", "The date must be between 1970 and 2037.", "Дата должна быть в пределах 1970–2037 гг."],
   "error.SUSPENDED": ["Hesabınız dayandırılıb.", "Your account is suspended.", "Ваш аккаунт приостановлен."],
   "error.UNAUTHORIZED": ["Davam etmək üçün daxil olun.", "Please sign in to continue.", "Войдите, чтобы продолжить."],
   "error.TASK_NO_ACCESS": ["Bu tapşırığa girişiniz yoxdur.", "You don't have access to this assignment.", "У вас нет доступа к этому заданию."],

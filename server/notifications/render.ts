@@ -8,14 +8,17 @@ import {
   buildAiGradeEmail,
   buildGradeEmail,
   buildSyllabusAccessEmail,
+  buildSyllabusAtRiskEmail,
   buildSyllabusCompletedEmail,
   gradeInAppText,
   syllabusAccessInApp,
   syllabusApprovalInApp,
+  syllabusAtRiskInApp,
   syllabusCompletedInApp,
   syllabusLessonPath,
   syllabusPath,
   syllabusUnlockedInApp,
+  teacherAnalyticsPath,
   teacherApprovalsPath,
 } from "./templates";
 
@@ -80,6 +83,11 @@ export function renderNotification<E extends EventType>(event: E, data: EventDat
       const d = data as EventData["SYLLABUS_COMPLETED"];
       const email = buildSyllabusCompletedEmail({ to, locale, appUrl, syllabusId: d.syllabusId, syllabusTitle: d.syllabusTitle, verificationCode: d.verificationCode });
       return { ...syllabusCompletedInApp(locale, d.syllabusTitle), path: syllabusPath(d.syllabusId), email };
+    }
+    case "SYLLABUS_AT_RISK_DIGEST": {
+      const d = data as EventData["SYLLABUS_AT_RISK_DIGEST"];
+      const email = buildSyllabusAtRiskEmail({ ...d, to, locale, appUrl });
+      return { ...syllabusAtRiskInApp(locale, d), path: teacherAnalyticsPath(d.syllabusId), email };
     }
     default:
       throw new Error(`No renderer for ${String(event)}`);

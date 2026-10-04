@@ -3,6 +3,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { REFERRAL_SOURCES } from "@shared/referralSources";
 import { CLASS_TIME_PATTERN, GROUP_LANGUAGES, WEEK_DAYS } from "@shared/schedule";
 import { TEACHING_CATEGORIES } from "@shared/teachingCategories";
+import { timestampDate, timestampIso } from "@shared/timestamp";
 import { z } from "zod";
 import {
   ASSESSMENT_TYPES,
@@ -246,7 +247,7 @@ const authRouter = router({
         timezone: z.string().trim().max(64).optional(),
         targetExam: z.string().trim().max(64).optional(),
         targetScore: z.string().trim().max(32).optional(),
-        targetExamDate: z.string().datetime().optional().nullable(),
+        targetExamDate: timestampIso().optional().nullable(),
         referralSource: z.enum(REFERRAL_SOURCES).optional(),
         referrerUserId: z.number().int().positive().optional(),
         referrerName: z.string().trim().min(1).max(160).optional(),
@@ -288,7 +289,7 @@ const groupInput = z.object({
   description: z.string().trim().max(2000).default(""),
   language: z.enum(GROUP_LANGUAGES).or(z.literal("")).default(""),
   format: z.enum(GROUP_FORMATS).default("ONLINE"),
-  startDate: z.string().datetime().optional().nullable(),
+  startDate: timestampIso().optional().nullable(),
   classSchedule: z
     .array(classScheduleEntryInput)
     .max(7)
@@ -345,7 +346,7 @@ const teacherGroupsRouter = router({
     .input(z.object({ groupId: entityId, active: z.boolean() }))
     .mutation(({ ctx, input }) => groups.setInviteCodeActive(ctx.scope, input.groupId, input.active)),
   setInviteCodeExpiry: teacherProcedure
-    .input(z.object({ groupId: entityId, expiresAt: z.string().datetime().nullable() }))
+    .input(z.object({ groupId: entityId, expiresAt: timestampIso().nullable() }))
     .mutation(({ ctx, input }) => groups.setInviteCodeExpiry(ctx.scope, input.groupId, input.expiresAt === null ? null : new Date(input.expiresAt))),
   emailInviteList: teacherProcedure
     .input(z.object({ groupId: entityId }))
@@ -540,7 +541,7 @@ const assignmentInput = z.object({
   title: z.string().trim().min(2).max(255),
   description: z.string().trim().max(5000).default(""),
   instructions: z.string().trim().max(5000).default(""),
-  deadline: z.coerce.date(),
+  deadline: timestampDate(),
   ...recipients,
   attachments: z
     .array(z.object({ fileId: z.string().trim().min(1).max(32), name: z.string().max(255), size: z.number().int().nonnegative() }))

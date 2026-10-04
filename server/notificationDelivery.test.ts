@@ -46,6 +46,10 @@ describe("routing and preferences", () => {
     expect(channelEnabled(noPrefs, "AI_LIMIT_80", "EMAIL")).toBe(false);
     expect(channelEnabled(new Map([["AI_LIMIT_80:EMAIL", true]]), "AI_LIMIT_80", "EMAIL")).toBe(false);
     expect(channelEnabled(new Map([["AI_LIMIT_80:IN_APP", false]]), "AI_LIMIT_80", "IN_APP")).toBe(false);
+    // Opt-in channel: off until the user turns it on.
+    expect(channelEnabled(noPrefs, "SYLLABUS_AT_RISK_DIGEST", "IN_APP")).toBe(true);
+    expect(channelEnabled(noPrefs, "SYLLABUS_AT_RISK_DIGEST", "EMAIL")).toBe(false);
+    expect(channelEnabled(new Map([["SYLLABUS_AT_RISK_DIGEST:EMAIL", true]]), "SYLLABUS_AT_RISK_DIGEST", "EMAIL")).toBe(true);
   });
 
   it("detects a missing table through wrapped driver errors", () => {
@@ -204,6 +208,7 @@ describe("dispatcher", () => {
         SYLLABUS_UNLOCKED: { syllabusId: "s1", syllabusTitle: "S", lessons: ["L"], modules: [], lessonId: "l1" },
         SYLLABUS_APPROVAL_NEEDED: { syllabusId: "s1", syllabusTitle: "S", count: 2, studentName: null },
         SYLLABUS_COMPLETED: { syllabusId: "s1", syllabusTitle: "S", verificationCode: "abc" },
+        SYLLABUS_AT_RISK_DIGEST: { syllabusId: "s1", syllabusTitle: "S", count: 7, names: ["A", "B"] },
       }[event];
       const rendered = renderNotification(event, data, { locale: "az", email: "a@b.c" }, "https://resulio.co");
       expect(rendered.title.length).toBeGreaterThan(0);

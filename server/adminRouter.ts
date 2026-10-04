@@ -19,6 +19,8 @@ import * as adminUsers from "./modules/admin/users";
 import { AppError } from "./modules/errors";
 import * as partners from "./modules/partners";
 import * as syllabusAdmin from "./syllabus/admin";
+import * as syllabusAnalytics from "./syllabus/analytics";
+import { guardTables } from "./syllabus/availability";
 import { UNLOCK_TARGET_TYPES } from "../shared/syllabus";
 
 const reason = z.string().trim().min(ADMIN_REASON_MIN).max(ADMIN_REASON_MAX);
@@ -115,6 +117,10 @@ export const adminRouter = router({
 
   syllabus: router({
     overview: adminProcedure("syllabus.view").query(() => syllabusAdmin.overview()),
+    /** Aggregate numbers for one syllabus (no student names or content). */
+    analytics: adminProcedure("syllabus.view")
+      .input(z.object({ syllabusId: entityId }))
+      .query(({ input }) => guardTables(() => syllabusAnalytics.adminAggregate(input.syllabusId))),
     workspaceFlag: adminProcedure("flags.view")
       .input(z.object({ workspaceId }))
       .query(({ input }) => syllabusAdmin.workspaceFlag(input.workspaceId)),

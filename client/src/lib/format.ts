@@ -7,7 +7,7 @@ export function errorText(error: unknown): string {
   const key = `error.${message}`;
   if (isMessageKey(key)) return t(key);
   // Input validation failures arrive as a JSON list of issues, never meant for people.
-  if (/^\s*[[{]/.test(message)) return t("error.INVALID_INPUT");
+  if (/^\s*[[{]/.test(message)) return t(message.includes("DATE_OUT_OF_RANGE") ? "error.DATE_OUT_OF_RANGE" : "error.INVALID_INPUT");
   return message && message.length < 120 ? message : t("error.INTERNAL_ERROR");
 }
 
