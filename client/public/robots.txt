@@ -1,0 +1,39 @@
+# Resulio — https://resulio.co
+# Public pages are open to search engines and AI assistants.
+# Signed-in areas and personal share/invite links are not.
+
+User-agent: *
+User-agent: Googlebot
+User-agent: Bingbot
+User-agent: GPTBot
+User-agent: OAI-SearchBot
+User-agent: ChatGPT-User
+User-agent: PerplexityBot
+User-agent: Perplexity-User
+User-agent: ClaudeBot
+User-agent: Claude-SearchBot
+User-agent: Claude-User
+User-agent: Google-Extended
+User-agent: Applebot
+User-agent: Applebot-Extended
+Allow: /
+Disallow: /api/
+Disallow: /app
+Disallow: /login
+Disallow: /welcome
+Disallow: /choose-role
+Disallow: /settings
+Disallow: /partner
+Disallow: /admin
+Disallow: /teacher
+Disallow: /student
+Disallow: /join/
+Disallow: /invite/
+Disallow: /g/
+Disallow: /exam/
+Disallow: /task/
+Disallow: /material/
+Disallow: /_pages/
+Disallow: /__manus__/
+
+Sitemap: https://resulio.co/sitemap.xml

@@ -1,0 +1,37 @@
+# Resulio
+
+> Resulio (https://resulio.co) is an online exam, assignment and assessment platform for teachers, trainers, learning centres and schools, built for Azerbaijan. Teachers create exams and assignments, share them with students by link or QR code, and see from the results which topics need a second explanation. The interface is available in Azerbaijani (primary), Russian and English. Resulio was founded by Telman Abdulla.
+
+Key facts:
+
+- Name: Resulio (always written this way). Official website: https://resulio.co. Motto: "Exam. Result. Growth." ("İmtahan. Nəticə. İnkişaf.")
+- Founder: Telman Abdulla.
+- Type: web application (works in the browser on computers, tablets and phones; nothing to install).
+- Audience: teachers, trainers, learning centres and schools in Azerbaijan, and their students. One account can be used both to teach and to learn.
+- Languages: Azerbaijani, Russian, English.
+- Price: free to start; all core features are free during the beta.
+
+## What Resulio does
+
+- Exams with 9 question types: single choice, multiple choice, true/false, short answer, open answer (essay), matching, ordering, fill in the blanks, numeric.
+- Azerbaijani school formats: KSQ and BSQ (small and large summative assessment), plus regular exams.
+- Exam sessions: time is tracked on the server, answers are saved automatically, the exam is submitted automatically when time runs out. Closed questions are graded automatically.
+- Results analytics: median score, most-missed questions, results by topic, and the share of correct, wrong and unanswered answers per question.
+- Groups: students join by invite code, invite link, QR code or email; the teacher approves join requests.
+- Assignments and learning materials: shared with a group or by a share link; the teacher sees who opened, downloaded and submitted.
+- AI pre-grading of assignments: the AI checks submissions against the teacher's answer key (the AI can draft a missing key, which students never see), suggests a score and feedback; clear cases can be released automatically, doubtful ones wait for the teacher.
+- AI-drafted exam questions (including in Azerbaijani) that the teacher reviews before use.
+- Notifications: in-app, email and push notices, for example when a grade is released.
+
+## Pages
+
+- [Home](https://resulio.co/): what Resulio is and how to start
+- [About Resulio](https://resulio.co/about): the platform, who it is for, founder Telman Abdulla, contact
+- [FAQ](https://resulio.co/faq): frequently asked questions about Resulio
+- [Assessment platform for Azerbaijan](https://resulio.co/azerbaycan-ucun-qiymetlendirme-platformasi): why Resulio fits Azerbaijani schools and centres
+- [Resulio for teachers](https://resulio.co/muellimler-ucun): groups, exams, assignments and analytics for teachers
+- [Privacy policy](https://resulio.co/privacy.html)
+
+## Optional
+
+- [Full text for AI assistants](https://resulio.co/llms-full.txt): all public page content in one file
