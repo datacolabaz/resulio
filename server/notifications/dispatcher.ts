@@ -5,7 +5,7 @@ import { publicAppUrl } from "../_core/email";
 import { serverLocale } from "../_core/locale";
 import { getDb, requireDb } from "../db";
 import { ADAPTERS, type ChannelAdapter, type ChannelResult } from "./channels";
-import { EVENTS, isChannel, isEventType, type Channel, type EventData, type EventType } from "./events";
+import { CHANNELS, EVENTS, isChannel, isEventType, type Channel, type EventData, type EventType } from "./events";
 import { channelEnabled, isMissingTable, loadPreferences, type PreferenceMap } from "./preferences";
 import { renderNotification, type Recipient } from "./render";
 
@@ -161,12 +161,56 @@ export function createDispatcher(deps: DispatcherDeps) {
     for (const id of queued) await processDelivery(id);
   }
 
+  /**
+   * One notice to many users: the quick channels (in-app, push) for everyone first, then e-mail
+   * (throttled by the e-mail sender), a few users at a time. A failure for one user does not stop the rest.
+   */
+  async function dispatchManyNow(inputs: DispatchInput[], concurrency = 4) {
+    const pass = async (channels: Channel[]) => {
+      let next = 0;
+      const worker = async () => {
+        while (next < inputs.length) {
+          const input = inputs[next++];
+          const want = (input.channels ?? EVENTS[input.event].channels).filter((c) => channels.includes(c));
+          if (!want.length) continue;
+          try {
+            await dispatchNow({ ...input, channels: want });
+          } catch (error) {
+            console.error("[notifications] dispatch failed", input.event, error instanceof Error ? error.message : error);
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(concurrency, inputs.length) }, worker));
+    };
+    await pass(CHANNELS.filter((c) => c !== "EMAIL"));
+    await pass(["EMAIL"]);
+  }
+
+  /**
+   * Takes a dedupe key without sending anything (a SKIPPED row per channel, e.g. because the
+   * notice went out inside a batch). True when the key was still free — or when the outbox table
+   * is missing and nothing can be known.
+   */
+  async function reserve(input: { event: EventType; userId: number; dedupeKey: string; reason: string }): Promise<boolean> {
+    let free = false;
+    for (const [i, channel] of EVENTS[input.event].channels.entries()) {
+      try {
+        const id = await deps.store.insert({ dedupeKey: deliveryKey(input.dedupeKey, channel), event: input.event, userId: input.userId, channel, status: "SKIPPED", error: input.reason, payload: {} });
+        if (i === 0) free = id !== null;
+      } catch (error) {
+        if (!isMissingTable(error)) throw error;
+        return true;
+      }
+    }
+    return free;
+  }
+
   /** Retries due rows, revives rows orphaned by a restart and unsticks crashed sends. */
   async function runDeliveryWorker(now = new Date()) {
     for (const id of await deps.store.due(now, 25)) await processDelivery(id);
   }
 
-  return { dispatchNow, processDelivery, runDeliveryWorker };
+  return { dispatchNow, dispatchManyNow, reserve, processDelivery, runDeliveryWorker };
 }
 
 const mysqlStore: OutboxStore = {
@@ -210,7 +254,7 @@ async function loadRecipient(userId: number): Promise<Recipient | null> {
   return row ? { email: row.email?.trim() || null, locale: serverLocale(row.locale) } : null;
 }
 
-export const { dispatchNow, processDelivery, runDeliveryWorker } = createDispatcher({
+export const { dispatchNow, dispatchManyNow, reserve, processDelivery, runDeliveryWorker } = createDispatcher({
   store: mysqlStore,
   adapters: ADAPTERS,
   preferences: loadPreferences,
@@ -222,6 +266,14 @@ export const { dispatchNow, processDelivery, runDeliveryWorker } = createDispatc
 export function dispatch<E extends EventType>(input: DispatchInput<E>) {
   setImmediate(() => {
     dispatchNow(input).catch((error) => console.error("[notifications] dispatch failed", input.event, error instanceof Error ? error.message : error));
+  });
+}
+
+/** Fire-and-forget for a notice to many users (see `dispatchManyNow`). */
+export function dispatchMany(inputs: DispatchInput[]) {
+  if (!inputs.length) return;
+  setImmediate(() => {
+    dispatchManyNow(inputs).catch((error) => console.error("[notifications] bulk dispatch failed", error instanceof Error ? error.message : error));
   });
 }
 

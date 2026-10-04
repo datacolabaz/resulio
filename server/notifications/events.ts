@@ -19,6 +19,8 @@ export const EVENT_TYPES = [
   "SYLLABUS_APPROVAL_NEEDED",
   "SYLLABUS_COMPLETED",
   "SYLLABUS_AT_RISK_DIGEST",
+  "TASK_ASSIGNED",
+  "TASK_UPDATED",
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -40,6 +42,19 @@ export interface EventData {
   SYLLABUS_COMPLETED: { syllabusId: string; syllabusTitle: string; verificationCode: string | null };
   /** To the teacher, once a day: students flagged at risk in one syllabus (`names` holds at most five). */
   SYLLABUS_AT_RISK_DIGEST: { syllabusId: string; syllabusTitle: string; count: number; names: string[] };
+  /** One task, or the open tasks of a group the student just joined (`total` may exceed `tasks.length`). Never the answer key or files. */
+  TASK_ASSIGNED: { tasks: TaskNoticeItem[]; total: number; from: string };
+  /** The deadline of a task the student already had moved. */
+  TASK_UPDATED: { taskId: string; title: string; deadline: string; previousDeadline: string };
+}
+
+export interface TaskNoticeItem {
+  taskId: string;
+  title: string;
+  /** Plain-text start of the description, already shortened. */
+  excerpt: string;
+  /** ISO timestamp. */
+  deadline: string;
 }
 
 export interface EventDefinition {
@@ -66,6 +81,9 @@ export const EVENTS: Record<EventType, EventDefinition> = {
   SYLLABUS_COMPLETED: { channels: ["IN_APP", "EMAIL", "PUSH"] },
   // Daily teacher digest: in-app by default, e-mail only when the teacher opts in.
   SYLLABUS_AT_RISK_DIGEST: { channels: ["IN_APP", "EMAIL"], defaultOff: ["EMAIL"] },
+  TASK_ASSIGNED: { channels: ["IN_APP", "EMAIL", "PUSH"] },
+  // A moved deadline: in-app by default, e-mail only when the student opts in.
+  TASK_UPDATED: { channels: ["IN_APP", "EMAIL", "PUSH"], defaultOff: ["EMAIL"] },
 };
 
 export const isEventType = (v: string): v is EventType => (EVENT_TYPES as readonly string[]).includes(v);

@@ -589,3 +589,190 @@ export function buildSyllabusAtRiskEmail(input: RiskDigest & { to: string; local
   const text = [tx.heading, "", ...lines, "", `${tx.button}: ${url}`, "", tx.footer].join("\n");
   return { to: input.to, subject: tx.title(input.count), html, text };
 }
+
+// ---------------------------------------------------------------------------
+// Tasks: assigned (one, or the open tasks of a joined group), deadline moved
+// ---------------------------------------------------------------------------
+
+export const TASK_EXCERPT_MAX_CHARS = 300;
+/** Tasks listed by name in a batched notice; the rest are counted. */
+export const TASK_NOTICE_MAX_ITEMS = 5;
+
+export const studentTasksPath = "/student/assignments";
+export const studentTaskPath = (taskId: string) => `${studentTasksPath}?task=${encodeURIComponent(taskId)}`;
+
+/** Single-line start of a task description for notices. */
+export function taskExcerpt(description: string, max = TASK_EXCERPT_MAX_CHARS): string {
+  const flat = cleanTitle(description, Number.MAX_SAFE_INTEGER);
+  return flat.length <= max ? flat : `${flat.slice(0, max - 1).trimEnd()}…`;
+}
+
+const BAKU_TIME: Record<ServerLocale, string> = { az: "Bakı vaxtı", en: "Baku time", ru: "по бакинскому времени" };
+
+/** Date and time in Asia/Baku, labelled as such. */
+export function taskDeadline(locale: ServerLocale, iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const when = d.toLocaleString(LOCALE_TAG[locale], { timeZone: "Asia/Baku", year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+  return `${when} (${BAKU_TIME[locale]})`;
+}
+
+const TASK_NEW: Record<ServerLocale, {
+  subject: (title: string) => string;
+  subjectMany: (n: number) => string;
+  heading: string;
+  headingMany: string;
+  intro: (from: string) => string;
+  introMany: (from: string, n: number) => string;
+  deadline: (d: string) => string;
+  more: (n: number) => string;
+  button: string;
+  buttonMany: string;
+  footer: string;
+}> = {
+  az: {
+    subject: (t) => `Yeni tapşırıq: ${t}`,
+    subjectMany: (n) => `${n} açıq tapşırığınız var`,
+    heading: "Sizə yeni tapşırıq verildi",
+    headingMany: "Qrupunuzdakı açıq tapşırıqlar",
+    intro: (f) => (f ? `${f} sizə yeni tapşırıq verdi.` : "Müəlliminiz sizə yeni tapşırıq verdi."),
+    introMany: (f, n) => `Qrupa qoşuldunuz. ${f ? `${f} tərəfindən verilmiş` : "Müəlliminizin verdiyi"} ${n} açıq tapşırıq sizi gözləyir.`,
+    deadline: (d) => `Son tarix: ${d}`,
+    more: (n) => `və daha ${n} tapşırıq`,
+    button: "Tapşırığa keç",
+    buttonMany: "Tapşırıqlara keç",
+    footer: "Bu məktub Resulio tərəfindən avtomatik göndərilib, çünki müəlliminiz sizə tapşırıq verdi. Bu bildirişləri Ayarlar → Bildirişlər bölməsində söndürə bilərsiniz.",
+  },
+  en: {
+    subject: (t) => `New task: ${t}`,
+    subjectMany: (n) => `You have ${n} open tasks`,
+    heading: "You have a new task",
+    headingMany: "Open tasks in your group",
+    intro: (f) => (f ? `${f} gave you a new task.` : "Your teacher gave you a new task."),
+    introMany: (f, n) => `You joined a group. ${n} open tasks ${f ? `from ${f}` : "from your teacher"} are waiting for you.`,
+    deadline: (d) => `Deadline: ${d}`,
+    more: (n) => `and ${n} more`,
+    button: "Open task",
+    buttonMany: "Open tasks",
+    footer: "Resulio sent this e-mail automatically because your teacher gave you a task. You can turn these notices off in Settings → Notifications.",
+  },
+  ru: {
+    subject: (t) => `Новое задание: ${t}`,
+    subjectMany: (n) => `Открытых заданий: ${n}`,
+    heading: "Вам выдано новое задание",
+    headingMany: "Открытые задания вашей группы",
+    intro: (f) => (f ? `${f}: вам выдано новое задание.` : "Преподаватель выдал вам новое задание."),
+    introMany: (f, n) => `Вы вступили в группу. Вас ждут открытые задания${f ? ` (${f})` : ""}: ${n}.`,
+    deadline: (d) => `Срок: ${d}`,
+    more: (n) => `и ещё ${n}`,
+    button: "Перейти к заданию",
+    buttonMany: "Перейти к заданиям",
+    footer: "Это письмо отправлено Resulio автоматически, потому что преподаватель выдал вам задание. Эти уведомления можно отключить в Настройки → Уведомления.",
+  },
+};
+
+type TaskAssignedData = { tasks: Array<{ taskId: string; title: string; excerpt: string; deadline: string }>; total: number; from: string };
+
+const taskItems = (d: TaskAssignedData) =>
+  d.tasks.slice(0, TASK_NOTICE_MAX_ITEMS).map((x) => ({ ...x, title: cleanTitle(x.title), excerpt: taskExcerpt(x.excerpt) }));
+
+/** Where the notice leads: the task itself, or the task list for a batch. */
+export function taskAssignedPath(d: TaskAssignedData): string {
+  return d.total === 1 && d.tasks[0] ? studentTaskPath(d.tasks[0].taskId) : studentTasksPath;
+}
+
+export function taskAssignedInApp(locale: ServerLocale, d: TaskAssignedData) {
+  const tx = TASK_NEW[locale];
+  const items = taskItems(d);
+  if (d.total === 1 && items[0]) return { title: tx.subject(cleanTitle(items[0].title, 120)), body: tx.deadline(taskDeadline(locale, items[0].deadline)) };
+  const names = items.map((x) => cleanTitle(x.title, 60)).join(", ");
+  const more = d.total - items.length;
+  return { title: tx.subjectMany(d.total), body: names + (more > 0 ? ` ${tx.more(more)}` : "") };
+}
+
+export function buildTaskAssignedEmail(input: TaskAssignedData & { to: string; locale: ServerLocale; appUrl: string }): EmailMessage {
+  const tx = TASK_NEW[input.locale];
+  const items = taskItems(input);
+  const from = cleanTitle(input.from, 120);
+  const url = `${input.appUrl}${taskAssignedPath(input)}`;
+  const footer = escapeHtml(tx.footer);
+  if (input.total === 1 && items[0]) {
+    const task = items[0];
+    const deadline = tx.deadline(taskDeadline(input.locale, task.deadline));
+    const html = emailLayout({
+      heading: escapeHtml(tx.heading),
+      paragraphs: [escapeHtml(tx.intro(from)), `<strong>${escapeHtml(task.title)}</strong>`, ...(task.excerpt ? [escapeHtml(task.excerpt)] : []), `<strong>${escapeHtml(deadline)}</strong>`],
+      buttonLabel: escapeHtml(tx.button),
+      buttonUrl: escapeHtml(url),
+      footer,
+    });
+    const text = [tx.heading, "", tx.intro(from), "", task.title, ...(task.excerpt ? [task.excerpt] : []), "", deadline, "", `${tx.button}: ${url}`, "", tx.footer].join("\n");
+    return { to: input.to, subject: tx.subject(task.title), html, text };
+  }
+  const lines = items.map((x) => `${x.title} — ${tx.deadline(taskDeadline(input.locale, x.deadline))}`);
+  const more = input.total - items.length;
+  const html = emailLayout({
+    heading: escapeHtml(tx.headingMany),
+    paragraphs: [escapeHtml(tx.introMany(from, input.total))],
+    lists: [{ heading: "", items: [...lines.map(escapeHtml), ...(more > 0 ? [escapeHtml(tx.more(more))] : [])] }],
+    buttonLabel: escapeHtml(tx.buttonMany),
+    buttonUrl: escapeHtml(url),
+    footer,
+  });
+  const text = [tx.headingMany, "", tx.introMany(from, input.total), "", ...lines.map((l) => `- ${l}`), ...(more > 0 ? [`- ${tx.more(more)}`] : []), "", `${tx.buttonMany}: ${url}`, "", tx.footer].join("\n");
+  return { to: input.to, subject: tx.subjectMany(input.total), html, text };
+}
+
+const TASK_MOVED: Record<ServerLocale, { title: (t: string) => string; body: (d: string) => string; heading: string; intro: (t: string) => string; before: (d: string) => string; button: string; footer: string }> = {
+  az: {
+    title: (t) => `Son tarix dəyişdi: ${t}`,
+    body: (d) => `Yeni son tarix: ${d}`,
+    heading: "Tapşırığın son tarixi dəyişdi",
+    intro: (t) => `Müəlliminiz «${t}» tapşırığının son tarixini dəyişdi.`,
+    before: (d) => `Əvvəlki son tarix: ${d}`,
+    button: "Tapşırığa keç",
+    footer: "Bu məktub Resulio tərəfindən avtomatik göndərilib. Bu bildirişləri Ayarlar → Bildirişlər bölməsində söndürə bilərsiniz.",
+  },
+  en: {
+    title: (t) => `Deadline changed: ${t}`,
+    body: (d) => `New deadline: ${d}`,
+    heading: "A task's deadline changed",
+    intro: (t) => `Your teacher changed the deadline of “${t}”.`,
+    before: (d) => `Previous deadline: ${d}`,
+    button: "Open task",
+    footer: "Resulio sent this e-mail automatically. You can turn these notices off in Settings → Notifications.",
+  },
+  ru: {
+    title: (t) => `Срок изменён: ${t}`,
+    body: (d) => `Новый срок: ${d}`,
+    heading: "Срок задания изменён",
+    intro: (t) => `Преподаватель изменил срок задания «${t}».`,
+    before: (d) => `Прежний срок: ${d}`,
+    button: "Перейти к заданию",
+    footer: "Это письмо отправлено Resulio автоматически. Эти уведомления можно отключить в Настройки → Уведомления.",
+  },
+};
+
+type TaskUpdatedData = { taskId: string; title: string; deadline: string; previousDeadline: string };
+
+export function taskUpdatedInApp(locale: ServerLocale, d: TaskUpdatedData) {
+  const tx = TASK_MOVED[locale];
+  return { title: tx.title(cleanTitle(d.title, 120)), body: tx.body(taskDeadline(locale, d.deadline)) };
+}
+
+export function buildTaskUpdatedEmail(input: TaskUpdatedData & { to: string; locale: ServerLocale; appUrl: string }): EmailMessage {
+  const tx = TASK_MOVED[input.locale];
+  const title = cleanTitle(input.title);
+  const url = `${input.appUrl}${studentTaskPath(input.taskId)}`;
+  const now = tx.body(taskDeadline(input.locale, input.deadline));
+  const before = tx.before(taskDeadline(input.locale, input.previousDeadline));
+  const html = emailLayout({
+    heading: escapeHtml(tx.heading),
+    paragraphs: [escapeHtml(tx.intro(title)), `<strong>${escapeHtml(now)}</strong>`, escapeHtml(before)],
+    buttonLabel: escapeHtml(tx.button),
+    buttonUrl: escapeHtml(url),
+    footer: escapeHtml(tx.footer),
+  });
+  const text = [tx.heading, "", tx.intro(title), now, before, "", `${tx.button}: ${url}`, "", tx.footer].join("\n");
+  return { to: input.to, subject: tx.title(title), html, text };
+}

@@ -14,6 +14,7 @@ import { emitLearningEvent } from "./learningEvents";
 import * as notifications from "./notifications";
 import { syllabusContainerTaskIds } from "./syllabusLinks";
 import { canSeeTaskContent, taskReachesStudent, taskViewerAccess, type TaskAccessSubject, type TaskViewerAccess } from "./taskAccess";
+import { notifyTaskSaved } from "./taskNotify";
 import { workspaceOwnerId } from "./workspaces";
 
 /**
@@ -68,23 +69,31 @@ export async function listForWorkspace(workspaceId: string) {
   return rows.map((r) => ({ ...r, submissions: byTask.get(r.id) ?? [] }));
 }
 
-export async function createAssignment(scope: TeacherScope, input: AssignmentInput, recipientIds: number[]) {
+/** `notify` false: the teacher unticked "Tələbələrə bildiriş göndər" for this save. */
+export interface SaveOptions {
+  notify?: boolean;
+}
+
+export async function createAssignment(scope: TeacherScope, input: AssignmentInput, opts: SaveOptions = {}) {
   const db = requireDb();
   const id = nanoid();
   await db.insert(tasks).values({ id, providerWorkspaceId: scope.workspaceId, createdBy: scope.userId, shareCode: newShareCode(), ...input });
-  for (const sid of new Set(recipientIds)) await notifications.notify(sid, "Yeni tapşırıq", input.title);
-  return assignmentOf(scope, id);
+  const row = await assignmentOf(scope, id);
+  notifyTaskSaved({ task: row, before: null, notify: opts.notify ?? true, teacherId: scope.userId });
+  return row;
 }
 
 /**
  * Edits an existing assignment in place (fixing a forgotten recipient, a wrong deadline, etc.).
- * Does not re-notify recipients — `createAssignment` already did, and an edit is not a new
- * assignment; the caller can call `notifications.notify` itself for newly added recipients.
+ * Only students the task newly reaches get the "new task" notice; a moved deadline is announced
+ * to the others.
  */
-export async function updateAssignment(scope: TeacherScope, id: string, patch: Partial<AssignmentInput>) {
-  await assignmentOf(scope, id);
+export async function updateAssignment(scope: TeacherScope, id: string, patch: Partial<AssignmentInput>, opts: SaveOptions = {}) {
+  const before = await assignmentOf(scope, id);
   if (Object.keys(patch).length) await requireDb().update(tasks).set(patch).where(eq(tasks.id, id));
-  return assignmentOf(scope, id);
+  const row = await assignmentOf(scope, id);
+  notifyTaskSaved({ task: row, before, notify: opts.notify ?? true, teacherId: scope.userId });
+  return row;
 }
 
 export async function deleteAssignment(scope: TeacherScope, id: string) {

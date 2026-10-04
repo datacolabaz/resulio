@@ -10,7 +10,13 @@ import {
   buildSyllabusAccessEmail,
   buildSyllabusAtRiskEmail,
   buildSyllabusCompletedEmail,
+  buildTaskAssignedEmail,
+  buildTaskUpdatedEmail,
   gradeInAppText,
+  studentTaskPath,
+  taskAssignedInApp,
+  taskAssignedPath,
+  taskUpdatedInApp,
   syllabusAccessInApp,
   syllabusApprovalInApp,
   syllabusAtRiskInApp,
@@ -88,6 +94,14 @@ export function renderNotification<E extends EventType>(event: E, data: EventDat
       const d = data as EventData["SYLLABUS_AT_RISK_DIGEST"];
       const email = buildSyllabusAtRiskEmail({ ...d, to, locale, appUrl });
       return { ...syllabusAtRiskInApp(locale, d), path: teacherAnalyticsPath(d.syllabusId), email };
+    }
+    case "TASK_ASSIGNED": {
+      const d = data as EventData["TASK_ASSIGNED"];
+      return { ...taskAssignedInApp(locale, d), path: taskAssignedPath(d), email: buildTaskAssignedEmail({ ...d, to, locale, appUrl }) };
+    }
+    case "TASK_UPDATED": {
+      const d = data as EventData["TASK_UPDATED"];
+      return { ...taskUpdatedInApp(locale, d), path: studentTaskPath(d.taskId), email: buildTaskUpdatedEmail({ ...d, to, locale, appUrl }) };
     }
     default:
       throw new Error(`No renderer for ${String(event)}`);

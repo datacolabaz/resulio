@@ -27,6 +27,27 @@ Code: `server/notifications/` — `events.ts` (events and their channels), `temp
 | `SYLLABUS_APPROVAL_NEEDED` | syllabus teacher | IN_APP, PUSH | a lesson, module or the whole syllabus waits for teacher approval; batched per syllabus for 2 min (persisted like `SYLLABUS_UNLOCKED`) |
 | `SYLLABUS_COMPLETED` | student | IN_APP, EMAIL, PUSH | syllabus completed (once per student and syllabus, key `syl-complete:<syllabusId>:<studentId>`) |
 | `SYLLABUS_AT_RISK_DIGEST` | syllabus creator | IN_APP, EMAIL (e-mail off by default) | daily after 08:00 Baku when students are at risk and the syllabus' digest is on (`syllabus/analytics.ts`); key `syl-risk:<syllabusId>:<YYYY-MM-DD>` |
+| `TASK_ASSIGNED` | student | IN_APP, EMAIL, PUSH | a teacher creates a task, or an edit makes it reach new students; or a student joins a group with open tasks (`modules/taskNotify.ts`); key `task-assigned:<taskId>:<userId>` |
+| `TASK_UPDATED` | student | IN_APP, PUSH, EMAIL (e-mail off by default) | an edit moves the deadline by ≥ 1 hour; to students the task already reached; key `task-deadline:<taskId>:<userId>:<deadlineMs>` |
+
+### Tasks
+
+Recipients are the active student members of the task's groups plus, for open-link tasks, the
+individually picked students (a groups-only task ignores individual picks, as its page does);
+never the teacher. An open-link task with nobody selected notifies nobody. On edit only students
+the task newly reaches get `TASK_ASSIGNED`. The task form's **Tələbələrə bildiriş göndər**
+(default on) turns both notices off for that save.
+
+When a student becomes an active member of a group (join code, invite link, e-mail invite, teacher
+adds or approves them), they get **one** `TASK_ASSIGNED` listing the group's tasks with a future
+deadline that they have not submitted and were not told about (key `task-join:<userId>:<hash>`;
+each listed task's own key is taken with SKIPPED `BATCHED` rows so it is never announced again).
+
+The notice has the title, a short escaped description excerpt, the deadline in Baku time, the
+workspace/teacher name and a link to `/student/assignments?task=<id>` on `APP_PUBLIC_URL`; never
+the answer key or files. Large classes: in-app/push go to everyone first, then e-mails, all after
+the save returns. E-mails are throttled per process (`EMAIL_MAX_PER_SECOND`, default 8); a Resend
+429 halves the rate, pauses for its Retry-After and retries twice before the outbox retry.
 
 Throttling that belongs to the domain stays there: grade e-mails are decided by `grade_email_log`
 (only on release or a changed score), AI alerts by `notification_dedupe` (24 h / 6 h per workspace).
@@ -87,7 +108,8 @@ dispatcher. API (tRPC, signed in):
 - `inbox.preferences` (query) → `[{ event, channels: [{ channel, enabled }] }]`
 - `inbox.setPreference` (mutation) `{ event, channel, enabled }`
 
-Settings → Notifications shows IN_APP and EMAIL; PUSH choices belong in the mobile app.
+Settings → Notifications shows IN_APP and EMAIL; PUSH choices belong in the mobile app. Students
+see the task and grade rows; teachers see every row.
 
 ## Adding an event
 

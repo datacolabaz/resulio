@@ -36,7 +36,6 @@ async function taskWithAttachment(scope: Awaited<ReturnType<typeof makeTeacher>>
       studentIds: [],
       attachments: [{ fileId: saved.id, name: saved.name, size: saved.size }],
     },
-    [],
   );
   return { task, fileId: saved.id };
 }

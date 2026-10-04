@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { emailConfig, escapeHtml, publicAppUrl, RESEND_ENDPOINT, sendEmail } from "./_core/email";
+import { createSendThrottle, emailConfig, escapeHtml, publicAppUrl, RESEND_ENDPOINT, sendEmail } from "./_core/email";
 import { LlmHttpError } from "./_core/llm";
 import { serverLocale } from "./_core/locale";
 import { AI_ALERT_WINDOW_MS, aiAlertText, providerAlertFor, usageAlertFor } from "./modules/aiAlerts";
@@ -172,6 +172,11 @@ describe("Resend client", () => {
     const down = vi.fn(async () => { throw new DOMException("timeout", "TimeoutError"); });
     expect(await sendEmail(message, { fetch: down as unknown as typeof fetch, env })).toEqual({ ok: false, reason: "NETWORK_ERROR", retryable: true });
     const busy = vi.fn(async () => new Response("slow down", { status: 429 }));
-    expect(await sendEmail(message, { fetch: busy as unknown as typeof fetch, env })).toEqual({ ok: false, reason: "HTTP_ERROR", retryable: true });
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const throttle = createSendThrottle(8, { sleep: async () => undefined });
+    expect(await sendEmail(message, { fetch: busy as unknown as typeof fetch, env, throttle })).toEqual({ ok: false, reason: "HTTP_ERROR", retryable: true });
+    // Retried in-process after a pause, at a lower rate, before the outbox retry takes over.
+    expect(busy).toHaveBeenCalledTimes(3);
+    expect(throttle.rate).toBe(1);
   });
 });

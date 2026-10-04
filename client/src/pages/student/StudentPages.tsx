@@ -568,6 +568,12 @@ export function StudentTasks() {
     onSuccess: () => { toast.success(t("student.taskSubmitted")); void utils.student.tasks.invalidate(); },
     onError: (e) => toast.error(errorText(e)),
   });
+  // ?task=<id> from a "new task" notice: bring that task into view.
+  const focusId = new URLSearchParams(useSearch()).get("task");
+  const loaded = !!list.data;
+  useEffect(() => {
+    if (loaded && focusId) document.getElementById(`task-${focusId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [loaded, focusId]);
   return (
     <AppShell area="learning">
       {!list.data ? <Loading /> : !list.data.length ? (
@@ -577,6 +583,8 @@ export function StudentTasks() {
           {list.data.map((a) => (
             <Panel
               key={a.id}
+              id={`task-${a.id}`}
+              className={a.id === focusId ? "scroll-mt-20 ring-2 ring-link" : "scroll-mt-20"}
               title={a.title}
               action={a.submission ? (
                 a.submission.status === "LATE"

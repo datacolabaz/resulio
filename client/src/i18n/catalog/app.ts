@@ -365,6 +365,8 @@ export const app = {
   "settings.event.SYLLABUS_APPROVAL_NEEDED": ["Tələbə syllabus-da təsdiq gözləyir", "A student is waiting for approval in a syllabus", "Студент ждёт подтверждения в силлабусе"],
   "settings.event.SYLLABUS_COMPLETED": ["Syllabus-u tamamladım", "I completed a syllabus", "Я завершил силлабус"],
   "settings.event.SYLLABUS_AT_RISK_DIGEST": ["Gündəlik xülasə: risk altında olan tələbələr", "Daily digest: students at risk", "Ежедневная сводка: студенты в зоне риска"],
+  "settings.event.TASK_ASSIGNED": ["Mənə yeni tapşırıq verildi", "A new task was assigned to me", "Мне выдано новое задание"],
+  "settings.event.TASK_UPDATED": ["Tapşırığın son tarixi dəyişdi", "A task's deadline changed", "Изменён срок задания"],
   "settings.partner": ["Partner proqramı", "Partner programme", "Партнёрская программа"],
   "settings.partnerStatus": ["Status: {status}", "Status: {status}", "Статус: {status}"],
   "settings.partnerPanel": ["Partner paneli →", "Partner panel →", "Панель партнёра →"],

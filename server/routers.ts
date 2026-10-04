@@ -58,6 +58,7 @@ import * as referrals from "./modules/referrals";
 import * as shareTracking from "./modules/shareTracking";
 import { canSeeTaskContent, rosterStudentIds } from "./modules/taskAccess";
 import * as tasks from "./modules/tasks";
+import * as taskNotify from "./modules/taskNotify";
 import * as workspaces from "./modules/workspaces";
 import { CHANNELS, EVENT_TYPES } from "./notifications/events";
 import * as notificationPreferences from "./notifications/preferences";
@@ -325,10 +326,18 @@ const teacherGroupsRouter = router({
   addMember: teacherProcedure
     .use(rateLimit("addMember", 60, MINUTE))
     .input(z.object({ groupId: entityId, email: z.string().trim().email().max(320) }))
-    .mutation(({ ctx, input }) => groups.addMemberByEmail(ctx.scope, input.groupId, input.email)),
+    .mutation(async ({ ctx, input }) => {
+      const added = await groups.addMemberByEmail(ctx.scope, input.groupId, input.email);
+      taskNotify.notifyOpenTasksOnJoin(input.groupId, added.studentId);
+      return added;
+    }),
   approveMember: teacherProcedure
     .input(z.object({ groupId: entityId, studentId: z.number().int().positive() }))
-    .mutation(({ ctx, input }) => groups.approveMember(ctx.scope, input.groupId, input.studentId)),
+    .mutation(async ({ ctx, input }) => {
+      const result = await groups.approveMember(ctx.scope, input.groupId, input.studentId);
+      taskNotify.notifyOpenTasksOnJoin(input.groupId, input.studentId);
+      return result;
+    }),
   removeMember: teacherProcedure
     .input(z.object({ groupId: entityId, studentId: z.number().int().positive() }))
     .mutation(({ ctx, input }) => groups.removeMember(ctx.scope, input.groupId, input.studentId)),
@@ -596,16 +605,18 @@ const teacherTasksRouter = router({
       }),
     )
     .mutation(({ ctx, input }) => answerKey.draftAnswerKeyForTeacher(ctx.scope, input)),
+  /** `notifyStudents` false: no notices for this save ("Tələbələrə bildiriş göndər" unticked). */
   create: teacherProcedure
-    .input(assignmentInput)
+    .input(assignmentInput.extend({ notifyStudents: z.boolean().default(true) }))
     .mutation(async ({ ctx, input }) => {
-      const accessMode = input.accessMode ?? "PUBLIC";
-      assertAccessGroups(accessMode, input.groupIds);
-      const ids = await assertRecipients(ctx.scope, input.groupIds, input.studentIds, accessMode);
-      return tasks.createAssignment(ctx.scope, { ...input, accessMode }, ids);
+      const { notifyStudents, ...fields } = input;
+      const accessMode = fields.accessMode ?? "PUBLIC";
+      assertAccessGroups(accessMode, fields.groupIds);
+      await assertRecipients(ctx.scope, fields.groupIds, fields.studentIds, accessMode);
+      return tasks.createAssignment(ctx.scope, { ...fields, accessMode }, { notify: notifyStudents });
     }),
   update: teacherProcedure
-    .input(z.object({ id: entityId, patch: assignmentInput.partial() }))
+    .input(z.object({ id: entityId, patch: assignmentInput.partial(), notifyStudents: z.boolean().default(true) }))
     .mutation(async ({ ctx, input }) => {
       const current = await tasks.assignmentOf(ctx.scope, input.id);
       const accessMode = input.patch.accessMode ?? current.accessMode;
@@ -613,11 +624,8 @@ const teacherTasksRouter = router({
       const studentIds = input.patch.studentIds ?? current.studentIds;
       assertAccessGroups(accessMode, groupIds);
       const touchesRecipients = input.patch.groupIds !== undefined || input.patch.studentIds !== undefined || accessMode !== current.accessMode;
-      const before = touchesRecipients ? new Set(await assertRecipients(ctx.scope, current.groupIds, current.studentIds, current.accessMode)) : null;
-      const after = touchesRecipients ? await assertRecipients(ctx.scope, groupIds, studentIds, accessMode) : null;
-      const row = await tasks.updateAssignment(ctx.scope, input.id, input.patch);
-      if (after && before) for (const sid of after) if (!before.has(sid)) await notifications.notify(sid, "Yeni tapşırıq", row.title);
-      return row;
+      if (touchesRecipients) await assertRecipients(ctx.scope, groupIds, studentIds, accessMode);
+      return tasks.updateAssignment(ctx.scope, input.id, input.patch, { notify: input.notifyStudents });
     }),
   remove: teacherProcedure.input(z.object({ id: entityId })).mutation(async ({ ctx, input }) => {
     const result = await tasks.deleteAssignment(ctx.scope, input.id);
@@ -779,6 +787,7 @@ const studentRouter = router({
     .mutation(async ({ ctx, input }) => {
       const code = input.inviteCode.toUpperCase();
       const joined = await groups.joinByInvite(ctx.user.id, code);
+      if (joined.status === "ACTIVE") taskNotify.notifyOpenTasksOnJoin(joined.groupId, ctx.user.id);
       const verb = joined.status === "ACTIVE" ? "Yeni tələbə qoşuldu" : "Qoşulma sorğusu";
       await notifications.notify(joined.ownerUserId, verb, `${ctx.user.name ?? "Tələbə"} → ${joined.groupName}`);
       await shareTracking.recordShareEvent({
@@ -805,6 +814,7 @@ const studentRouter = router({
         throw error;
       }
       if (joined.outcome === "JOINED") {
+        taskNotify.notifyOpenTasksOnJoin(joined.groupId, ctx.user.id);
         await notifications.notify(joined.ownerUserId, "Yeni tələbə qoşuldu", `${ctx.user.name ?? "Tələbə"} → ${joined.groupName}`);
         await shareTracking.recordShareEvent({
           targetType: "GROUP",
@@ -821,7 +831,11 @@ const studentRouter = router({
   acceptEmailInvite: studentProcedure
     .use(rateLimit("acceptEmailInvite", 10, MINUTE))
     .input(z.object({ token: z.string().trim().min(16).max(128) }))
-    .mutation(({ ctx, input }) => groupEmailInvites.acceptEmailInvite(ctx.user.id, ctx.user.email ?? "", input.token)),
+    .mutation(async ({ ctx, input }) => {
+      const result = await groupEmailInvites.acceptEmailInvite(ctx.user.id, ctx.user.email ?? "", input.token);
+      taskNotify.notifyOpenTasksOnJoin(result.groupId, ctx.user.id);
+      return result;
+    }),
   tasks: studentProcedure.query(async ({ ctx }) => {
     const rows = await tasks.studentAssignments(ctx.user.id, await groups.activeGroupIdsOfStudent(ctx.user.id));
     await activity.markAssignmentsViewed(rows.map((r) => ({ id: r.id, providerWorkspaceId: r.providerWorkspaceId })), ctx.user.id);

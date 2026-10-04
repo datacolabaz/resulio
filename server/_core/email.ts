@@ -62,7 +62,7 @@ export function emailLayout(input: {
       .filter((l) => l.items.length)
       .map(
         (l) =>
-          `<p style="margin:16px 0 6px;font-size:15px;font-weight:bold;color:#111827">${l.heading}</p><ul style="margin:0 0 12px;padding-left:20px;font-size:15px;line-height:1.5;color:#1f2937">${l.items.map((i) => `<li>${i}</li>`).join("")}</ul>`,
+          `${l.heading ? `<p style="margin:16px 0 6px;font-size:15px;font-weight:bold;color:#111827">${l.heading}</p>` : ""}<ul style="margin:0 0 12px;padding-left:20px;font-size:15px;line-height:1.5;color:#1f2937">${l.items.map((i) => `<li>${i}</li>`).join("")}</ul>`,
       )
       .join("");
   return `<!doctype html><html><body style="margin:0;padding:24px;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif">
@@ -96,16 +96,81 @@ export type SendResult =
   | { ok: true; id: string | null }
   | { ok: false; reason: "NOT_CONFIGURED" | "HTTP_ERROR" | "NETWORK_ERROR"; retryable: boolean };
 
-export async function sendEmail(message: EmailMessage, deps: { fetch?: typeof fetch; env?: NodeJS.ProcessEnv } = {}): Promise<SendResult> {
+export const DEFAULT_EMAIL_MAX_PER_SECOND = 8;
+
+export interface SendThrottle {
+  /** Waits for this process's next send slot. */
+  take(): Promise<void>;
+  /** After a 429: halve the rate (not below 1/s) and hold every send for `pauseMs`. */
+  slowDown(pauseMs: number): void;
+  readonly rate: number;
+}
+
+/** Spaces sends evenly so a large class does not run into the provider's rate limit. */
+export function createSendThrottle(perSecond: number, deps: { now?: () => number; sleep?: (ms: number) => Promise<void> } = {}): SendThrottle {
+  const now = deps.now ?? Date.now;
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  let rate = Math.max(1, perSecond);
+  let nextAt = 0;
+  return {
+    async take() {
+      const t = now();
+      const at = Math.max(t, nextAt);
+      nextAt = at + 1000 / rate;
+      if (at > t) await sleep(at - t);
+    },
+    slowDown(pauseMs) {
+      rate = Math.max(1, rate / 2);
+      nextAt = Math.max(nextAt, now() + pauseMs);
+    },
+    get rate() {
+      return rate;
+    },
+  };
+}
+
+let sharedThrottle: SendThrottle | null = null;
+
+/** EMAIL_MAX_PER_SECOND (default 8), shared by every e-mail this process sends. */
+function emailThrottle(env: NodeJS.ProcessEnv = process.env): SendThrottle {
+  if (!sharedThrottle) {
+    const n = Number.parseFloat(envString("EMAIL_MAX_PER_SECOND", env));
+    sharedThrottle = createSendThrottle(Number.isFinite(n) && n > 0 ? n : DEFAULT_EMAIL_MAX_PER_SECOND);
+  }
+  return sharedThrottle;
+}
+
+/** Retry-After in ms, bounded to 1–60 s. */
+export function retryAfterMs(header: string | null): number {
+  const s = Number.parseFloat(header ?? "");
+  return Number.isFinite(s) ? Math.min(60_000, Math.max(1_000, s * 1000)) : 1_000;
+}
+
+/** A 429 is retried this many times in-process (after the pause) before the caller's own retry takes over. */
+const RATE_LIMIT_RETRIES = 2;
+
+export async function sendEmail(
+  message: EmailMessage,
+  deps: { fetch?: typeof fetch; env?: NodeJS.ProcessEnv; throttle?: SendThrottle } = {},
+): Promise<SendResult> {
   const config = emailEnabled(deps.env) ? emailConfig(deps.env) : null;
   if (!config) return { ok: false, reason: "NOT_CONFIGURED", retryable: false };
+  const throttle = deps.throttle ?? emailThrottle(deps.env);
   try {
-    const response = await (deps.fetch ?? fetch)(RESEND_ENDPOINT, {
-      method: "POST",
-      headers: { authorization: `Bearer ${config.apiKey}`, "content-type": "application/json" },
-      body: JSON.stringify({ from: config.from, to: [message.to], subject: message.subject, html: message.html, text: message.text }),
-      signal: AbortSignal.timeout(EMAIL_TIMEOUT_MS),
-    });
+    let response: Response;
+    for (let attempt = 0; ; attempt++) {
+      await throttle.take();
+      response = await (deps.fetch ?? fetch)(RESEND_ENDPOINT, {
+        method: "POST",
+        headers: { authorization: `Bearer ${config.apiKey}`, "content-type": "application/json" },
+        body: JSON.stringify({ from: config.from, to: [message.to], subject: message.subject, html: message.html, text: message.text }),
+        signal: AbortSignal.timeout(EMAIL_TIMEOUT_MS),
+      });
+      if (response.status !== 429) break;
+      throttle.slowDown(retryAfterMs(response.headers?.get?.("retry-after") ?? null));
+      if (attempt >= RATE_LIMIT_RETRIES) break;
+      console.warn(`[email] Resend rate limit hit; slowing to ${throttle.rate}/s`);
+    }
     if (!response.ok) {
       const body = (await response.text().catch(() => "")).slice(0, 300);
       console.error(`[email] Resend responded ${response.status}`, body);

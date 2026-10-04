@@ -441,6 +441,17 @@ export const teacher = {
     "Нужно войти; только участники выбранных групп могут видеть задание, скачивать файлы и сдавать работу.",
   ],
   "modules.accessGroupsRequired": ["Ən azı bir qrup seçin.", "Select at least one group.", "Выберите хотя бы одну группу."],
+  "modules.notifyStudents": ["Tələbələrə bildiriş göndər", "Notify students", "Уведомить студентов"],
+  "modules.notifyStudentsHint": [
+    "Seçilmiş qrupların üzvləri və seçilmiş tələbələr saytda və e-poçtla bildiriş alır.",
+    "Members of the selected groups and the selected students get an in-app notice and an e-mail.",
+    "Участники выбранных групп и выбранные студенты получат уведомление на сайте и по e-mail.",
+  ],
+  "modules.notifyStudentsHintEdit": [
+    "Yalnız yeni əlavə olunan tələbələrə göndərilir; son tarix dəyişəndə digərlərinə saytda xəbər verilir.",
+    "Only newly added students are notified; if the deadline changes, the others get an in-app notice.",
+    "Уведомление получат только новые студенты; при изменении срока остальные увидят уведомление на сайте.",
+  ],
   "modules.accessBadgePublic": ["Açıq link", "Open link", "Открытая ссылка"],
   "modules.accessBadgeGroups": ["Qruplar: {groups}", "Groups: {groups}", "Группы: {groups}"],
   "modules.attachments": ["Fayllar", "Attachments", "Файлы"],

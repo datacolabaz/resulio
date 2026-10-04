@@ -133,11 +133,13 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
   const keyQ = trpc.teacher.tasks.answerKey.useQuery({ taskId: initial?.id }, { enabled: open, refetchOnWindowFocus: false });
   const [answerKey, setAnswerKey] = useState<string | null>(null);
   const [keyFromAi, setKeyFromAi] = useState(false);
+  const [notifyStudents, setNotifyStudents] = useState(true);
   const keyText = answerKey ?? keyQ.data?.text ?? "";
   useEffect(() => {
     if (open) return;
     setAnswerKey(null);
     setKeyFromAi(false);
+    setNotifyStudents(true);
   }, [open]);
   const saveKey = trpc.teacher.tasks.saveAnswerKey.useMutation();
   const draftKey = trpc.teacher.tasks.draftAnswerKey.useMutation({
@@ -169,7 +171,7 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
     };
     let row: { id: string };
     try {
-      row = initial ? await update.mutateAsync({ id: initial.id, patch: payload }) : await create.mutateAsync(payload);
+      row = initial ? await update.mutateAsync({ id: initial.id, patch: payload, notifyStudents }) : await create.mutateAsync({ ...payload, notifyStudents });
     } catch {
       return;
     }
@@ -239,6 +241,13 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
           <AccessModePicker value={f.accessMode} onChange={(accessMode) => setF({ ...f, accessMode })} />
           <RecipientPicker groupIds={f.groupIds} studentIds={f.studentIds} groupsOnly={f.accessMode === "GROUPS"} onChange={(v) => setF({ ...f, ...v })} />
           {missingGroups && <p role="alert" className="text-xs text-destructive">{t("modules.accessGroupsRequired")}</p>}
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" className="mt-0.5 accent-link" checked={notifyStudents} onChange={(e) => setNotifyStudents(e.target.checked)} />
+            <span className="min-w-0">
+              <span className="block">{t("modules.notifyStudents")}</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">{t(initial ? "modules.notifyStudentsHintEdit" : "modules.notifyStudentsHint")}</span>
+            </span>
+          </label>
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>

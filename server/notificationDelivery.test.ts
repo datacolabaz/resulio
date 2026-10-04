@@ -209,6 +209,8 @@ describe("dispatcher", () => {
         SYLLABUS_APPROVAL_NEEDED: { syllabusId: "s1", syllabusTitle: "S", count: 2, studentName: null },
         SYLLABUS_COMPLETED: { syllabusId: "s1", syllabusTitle: "S", verificationCode: "abc" },
         SYLLABUS_AT_RISK_DIGEST: { syllabusId: "s1", syllabusTitle: "S", count: 7, names: ["A", "B"] },
+        TASK_ASSIGNED: { tasks: [{ taskId: "t1", title: "T", excerpt: "", deadline: "2026-10-05T14:00:00Z" }], total: 1, from: "W" },
+        TASK_UPDATED: { taskId: "t1", title: "T", deadline: "2026-10-06T14:00:00Z", previousDeadline: "2026-10-05T14:00:00Z" },
       }[event];
       const rendered = renderNotification(event, data, { locale: "az", email: "a@b.c" }, "https://resulio.co");
       expect(rendered.title.length).toBeGreaterThan(0);
