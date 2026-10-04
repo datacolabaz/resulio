@@ -12,6 +12,8 @@ import PartnerPage from "@/pages/PartnerPage";
 import WelcomePage from "@/pages/WelcomePage";
 import { InviteLinkPage, JoinGroupPage, PublicEmailInvitePage, PublicExamPage, PublicMaterialPage, PublicTaskPage } from "@/pages/PublicFlows";
 import SettingsPage from "@/pages/SettingsPage";
+import { AboutPage, AssessmentPlatformPage, FaqPage, ForTeachersPage } from "@/pages/SitePages";
+import { ABOUT, ASSESSMENT_PLATFORM, FAQ_PAGE, FOR_TEACHERS } from "@/seo/pages";
 import {
   StudentAssessmentDetail,
   StudentAssessments,
@@ -119,6 +121,10 @@ function Router() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/login" component={Home} />
+      <Route path={ABOUT.path} component={AboutPage} />
+      <Route path={FAQ_PAGE.path} component={FaqPage} />
+      <Route path={ASSESSMENT_PLATFORM.path} component={AssessmentPlatformPage} />
+      <Route path={FOR_TEACHERS.path} component={ForTeachersPage} />
       <Route path="/welcome" component={WelcomePage} />
       <Route path="/choose-role">{() => <Redirect to={`/welcome${window.location.search}`} />}</Route>
       <Route path="/join/:inviteCode" component={JoinGroupPage} />

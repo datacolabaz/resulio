@@ -10,6 +10,7 @@ import { HeroDashboardPreview } from "@/components/landing/HeroDashboardPreview"
 import { SharePreview } from "@/components/landing/SharePreview";
 import { StudentSessionPreview } from "@/components/landing/StudentSessionPreview";
 import { Button } from "@/components/ui/button";
+import { SiteFooter } from "@/pages/SitePages";
 import { safeReturnTo, startLogin } from "@/const";
 import { t, type MessageKey } from "@/i18n/messages";
 import { entryPath } from "@/lib/contexts";
@@ -188,6 +189,7 @@ export default function Home() {
           </div>
         </section>
       </main>
+      <SiteFooter />
     </div>
   );
 }

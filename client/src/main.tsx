@@ -1,6 +1,7 @@
 import { API_BASE } from "@/const";
 import { getActiveWorkspaceId } from "@/lib/contexts";
 import { trpc } from "@/lib/trpc";
+import { SITE_PAGES } from "@/seo/pages";
 import { UNAUTHED_ERR_MSG, WORKSPACE_HEADER } from '@shared/const';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink, TRPCClientError } from "@trpc/client";
@@ -13,7 +14,17 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false } },
 });
 
-const PUBLIC_PATHS = [/^\/$/, /^\/login/, /^\/join\//, /^\/invite\//, /^\/g\//, /^\/exam\//, /^\/task\//, /^\/material\//];
+const PUBLIC_PATHS = [
+  /^\/$/,
+  /^\/login/,
+  /^\/join\//,
+  /^\/invite\//,
+  /^\/g\//,
+  /^\/exam\//,
+  /^\/task\//,
+  /^\/material\//,
+  ...SITE_PAGES.map((page) => new RegExp(`^${page.path}$`)),
+];
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;
