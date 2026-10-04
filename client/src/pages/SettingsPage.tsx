@@ -113,40 +113,42 @@ function NotificationPreferencesPanel({ teaching }: { teaching: boolean }) {
   const rows = prefs.data.filter((p) => teaching || STUDENT_EVENTS.includes(p.event));
   return (
     <Panel title={t("settings.notifications")}>
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-xs text-muted-foreground">
-            <th className="py-1 font-normal" />
-            {SHOWN_CHANNELS.map((c) => <th key={c} className="w-20 py-1 text-center font-normal">{t(`settings.channel.${c}`)}</th>)}
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {rows.map((p) => (
-            <tr key={p.event}>
-              <td className="py-2 pr-3 break-words">{t(`settings.event.${p.event}`)}</td>
-              {SHOWN_CHANNELS.map((c) => {
-                const pref = p.channels.find((x) => x.channel === c);
-                return (
-                  <td key={c} className="py-2 text-center">
-                    {pref ? (
-                      <input
-                        type="checkbox"
-                        className="accent-link"
-                        aria-label={`${t(`settings.event.${p.event}`)} · ${t(`settings.channel.${c}`)}`}
-                        disabled={set.isPending}
-                        checked={pref.enabled}
-                        onChange={(e) => set.mutate({ event: p.event, channel: c, enabled: e.target.checked })}
-                      />
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </td>
-                );
-              })}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-muted-foreground">
+              <th className="py-1 font-normal" />
+              {SHOWN_CHANNELS.map((c) => <th key={c} className="w-20 py-1 text-center font-normal">{t(`settings.channel.${c}`)}</th>)}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y">
+            {rows.map((p) => (
+              <tr key={p.event}>
+                <td className="py-2 pr-3 break-words">{t(`settings.event.${p.event}`)}</td>
+                {SHOWN_CHANNELS.map((c) => {
+                  const pref = p.channels.find((x) => x.channel === c);
+                  return (
+                    <td key={c} className="py-2 text-center">
+                      {pref ? (
+                        <input
+                          type="checkbox"
+                          className="accent-link"
+                          aria-label={`${t(`settings.event.${p.event}`)} · ${t(`settings.channel.${c}`)}`}
+                          disabled={set.isPending}
+                          checked={pref.enabled}
+                          onChange={(e) => set.mutate({ event: p.event, channel: c, enabled: e.target.checked })}
+                        />
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </Panel>
   );
 }

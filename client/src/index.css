@@ -240,6 +240,14 @@
   --elevation-overlay: 0 12px 32px rgb(0 0 0 / 0.55);
 }
 
+/* Modal height cap: keeps dialogs inside the visible viewport (dvh tracks mobile browser chrome). */
+@utility max-h-dialog {
+  max-height: calc(100vh - 2rem);
+  @supports (height: 100dvh) {
+    max-height: calc(100dvh - 2rem);
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring;

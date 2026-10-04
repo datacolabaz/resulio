@@ -3,7 +3,7 @@ import { ChoiceChip, EmptyState, ErrorNote, Loading, Panel } from "@/components/
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActivityTimeline } from "@/components/syllabus/ActivityTimeline";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { t } from "@/i18n/messages";
@@ -565,11 +565,13 @@ function TimelineDialog({ id, row, onClose }: { id: string; row: StudentRow; onC
   const q = trpc.teacher.syllabus.analyticsTimeline.useQuery({ id, studentId: row.studentId });
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="break-words">{t("sa.timeline.title", { name: row.name })}</DialogTitle>
         </DialogHeader>
-        {q.error ? <ErrorNote error={q.error} /> : !q.data ? <Loading /> : <ActivityTimeline events={q.data} />}
+        <DialogBody>
+          {q.error ? <ErrorNote error={q.error} /> : !q.data ? <Loading /> : <ActivityTimeline events={q.data} />}
+        </DialogBody>
         <p className="text-xs text-muted-foreground">{t("sa.timeline.note")}</p>
       </DialogContent>
     </Dialog>
@@ -599,38 +601,40 @@ function SettingsDialog({ id, initial, onClose }: { id: string; initial: Analyti
   const invalid = THRESHOLD_KEYS.filter((k) => !Number.isInteger(parsed[k]) || parsed[k] < RISK_THRESHOLD_LIMITS[k].min || parsed[k] > RISK_THRESHOLD_LIMITS[k].max);
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{t("sa.settings.title")}</DialogTitle>
         </DialogHeader>
-        <p className="text-sm text-foreground-secondary">{t("sa.settings.help")}</p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {THRESHOLD_KEYS.map((k) => {
-            const bad = invalid.includes(k);
-            return (
-              <label key={k} className="space-y-1 text-sm">
-                <span className={fieldLabel}>{t(`sa.th.${k}`)}</span>
-                <Input
-                  type="number"
-                  inputMode="numeric"
-                  min={RISK_THRESHOLD_LIMITS[k].min}
-                  max={RISK_THRESHOLD_LIMITS[k].max}
-                  value={draft[k]}
-                  aria-invalid={bad}
-                  onChange={(e) => setDraft((s) => ({ ...s, [k]: e.target.value }))}
-                />
-                <span className={`text-xs ${bad ? "text-destructive" : "text-muted-foreground"}`}>{t("sa.th.range", RISK_THRESHOLD_LIMITS[k])}</span>
-              </label>
-            );
-          })}
-        </div>
-        <div className="flex items-start gap-3 rounded-xl border border-border p-3">
-          <Switch id="sa-digest" checked={digest} onCheckedChange={setDigest} />
-          <label htmlFor="sa-digest" className="min-w-0 text-sm">
-            <span className="font-medium">{t("sa.settings.digest")}</span>
-            <span className="block text-xs text-muted-foreground">{t("sa.settings.digestHelp")}</span>
-          </label>
-        </div>
+        <DialogBody className="space-y-4">
+          <p className="text-sm text-foreground-secondary">{t("sa.settings.help")}</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {THRESHOLD_KEYS.map((k) => {
+              const bad = invalid.includes(k);
+              return (
+                <label key={k} className="space-y-1 text-sm">
+                  <span className={fieldLabel}>{t(`sa.th.${k}`)}</span>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={RISK_THRESHOLD_LIMITS[k].min}
+                    max={RISK_THRESHOLD_LIMITS[k].max}
+                    value={draft[k]}
+                    aria-invalid={bad}
+                    onChange={(e) => setDraft((s) => ({ ...s, [k]: e.target.value }))}
+                  />
+                  <span className={`text-xs ${bad ? "text-destructive" : "text-muted-foreground"}`}>{t("sa.th.range", RISK_THRESHOLD_LIMITS[k])}</span>
+                </label>
+              );
+            })}
+          </div>
+          <div className="flex items-start gap-3 rounded-xl border border-border p-3">
+            <Switch id="sa-digest" checked={digest} onCheckedChange={setDigest} />
+            <label htmlFor="sa-digest" className="min-w-0 text-sm">
+              <span className="font-medium">{t("sa.settings.digest")}</span>
+              <span className="block text-xs text-muted-foreground">{t("sa.settings.digestHelp")}</span>
+            </label>
+          </div>
+        </DialogBody>
         <DialogFooter className="gap-2 sm:justify-between">
           <Button variant="ghost" onClick={() => setDraft(Object.fromEntries(THRESHOLD_KEYS.map((k) => [k, String(DEFAULT_RISK_THRESHOLDS[k])])) as Record<RiskThresholdKey, string>)}>
             {t("sa.settings.reset")}

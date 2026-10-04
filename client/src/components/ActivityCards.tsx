@@ -179,7 +179,7 @@ function StatusArea({ c, now }: { c: Card; now: number }) {
         {summary}
         {detailsButton}
         <Sheet open={open} onOpenChange={setOpen}>
-          <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto rounded-t-2xl">
+          <SheetContent side="bottom" className="max-h-[80dvh] rounded-t-2xl">
             <SheetHeader>
               <SheetTitle>{c.title}</SheetTitle>
             </SheetHeader>

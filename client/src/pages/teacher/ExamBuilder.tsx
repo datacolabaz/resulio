@@ -4,7 +4,7 @@ import { QuestionRenderer } from "@/components/QuestionRenderer";
 import { ShareBox, ShareFunnelSummary } from "@/components/ShareBox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { t, type MessageKey } from "@/i18n/messages";
@@ -315,23 +315,25 @@ function BankDialog({ open, onOpenChange, assessmentId, existing }: { open: bool
             {QUESTION_TYPES.map((k) => <option key={k} value={k}>{questionTypeLabel(k)}</option>)}
           </select>
         </div>
-        <ul className="max-h-[50vh] divide-y overflow-y-auto">
-          {(bank.data ?? []).map((q) => {
-            const added = existing.includes(q.id);
-            return (
-              <li key={q.id} className="flex items-center gap-3 py-2 text-sm">
-                <div className="min-w-0 flex-1">
-                  <div className="line-clamp-2 break-words" title={q.text}>{q.text}</div>
-                  <div className="text-xs text-muted-foreground">{questionTypeLabel(q.type)} · {t("common.points", { count: q.points })} · {q.topic || t("common.noTopic")}</div>
-                </div>
-                <Button size="sm" variant={added ? "outline" : "default"} disabled={added || add.isPending} onClick={() => add.mutate({ id: assessmentId, questionId: q.id })}>
-                  {added ? t("common.added") : t("common.add")}
-                </Button>
-              </li>
-            );
-          })}
-          {bank.data?.length === 0 && <li className="py-6 text-center text-sm text-muted-foreground">{t("builder.bankEmpty")}</li>}
-        </ul>
+        <DialogBody>
+          <ul className="divide-y">
+            {(bank.data ?? []).map((q) => {
+              const added = existing.includes(q.id);
+              return (
+                <li key={q.id} className="flex items-center gap-3 py-2 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <div className="line-clamp-2 break-words" title={q.text}>{q.text}</div>
+                    <div className="text-xs text-muted-foreground">{questionTypeLabel(q.type)} · {t("common.points", { count: q.points })} · {q.topic || t("common.noTopic")}</div>
+                  </div>
+                  <Button size="sm" variant={added ? "outline" : "default"} disabled={added || add.isPending} onClick={() => add.mutate({ id: assessmentId, questionId: q.id })}>
+                    {added ? t("common.added") : t("common.add")}
+                  </Button>
+                </li>
+              );
+            })}
+            {bank.data?.length === 0 && <li className="py-6 text-center text-sm text-muted-foreground">{t("builder.bankEmpty")}</li>}
+          </ul>
+        </DialogBody>
       </DialogContent>
     </Dialog>
   );
@@ -359,7 +361,7 @@ function AiDialog({ open, onOpenChange, assessmentId }: { open: boolean; onOpenC
       <DialogContent className="max-w-2xl">
         <DialogHeader><DialogTitle>{t("builder.aiTitle")}</DialogTitle></DialogHeader>
         {!draft ? (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <DialogBody className="grid content-start gap-3 sm:grid-cols-2">
             <label className="text-sm sm:col-span-2"><span className={fieldLabel}>{t("common.required", { label: t("common.topic") })}</span><Input required value={form.topic} onChange={(e) => setForm({ ...form, topic: e.target.value })} /></label>
             <label className="text-sm"><span className={fieldLabel}>{t("common.gradeLevel")}</span><Input value={form.grade} onChange={(e) => setForm({ ...form, grade: e.target.value })} placeholder={t("builder.aiGradePlaceholder")} /></label>
             <label className="text-sm"><span className={fieldLabel}>{t("builder.aiLanguage")}</span>
@@ -383,25 +385,27 @@ function AiDialog({ open, onOpenChange, assessmentId }: { open: boolean; onOpenC
               <span className="text-xs text-muted-foreground">{t("builder.aiUsage", { used: usage.data?.used ?? 0, limit: usage.data?.limit ?? 100 })}</span>
               <Button disabled={form.topic.trim().length < 2 || generate.isPending} onClick={() => generate.mutate(form)}>{generate.isPending ? t("builder.aiGenerating") : t("builder.aiGenerate")}</Button>
             </div>
-          </div>
+          </DialogBody>
         ) : (
-          <div className="space-y-3">
+          <>
             <DialogDescription>{t("builder.aiReview")}</DialogDescription>
-            <ul className="max-h-[50vh] space-y-2 overflow-y-auto">
-              {draft.questions.map(({ tempId, question }) => (
-                <li key={tempId} className="rounded-xl border p-3 text-sm">
-                  <label className="flex gap-3">
-                    <input type="checkbox" className="mt-1 accent-link" checked={picked.includes(tempId)} onChange={(e) => setPicked(e.target.checked ? [...picked, tempId] : picked.filter((x) => x !== tempId))} />
-                    <AiPreview q={question} />
-                  </label>
-                </li>
-              ))}
-            </ul>
-            <div className="flex justify-between">
+            <DialogBody>
+              <ul className="space-y-2">
+                {draft.questions.map(({ tempId, question }) => (
+                  <li key={tempId} className="rounded-xl border p-3 text-sm">
+                    <label className="flex gap-3">
+                      <input type="checkbox" className="mt-1 accent-link" checked={picked.includes(tempId)} onChange={(e) => setPicked(e.target.checked ? [...picked, tempId] : picked.filter((x) => x !== tempId))} />
+                      <AiPreview q={question} />
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </DialogBody>
+            <div className="flex flex-wrap justify-between gap-2">
               <Button variant="outline" onClick={() => generate.reset()}>{t("common.back")}</Button>
               <Button disabled={!picked.length || accept.isPending} onClick={() => accept.mutate({ draftId: draft.draftId, tempIds: picked, assessmentId })}>{t("builder.aiAccept", { count: picked.length })}</Button>
             </div>
-          </div>
+          </>
         )}
       </DialogContent>
     </Dialog>

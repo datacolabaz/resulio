@@ -1,7 +1,7 @@
 import { EmptyState, ErrorNote, Loading, Pill } from "@/components/AppShell";
 import { TeacherWorkflowOverview } from "@/components/syllabus/Workflow";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getLocale, t } from "@/i18n/messages";
 import { trpc } from "@/lib/trpc";
 import { fileDownloadUrl } from "@/lib/uploadFile";
@@ -26,9 +26,11 @@ function CreateDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v:
   });
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-w-2xl">
         <DialogHeader><DialogTitle>{t("syllabus.new")}</DialogTitle></DialogHeader>
-        <SyllabusFieldsForm idPrefix="new-syllabus" value={f} onChange={setF} />
+        <DialogBody>
+          <SyllabusFieldsForm idPrefix="new-syllabus" value={f} onChange={setF} />
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
           <Button disabled={!f.title.trim() || create.isPending} onClick={() => create.mutate(fieldsPayload(f))}>{t("syllabus.create")}</Button>

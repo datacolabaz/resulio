@@ -3,7 +3,7 @@ import { CompletionRulesForm } from "@/components/syllabus/CompletionRulesForm";
 import { SortableList } from "@/components/syllabus/SortableList";
 import { TeacherWorkflow } from "@/components/syllabus/Workflow";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -66,9 +66,9 @@ function ModuleDialog({ tree, module, open, onOpenChange }: { tree: Tree; module
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-w-2xl">
         <DialogHeader><DialogTitle>{module ? t("syllabus.module.edit") : t("syllabus.module.new")}</DialogTitle></DialogHeader>
-        <div className="grid gap-3">
+        <DialogBody className="grid content-start gap-3">
           <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("syllabus.module.title") })}</span><Input maxLength={255} value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></label>
           <label className="text-sm"><span className={fieldLabel}>{t("common.description")}</span><Textarea rows={3} maxLength={20_000} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -86,7 +86,7 @@ function ModuleDialog({ tree, module, open, onOpenChange }: { tree: Tree; module
               <CompletionRulesForm idPrefix={`mod-${module?.id ?? "new"}`} level="module" patch={f.rules} inherited={tree.syllabus.effectiveRules} onChange={(rules) => setF({ ...f, rules })} />
             </div>
           </details>
-        </div>
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
           <Button

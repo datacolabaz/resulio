@@ -5,7 +5,7 @@ import { CompactShareLink, ShareBox, ShareFunnelSummary } from "@/components/Sha
 import { StatusBadge } from "@/components/StatusBadge";
 import { GroupSyllabiPanel } from "@/components/syllabus/CrossLinks";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -215,11 +215,11 @@ function GroupFormDialog({
   }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto">
+      <DialogContent>
         <DialogHeader><DialogTitle>{initial ? t("groups.editTitle") : t("groups.newTitle")}</DialogTitle></DialogHeader>
-        <div className="grid gap-3">
+        <DialogBody className="grid content-start gap-3">
           <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("common.name") })}</span><Input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm"><span className={fieldLabel}>{t("common.subject")}</span><Input value={f.subject} onChange={(e) => setF({ ...f, subject: e.target.value })} /></label>
             <label className="text-sm"><span className={fieldLabel}>{t("common.gradeLevel")}</span><Input value={f.grade} onChange={(e) => setF({ ...f, grade: e.target.value })} /></label>
           </div>
@@ -292,7 +292,7 @@ function GroupFormDialog({
             </label>
             <Switch id="scores-visible" checked={f.scoresVisibleToGroup} onCheckedChange={(v) => setF({ ...f, scoresVisibleToGroup: v })} />
           </div>
-        </div>
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
           <Button
@@ -566,9 +566,9 @@ function InviteDialog({
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-lg">
         <DialogHeader><DialogTitle>{t("groups.inviteTitle")}</DialogTitle></DialogHeader>
-        <div className="space-y-5">
+        <DialogBody className="space-y-5">
           <InviteLinksSection groupId={groupId} />
           <section aria-labelledby="invite-link">
             <h3 id="invite-link" className="mb-1 text-sm font-medium">{t("groups.inviteByLink")}</h3>
@@ -655,7 +655,7 @@ function InviteDialog({
             <p className="mt-2 text-xs text-muted-foreground">{t("groups.emailNote")}</p>
           </section>
           <EmailInviteSection groupId={groupId} />
-        </div>
+        </DialogBody>
       </DialogContent>
     </Dialog>
   );

@@ -2,7 +2,7 @@ import { EmptyState, ErrorNote, Loading, Panel, Pill } from "@/components/AppShe
 import { StatusBadge } from "@/components/StatusBadge";
 import { CompletionRulesForm } from "@/components/syllabus/CompletionRulesForm";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -163,9 +163,9 @@ function GrantDialog({
   const badRange = !!startsAt && !!endsAt && endsAt <= startsAt;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
+      <DialogContent className="max-w-xl">
         <DialogHeader><DialogTitle>{t("syllabus.access.grantTitle")}</DialogTitle></DialogHeader>
-        <div className="grid gap-3">
+        <DialogBody className="grid content-start gap-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <fieldset>
               <legend className={`mb-1 text-sm ${fieldLabel}`}>{t("common.groups")}</legend>
@@ -199,7 +199,7 @@ function GrantDialog({
           <p className="text-xs text-muted-foreground">{t("syllabus.access.datesHelp")}</p>
           {badRange && <p role="alert" className="text-xs text-destructive">{t("syllabus.access.badRange")}</p>}
           <label className="text-sm"><span className={fieldLabel}>{t("syllabus.access.note")}</span><Input maxLength={255} value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></label>
-        </div>
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
           <Button
@@ -407,51 +407,53 @@ export function PublishDialog({ syllabusId, open, onOpenChange }: { syllabusId: 
   const d = p?.diff;
   return (
     <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) setProblems(null); }}>
-      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+      <DialogContent className="max-w-lg">
         <DialogHeader><DialogTitle>{t("syllabus.publish.title")}</DialogTitle></DialogHeader>
-        {preview.isLoading ? (
-          <Loading />
-        ) : preview.error ? (
-          <ErrorNote error={preview.error} />
-        ) : p && d ? (
-          <div className="grid gap-4">
-            <p className="text-sm text-muted-foreground">{t("syllabus.publish.help")}</p>
-            {shownProblems.length > 0 && (
-              <div role="alert" className="rounded-xl border border-destructive/40 bg-danger-surface p-3 text-sm text-destructive">
-                <p className="mb-1 font-medium">{t("syllabus.publish.problems")}</p>
-                <ul className="list-disc space-y-0.5 pl-5">{shownProblems.map((pr, i) => <li key={i}>{problemText(pr)}</li>)}</ul>
+        <DialogBody>
+          {preview.isLoading ? (
+            <Loading />
+          ) : preview.error ? (
+            <ErrorNote error={preview.error} />
+          ) : p && d ? (
+            <div className="grid gap-4">
+              <p className="text-sm text-muted-foreground">{t("syllabus.publish.help")}</p>
+              {shownProblems.length > 0 && (
+                <div role="alert" className="rounded-xl border border-destructive/40 bg-danger-surface p-3 text-sm text-destructive">
+                  <p className="mb-1 font-medium">{t("syllabus.publish.problems")}</p>
+                  <ul className="list-disc space-y-0.5 pl-5">{shownProblems.map((pr, i) => <li key={i}>{problemText(pr)}</li>)}</ul>
+                </div>
+              )}
+              <div className="rounded-xl border border-border p-3">
+                <p className="mb-2 text-sm font-medium">{t("syllabus.publish.changes")}</p>
+                {d.firstVersion ? (
+                  <p className="text-sm">{t("syllabus.publish.first")}</p>
+                ) : !d.changed ? (
+                  <p className="text-sm text-muted-foreground">{t("syllabus.publish.noChanges")}</p>
+                ) : (
+                  <ul className="space-y-1">
+                    <DiffLine label={t("syllabus.publish.modules")} c={d.modules} />
+                    <DiffLine label={t("syllabus.publish.lessons")} c={d.lessons} />
+                    <DiffLine label={t("syllabus.publish.items")} c={d.items} />
+                    {d.reordered && <li className="text-sm">{t("syllabus.publish.reordered")}</li>}
+                    {d.rulesChanged && <li className="text-sm">{t("syllabus.publish.rulesChanged")}</li>}
+                  </ul>
+                )}
+                {(p.excluded.modules > 0 || p.excluded.lessons > 0) && (
+                  <p className="mt-2 text-xs text-warning">{t("syllabus.publish.excluded", { modules: p.excluded.modules, lessons: p.excluded.lessons })}</p>
+                )}
               </div>
-            )}
-            <div className="rounded-xl border border-border p-3">
-              <p className="mb-2 text-sm font-medium">{t("syllabus.publish.changes")}</p>
-              {d.firstVersion ? (
-                <p className="text-sm">{t("syllabus.publish.first")}</p>
-              ) : !d.changed ? (
-                <p className="text-sm text-muted-foreground">{t("syllabus.publish.noChanges")}</p>
-              ) : (
-                <ul className="space-y-1">
-                  <DiffLine label={t("syllabus.publish.modules")} c={d.modules} />
-                  <DiffLine label={t("syllabus.publish.lessons")} c={d.lessons} />
-                  <DiffLine label={t("syllabus.publish.items")} c={d.items} />
-                  {d.reordered && <li className="text-sm">{t("syllabus.publish.reordered")}</li>}
-                  {d.rulesChanged && <li className="text-sm">{t("syllabus.publish.rulesChanged")}</li>}
-                </ul>
-              )}
-              {(p.excluded.modules > 0 || p.excluded.lessons > 0) && (
-                <p className="mt-2 text-xs text-warning">{t("syllabus.publish.excluded", { modules: p.excluded.modules, lessons: p.excluded.lessons })}</p>
-              )}
+              <label className="text-sm">
+                <span className={fieldLabel}>{t("syllabus.publish.label")}</span>
+                <Input maxLength={16} value={label} onChange={(e) => setLabel(e.target.value)} placeholder={p.nextLabel} />
+              </label>
+              <label className="text-sm">
+                <span className={fieldLabel}>{t("syllabus.publish.note")}</span>
+                <Textarea rows={3} maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("syllabus.publish.notePlaceholder")} />
+              </label>
+              <p className="text-xs text-muted-foreground">{t("syllabus.publish.studentsNote")}</p>
             </div>
-            <label className="text-sm">
-              <span className={fieldLabel}>{t("syllabus.publish.label")}</span>
-              <Input maxLength={16} value={label} onChange={(e) => setLabel(e.target.value)} placeholder={p.nextLabel} />
-            </label>
-            <label className="text-sm">
-              <span className={fieldLabel}>{t("syllabus.publish.note")}</span>
-              <Textarea rows={3} maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("syllabus.publish.notePlaceholder")} />
-            </label>
-            <p className="text-xs text-muted-foreground">{t("syllabus.publish.studentsNote")}</p>
-          </div>
-        ) : null}
+          ) : null}
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
           <Button disabled={!p || shownProblems.length > 0 || publish.isPending} onClick={() => publish.mutate({ id: syllabusId, label: label.trim() || undefined, changeNote: note.trim() || undefined })}>

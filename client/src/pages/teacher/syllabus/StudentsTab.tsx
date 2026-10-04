@@ -1,7 +1,7 @@
 import { EmptyState, ErrorNote, Loading, Panel, Pill } from "@/components/AppShell";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { t, type MessageKey } from "@/i18n/messages";
 import { fmtDateTime, fmtDuration, fmtRelative } from "@/lib/format";
@@ -182,79 +182,81 @@ function StudentDialog({ id, row, onClose }: { id: string; row: StudentRow; onCl
   const d = q.data;
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="break-words">{row.name}</DialogTitle>
         </DialogHeader>
-        {q.error ? (
-          <ErrorNote error={q.error} />
-        ) : !d ? (
-          <Loading />
-        ) : (
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <ProgressBar value={d.path.progressPct} label={t("learn.overallProgress")} />
-                <span className="shrink-0 text-sm font-semibold tabular-nums">{d.path.progressPct}%</span>
+        <DialogBody className="space-y-4">
+          {q.error ? (
+            <ErrorNote error={q.error} />
+          ) : !d ? (
+            <Loading />
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <ProgressBar value={d.path.progressPct} label={t("learn.overallProgress")} />
+                  <span className="shrink-0 text-sm font-semibold tabular-nums">{d.path.progressPct}%</span>
+                </div>
+                <p className="text-xs text-muted-foreground">{t("learn.lessonsDone", { done: d.path.completedLessons, total: d.path.totalLessons })}</p>
               </div>
-              <p className="text-xs text-muted-foreground">{t("learn.lessonsDone", { done: d.path.completedLessons, total: d.path.totalLessons })}</p>
+              <ol className="space-y-3">
+                {d.path.modules.map((m, mi) => (
+                  <li key={m.id} className="rounded-xl border border-border p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <NodeIcon visual={nodeVisual(m.status, m.id === d.path.currentModuleId)} />
+                      <span className="text-xs text-muted-foreground">{t("learn.moduleN", { n: mi + 1 })}</span>
+                      <span className="min-w-0 flex-1 break-words font-medium">{m.title}</span>
+                      <span className="text-xs tabular-nums text-muted-foreground">{pct(m.completedLessons, m.totalLessons)}%</span>
+                      {m.status === "LOCKED" && (
+                        <Button size="sm" variant="outline" onClick={() => setTarget({ type: "MODULE", id: m.id, title: m.title })}>
+                          <KeyRound className="h-4 w-4" aria-hidden />
+                          {t("syllabus.students.unlock")}
+                        </Button>
+                      )}
+                    </div>
+                    <ul className="mt-2 space-y-1.5">
+                      {m.lessons.map((l, li) => (
+                        <LessonLine
+                          key={l.id}
+                          n={li + 1}
+                          lesson={l}
+                          info={d.lessons.find((x) => x.id === l.id)}
+                          current={l.id === d.path.currentLessonId}
+                          onUnlock={() => setTarget({ type: "LESSON", id: l.id, title: l.title })}
+                          onMark={(itemId, group) => mark.mutate(group && row.viaGroupId ? { id, itemId, groupId: row.viaGroupId } : { id, itemId, studentIds: [row.studentId] })}
+                          canMarkGroup={!!row.viaGroupId}
+                          marking={mark.isPending}
+                        />
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ol>
+              <UnlockList detail={d} onRevoke={(unlockId) => revoke.mutate({ id, studentId: row.studentId, unlockId })} busy={revoke.isPending} />
             </div>
-            <ol className="space-y-3">
-              {d.path.modules.map((m, mi) => (
-                <li key={m.id} className="rounded-xl border border-border p-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <NodeIcon visual={nodeVisual(m.status, m.id === d.path.currentModuleId)} />
-                    <span className="text-xs text-muted-foreground">{t("learn.moduleN", { n: mi + 1 })}</span>
-                    <span className="min-w-0 flex-1 break-words font-medium">{m.title}</span>
-                    <span className="text-xs tabular-nums text-muted-foreground">{pct(m.completedLessons, m.totalLessons)}%</span>
-                    {m.status === "LOCKED" && (
-                      <Button size="sm" variant="outline" onClick={() => setTarget({ type: "MODULE", id: m.id, title: m.title })}>
-                        <KeyRound className="h-4 w-4" aria-hidden />
-                        {t("syllabus.students.unlock")}
-                      </Button>
-                    )}
-                  </div>
-                  <ul className="mt-2 space-y-1.5">
-                    {m.lessons.map((l, li) => (
-                      <LessonLine
-                        key={l.id}
-                        n={li + 1}
-                        lesson={l}
-                        info={d.lessons.find((x) => x.id === l.id)}
-                        current={l.id === d.path.currentLessonId}
-                        onUnlock={() => setTarget({ type: "LESSON", id: l.id, title: l.title })}
-                        onMark={(itemId, group) => mark.mutate(group && row.viaGroupId ? { id, itemId, groupId: row.viaGroupId } : { id, itemId, studentIds: [row.studentId] })}
-                        canMarkGroup={!!row.viaGroupId}
-                        marking={mark.isPending}
-                      />
-                    ))}
-                  </ul>
-                </li>
-              ))}
-            </ol>
-            <UnlockList detail={d} onRevoke={(unlockId) => revoke.mutate({ id, studentId: row.studentId, unlockId })} busy={revoke.isPending} />
-          </div>
-        )}
-        {target && (
-          <div className="space-y-2 rounded-xl border border-border bg-muted/40 p-3">
-            <p className="text-sm font-medium break-words">{t("syllabus.students.unlockTitle", { title: target.title })}</p>
-            <p className="text-xs text-muted-foreground">{t("syllabus.students.unlockHelp")}</p>
-            <label className="block text-sm">
-              <span className={fieldLabel}>{t("syllabus.students.reason")}</span>
-              <Textarea className="mt-1" rows={2} maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} />
-            </label>
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button size="sm" variant="outline" onClick={() => setTarget(null)}>{t("common.cancel")}</Button>
-              <Button
-                size="sm"
-                disabled={reason.trim().length < 3 || unlock.isPending}
-                onClick={() => unlock.mutate({ id, studentId: row.studentId, targetType: target.type, targetId: target.id, reason })}
-              >
-                {t("syllabus.students.unlock")}
-              </Button>
+          )}
+          {target && (
+            <div className="space-y-2 rounded-xl border border-border bg-muted/40 p-3">
+              <p className="text-sm font-medium break-words">{t("syllabus.students.unlockTitle", { title: target.title })}</p>
+              <p className="text-xs text-muted-foreground">{t("syllabus.students.unlockHelp")}</p>
+              <label className="block text-sm">
+                <span className={fieldLabel}>{t("syllabus.students.reason")}</span>
+                <Textarea className="mt-1" rows={2} maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} />
+              </label>
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button size="sm" variant="outline" onClick={() => setTarget(null)}>{t("common.cancel")}</Button>
+                <Button
+                  size="sm"
+                  disabled={reason.trim().length < 3 || unlock.isPending}
+                  onClick={() => unlock.mutate({ id, studentId: row.studentId, targetType: target.type, targetId: target.id, reason })}
+                >
+                  {t("syllabus.students.unlock")}
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>{t("common.close")}</Button>
         </DialogFooter>
