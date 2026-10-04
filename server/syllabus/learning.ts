@@ -10,6 +10,7 @@ import { bestGrantState, effectiveGrant } from "./accessRules";
 import { logActivity, type ActivityRow } from "./activityLog";
 import { OPENS_ITEM, STARTS_ITEM, validateActivity, type ClientActivityEvent } from "./activityRules";
 import { syllabusEnabledFor } from "./availability";
+import { lessonChangesFor } from "./changes";
 import { locateItem, locateLesson } from "./engine";
 import * as progression from "./progression";
 import { studentLessonView, studentPathView } from "./serialize";
@@ -118,6 +119,7 @@ export async function learningPath(userId: number, syllabusId: string) {
   const grantedGroups = o.groupIds.filter((g) => grants.some((x) => x.groupId === g && x.status === "ACTIVE"));
   const groupRows = ((await store.groupsByIds(grantedGroups)) ?? []).filter((g) => g.workspaceId === o.syllabus.providerWorkspaceId);
   const completion = o.enrollment.status === "COMPLETED" ? await store.completionOf(o.enrollment.id) : null;
+  const lessonChanges = await lessonChangesFor(o.enrollment);
   return {
     syllabus: { id: o.syllabus.id, title: o.syllabus.title, description: o.syllabus.description ?? "", subject: o.syllabus.subject, level: o.syllabus.level },
     version: { id: o.enrollment.versionId, label: version?.version.label ?? "" },
@@ -135,6 +137,7 @@ export async function learningPath(userId: number, syllabusId: string) {
     },
     groups: groupRows.map((g) => ({ id: g.id, name: g.name })),
     completion: completion ? completionView(completion, version?.version.label ?? "") : null,
+    lessonChanges,
   };
 }
 

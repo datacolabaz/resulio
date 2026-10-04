@@ -1,6 +1,6 @@
 # Syllabus / Structured Learning Architecture — analysis, design and plan
 
-Status: **approved by the owner** (all 12 recommended defaults, with one change to Q7 — see §15). **Phase 1 (database + backend) implemented** behind the `SYLLABUS` feature flag — see §16. **Phase 2 (teacher builder UI) implemented** — see §17. **Phase 3 (student progression UI) implemented** — see §18. **Phase 4 (assessment integration) implemented** — see §19. **Phase 5 (analytics) implemented** — see §20. Phase 6 (UX polish) is next.
+Status: **approved by the owner** (all 12 recommended defaults, with one change to Q7 — see §15). **Phase 1 (database + backend) implemented** behind the `SYLLABUS` feature flag — see §16. **Phase 2 (teacher builder UI) implemented** — see §17. **Phase 3 (student progression UI) implemented** — see §18. **Phase 4 (assessment integration) implemented** — see §19. **Phase 5 (analytics) implemented** — see §20. **Phase 6 (UX polish) implemented** — see §21. **All 6 phases delivered** — status, known limitations and the production QA checklist are in §22.
 Spec: [`docs/specs/SYLLABUS-SPEC.md`](specs/SYLLABUS-SPEC.md) (the owner's 45-section specification, Azerbaijani).
 Baseline analysed: `main` at `fc649af` (migrations up to `0025_task_answer_keys`).
 
@@ -820,7 +820,7 @@ Sizes are rough developer-day estimates for one experienced developer (including
 - **Acceptance**: numbers match hand-computed fixtures; teacher sees only own syllabi/groups/students; Access, Progress, Completion and Mastery (scores) are shown as separate metrics (§43); dashboards load < 1 s for 500 students.
 - **Tests**: analytics fixtures, privacy tests (other workspace, student calling teacher endpoints), risk/insight rule unit tests.
 
-### Phase 6 — UX polish (≈ 4–6 days)
+### Phase 6 — UX polish (≈ 4–6 days) — ✅ delivered (see §21)
 - **Scope**: student home "Continue learning", teacher home/group integration, empty states and onboarding hints, mobile layout of lesson player, accessibility pass (keyboard reorder, contrast via `scripts/check-contrast.mjs`), "updated content" badges after version move, materials "used in N syllabi" badge, copy review in AZ/EN/RU, performance pass.
 - **Acceptance**: owner walkthrough of both workflows of §45 on desktop and phone; no regressions in existing smoke tests.
 
@@ -1073,3 +1073,82 @@ Only students with active access who have not completed are flagged. Defaults (c
 - `server/syllabusAnalytics.test.ts` — hand-computed five-student class (overview, reasons, table row, lesson/module/practice stats, funnel, groups, insights, group filter, custom thresholds), risk rules and thresholds, insight rules and small samples, BEST/LATEST/pending/voided scoring, practice rules, version merge, population privacy (foreign groups and their members excluded, best grant state), digest payload and 08:00 gate, retention batching and missing table, timestamp guards (2099 / 9999 / pre-1970 rejected), i18n coverage of every code.
 - `server/syllabusPermissions.test.ts` — another teacher gets `NOT_FOUND` on analytics / timeline / settings; a student cannot call teacher analytics; a student's own timeline needs their enrollment and the flag; bad thresholds are rejected; admin analytics needs `syllabus.view`.
 - `server/notificationDelivery.test.ts` — the digest renders in every channel; its e-mail is off until the user turns it on.
+
+---
+
+## 21. Phase 6 — what was implemented
+
+UX polish behind the same `SYLLABUS` flag. **No migrations.** Existing screens only gain links/badges that render nothing when the flag is off (or the request fails).
+
+### 21.1 Cross-links on existing screens (`client/src/components/syllabus/CrossLinks.tsx`)
+- **Student home** — **Continue learning** card above the stats: the most recently used active, unfinished syllabus with lessons done, % and a button straight into the current lesson; up to three other active courses as links.
+- **Teacher home** — **Syllabi** panel: the three most recently edited syllabi (lessons, students, average progress, status) or a "Create a syllabus" link.
+- **Group page** — **Syllabi** panel between the stats and the tabs: every syllabus granted to this group with grant state, end date, started / members, finished, average progress, links to the syllabus. Endpoint `teacher.syllabus.forGroup` (`server/syllabus/links.ts`): the group must belong to the teacher's workspace (`assertGroupOwner` → `NOT_FOUND`), syllabi of other workspaces are dropped, revoked-only grants are hidden, only current student members count.
+- **Materials library** — "Used in N syllabi" badge on each material card (read-only; no change to Materials behaviour). Endpoint `teacher.syllabus.materialUsage`: one workspace-scoped query over draft THEORY/RESOURCE items, counted with the same `contentRefs` used for ownership checks.
+
+### 21.2 Workflow hints (`client/src/components/syllabus/Workflow.tsx`, `client/src/lib/syllabusWorkflow.ts`)
+- **Builder step indicator** — Create → Organize → Teach → Assign → Assess → Track above the tabs. Each step is done / next step / later (as text for screen readers, not colour only) and opens the tab where it is done. Done = has lessons · a lesson has theory/practice/resource · published with an active or upcoming grant · any assessment item; Track stays the current step once everything else is done.
+- **Student strip** — Learn → Practice → Submit → Pass → Unlock → Progress with one-line explanations on the learning path (hidden once completed; "Hide" remembers it in `localStorage`).
+- **Empty states** — the syllabus list shows the teacher workflow under "No syllabi yet"; "My syllabi" shows the student strip under its empty state.
+
+### 21.3 "New" / "Updated" lesson badges after a version move (`server/syllabus/changes.ts`)
+- `student.syllabus.path` / `overview` return `lessonChanges` (`lessonId → NEW | UPDATED`) only when the enrollment has `upgradedFromVersionId`. A lesson is **new** if it did not exist in the old version and **updated** if its title, description, item list (id, kind, title, required) or any item's frozen `contentHash` changed.
+- A badge stays until the student opens that lesson after the move (`LESSON_OPENED` after the latest `VERSION_UPGRADED` activity). Collapsed modules show "Updated" too, and a note on the path says progress was kept. Never throws: any failure → no badges.
+
+### 21.4 Accessibility and mobile
+- Reorder: grip supports Arrow Up/Down **and Home/End**; up/down buttons enlarged to 24 × 24 px (WCAG 2.2 target size); the grip label now mentions the arrow keys; moves are announced via `aria-live` (unchanged).
+- Builder: long lesson titles wrap instead of being truncated; "add lesson" input stacks above its button on phones. The lesson player was already single-column with wrapping toolbars, scrollable code/tables and responsive embeds.
+- Global `:focus-visible` ring applies to all new controls; step and badge states are spelled out in text; `pnpm contrast` passes (164/164 pairs).
+
+### 21.5 Copy review (AZ/EN/RU)
+- The Google-account login hint now names the Settings section exactly like Settings does: "Tənzimləmələr → **Parol ilə giriş**" (was "Parolla giriş"). EN/RU already matched ("Password sign-in", "Вход по паролю").
+- Syllabus terminology checked across catalogs: AZ "syllabus", RU "силлабус", EN "syllabus/syllabi" — consistent.
+
+### 21.6 Performance
+- All syllabus routes are code-split with `React.lazy` (`App.tsx`). Main bundle **2 078 kB → 1 786 kB** (−292 kB minified, ≈ −14 %); syllabus pages load on demand (builder ≈ 112 kB + item editors ≈ 58 kB, path ≈ 31 kB, player ≈ 27 kB). Syllabus i18n strings stay in the main catalog.
+- Queries added: student home +1 (`student.syllabus.list`, only when the flag is on; the flag query is shared with the sidebar cache) · teacher home +1 (`list`) · group page +1 endpoint (5 indexed queries) · library +1 query · builder +1 (`grants`, reused by the Access tab) · learning path +0, or 3 small queries only for a moved enrollment (version structures are cached).
+
+### 21.7 Tests
+- `server/syllabusUx.test.ts` — group rows (state order, revoked/foreign dropped, member-only counts, open-ended grant), foreign group `NOT_FOUND` before any query, material usage counting and single query, lesson change detection (new / renamed / item list / content hash), badges cleared by opening after the move, no queries for a never-moved enrollment, never throws, workflow step logic and tab mapping, continue-learning order, i18n presence, router registration.
+
+---
+
+## 22. Status: all 6 phases delivered
+
+Database + backend (§16), teacher builder (§17), student progression (§18), assessment integration (§19), analytics (§20) and UX polish (§21) are on `main`, behind the per-workspace `SYLLABUS` flag. Migrations `0026`–`0029` are add-only and applied by auto-migrate; every endpoint answers `SYLLABUS_DB_NOT_READY` instead of failing while they are missing.
+
+### 22.1 Known limitations / deferred
+- **No browser click-through in development**: there is no local MySQL and the agent's browser tool was unavailable, so all phases were type-checked, unit-tested, built and contrast-checked, but the first real walkthrough is the production QA below.
+- **Integration suite** (`pnpm test:db`) runs only with `TEST_DATABASE_URL`.
+- **Certificate PDF** not built (Q12) — the completion record and verification code are ready for it.
+- **Concurrent editing**: the builder does not send `expectedRevision` yet (last write wins within one teacher's tabs).
+- **Analytics** are computed per request (fine for hundreds of students per syllabus); rollup tables only if a syllabus grows to thousands.
+- **"Updated" badges** use `learning_activity`; after the 24-month retention purge, or for a student moved before Phase 6 whose move event is gone, no badge is shown (progress is unaffected). A lesson opened on a device with a wrong clock may clear its badge early.
+- **"Used in N syllabi"** counts draft references (incl. archived syllabi), not only published versions.
+- Syllabus i18n strings are still in the main bundle (≈ tens of kB); could be split later.
+
+### 22.2 Manual QA checklist (production, desktop + phone)
+Turn the flag on for a test workspace first (§16.3). Use one teacher account and one student account in a test group.
+
+**Teacher**
+1. Home shows a **Syllabi** panel; the sidebar shows **Syllabus**. Open it → empty state shows the workflow (Create → … → Track).
+2. **Create a sample syllabus** → the builder opens; the step indicator shows Create done and the next step highlighted; clicking a step switches tabs.
+3. Structure: add a module and a lesson, reorder with drag & drop, then with the keyboard (Tab to the grip, Arrow/Home/End) and on a phone with the up/down buttons.
+4. Lesson editor: add a theory block that references a library material, a student practice, and an assessment item; preview as student.
+5. **Publish** (check the diff and validation), then **Access** → grant the test group with an end date. Step indicator: Assign and Assess done, Track is next.
+6. **Library → Materials**: the referenced material shows "Used in 1 syllabus".
+7. **Groups → the test group**: the **Syllabi** panel lists the syllabus with Active, end date and 0 / N started.
+
+**Student**
+8. Student home shows **Continue learning** with the syllabus; the button opens the first lesson.
+9. The learning path shows the **How it works** strip (Learn → … → Progress); "Hide" keeps it hidden after reload.
+10. Complete the theory, submit the practice, take the assessment and pass → the next lesson unlocks (path updates; in-app notification within ~2 min).
+11. On a phone: the lesson player, code blocks, tables and the video embed fit the screen without horizontal page scroll.
+
+**Teacher again**
+12. **Students** tab shows progress and the review/approval queue; **Analytics** shows overview, funnel and the student's timeline.
+13. Edit a lesson title and add a new lesson → **Publish** a new version → **Versions** → move students to the current version.
+
+**Student again**
+14. The path shows the "course was updated" note and **New** / **Updated** badges on those lessons; opening a lesson removes its badge on return. Progress is unchanged.
+15. Teacher revokes or lets the grant expire → the student sees progress only ("access ended"), no content; the group panel shows the new state. Turn the flag off → all syllabus links, panels and badges disappear and the rest of the app works as before.

@@ -178,7 +178,11 @@ export const syllabus = {
   "syllabus.item.delete": ["Sil: {title}", "Delete: {title}", "Удалить: {title}"],
   "syllabus.item.deleteConfirm": ["\"{title}\" silinsin?", "Delete \"{title}\"?", "Удалить «{title}»?"],
 
-  "syllabus.sort.handle": ["Sürüşdürərək yerini dəyiş: {title}", "Drag to reorder: {title}", "Перетащите, чтобы изменить порядок: {title}"],
+  "syllabus.sort.handle": [
+    "Sürüşdürərək və ya ox düymələri ilə yerini dəyiş: {title}",
+    "Drag or use the arrow keys to reorder: {title}",
+    "Перетащите или используйте клавиши со стрелками, чтобы изменить порядок: {title}",
+  ],
   "syllabus.sort.up": ["Yuxarı: {title}", "Move up: {title}", "Выше: {title}"],
   "syllabus.sort.down": ["Aşağı: {title}", "Move down: {title}", "Ниже: {title}"],
   "syllabus.sort.moved": ["{title}: {position}/{total} mövqeyinə köçürüldü", "{title} moved to position {position} of {total}", "{title}: перемещено на позицию {position} из {total}"],

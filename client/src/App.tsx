@@ -27,26 +27,33 @@ import {
 } from "@/pages/student/StudentPages";
 import StudentProfile from "@/pages/student/StudentProfile";
 import StudentSession from "@/pages/student/StudentSession";
-import { LessonPlayer } from "@/pages/student/syllabus/LessonPlayer";
-import { MySyllabi } from "@/pages/student/syllabus/MySyllabi";
-import { SyllabusPathPage } from "@/pages/student/syllabus/SyllabusPath";
 import { AnalyticsPage } from "@/pages/teacher/Analytics";
 import { AssessmentDetailPage, AssessmentsPage } from "@/pages/teacher/Assessments";
 import { EditAssessmentPage, NewAssessmentPage } from "@/pages/teacher/ExamBuilder";
 import { GroupDetailPage, GroupsPage } from "@/pages/teacher/Groups";
 import { AssessmentParticipantsPage } from "@/pages/teacher/Participants";
 import { ResultDetailPage, ResultsPage } from "@/pages/teacher/Results";
-import { LessonEditorPage } from "@/pages/teacher/syllabus/LessonEditor";
-import { PresentModePage, SyllabusPreviewPage } from "@/pages/teacher/syllabus/PresentAndPreview";
-import { SyllabusDetailPage } from "@/pages/teacher/syllabus/SyllabusDetail";
-import { SyllabusListPage } from "@/pages/teacher/syllabus/SyllabusList";
 import TeacherHome from "@/pages/teacher/TeacherHome";
 import { AssignmentsPage, LibraryPage, UsagePage } from "@/pages/teacher/TeacherModules";
-import { useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import { Redirect, Route, Switch, useLocation, useParams } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { useAuth } from "./_core/hooks/useAuth";
+
+/** Syllabus screens are code-split: most users never open them, so they stay out of the main bundle. */
+const LessonPlayer = lazy(() => import("@/pages/student/syllabus/LessonPlayer").then((m) => ({ default: m.LessonPlayer })));
+const MySyllabi = lazy(() => import("@/pages/student/syllabus/MySyllabi").then((m) => ({ default: m.MySyllabi })));
+const SyllabusPathPage = lazy(() => import("@/pages/student/syllabus/SyllabusPath").then((m) => ({ default: m.SyllabusPathPage })));
+const LessonEditorPage = lazy(() => import("@/pages/teacher/syllabus/LessonEditor").then((m) => ({ default: m.LessonEditorPage })));
+const PresentModePage = lazy(() => import("@/pages/teacher/syllabus/PresentAndPreview").then((m) => ({ default: m.PresentModePage })));
+const SyllabusPreviewPage = lazy(() => import("@/pages/teacher/syllabus/PresentAndPreview").then((m) => ({ default: m.SyllabusPreviewPage })));
+const SyllabusDetailPage = lazy(() => import("@/pages/teacher/syllabus/SyllabusDetail").then((m) => ({ default: m.SyllabusDetailPage })));
+const SyllabusListPage = lazy(() => import("@/pages/teacher/syllabus/SyllabusList").then((m) => ({ default: m.SyllabusListPage })));
+
+function PageLoading() {
+  return <div role="status" className="p-10 text-center text-muted-foreground">{t("app.loading")}</div>;
+}
 
 /**
  * UI gate for one activity context. It only decides what to render; every procedure is
@@ -77,10 +84,10 @@ function Guard({ context, children }: { context: UiContext; children: React.Reac
     );
   }, [allowed, context, user?.lastActiveContext]);
 
-  if (loading) return <div role="status" className="p-10 text-center text-muted-foreground">{t("app.loading")}</div>;
+  if (loading) return <PageLoading />;
   if (!user) return <Redirect to={`/?returnTo=${encodeURIComponent(location + window.location.search)}`} />;
   if (!allowed) return <Redirect to={entryPath(user) === location ? "/welcome" : entryPath(user)} />;
-  return <>{children}</>;
+  return <Suspense fallback={<PageLoading />}>{children}</Suspense>;
 }
 
 const teacher = (page: React.ReactNode) => () => <Guard context="teaching">{page}</Guard>;

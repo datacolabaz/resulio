@@ -11,7 +11,7 @@ export interface SortControls {
 
 /**
  * Reorderable list without a drag-and-drop library: the grip starts an HTML5 drag (mouse), and
- * the up/down buttons (or arrow keys on the grip) do the same from the keyboard and on touch.
+ * the up/down buttons (or Arrow/Home/End keys on the grip) do the same from the keyboard and on touch.
  * Nested lists are independent: a list ignores drags that did not start in it.
  */
 export function SortableList<T>({
@@ -53,7 +53,7 @@ export function SortableList<T>({
               <button
                 type="button"
                 disabled={disabled}
-                className="cursor-grab rounded p-1 text-muted-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 active:cursor-grabbing"
+                className="flex h-8 w-8 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 active:cursor-grabbing"
                 aria-label={t("syllabus.sort.handle", { title: label })}
                 onPointerDown={() => setArmed(key)}
                 onPointerUp={() => setArmed(null)}
@@ -64,6 +64,12 @@ export function SortableList<T>({
                   } else if (e.key === "ArrowDown") {
                     e.preventDefault();
                     move(index, index + 1);
+                  } else if (e.key === "Home") {
+                    e.preventDefault();
+                    move(index, 0);
+                  } else if (e.key === "End") {
+                    e.preventDefault();
+                    move(index, items.length - 1);
                   }
                 }}
               >
@@ -74,19 +80,19 @@ export function SortableList<T>({
                   type="button"
                   disabled={disabled || index === 0}
                   onClick={() => move(index, index - 1)}
-                  className="rounded p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
+                  className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted disabled:opacity-30"
                   aria-label={t("syllabus.sort.up", { title: label })}
                 >
-                  <ArrowUp className="h-3 w-3" aria-hidden />
+                  <ArrowUp className="h-3.5 w-3.5" aria-hidden />
                 </button>
                 <button
                   type="button"
                   disabled={disabled || index === items.length - 1}
                   onClick={() => move(index, index + 1)}
-                  className="rounded p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
+                  className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted disabled:opacity-30"
                   aria-label={t("syllabus.sort.down", { title: label })}
                 >
-                  <ArrowDown className="h-3 w-3" aria-hidden />
+                  <ArrowDown className="h-3.5 w-3.5" aria-hidden />
                 </button>
               </span>
             </span>

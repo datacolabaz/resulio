@@ -3,6 +3,7 @@ import { ProgressChart, TopicBars } from "@/components/AnalyticsBlocks";
 import { AppShell, ChoiceChip, EmptyState, ErrorNote, Loading, Panel, Pill, StatCard } from "@/components/AppShell";
 import { SingleFileUpload } from "@/components/FileUpload";
 import { StatusBadge, toneSurface } from "@/components/StatusBadge";
+import { ContinueLearning } from "@/components/syllabus/CrossLinks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -46,6 +47,7 @@ export function StudentHome() {
     <AppShell area="learning">
       {!d.data ? <Loading /> : (
         <div className="space-y-5">
+          <ContinueLearning />
           <div className="grid gap-4 sm:grid-cols-3">
             <StatCard label={t("student.activeExams")} value={d.data.active.length} />
             <StatCard label={t("student.upcoming")} value={d.data.upcoming.length} />

@@ -1,13 +1,15 @@
 import { AppShell, ErrorNote, Loading, Panel, Pill } from "@/components/AppShell";
 import { StatusBadge, toneSurface } from "@/components/StatusBadge";
 import { ActivityTimeline } from "@/components/syllabus/ActivityTimeline";
+import { StudentWorkflow } from "@/components/syllabus/Workflow";
 import { Button } from "@/components/ui/button";
 import { t, type MessageKey } from "@/i18n/messages";
 import { errorText, fmtDateTime, fmtDay } from "@/lib/format";
 import { nodeVisual, pct, type LockReason } from "@/lib/syllabusLearn";
+import { lessonChange } from "@/lib/syllabusWorkflow";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import type { ActivityEvent } from "@/lib/syllabusTracker";
-import { Award, ChevronDown, ChevronLeft, ClipboardCheck, Clock, Hourglass, Lock, Trophy, Users } from "lucide-react";
+import { Award, ChevronDown, ChevronLeft, ClipboardCheck, Clock, Hourglass, Lock, Sparkles, Trophy, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useParams } from "wouter";
@@ -128,6 +130,13 @@ function ActivePath({ id, path, record }: { id: string; path: Path; record: Reco
           <Link href={lessonPath(id, currentLesson)}>{path.completedLessons ? t("learn.continue") : t("learn.start")}</Link>
         </Button>
       ) : null}
+      {Object.keys(path.lessonChanges).length > 0 && (
+        <div className={`flex items-start gap-2 rounded-xl border p-3 text-sm ${toneSurface("info")}`} role="note">
+          <Sparkles className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          {t("ux.change.note")}
+        </div>
+      )}
+      {!path.completion && <StudentWorkflow />}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-3">
           {path.modules.map((m, i) => (
@@ -204,6 +213,7 @@ function ModuleCard({
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             <span>{statusText(m.status)}</span>
             <span>{t("learn.lessonsDone", { done: m.completedLessons, total: m.totalLessons })}</span>
+            {m.lessons.some((l) => lessonChange(path.lessonChanges, l.id)) && <StatusBadge tone="info" icon={Sparkles}>{t("ux.change.UPDATED")}</StatusBadge>}
             {m.estimatedMinutes ? <span>{t("learn.minutes", { count: m.estimatedMinutes })}</span> : null}
           </div>
           {!locked && <ProgressBar value={pct(m.completedLessons, m.totalLessons)} label={t("learn.moduleProgress", { title: m.title })} />}
@@ -245,6 +255,7 @@ function ModuleCard({
 function LessonRow({ id, lesson: l, n, isCurrent, path }: { id: string; lesson: Module["lessons"][number]; n: number; isCurrent: boolean; path: Path }) {
   const visual = nodeVisual(l.status, isCurrent);
   const reason = lockText(l.lockReason as LockReason | null, path);
+  const change = lessonChange(path.lessonChanges, l.id);
   const body = (
     <>
       <NodeIcon visual={visual} />
@@ -253,6 +264,7 @@ function LessonRow({ id, lesson: l, n, isCurrent, path }: { id: string; lesson: 
           <span className="text-xs text-muted-foreground">{t("learn.lessonN", { n })}</span>
           <span className={`break-words ${visual === "locked" ? "text-foreground-secondary" : "font-medium"}`}>{l.title}</span>
           {l.optional && <Pill>{t("learn.optional")}</Pill>}
+          {change && <StatusBadge tone="info" icon={Sparkles}>{t(`ux.change.${change}`)}</StatusBadge>}
         </div>
         <div className="text-xs text-muted-foreground">
           {reason ?? statusText(l.status)}

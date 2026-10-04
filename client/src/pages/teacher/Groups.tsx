@@ -3,6 +3,7 @@ import { ProgressChart, RankingTable, TopicBars } from "@/components/AnalyticsBl
 import { AppShell, ChoiceChip, EmptyState, ErrorNote, Loading, Panel, Pill, StatCard } from "@/components/AppShell";
 import { CompactShareLink, ShareBox, ShareFunnelSummary } from "@/components/ShareBox";
 import { StatusBadge } from "@/components/StatusBadge";
+import { GroupSyllabiPanel } from "@/components/syllabus/CrossLinks";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -700,6 +701,7 @@ export function GroupDetailPage() {
             <StatCard label={t("home.averageScore")} value={ga ? `${ga.averageScore}%` : "—"} />
             <StatCard label={t("common.exams")} value={ga?.history.length ?? 0} />
           </div>
+          <GroupSyllabiPanel groupId={id} />
 
           <Tabs defaultValue="students" className="min-h-screen">
             <TabsList className="h-auto flex-wrap">

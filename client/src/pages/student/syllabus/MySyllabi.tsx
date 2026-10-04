@@ -1,5 +1,6 @@
 import { AppShell, EmptyState, ErrorNote, Loading, Pill } from "@/components/AppShell";
 import { StatusBadge, type Tone } from "@/components/StatusBadge";
+import { StudentWorkflow } from "@/components/syllabus/Workflow";
 import { Button } from "@/components/ui/button";
 import { t, type MessageKey } from "@/i18n/messages";
 import { fmtDateTime, fmtRelative } from "@/lib/format";
@@ -81,7 +82,10 @@ export function MySyllabi() {
         ) : !list.data ? (
           <Loading />
         ) : !list.data.length ? (
-          <EmptyState title={t("learn.emptyTitle")} body={t("learn.emptyBody")} />
+          <>
+            <EmptyState title={t("learn.emptyTitle")} body={t("learn.emptyBody")} />
+            <StudentWorkflow dismissible={false} />
+          </>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {list.data.map((card) => (

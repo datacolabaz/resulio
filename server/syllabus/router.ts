@@ -18,6 +18,7 @@ import * as authoring from "./authoring";
 import { assertSyllabusEnabled, isSchemaBehind, syllabusEnabledFor } from "./availability";
 import * as draft from "./draft";
 import * as learning from "./learning";
+import * as links from "./links";
 import * as publishing from "./publishing";
 import * as sample from "./sample";
 import * as teacherViews from "./teacherViews";
@@ -88,6 +89,8 @@ export const teacherSyllabusRouter = router({
   /** Lets the client show or hide the Syllabus entry for this workspace; never throws. */
   enabled: teacherProcedure.query(async ({ ctx }) => ({ enabled: await syllabusEnabledFor(ctx.scope.workspaceId).catch(() => false) })),
   list: syllabusTeacherProcedure.query(({ ctx }) => authoring.listSyllabi(ctx.scope)),
+  forGroup: syllabusTeacherProcedure.input(z.object({ groupId: entityId })).query(({ ctx, input }) => links.syllabiForGroup(ctx.scope, input.groupId)),
+  materialUsage: syllabusTeacherProcedure.query(({ ctx }) => links.materialUsage(ctx.scope)),
   get: syllabusTeacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => authoring.draftTree(ctx.scope, input.id)),
   create: syllabusTeacherProcedure
     .input(syllabusFields.partial().extend({ title: shortText(255).min(1) }))

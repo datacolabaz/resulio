@@ -1,6 +1,7 @@
 import { AssessmentActivity } from "@/components/ActivityCards";
 import { AppShell, EmptyState, Loading, Panel, StatCard } from "@/components/AppShell";
 import { StatusBadge } from "@/components/StatusBadge";
+import { TeacherHomeSyllabi } from "@/components/syllabus/CrossLinks";
 import { Button } from "@/components/ui/button";
 import { t } from "@/i18n/messages";
 import { fmtWindow, liveLabel, typeLabel } from "@/lib/format";
@@ -105,6 +106,7 @@ export default function TeacherHome() {
               )}
             </Panel>
           </div>
+          <TeacherHomeSyllabi />
         </div>
       )}
     </AppShell>

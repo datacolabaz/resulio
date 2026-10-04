@@ -4,6 +4,7 @@ import { MultiFileUpload, SingleFileUpload } from "@/components/FileUpload";
 import { draftFromQuestion, QuestionEditor } from "@/components/QuestionEditor";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ShareBox, ShareFunnelSummary } from "@/components/ShareBox";
+import { MaterialUsageBadge, useMaterialSyllabusUsage } from "@/components/syllabus/CrossLinks";
 import { SubmissionReview } from "@/components/SubmissionReview";
 import { TaskEngagementList } from "@/components/TaskEngagementList";
 import { Button } from "@/components/ui/button";
@@ -605,6 +606,7 @@ function MaterialFormDialog({ open, onOpenChange, initial }: { open: boolean; on
 function MaterialsTab() {
   const utils = trpc.useUtils();
   const list = trpc.teacher.tasks.materials.useQuery();
+  const syllabusUsage = useMaterialSyllabusUsage();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<MaterialInitial | null>(null);
   const [shareId, setShareId] = useState<string | null>(null);
@@ -638,6 +640,7 @@ function MaterialsTab() {
             >
               <p className="break-words text-sm text-foreground-secondary">{m.description}</p>
               <p className="mt-2 break-words text-xs text-muted-foreground">{[m.subject, m.topic].filter(Boolean).join(" · ")}</p>
+              <MaterialUsageBadge count={syllabusUsage.get(m.id)} />
               {m.fileId && (
                 <a href={fileDownloadUrl(m.fileId)} className="mt-2 inline-block rounded-lg border border-border bg-muted px-2 py-1 text-xs text-link underline-offset-2 hover:underline">
                   {m.fileName}

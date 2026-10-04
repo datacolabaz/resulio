@@ -1,6 +1,7 @@
 import { EmptyState, ErrorNote, Loading, Panel, Pill } from "@/components/AppShell";
 import { CompletionRulesForm } from "@/components/syllabus/CompletionRulesForm";
 import { SortableList } from "@/components/syllabus/SortableList";
+import { TeacherWorkflow } from "@/components/syllabus/Workflow";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -8,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { t } from "@/i18n/messages";
 import { overrideCount } from "@/lib/syllabus";
+import { STEP_TAB, teacherSteps } from "@/lib/syllabusWorkflow";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import type { CompletionRulesPatch, SyllabusItemKind } from "@shared/syllabus";
 import { ArrowLeft, ChevronDown, ChevronRight, Copy, Eye, Pencil, Plus, Rocket, Trash2 } from "lucide-react";
@@ -116,7 +118,7 @@ function LessonRow({ tree, module, lesson, handle }: { tree: Tree; module: Modul
     <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-background p-2.5">
       {handle}
       <Link href={`/teacher/syllabus/${syllabusId}/lessons/${lesson.id}`} className="min-w-0 flex-1 rounded-md hover:underline focus-visible:outline-2 focus-visible:outline-link">
-        <span className="block truncate text-sm font-medium">{lesson.title}</span>
+        <span className="block break-words text-sm font-medium">{lesson.title}</span>
         <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           {counts.length === 0 && <span>{t("syllabus.lesson.noItems")}</span>}
           {counts.map(({ kind, n }) => {
@@ -172,7 +174,7 @@ function AddInline({ label, placeholder, onAdd, pending }: { label: string; plac
   };
   return (
     <form
-      className="flex gap-2"
+      className="flex flex-col gap-2 sm:flex-row"
       onSubmit={(e) => {
         e.preventDefault();
         submit();
@@ -324,6 +326,7 @@ type Tab = (typeof TABS)[number];
 
 function DetailBody({ id }: { id: string }) {
   const tree = trpc.teacher.syllabus.get.useQuery({ id });
+  const grants = trpc.teacher.syllabus.grants.useQuery({ id });
   const initialTab = new URLSearchParams(window.location.search).get("tab");
   const [tab, setTab] = useState<Tab>(TABS.includes(initialTab as Tab) ? (initialTab as Tab) : "structure");
   const [publishOpen, setPublishOpen] = useState(false);
@@ -331,6 +334,7 @@ function DetailBody({ id }: { id: string }) {
   if (tree.error || !tree.data) return <ErrorNote error={tree.error} />;
   const s = tree.data.syllabus;
   const archived = !!s.archivedAt;
+  const steps = teacherSteps(tree.data, (grants.data ?? []).map((g) => g.state));
   return (
     <div className="space-y-5">
       <Link href="/teacher/syllabus" className="inline-flex items-center gap-1 text-sm text-link hover:underline">
@@ -358,6 +362,7 @@ function DetailBody({ id }: { id: string }) {
         </div>
       </div>
       {archived && <p className="rounded-xl border border-border bg-muted p-3 text-sm">{t("syllabus.archivedNote")}</p>}
+      {!archived && <TeacherWorkflow steps={steps} onSelect={(step) => setTab(STEP_TAB[step])} />}
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
         <TabsList className="h-auto w-full flex-wrap justify-start sm:w-fit">
           {TABS.map((k) => <TabsTrigger key={k} value={k}>{t(`syllabus.tab.${k}`)}</TabsTrigger>)}

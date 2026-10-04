@@ -63,7 +63,7 @@ export const format = {
   ],
   "error.INVALID_CREDENTIALS": ["E-poçt və ya parol yanlışdır.", "Incorrect email or password.", "Неверный адрес эл. почты или пароль."],
   "error.GOOGLE_ACCOUNT_NO_PASSWORD": [
-    "Bu e-poçt Google ilə qeydiyyatdan keçib. Gmail parolunuz burada işləmir — yuxarıdakı \"Google ilə daxil ol\" düyməsini basın. Parolla girmək istəyirsinizsə, Google ilə daxil olub Tənzimləmələr → Parolla giriş bölməsində yeni parol yaradın.",
+    "Bu e-poçt Google ilə qeydiyyatdan keçib. Gmail parolunuz burada işləmir — yuxarıdakı \"Google ilə daxil ol\" düyməsini basın. Parol ilə daxil olmaq istəyirsinizsə, Google ilə daxil olub Tənzimləmələr → Parol ilə giriş bölməsində yeni parol yaradın.",
     "This email is registered with Google. Your Gmail password doesn't work here — press the \"Continue with Google\" button above. If you want to sign in with a password, continue with Google and create a new one in Settings → Password sign-in.",
     "Этот адрес зарегистрирован через Google. Пароль от Gmail здесь не работает — нажмите кнопку «Войти через Google» выше. Если хотите входить по паролю, войдите через Google и создайте новый пароль в разделе Настройки → Вход по паролю.",
   ],

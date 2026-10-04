@@ -1,4 +1,5 @@
 import { EmptyState, ErrorNote, Loading, Pill } from "@/components/AppShell";
+import { TeacherWorkflowOverview } from "@/components/syllabus/Workflow";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getLocale, t } from "@/i18n/messages";
@@ -78,16 +79,22 @@ function SyllabusListBody() {
         </div>
       </div>
       {rows.length === 0 ? (
-        <EmptyState
-          title={t("syllabus.empty.title")}
-          body={t("syllabus.empty.body")}
-          action={
-            <div className="flex flex-wrap justify-center gap-2">
-              <SampleButton variant="default" />
-              <Button variant="outline" onClick={() => setOpen(true)}>{t("syllabus.new")}</Button>
-            </div>
-          }
-        />
+        <>
+          <EmptyState
+            title={t("syllabus.empty.title")}
+            body={t("syllabus.empty.body")}
+            action={
+              <div className="flex flex-wrap justify-center gap-2">
+                <SampleButton variant="default" />
+                <Button variant="outline" onClick={() => setOpen(true)}>{t("syllabus.new")}</Button>
+              </div>
+            }
+          />
+          <section className="space-y-2">
+            <h2 className="text-sm font-semibold">{t("ux.teacherSteps.title")}</h2>
+            <TeacherWorkflowOverview />
+          </section>
+        </>
       ) : (
         <>
           {archivedCount > 0 && (
