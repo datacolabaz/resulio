@@ -1,7 +1,23 @@
 import type { EmailMessage } from "../_core/email";
 import type { ServerLocale } from "../_core/locale";
 import type { EventData, EventType } from "./events";
-import { aiAlertText, aiGradeInAppText, answerKeyDraftedText, buildAiGradeEmail, buildGradeEmail, gradeInAppText } from "./templates";
+import {
+  aiAlertText,
+  aiGradeInAppText,
+  answerKeyDraftedText,
+  buildAiGradeEmail,
+  buildGradeEmail,
+  buildSyllabusAccessEmail,
+  buildSyllabusCompletedEmail,
+  gradeInAppText,
+  syllabusAccessInApp,
+  syllabusApprovalInApp,
+  syllabusCompletedInApp,
+  syllabusLessonPath,
+  syllabusPath,
+  syllabusUnlockedInApp,
+  teacherApprovalsPath,
+} from "./templates";
 
 export interface Recipient {
   locale: ServerLocale;
@@ -46,6 +62,24 @@ export function renderNotification<E extends EventType>(event: E, data: EventDat
     case "ANSWER_KEY_DRAFTED": {
       const d = data as EventData["ANSWER_KEY_DRAFTED"];
       return { ...answerKeyDraftedText(locale, d.taskTitle), path: "/teacher/assignments", email: null };
+    }
+    case "SYLLABUS_ACCESS_GRANTED": {
+      const d = data as EventData["SYLLABUS_ACCESS_GRANTED"];
+      const email = buildSyllabusAccessEmail({ to, locale, appUrl, syllabusId: d.syllabusId, syllabusTitle: d.syllabusTitle, startsAt: d.startsAt });
+      return { ...syllabusAccessInApp(locale, d.syllabusTitle, d.startsAt), path: syllabusPath(d.syllabusId), email };
+    }
+    case "SYLLABUS_UNLOCKED": {
+      const d = data as EventData["SYLLABUS_UNLOCKED"];
+      return { ...syllabusUnlockedInApp(locale, d), path: d.lessonId ? syllabusLessonPath(d.syllabusId, d.lessonId) : syllabusPath(d.syllabusId), email: null };
+    }
+    case "SYLLABUS_APPROVAL_NEEDED": {
+      const d = data as EventData["SYLLABUS_APPROVAL_NEEDED"];
+      return { ...syllabusApprovalInApp(locale, d), path: teacherApprovalsPath(d.syllabusId), email: null };
+    }
+    case "SYLLABUS_COMPLETED": {
+      const d = data as EventData["SYLLABUS_COMPLETED"];
+      const email = buildSyllabusCompletedEmail({ to, locale, appUrl, syllabusId: d.syllabusId, syllabusTitle: d.syllabusTitle, verificationCode: d.verificationCode });
+      return { ...syllabusCompletedInApp(locale, d.syllabusTitle), path: syllabusPath(d.syllabusId), email };
     }
     default:
       throw new Error(`No renderer for ${String(event)}`);

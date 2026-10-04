@@ -6,7 +6,7 @@ import { fileDownloadUrl } from "@/lib/uploadFile";
 import type { SyllabusItemKind } from "@shared/syllabus";
 import { Download, ExternalLink, FolderOpen, Lightbulb } from "lucide-react";
 import { useState } from "react";
-import { Markdown, TheoryView, type MaterialRef } from "./TheoryView";
+import { Markdown, TheoryView, type MaterialRef, type VideoSignal } from "./TheoryView";
 
 type Content = Record<string, unknown>;
 const str = (c: Content, k: string) => (typeof c[k] === "string" ? (c[k] as string) : "");
@@ -77,10 +77,20 @@ function deadlineText(c: Content): string | null {
 }
 
 /** Read-only student rendering of one lesson item (student-shaped content: teacher-only parts already removed). */
-export function StudentItemView({ kind, content, materials }: { kind: SyllabusItemKind; content: Content; materials?: Map<string, MaterialRef> }) {
+export function StudentItemView({
+  kind,
+  content,
+  materials,
+  onVideo,
+}: {
+  kind: SyllabusItemKind;
+  content: Content;
+  materials?: Map<string, MaterialRef>;
+  onVideo?: (blockIndex: number, s: VideoSignal) => void;
+}) {
   switch (kind) {
     case "THEORY":
-      return <TheoryView blocks={content.blocks} materials={materials} />;
+      return <TheoryView blocks={content.blocks} materials={materials} onVideo={onVideo} />;
     case "TEACHER_PRACTICE":
       return (
         <div className="space-y-3">

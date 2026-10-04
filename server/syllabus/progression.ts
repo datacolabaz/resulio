@@ -24,6 +24,7 @@ import { onLearningEvent, type LearningEvent } from "../modules/learningEvents";
 import { isMissingTable } from "../notifications/preferences";
 import { logActivity, type ActivityRow } from "./activityLog";
 import { allItems, availableAssessmentItems, computeProgress, grandfatheredLessons, locateItem, locateLesson } from "./engine";
+import * as notify from "./notify";
 import * as store from "./store";
 import type { EngineInput, EngineOutput, ItemFact, PrevNode, VersionStructure } from "./types";
 
@@ -32,7 +33,7 @@ import type { EngineInput, EngineOutput, ItemFact, PrevNode, VersionStructure } 
  * a row lock on the enrollment; safe to run any number of times.
  */
 
-const cooldownUntil = (lastFinishedAt: Date | null, minutes: number) =>
+export const cooldownUntil = (lastFinishedAt: Date | null, minutes: number) =>
   lastFinishedAt && minutes > 0 ? new Date(lastFinishedAt.getTime() + minutes * 60_000) : null;
 
 interface LoadedInput extends EngineInput {
@@ -40,6 +41,8 @@ interface LoadedInput extends EngineInput {
   jit: Map<string, { assignmentId: number; availableFrom: Date | null; attemptLimitOverride: number | null }>;
   moduleRows: Map<string, typeof syllabusModuleProgress.$inferSelect>;
   lessonRows: Map<string, typeof syllabusLessonProgress.$inferSelect>;
+  /** Approval decisions recorded so far (any target). */
+  decisions: number;
 }
 
 export async function loadInput(e: SyllabusEnrollment, structure: VersionStructure, db: DbOrTx): Promise<LoadedInput> {
@@ -122,6 +125,7 @@ export async function loadInput(e: SyllabusEnrollment, structure: VersionStructu
     jit: new Map(jitRows.map((r) => [r.itemId, { assignmentId: r.a.id, availableFrom: r.a.availableFrom, attemptLimitOverride: r.a.attemptLimitOverride }])),
     moduleRows: new Map(moduleRows.map((r) => [r.moduleId, r])),
     lessonRows: new Map(lessonRows.map((r) => [r.lessonId, r])),
+    decisions: approvalRows.length,
   };
 }
 
@@ -224,11 +228,14 @@ export interface EnrollmentState {
   enrollment: SyllabusEnrollment;
   structure: VersionStructure;
   output: EngineOutput;
+  /** What the student has done per item (scores, attempts); absent in some test doubles. */
+  facts?: ReadonlyMap<string, ItemFact>;
 }
 
 export async function recompute(enrollmentId: string): Promise<EnrollmentState | null> {
   const db = requireDb();
   let activity: ActivityRow[] = [];
+  let announce: (() => void) | null = null;
   const state = await db.transaction(async (tx): Promise<EnrollmentState | null> => {
     const [e] = await tx.select().from(syllabusEnrollments).where(eq(syllabusEnrollments.id, enrollmentId)).for("update");
     if (!e) return null;
@@ -279,9 +286,12 @@ export async function recompute(enrollmentId: string): Promise<EnrollmentState |
     };
     await tx.update(syllabusEnrollments).set(next).where(eq(syllabusEnrollments.id, e.id));
     activity = transitionActivity(e, syllabus, out, completedNow);
-    return { enrollment: { ...e, ...next }, structure: version.structure, output: out };
+    const enrollment = { ...e, ...next };
+    announce = () => notify.afterRecompute(enrollment, syllabus, version.structure, out, completedNow, input.decisions);
+    return { enrollment, structure: version.structure, output: out, facts: input.facts };
   });
   await logActivity(activity);
+  (announce as (() => void) | null)?.();
   return state;
 }
 
@@ -293,7 +303,7 @@ export async function current(enrollment: SyllabusEnrollment): Promise<Enrollmen
   const out = computeProgress(input);
   const needsWrite = enrollment.dirtyAt !== null || out.transitions.length > 0 || out.lessons.some((l) => !input.lessonRows.has(l.id));
   if (needsWrite) return recompute(enrollment.id);
-  return { enrollment, structure: version.structure, output: out };
+  return { enrollment, structure: version.structure, output: out, facts: input.facts };
 }
 
 export async function markDirty(enrollmentIds: readonly string[], db: DbOrTx = requireDb()) {

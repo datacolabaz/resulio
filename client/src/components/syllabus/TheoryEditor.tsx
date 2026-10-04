@@ -1,4 +1,3 @@
-import { SingleFileUpload } from "@/components/FileUpload";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,6 +7,7 @@ import { videoProviderOf } from "@shared/syllabus";
 import { Bold, Code, Eye, Heading, Italic, Link2, List, ListOrdered, Pencil, Plus, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { SortableList } from "./SortableList";
+import { StoredFileUpload } from "./StoredFileUpload";
 import { Markdown, TheoryBlockView, VideoEmbed, type MaterialRef } from "./TheoryView";
 
 const fieldLabel = "text-foreground-secondary";
@@ -134,9 +134,9 @@ function BlockFields({ block, onChange, materials }: { block: EditableBlock; onC
         <div className="grid gap-2 text-sm">
           <div>
             <p className={`mb-1 ${fieldLabel}`}>{t("syllabus.image.upload")}</p>
-            <SingleFileUpload
-              context="syllabus"
-              value={s("fileId") ? { fileId: s("fileId"), name: s("caption") || t("syllabus.block.image"), size: 0, mimeType: "" } : null}
+            <StoredFileUpload
+              fileId={s("fileId")}
+              name={s("caption") || t("syllabus.block.image")}
               onChange={(f) => onChange({ ...block, fileId: f?.fileId ?? undefined, url: f ? undefined : block.url })}
             />
           </div>
@@ -169,11 +169,7 @@ function BlockFields({ block, onChange, materials }: { block: EditableBlock; onC
       );
     case "file":
       return (
-        <SingleFileUpload
-          context="syllabus"
-          value={s("fileId") ? { fileId: s("fileId"), name: s("name"), size: 0, mimeType: "" } : null}
-          onChange={(f) => onChange({ ...block, fileId: f?.fileId ?? "", name: f?.name ?? "" })}
-        />
+        <StoredFileUpload fileId={s("fileId")} name={s("name")} onChange={(f) => onChange({ ...block, fileId: f?.fileId ?? "", name: f?.name ?? "" })} />
       );
     case "material":
       return (

@@ -98,12 +98,16 @@ async function tasksAttaching(file: FileRow) {
   return workspaceTasks.filter((task) => task.attachments.some((a) => a.fileId === file.id));
 }
 
-/** The file is their own upload, or a task attachment on a task that reaches them. */
+/** The file is their own upload, a task attachment on a task that reaches them, or used in syllabus content they can open now. */
 async function studentCanReach(file: FileRow, studentId: number, attachedTo: Awaited<ReturnType<typeof tasksAttaching>>) {
   if (file.uploadedBy === studentId) return true;
-  if (!attachedTo.length) return false;
-  const groupIds = await activeGroupIdsOfStudent(studentId);
-  return attachedTo.some((task) => taskReachesStudent(task, studentId, groupIds));
+  if (attachedTo.length) {
+    const groupIds = await activeGroupIdsOfStudent(studentId);
+    if (attachedTo.some((task) => taskReachesStudent(task, studentId, groupIds))) return true;
+  }
+  // Loaded lazily: the syllabus modules import the task core, which imports this module.
+  const { studentMayDownloadSyllabusFile } = await import("../syllabus/fileAccess");
+  return studentMayDownloadSyllabusFile(studentId, file);
 }
 
 /**

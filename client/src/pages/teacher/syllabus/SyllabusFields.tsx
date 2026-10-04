@@ -1,4 +1,4 @@
-import { SingleFileUpload } from "@/components/FileUpload";
+import { StoredFileUpload } from "@/components/syllabus/StoredFileUpload";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { t } from "@/i18n/messages";
@@ -112,11 +112,7 @@ export function SyllabusFieldsForm({ value, onChange, idPrefix }: { value: Sylla
         <p className={`mb-1 ${fieldLabel}`}>{t("syllabus.field.cover")}</p>
         <div className="flex flex-wrap items-start gap-3">
           {value.coverFileId && <img src={fileDownloadUrl(value.coverFileId)} alt="" className="h-20 w-32 rounded-lg border border-border object-cover" />}
-          <SingleFileUpload
-            context="syllabus"
-            value={value.coverFileId ? { fileId: value.coverFileId, name: t("syllabus.field.cover"), size: 0, mimeType: "" } : null}
-            onChange={(f) => set({ coverFileId: f?.fileId ?? null })}
-          />
+          <StoredFileUpload fileId={value.coverFileId ?? ""} name="" onChange={(f) => set({ coverFileId: f?.fileId ?? null })} />
         </div>
       </div>
     </div>

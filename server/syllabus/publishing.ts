@@ -7,8 +7,10 @@ import { AppError } from "../modules/errors";
 import { ownedSyllabus } from "./access";
 import { loadDraft } from "./draft";
 import { allItems } from "./engine";
+import { announceFirstPublish } from "./notify";
 import { answerKeyOf, cloneContainer, createContainer } from "./practiceTasks";
 import { buildStructure, contentHash, nextVersionLabel } from "./snapshot";
+import * as store from "./store";
 
 /**
  * Publish = freeze the draft into an immutable version (§4.4). Existing enrollments stay on the
@@ -28,7 +30,7 @@ export async function publish(scope: TeacherScope, syllabusId: string, opts: { l
   const answerKeys = new Map<string, string | null>();
   for (const it of draftItems) if (it.kind === "STUDENT_PRACTICE" && it.taskId) answerKeys.set(it.id, await answerKeyOf(db, it.taskId));
 
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const [locked] = await tx.select().from(syllabi).where(eq(syllabi.id, syllabusId)).for("update");
     const previous = locked.currentVersionId
       ? await tx.select().from(syllabusVersionItems).where(eq(syllabusVersionItems.versionId, locked.currentVersionId))
@@ -108,6 +110,8 @@ export async function publish(scope: TeacherScope, syllabusId: string, opts: { l
       reusedPracticeContainers: [...frozenTaskIds].filter(([id, taskId]) => prevById.get(id)?.taskId === taskId).length,
     };
   });
+  if (result.versionNo === 1) announceFirstPublish({ ...syllabus, currentVersionId: result.versionId }, await store.grantsForSyllabus(syllabusId));
+  return result;
 }
 
 export async function listVersions(scope: TeacherScope, syllabusId: string) {

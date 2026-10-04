@@ -10,11 +10,22 @@ import { bestGrantState, effectiveGrant } from "./accessRules";
 import { logActivity, type ActivityRow } from "./activityLog";
 import { OPENS_ITEM, STARTS_ITEM, validateActivity, type ClientActivityEvent } from "./activityRules";
 import { syllabusEnabledFor } from "./availability";
-import { locateItem } from "./engine";
+import { locateItem, locateLesson } from "./engine";
 import * as progression from "./progression";
 import { studentLessonView, studentPathView } from "./serialize";
 import * as store from "./store";
-import type { EngineOutput, VersionStructure } from "./types";
+import {
+  assessmentState,
+  attemptsOf,
+  completionView,
+  endedView,
+  lessonUnlockedAt,
+  practiceDueAt,
+  practiceSubmissions,
+  progressSummary,
+  referencedMaterials,
+} from "./studentDetails";
+import type { EngineOutput, ItemFact, ItemStub, VersionStructure } from "./types";
 import { groupmateRows } from "./visibility";
 
 /**
@@ -27,6 +38,7 @@ interface Opened extends StudentAccess {
   enrollment: progression.EnrollmentState["enrollment"];
   structure: VersionStructure;
   output: EngineOutput;
+  facts?: ReadonlyMap<string, ItemFact>;
 }
 
 async function open(userId: number, syllabusId: string): Promise<Opened> {
@@ -100,12 +112,54 @@ export async function mySyllabi(userId: number) {
 export async function learningPath(userId: number, syllabusId: string) {
   const o = await open(userId, syllabusId);
   const version = await store.versionById(o.enrollment.versionId);
+  const summary = progressSummary(o.structure, o.output, o.facts);
+  const scores = await attemptsOf(userId, summary.assessments.flatMap((a) => (a.assessmentId ? [a.assessmentId] : [])));
+  const grants = await store.grantsForSyllabus(syllabusId);
+  const grantedGroups = o.groupIds.filter((g) => grants.some((x) => x.groupId === g && x.status === "ACTIVE"));
+  const groupRows = ((await store.groupsByIds(grantedGroups)) ?? []).filter((g) => g.workspaceId === o.syllabus.providerWorkspaceId);
+  const completion = o.enrollment.status === "COMPLETED" ? await store.completionOf(o.enrollment.id) : null;
   return {
     syllabus: { id: o.syllabus.id, title: o.syllabus.title, description: o.syllabus.description ?? "", subject: o.syllabus.subject, level: o.syllabus.level },
     version: { id: o.enrollment.versionId, label: version?.version.label ?? "" },
     access: { endsAt: o.grant.endsAt },
     ...studentPathView(o.structure, o.output),
+    awaitingApproval: o.output.syllabusAwaitingApproval,
+    summary: {
+      practice: summary.practice,
+      theory: summary.theory,
+      assessments: summary.assessments.map(({ assessmentId, ...a }) => {
+        const finished = (assessmentId ? (scores.get(assessmentId) ?? []) : []).filter((r) => r.status !== "IN_PROGRESS");
+        const shown = finished.flatMap((r) => (r.pct === null ? [] : [r.pct]));
+        return { ...a, attempts: finished.length, bestPct: shown.length ? Math.max(...shown) : null, held: finished.some((r) => r.held) };
+      }),
+    },
+    groups: groupRows.map((g) => ({ id: g.id, name: g.name })),
+    completion: completion ? completionView(completion, version?.version.label ?? "") : null,
   };
+}
+
+/** Active access → the full path; ended or not-yet-started access → progress only, no content. */
+export async function overview(userId: number, syllabusId: string) {
+  try {
+    return { mode: "ACTIVE" as const, path: await learningPath(userId, syllabusId), ended: null };
+  } catch (error) {
+    if (!(error instanceof AppError) || error.code !== "SYLLABUS_NO_ACCESS") throw error;
+    return { mode: "ENDED" as const, path: null, ended: await endedView(userId, syllabusId) };
+  }
+}
+
+/** Whether to show the student's Syllabus entry: some syllabus of an enabled workspace reaches them. Never throws. */
+export async function hasAny(userId: number) {
+  try {
+    const groupIds = await activeGroupIdsOfStudent(userId);
+    const [grants, enrollments] = await Promise.all([store.grantsReachingStudent(userId, groupIds), store.enrollmentsOfStudent(userId)]);
+    const ids = [...new Set([...grants.filter((g) => g.status === "ACTIVE").map((g) => g.syllabusId), ...enrollments.map((e) => e.syllabusId)])];
+    const rows = await store.syllabiByIds(ids);
+    for (const s of rows) if (s.currentVersionId && (await syllabusEnabledFor(s.providerWorkspaceId))) return true;
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 export async function lesson(userId: number, syllabusId: string, lessonId: string) {
@@ -113,14 +167,49 @@ export async function lesson(userId: number, syllabusId: string, lessonId: strin
   const lr = o.output.lessons.find((l) => l.id === lessonId);
   if (!lr) throw new AppError("NOT_FOUND");
   // Content is loaded only for an unlocked lesson.
-  const itemIds = lr.status === "LOCKED" ? [] : (o.structure.modules.flatMap((m) => m.lessons).find((l) => l.id === lessonId)?.items.map((i) => i.id) ?? []);
-  const contents = await store.versionItems(o.enrollment.versionId, itemIds);
-  return studentLessonView(
+  const stubs = lr.status === "LOCKED" ? [] : (o.structure.modules.flatMap((m) => m.lessons).find((l) => l.id === lessonId)?.items ?? []);
+  const contents = await store.versionItems(o.enrollment.versionId, stubs.map((i) => i.id));
+  const view = studentLessonView(
     o.structure,
     o.output,
     lessonId,
     contents.map((c) => ({ itemId: c.itemId, kind: c.kind, content: c.content })),
   );
+  if (!view || view.locked) return view;
+  return { ...view, ...(await lessonExtras(o, lessonId, view.items, contents)) };
+}
+
+type LessonItems = Extract<NonNullable<ReturnType<typeof studentLessonView>>, { locked: false }>["items"];
+
+/** Practice submissions, assessment attempts, due dates and referenced materials of an unlocked lesson. */
+async function lessonExtras(o: Opened, lessonId: string, items: LessonItems, contents: ReadonlyArray<{ itemId: string; kind: ItemStub["kind"]; content: Record<string, unknown> }>) {
+  const stubs = new Map(o.structure.modules.flatMap((m) => m.lessons).find((l) => l.id === lessonId)!.items.map((i) => [i.id, i]));
+  const practice = items.filter((i) => i.kind === "STUDENT_PRACTICE");
+  const assessed = items.filter((i) => i.kind === "ASSESSMENT");
+  const rules = locateLesson(o.structure, lessonId)!.lesson.rules;
+  const needsUnlockDate = practice.some((i) => (i.content.deadline as { type?: string } | undefined)?.type === "RELATIVE_DAYS");
+  const [subs, attemptRows, unlockedAt, mats] = await Promise.all([
+    practiceSubmissions(o.enrollment.studentId, practice.flatMap((i) => (stubs.get(i.id)?.taskId ? [stubs.get(i.id)!.taskId!] : []))),
+    attemptsOf(o.enrollment.studentId, assessed.flatMap((i) => (stubs.get(i.id)?.assessmentId ? [stubs.get(i.id)!.assessmentId!] : []))),
+    needsUnlockDate ? lessonUnlockedAt(o.enrollment.id, lessonId) : Promise.resolve(null),
+    referencedMaterials(o.syllabus.providerWorkspaceId, contents),
+  ]);
+  const now = new Date();
+  return {
+    items: items.map((i) => {
+      const stub = stubs.get(i.id);
+      if (i.kind === "STUDENT_PRACTICE") {
+        const submission = stub?.taskId ? (subs.get(stub.taskId) ?? null) : null;
+        const dueAt = practiceDueAt(i.content.deadline, unlockedAt);
+        return { ...i, practice: { taskId: stub?.taskId ?? null, submission, dueAt, overdue: !!dueAt && dueAt < now && !submission, canSubmit: i.available && !submission?.grade } };
+      }
+      if (i.kind === "ASSESSMENT" && stub) {
+        return { ...i, assessment: assessmentState(stub, rules, stub.assessmentId ? (attemptRows.get(stub.assessmentId) ?? []) : [], i.available && i.state !== "MET", now) };
+      }
+      return i;
+    }),
+    materials: mats.map((m) => ({ id: m.id, title: m.title, fileId: m.fileId ?? null })),
+  };
 }
 
 const ITEM_FACT_COLUMNS = {
@@ -236,6 +325,16 @@ export async function submitPractice(userId: number, syllabusId: string, itemId:
   await logActivity([{ ...activityBase(o), moduleId: found.module?.id, lessonId: found.lesson?.id, itemId, taskId: task.id, activityType: "PRACTICE_SUBMITTED", source: "SERVER" }]);
   await progression.recompute(o.enrollment.id);
   return view;
+}
+
+/** Download rule for files inside syllabus content: live access and the item using the file is open now. */
+export async function canOpenItem(userId: number, syllabusId: string, itemId: string) {
+  try {
+    unlockedItem(await open(userId, syllabusId), itemId);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** File upload rule for practice containers: the item must be unlocked for this student in their pinned version. */

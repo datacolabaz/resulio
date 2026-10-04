@@ -197,8 +197,9 @@ export function computeProgress(input: EngineInput): EngineOutput {
     state: evaluateItem(it, structure.rules, facts.get(it.id)),
     available: allModulesDone,
   }));
-  const syllabusCompleted =
-    allModulesDone && allDone(finalItems) && (!structure.rules.teacherApproval || approvals.has("SYLLABUS:syllabus"));
+  const requirementsMet = allModulesDone && allDone(finalItems);
+  const syllabusCompleted = requirementsMet && (!structure.rules.teacherApproval || approvals.has("SYLLABUS:syllabus"));
+  const syllabusAwaitingApproval = requirementsMet && !syllabusCompleted;
 
   const counted = lessons.filter((l) => !l.optional || l.status === "COMPLETED");
   const completedLessons = counted.filter((l) => l.status === "COMPLETED").length;
@@ -220,6 +221,7 @@ export function computeProgress(input: EngineInput): EngineOutput {
     lessons,
     finalItems,
     syllabusCompleted,
+    syllabusAwaitingApproval,
     completedLessons,
     totalLessons,
     progressPct,

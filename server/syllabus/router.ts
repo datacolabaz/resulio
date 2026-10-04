@@ -220,6 +220,10 @@ export const teacherSyllabusRouter = router({
     .mutation(({ ctx, input }) =>
       teacherViews.decideApproval(ctx.scope, input.id, input.studentId, { type: input.targetType, id: input.targetId }, input.decision, input.note),
     ),
+  approvals: syllabusTeacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => teacherViews.pendingApprovals(ctx.scope, input.id)),
+  fileInfo: syllabusTeacherProcedure
+    .input(z.object({ ids: z.array(entityId).max(100) }))
+    .query(({ ctx, input }) => teacherViews.fileInfo(ctx.scope, input.ids)),
   markTeacherPractice: syllabusTeacherProcedure
     .input(z.object({ id: entityId, itemId: entityId, studentIds: z.array(studentId).max(500).optional(), groupId: entityId.optional() }))
     .mutation(({ ctx, input }) => teacherViews.markTeacherPractice(ctx.scope, input.id, input.itemId, input)),
@@ -233,8 +237,11 @@ export const teacherSyllabusRouter = router({
 });
 
 export const studentSyllabusRouter = router({
+  /** Lets the client show or hide the student's Syllabus entry; never throws. */
+  enabled: studentProcedure.query(async ({ ctx }) => ({ enabled: await learning.hasAny(ctx.user.id) })),
   list: syllabusStudentProcedure.query(({ ctx }) => learning.mySyllabi(ctx.user.id)),
   path: syllabusStudentProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => learning.learningPath(ctx.user.id, input.id)),
+  overview: syllabusStudentProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => learning.overview(ctx.user.id, input.id)),
   lesson: syllabusStudentProcedure
     .input(z.object({ id: entityId, lessonId: entityId }))
     .query(({ ctx, input }) => learning.lesson(ctx.user.id, input.id, input.lessonId)),

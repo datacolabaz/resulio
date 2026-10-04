@@ -18,7 +18,7 @@ function FileChip({ file, onRemove }: { file: UploadedFile; onRemove: () => void
   return (
     <span className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border bg-muted px-2.5 py-1.5 text-sm">
       <span className="min-w-0 truncate">{file.name}</span>
-      <span className="shrink-0 text-xs text-muted-foreground">({formatFileSize(file.size)})</span>
+      {file.size > 0 && <span className="shrink-0 text-xs text-muted-foreground">({formatFileSize(file.size)})</span>}
       <button type="button" onClick={onRemove} className="shrink-0 text-xs font-medium text-destructive hover:underline">
         {t("common.remove")}
       </button>

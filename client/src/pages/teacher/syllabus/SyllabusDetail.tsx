@@ -14,6 +14,7 @@ import { ArrowLeft, ChevronDown, ChevronRight, Copy, Eye, Pencil, Plus, Rocket, 
 import { useState } from "react";
 import { Link, useParams } from "wouter";
 import { ItemCard, useCreateItem } from "./ItemCard";
+import { StudentsTab } from "./StudentsTab";
 import { AccessTab, PublishDialog, SettingsTab, VersionsTab } from "./SyllabusTabs";
 import { fieldLabel, KIND_ICON, kindLabel, linesToList, NodeStatusBadge, SyllabusShell, SyllabusStatusBadge, toastError, useSyllabusRefresh } from "./shared";
 
@@ -317,7 +318,7 @@ function StructureTab({ tree }: { tree: Tree }) {
 // Page
 // ---------------------------------------------------------------------------
 
-const TABS = ["structure", "settings", "versions", "access"] as const;
+const TABS = ["structure", "settings", "versions", "access", "students"] as const;
 type Tab = (typeof TABS)[number];
 
 function DetailBody({ id }: { id: string }) {
@@ -364,6 +365,7 @@ function DetailBody({ id }: { id: string }) {
         <TabsContent value="settings"><SettingsTab tree={tree.data} /></TabsContent>
         <TabsContent value="versions"><VersionsTab tree={tree.data} /></TabsContent>
         <TabsContent value="access"><AccessTab tree={tree.data} /></TabsContent>
+        <TabsContent value="students"><StudentsTab tree={tree.data} /></TabsContent>
       </Tabs>
       <PublishDialog syllabusId={id} open={publishOpen} onOpenChange={setPublishOpen} />
     </div>

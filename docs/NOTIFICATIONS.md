@@ -22,6 +22,10 @@ Code: `server/notifications/` — `events.ts` (events and their channels), `temp
 | `AI_LIMIT_REACHED` | workspace owner | IN_APP, PUSH | daily AI cap reached |
 | `AI_PROVIDER_ERROR` | workspace owner | IN_APP, PUSH | AI provider rejected the key or hit its quota |
 | `ANSWER_KEY_DRAFTED` | task's teacher | IN_APP, PUSH | AI drafted a missing answer key on the first submission (`modules/answerKey.ts`); never contains the key |
+| `SYLLABUS_ACCESS_GRANTED` | student | IN_APP, EMAIL, PUSH | a grant first reaches the student, or the first version of a syllabus is published (`syllabus/notify.ts`); key `syl-access:<grantId>:<studentId>` |
+| `SYLLABUS_UNLOCKED` | student | IN_APP, PUSH | lessons/modules unlocked; batched per enrollment for 2 min, the first lesson and anything the student already opened are left out |
+| `SYLLABUS_APPROVAL_NEEDED` | syllabus teacher | IN_APP, PUSH | a lesson, module or the whole syllabus waits for teacher approval; batched per syllabus for 2 min |
+| `SYLLABUS_COMPLETED` | student | IN_APP, EMAIL, PUSH | syllabus completed (once per student and syllabus, key `syl-complete:<syllabusId>:<studentId>`) |
 
 Throttling that belongs to the domain stays there: grade e-mails are decided by `grade_email_log`
 (only on release or a changed score), AI alerts by `notification_dedupe` (24 h / 6 h per workspace).

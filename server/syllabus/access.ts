@@ -8,6 +8,7 @@ import { activeGroupIdsOfStudent, assertGroupOwner, teacherStudentIds } from "..
 import { logActivity } from "./activityLog";
 import { bestGrantState, effectiveGrant, grantState } from "./accessRules";
 import { syllabusEnabledFor } from "./availability";
+import { announceGrants } from "./notify";
 import * as store from "./store";
 
 /**
@@ -44,7 +45,14 @@ export async function grantAccess(scope: TeacherScope, syllabusId: string, input
     ...groupIds.map((groupId) => ({ groupId, studentId: null as number | null })),
     ...studentIds.map((studentId) => ({ groupId: null as string | null, studentId })),
   ].map((r) => ({ id: nanoid(), syllabusId, ...r, startsAt: input.startsAt, endsAt: input.endsAt, note: input.note?.trim() || null, grantedBy: scope.userId }));
+  const before = rows.length ? await store.grantsForSyllabus(syllabusId) : [];
   if (rows.length) await requireDb().insert(syllabusAccessGrants).values(rows);
+  const now = new Date();
+  announceGrants(
+    syllabus,
+    before,
+    rows.map((r) => ({ ...r, status: "ACTIVE" as const, grantedAt: now, revokedAt: null, revokedBy: null })),
+  );
   await logActivity(
     studentIds.map((userId) => ({ userId, workspaceId: scope.workspaceId, syllabusId, activityType: "ACCESS_GRANTED" as const, source: "SERVER" as const })),
   );

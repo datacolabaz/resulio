@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { syllabusPracticeTasks, taskAnswerKeys, taskGradingSettings, tasks } from "../../drizzle/schema";
+import { syllabi, syllabusPracticeTasks, taskAnswerKeys, taskGradingSettings, tasks } from "../../drizzle/schema";
 import { studentPracticeContentSchema } from "../../shared/syllabus";
 import type { DbOrTx } from "../db";
 import { isMissingTable } from "../notifications/preferences";
@@ -57,6 +57,29 @@ export async function syncContainer(db: DbOrTx, taskId: string, title: string, c
   const { autoGrade, ...fields } = taskFields(title, content);
   await db.update(tasks).set(fields).where(eq(tasks.id, taskId));
   await setAutoGrade(db, taskId, autoGrade);
+}
+
+/**
+ * Saving the answer key of a draft container is a draft change: the key is part of the publish hash,
+ * so the builder must show "unpublished changes". Frozen (published) containers are left alone.
+ */
+export async function markDraftChangedForContainer(db: DbOrTx, taskId: string) {
+  try {
+    const [link] = await db
+      .select({ syllabusId: syllabusPracticeTasks.syllabusId })
+      .from(syllabusPracticeTasks)
+      .where(and(eq(syllabusPracticeTasks.taskId, taskId), isNull(syllabusPracticeTasks.versionId)))
+      .limit(1);
+    if (!link) return false;
+    await db
+      .update(syllabi)
+      .set({ draftRevision: sql`${syllabi.draftRevision} + 1`, hasDraftChanges: true })
+      .where(eq(syllabi.id, link.syllabusId));
+    return true;
+  } catch (error) {
+    if (isMissingTable(error)) return false;
+    throw error;
+  }
 }
 
 export async function answerKeyOf(db: DbOrTx, taskId: string) {

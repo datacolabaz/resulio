@@ -1,11 +1,13 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
+  files,
   groupLearningSettings,
   syllabusApprovals,
   syllabusEnrollments,
   syllabusItemProgress,
   syllabusLessonProgress,
+  syllabusModuleProgress,
   users,
 } from "../../drizzle/schema";
 import type { ApprovalTargetType, UnlockTargetType } from "../../shared/syllabus";
@@ -106,7 +108,7 @@ export async function studentDetail(scope: TeacherScope, syllabusId: string, stu
         status: l.status,
         unlockSource: l.unlockSource,
         optional: l.optional,
-        items: l.items,
+        items: l.items.map((e) => ({ ...e, title: locateItem(state.structure, e.itemId)?.item.title ?? "" })),
         unlockedAt: row?.unlockedAt ?? null,
         openedAt: row?.openedAt ?? null,
         completedAt: row?.completedAt ?? null,
@@ -157,6 +159,53 @@ export async function decideApproval(
     .values({ id: nanoid(), enrollmentId: enrollment.id, targetType: target.type, targetId: target.id, decision, note: note.trim() || null, decidedBy: scope.userId });
   await progression.recompute(enrollment.id);
   return { ok: true };
+}
+
+/** Everything waiting for the teacher's approval in one syllabus (lessons, modules, the whole syllabus). */
+export async function pendingApprovals(scope: TeacherScope, syllabusId: string) {
+  await ownedSyllabus(scope, syllabusId);
+  const db = requireDb();
+  const [lessonRows, moduleRows, enrollments] = await Promise.all([
+    db.select().from(syllabusLessonProgress).where(and(eq(syllabusLessonProgress.syllabusId, syllabusId), eq(syllabusLessonProgress.status, "AWAITING_APPROVAL"))),
+    db.select().from(syllabusModuleProgress).where(and(eq(syllabusModuleProgress.syllabusId, syllabusId), eq(syllabusModuleProgress.status, "AWAITING_APPROVAL"))),
+    db.select().from(syllabusEnrollments).where(and(eq(syllabusEnrollments.syllabusId, syllabusId), eq(syllabusEnrollments.status, "ACTIVE"))),
+  ]);
+  const byId = new Map(enrollments.map((e) => [e.id, e]));
+  const rows: Array<{ enrollmentId: string; studentId: number; targetType: ApprovalTargetType; targetId: string; title: string; since: Date | null }> = [];
+  const structureOf = async (e: (typeof enrollments)[number]) => (await store.versionById(e.versionId))?.structure ?? null;
+  for (const r of lessonRows) {
+    const e = byId.get(r.enrollmentId);
+    const s = e ? await structureOf(e) : null;
+    if (!e || !s) continue;
+    rows.push({ enrollmentId: e.id, studentId: e.studentId, targetType: "LESSON", targetId: r.lessonId, title: locateLesson(s, r.lessonId)?.lesson.title ?? "", since: r.updatedAt ?? null });
+  }
+  for (const r of moduleRows) {
+    const e = byId.get(r.enrollmentId);
+    const s = e ? await structureOf(e) : null;
+    if (!e || !s) continue;
+    rows.push({ enrollmentId: e.id, studentId: e.studentId, targetType: "MODULE", targetId: r.moduleId, title: s.modules.find((m) => m.id === r.moduleId)?.title ?? "", since: r.updatedAt ?? null });
+  }
+  for (const e of enrollments) {
+    if (e.completedLessons < e.totalLessons || e.totalLessons === 0) continue;
+    const s = await structureOf(e);
+    if (!s?.rules.teacherApproval) continue;
+    const state = await progression.current(e);
+    if (state?.output.syllabusAwaitingApproval) rows.push({ enrollmentId: e.id, studentId: e.studentId, targetType: "SYLLABUS", targetId: "syllabus", title: "", since: e.lastActivityAt });
+  }
+  const ids = [...new Set(rows.map((r) => r.studentId))];
+  const names = ids.length ? await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, ids)) : [];
+  return rows
+    .map((r) => ({ ...r, studentName: names.find((n) => n.id === r.studentId)?.name ?? "—" }))
+    .sort((a, b) => (a.since?.getTime() ?? 0) - (b.since?.getTime() ?? 0));
+}
+
+/** Name and size of the teacher's own uploaded files (the builder shows them for saved blocks). */
+export async function fileInfo(scope: TeacherScope, ids: readonly string[]) {
+  if (!ids.length) return [];
+  return requireDb()
+    .select({ id: files.id, name: files.fileName, size: files.sizeBytes, mimeType: files.mimeType })
+    .from(files)
+    .where(and(inArray(files.id, [...new Set(ids)]), eq(files.workspaceId, scope.workspaceId)));
 }
 
 /** TEACHER_MARKED rule: the teacher marks a teacher-practice item covered for some students or a whole group. */

@@ -43,6 +43,8 @@ vi.mock("./syllabus/store", () => ({
   groupById: vi.fn(),
   activeMembersWithNames: vi.fn(),
   enrollmentsOfStudents: vi.fn(),
+  groupsByIds: vi.fn(),
+  completionOf: vi.fn(),
 }));
 vi.mock("./syllabus/progression", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./syllabus/progression")>()),
@@ -389,5 +391,65 @@ describe("groupmate progress visibility", () => {
   it("the router maps the hidden setting to FORBIDDEN", async () => {
     m.store.progressVisibleToGroup.mockResolvedValue(false);
     expect(await codeOf(caller(user(STUDENT)).student.syllabus.groupProgress({ id: "syl1", groupId: "grp1" }))).toBe("FORBIDDEN:SYLLABUS_PROGRESS_HIDDEN");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Student progression UI (Phase 3)
+// ---------------------------------------------------------------------------
+
+describe("student overview and nav flag", () => {
+  beforeEach(() => {
+    m.store.versionById.mockResolvedValue({ version: { label: "v1.0" }, structure: STRUCTURE } as never);
+    m.store.groupsByIds.mockResolvedValue([{ id: "grp1", name: "Qrup A", workspaceId: "ws_teacher" }] as never);
+  });
+
+  it("active access returns the path with progress summary and the student's granted groups", async () => {
+    const res = await learning.overview(STUDENT, "syl1");
+    expect(res.mode).toBe("ACTIVE");
+    expect(res.path?.groups).toEqual([{ id: "grp1", name: "Qrup A" }]);
+    expect(res.path?.summary.theory).toEqual({ total: 2, completed: 0 });
+    expect(res.path?.completion).toBeNull();
+    expect(m.store.completionOf).not.toHaveBeenCalled();
+  });
+
+  it("ended access shows progress only — no content is loaded", async () => {
+    m.store.grantsForSyllabus.mockResolvedValue([grant({ status: "REVOKED", revokedAt: new Date("2026-05-01") })]);
+    m.store.enrollmentOf.mockResolvedValue(null);
+    const res = await learning.overview(STUDENT, "syl1");
+    expect(res).toMatchObject({ mode: "ENDED", path: null, ended: { access: "REVOKED", progress: null, modules: [] } });
+    expect(m.store.versionItems).not.toHaveBeenCalled();
+  });
+
+  it("students no grant reaches get NOT_FOUND, not an ended view", async () => {
+    m.store.grantsForSyllabus.mockResolvedValue([]);
+    expect(await codeOf(learning.overview(STUDENT, "syl1"))).toBe("NOT_FOUND");
+    expect(await codeOf(caller(user(STUDENT)).student.syllabus.overview({ id: "syl1" }))).toBe("NOT_FOUND:NOT_FOUND");
+  });
+
+  it("the nav flag is on only when an enabled, published syllabus reaches the student, and never throws", async () => {
+    m.store.grantsReachingStudent.mockResolvedValue([grant()]);
+    m.store.enrollmentsOfStudent.mockResolvedValue([]);
+    m.store.syllabiByIds.mockResolvedValue([SYLLABUS]);
+    expect(await caller(user(STUDENT)).student.syllabus.enabled()).toEqual({ enabled: true });
+
+    m.availability.syllabusEnabledFor.mockResolvedValue(false);
+    expect(await caller(user(STUDENT)).student.syllabus.enabled()).toEqual({ enabled: false });
+
+    m.availability.syllabusEnabledFor.mockResolvedValue(true);
+    m.store.syllabiByIds.mockResolvedValue([{ ...SYLLABUS, currentVersionId: null }]);
+    expect(await caller(user(STUDENT)).student.syllabus.enabled()).toEqual({ enabled: false });
+
+    m.store.grantsReachingStudent.mockRejectedValue(new Error("Table 'syllabus_access_grants' doesn't exist"));
+    expect(await caller(user(STUDENT)).student.syllabus.enabled()).toEqual({ enabled: false });
+  });
+
+  it("another teacher cannot see the students, approvals or a student's detail", async () => {
+    m.access.resolveWorkspace.mockResolvedValue({ id: "ws_other", ownerUserId: 99 } as never);
+    const c = caller(user(99));
+    expect(await codeOf(c.teacher.syllabus.students({ id: "syl1" }))).toBe("NOT_FOUND:NOT_FOUND");
+    expect(await codeOf(c.teacher.syllabus.approvals({ id: "syl1" }))).toBe("NOT_FOUND:NOT_FOUND");
+    expect(await codeOf(c.teacher.syllabus.student({ id: "syl1", studentId: STUDENT }))).toBe("NOT_FOUND:NOT_FOUND");
+    expect(await codeOf(c.teacher.syllabus.manualUnlock({ id: "syl1", studentId: STUDENT, targetType: "LESSON", targetId: "l2", reason: "sick leave" }))).toBe("NOT_FOUND:NOT_FOUND");
   });
 });

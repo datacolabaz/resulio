@@ -78,6 +78,7 @@ const STUDENT_NAV: typeof TEACHER_NAV = [
   { href: "/student", key: "nav.home", icon: LayoutDashboard, exact: true },
   { href: "/student/assessments", key: "nav.exams", icon: ClipboardList },
   { href: "/student/assignments", key: "nav.assignments", icon: FileText },
+  { href: "/student/syllabus", key: "nav.mySyllabi", icon: BookOpen },
   { href: "/student/materials", key: "nav.materials", icon: FolderOpen },
   { href: "/student/groups", key: "nav.myGroups", icon: Users },
   { href: "/student/results", key: "nav.myResults", icon: ListChecks },
@@ -171,6 +172,8 @@ export function AppShell({
   const unread = notes.data?.filter((n) => !n.read).length ?? 0;
   const syllabusFlag = trpc.teacher.syllabus.enabled.useQuery(undefined, { enabled: area === "teaching", staleTime: 5 * 60_000 });
   const teacherNav = syllabusFlag.data?.enabled ? TEACHER_NAV : TEACHER_NAV.filter((i) => i.href !== "/teacher/syllabus");
+  const studentSyllabus = trpc.student.syllabus.enabled.useQuery(undefined, { enabled: area === "learning", staleTime: 5 * 60_000 });
+  const studentNav = studentSyllabus.data?.enabled ? STUDENT_NAV : STUDENT_NAV.filter((i) => i.href !== "/student/syllabus");
   const drawerOpen = open && !desktop;
 
   useEffect(() => {
@@ -200,7 +203,7 @@ export function AppShell({
     ...(user ? availableContexts(user) : []).map((c) => ({ href: CONTEXT_HOME[c], label: contextLabel(c), icon: CONTEXT_ICON[c], exact: true })),
     { href: "/settings", label: t("nav.settings"), icon: Settings },
   ];
-  const items = area === "teaching" ? toItems(teacherNav) : area === "learning" ? toItems(STUDENT_NAV) : area === "partner" ? partnerNav : neutralNav;
+  const items = area === "teaching" ? toItems(teacherNav) : area === "learning" ? toItems(studentNav) : area === "partner" ? partnerNav : neutralNav;
   const activeWorkspace = user?.workspaces.find((w) => w.id === getActiveWorkspaceId()) ?? user?.workspaces[0];
   const isActive = (i: NavItem) => (i.exact ? location === i.href : location === i.href || location.startsWith(`${i.href}/`));
   const title = titleOverride ?? items.find(isActive)?.label ?? "Resulio";

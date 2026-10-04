@@ -1,6 +1,6 @@
 # Syllabus / Structured Learning Architecture — analysis, design and plan
 
-Status: **approved by the owner** (all 12 recommended defaults, with one change to Q7 — see §15). **Phase 1 (database + backend) implemented** behind the `SYLLABUS` feature flag — see §16. **Phase 2 (teacher builder UI) implemented** — see §17. Phase 3 (student progression UI) is next.
+Status: **approved by the owner** (all 12 recommended defaults, with one change to Q7 — see §15). **Phase 1 (database + backend) implemented** behind the `SYLLABUS` feature flag — see §16. **Phase 2 (teacher builder UI) implemented** — see §17. **Phase 3 (student progression UI) implemented** — see §18. Phase 4 (assessment integration) is next.
 Spec: [`docs/specs/SYLLABUS-SPEC.md`](specs/SYLLABUS-SPEC.md) (the owner's 45-section specification, Azerbaijani).
 Baseline analysed: `main` at `fc649af` (migrations up to `0025_task_answer_keys`).
 
@@ -805,7 +805,7 @@ Sizes are rough developer-day estimates for one experienced developer (including
 - **Acceptance**: a teacher builds the spec's Java example (10 modules × 7 lessons) without leaving the builder; reorder/duplicate persist; preview matches student view; publish creates v1.0/v1.1 with change note.
 - **Tests**: component smoke via browser-smoke script; API tests for reorder/duplicate/revision conflicts.
 
-### Phase 3 — Student progression (≈ 7–9 days)
+### Phase 3 — Student progression (≈ 7–9 days) — ✅ delivered (see §18)
 - **Scope**: student pages (My syllabi, Learning path, Lesson player), theory completion, practice submission through reused task core (AI review/auto-grade), relative deadlines, recompute triggers + hooks + reconciler, manual unlock/approval (teacher + admin with audit), version move, notifications (access granted, unlocked, completed, approval needed), activity ingestion (`useLearningActivity`), file access rules.
 - **Acceptance**: the default rule chain of §8/§9 works end-to-end; locked lesson URL shows lock reason, API returns no content; manual unlock creates audit row and does not complete the lesson; resubmission and AI auto-grade drive completion; 100 students progress independently.
 - **Tests**: progression scenarios incl. concurrency (parallel triggers), idempotent notifications, hidden containers never visible elsewhere.
@@ -954,3 +954,47 @@ Teacher builder UI behind the same `SYLLABUS` flag. No migrations. The only chan
 ### 17.6 Tests
 - `server/syllabusBuilder.test.ts` — video whitelist/embed, sanitizer and theory schema, content refs, sample syllabus validity in AZ/EN/RU, publish diff, reorder helpers, rule override helpers, markdown parser and safe links, block serialization, every dynamic i18n key exists.
 - `server/syllabusPermissions.test.ts` — flag gate and cross-workspace isolation for `createSample`, `preview`, `publishPreview`.
+
+---
+
+## 18. Phase 3 — what was implemented
+
+Student progression UI behind the same `SYLLABUS` flag. **No migrations.** Changes to existing screens: the student sidebar entry **Mənim syllabus-larım** (shown only when an enabled, published syllabus reaches the student — `student.syllabus.enabled`), a new **Tələbələr** tab on the teacher's syllabus page, and an optional `returnTo` query parameter on the exam session page (only `/student/syllabus/...` paths are accepted).
+
+### 18.1 Student pages (`client/src/pages/student/syllabus/*`)
+| Route | What the student sees |
+|---|---|
+| `/student/syllabus` | Cards: cover, overall %, lessons done, last activity, access state (not started yet with start date / expired / closed), **Tamamlandı** badge; "Continue" goes straight to the current lesson |
+| `/student/syllabus/:id` | Learning path: modules (collapsible) and lessons with ✅ done / 🔵 current / ⏳ waiting / 🔒 locked and the lock reason ("Əvvəlcə tamamlayın: Dərs 4 · «Loops»"); names of locked nodes are visible, content is not. Module and final assessments with start/retry. Progress panel (overall %, completed / open / locked lessons, theory, practice completed / awaiting review, assessment scores, % per module). Groupmates panel per the group's "İrəliləyiş qrupda görünsün" setting. Completion card (date, overall %, final %, version, verification code — certificate-ready record, no PDF). Awaiting-approval note. Ended access (expired / revoked / not started): progress and statuses only, no content |
+| `/student/syllabus/:id/lessons/:lessonId` | Lesson player with section tabs: theory (code highlighting, video embeds with playback tracking, "Oxudum" button), teacher practice (rule text; solution only if revealed), student practice (text + files through the existing task submission core; AI auto-grade result, teacher review / AI checking states, due date, resubmit until graded), assessment (pass mark, attempts used / left, score policy, best / latest score, cooldown, resume; starts through the existing exam session and comes back to the lesson), resources. Remaining requirements and next-lesson button. A locked lesson URL shows only the title and the lock reason |
+
+### 18.2 Activity tracking (spec §29)
+`useActivity` + `ActivityQueue` (`client/src/lib/syllabusTracker.ts`): SYLLABUS/MODULE/LESSON/THEORY/TEACHER_PRACTICE/PRACTICE/ASSESSMENT_OPENED, PRACTICE_STARTED, VIDEO_OPENED/STARTED/PROGRESS (25/50/75 with block index)/COMPLETED (≥ 95 %), HEARTBEAT (30 s while visible and not idle for 90 s). "Opened" events are sent once per page session; batches go out every 10 s at most (sooner when full or the tab is hidden), well under the 60 requests/min limit. Video progress uses the YouTube/Vimeo postMessage APIs (no SDK); Loom/Drive report "started" on focus. Outcome events (submitted, passed, completed …) stay server-side.
+
+### 18.3 Notifications (existing dispatcher, user preferences respected)
+`SYLLABUS_ACCESS_GRANTED` (in-app + e-mail), `SYLLABUS_UNLOCKED` (in-app only, batched 2 min per enrollment, first lesson and already-opened nodes left out), `SYLLABUS_APPROVAL_NEEDED` (teacher, in-app, batched per syllabus), `SYLLABUS_COMPLETED` (in-app + e-mail, once). See `docs/NOTIFICATIONS.md`.
+
+### 18.4 Teacher additions
+**Tələbələr** tab: approval queue (lesson / module / whole syllabus; approve or return with a note), per-student progress list, student detail dialog (path statuses, opened time, active time, manual unlock of a lesson or module with a reason, list and revoke manual unlocks, mark a teacher practice covered for the student or the whole group).
+
+### 18.5 Phase 2 limitations fixed
+- Files inside syllabus content (theory files/images, practice attachments, cover) are downloadable by a student only with live access and only while the item using the file is unlocked — checked server-side in the files route (`syllabus/fileAccess.ts`, same lazy-import pattern as the other `studentCanReach` rules).
+- Saving only an answer key marks the draft as having unpublished changes.
+- Saved files show their real size (`teacher.syllabus.fileInfo`).
+
+### 18.6 Decisions
+- `engine` reports `syllabusAwaitingApproval` (every requirement met, only the syllabus-level approval missing) so the student and the teacher queue can show it.
+- Assessment scores in the player and progress panel follow the assessment's result-release rule (`visibilityForResults`); a held result shows "not released yet".
+- After an exam started from a lesson, the student returns to the lesson (the result link is listed under the attempt).
+
+### 18.7 Phase 4 (assessment integration) — already done vs remaining
+- **Already done** (Phases 1–3): lesson/module/final assessment items, just-in-time per-student assignments with attempt limit and cooldown (`availableFrom`), pass % / retry / score policy in the engine, recompute on result and manual grading hooks + reconciler, pending manual review keeps the lesson in review, `syllabus_completions` written once, starting from the lesson player and returning to it.
+- **Remaining**: ExamBuilder `returnTo` back into the lesson editor; hiding syllabus JIT assignments from the generic exam lists; `publish({moveAssignments})` guard when an assessment version changes under enrolled students; end-to-end tests against the real attempts engine (start / submit / sweeper auto-submit, open-answer grading then unlock); "back to lesson" on the result page.
+
+### 18.8 Known limitations
+- Visual check: no local MySQL, so pages were type-checked, unit-tested and built, not clicked through in a browser with data.
+- Unlock notices are batched in memory (per server process); a restart inside the 2-minute window drops that batch (progress itself is unaffected).
+
+### 18.9 Tests
+- `server/syllabusLearning.test.ts` — notice planning (unlock / approval / first-lesson exclusion, unseen filter, dedupe keys), templates in AZ/EN/RU and escaping, assessment state (pass mark, attempts, cooldown, resume, held scores), practice due dates, progress summary, file-usage lookup, code highlighter (incl. large input), activity queue (dedupe, heartbeat merge, batch limit, restore), lock-reason numbering, node visuals, safe `returnTo`.
+- `server/syllabusPermissions.test.ts` — overview (active / ended / no grant), nav flag never throws, teacher student endpoints isolated by workspace.

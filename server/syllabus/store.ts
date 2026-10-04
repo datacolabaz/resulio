@@ -6,6 +6,7 @@ import {
   users,
   syllabi,
   syllabusAccessGrants,
+  syllabusCompletions,
   syllabusEnrollments,
   syllabusVersionItems,
   syllabusVersions,
@@ -94,6 +95,16 @@ export async function enrollmentsOfStudents(syllabusId: string, studentIds: read
     .select()
     .from(syllabusEnrollments)
     .where(and(eq(syllabusEnrollments.syllabusId, syllabusId), inArray(syllabusEnrollments.studentId, [...studentIds])));
+}
+
+export async function groupsByIds(ids: readonly string[], db: DbOrTx = requireDb()) {
+  if (!ids.length) return [];
+  return db.select({ id: groups.id, name: groups.name, workspaceId: groups.providerWorkspaceId }).from(groups).where(inArray(groups.id, [...ids]));
+}
+
+export async function completionOf(enrollmentId: string, db: DbOrTx = requireDb()) {
+  const [row] = await db.select().from(syllabusCompletions).where(eq(syllabusCompletions.enrollmentId, enrollmentId)).limit(1);
+  return row ?? null;
 }
 
 /** No row (or no table yet) = the default: groupmates see each other's progress. */

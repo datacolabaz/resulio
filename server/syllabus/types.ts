@@ -144,6 +144,8 @@ export interface EngineOutput {
   lessons: LessonResult[];
   finalItems: ItemEval[];
   syllabusCompleted: boolean;
+  /** Every requirement met, only the teacher's syllabus-level approval missing. */
+  syllabusAwaitingApproval: boolean;
   completedLessons: number;
   totalLessons: number;
   progressPct: number;

@@ -4,12 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { t } from "@/i18n/messages";
 import { errorText, fmtClock } from "@/lib/format";
+import { safeReturnPath } from "@/lib/syllabusLearn";
 import { trpc } from "@/lib/trpc";
 import type { StudentAnswer } from "@shared/assessment";
 import { AlarmClock, Check, Clock, CloudOff } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Link, Redirect, useLocation, useParams } from "wouter";
+import { Link, Redirect, useLocation, useParams, useSearch } from "wouter";
 
 const SAVE_DELAY_MS = 1200;
 const RETRY_MS = 8000;
@@ -63,6 +64,8 @@ export default function StudentSession() {
   const { id } = useParams<{ id: string }>();
   const attemptId = id!;
   const [, navigate] = useLocation();
+  const returnTo = safeReturnPath(new URLSearchParams(useSearch()).get("returnTo"));
+  const utils = trpc.useUtils();
   const session = trpc.student.session.useQuery({ attemptId }, { enabled: Boolean(id), refetchOnWindowFocus: false, retry: false });
   const save = trpc.student.save.useMutation();
   const submit = trpc.student.submit.useMutation();
@@ -222,7 +225,11 @@ export default function StudentSession() {
     try {
       const r = await submit.mutateAsync({ attemptId });
       writeBuffer(attemptId, {});
-      if (r.resultId) navigate(`/student/results/${r.resultId}`);
+      if (returnTo) {
+        void utils.student.syllabus.invalidate();
+        toast.success(t("learn.assessment.submitted"));
+        navigate(returnTo);
+      } else if (r.resultId) navigate(`/student/results/${r.resultId}`);
       else {
         toast.info(t("session.timeUpNoAnswers"));
         navigate(`/student/assessments/${data?.assessmentId ?? ""}`);
@@ -239,14 +246,14 @@ export default function StudentSession() {
         <div className="max-w-md rounded-2xl border bg-card p-6 text-center">
           <p role="alert" className="text-sm text-destructive">{errorText(session.error)}</p>
           <Button asChild className="mt-4" variant="outline">
-            <Link href="/student/assessments">{t("session.backToExams")}</Link>
+            <Link href={returnTo ?? "/student/assessments"}>{returnTo ? t("learn.backToLesson") : t("session.backToExams")}</Link>
           </Button>
         </div>
       </div>
     );
   }
   if (session.data?.done) {
-    return <Redirect to={session.data.resultId ? `/student/results/${session.data.resultId}` : "/student/results"} />;
+    return <Redirect to={returnTo ?? (session.data.resultId ? `/student/results/${session.data.resultId}` : "/student/results")} />;
   }
   if (!data) return <Loading />;
 

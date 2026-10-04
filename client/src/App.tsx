@@ -27,6 +27,9 @@ import {
 } from "@/pages/student/StudentPages";
 import StudentProfile from "@/pages/student/StudentProfile";
 import StudentSession from "@/pages/student/StudentSession";
+import { LessonPlayer } from "@/pages/student/syllabus/LessonPlayer";
+import { MySyllabi } from "@/pages/student/syllabus/MySyllabi";
+import { SyllabusPathPage } from "@/pages/student/syllabus/SyllabusPath";
 import { AnalyticsPage } from "@/pages/teacher/Analytics";
 import { AssessmentDetailPage, AssessmentsPage } from "@/pages/teacher/Assessments";
 import { EditAssessmentPage, NewAssessmentPage } from "@/pages/teacher/ExamBuilder";
@@ -179,6 +182,9 @@ function Router() {
       <Route path="/student/results">{student(<StudentResults />)}</Route>
       <Route path="/student/results/:id">{student(<StudentResultDetail />)}</Route>
       <Route path="/student/progress">{student(<StudentProgress />)}</Route>
+      <Route path="/student/syllabus">{student(<MySyllabi />)}</Route>
+      <Route path="/student/syllabus/:id/lessons/:lessonId">{student(<LessonPlayer />)}</Route>
+      <Route path="/student/syllabus/:id">{student(<SyllabusPathPage />)}</Route>
       <Route path="/student/exams"><Redirect to="/student/assessments?type=EXAM" /></Route>
       <Route path="/student/ksq"><Redirect to="/student/assessments?type=KSQ" /></Route>
       <Route path="/student/bsq"><Redirect to="/student/assessments?type=BSQ" /></Route>

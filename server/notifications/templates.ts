@@ -324,3 +324,198 @@ export function answerKeyDraftedText(locale: ServerLocale, taskTitle: string) {
   const t = ANSWER_KEY_DRAFTED[locale];
   return { title: t.title, body: fillTemplate(t.body, { task: cleanTitle(taskTitle, 120) }) };
 }
+
+// ---------------------------------------------------------------------------
+// Syllabus: access granted, unlocks (batched), approval needed (teacher), completed
+// ---------------------------------------------------------------------------
+
+const LOCALE_TAG: Record<ServerLocale, string> = { az: "az-AZ", en: "en-GB", ru: "ru-RU" };
+
+/** Date only, in the platform's time zone (the student's own zone is unknown to the server). */
+export function noticeDate(locale: ServerLocale, iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(LOCALE_TAG[locale], { timeZone: "Asia/Baku", year: "numeric", month: "long", day: "numeric" });
+}
+
+export const syllabusPath = (syllabusId: string) => `/student/syllabus/${encodeURIComponent(syllabusId)}`;
+export const syllabusLessonPath = (syllabusId: string, lessonId: string) => `${syllabusPath(syllabusId)}/lessons/${encodeURIComponent(lessonId)}`;
+export const teacherApprovalsPath = (syllabusId: string) => `/teacher/syllabus/${encodeURIComponent(syllabusId)}?tab=students`;
+
+const SYL_ACCESS: Record<ServerLocale, {
+  title: (s: string) => string;
+  body: string;
+  bodyLater: (date: string) => string;
+  heading: string;
+  intro: (s: string) => string;
+  later: (date: string) => string;
+  button: string;
+  footer: string;
+}> = {
+  az: {
+    title: (s) => `Yeni syllabus: ${s}`,
+    body: "Müəlliminiz sizə öyrənmə yolu açdı. Birinci dərsdən başlayın.",
+    bodyLater: (d) => `Giriş ${d} tarixində açılacaq.`,
+    heading: "Sizə yeni syllabus açıldı",
+    intro: (s) => `Müəlliminiz sizə «${s}» syllabus-una giriş verdi. Dərslər ardıcıl açılır: birini tamamlayanda növbəti açılır.`,
+    later: (d) => `Giriş ${d} tarixində başlayır.`,
+    button: "Syllabus-a bax",
+    footer: "Bu məktub Resulio tərəfindən avtomatik göndərilib, çünki müəlliminiz sizə syllabus açdı.",
+  },
+  en: {
+    title: (s) => `New syllabus: ${s}`,
+    body: "Your teacher opened a learning path for you. Start with the first lesson.",
+    bodyLater: (d) => `Access opens on ${d}.`,
+    heading: "A new syllabus is open for you",
+    intro: (s) => `Your teacher gave you access to the syllabus “${s}”. Lessons open in order: finishing one opens the next.`,
+    later: (d) => `Access starts on ${d}.`,
+    button: "Open syllabus",
+    footer: "Resulio sent this e-mail automatically because your teacher gave you a syllabus.",
+  },
+  ru: {
+    title: (s) => `Новый силлабус: ${s}`,
+    body: "Преподаватель открыл вам учебный путь. Начните с первого урока.",
+    bodyLater: (d) => `Доступ откроется ${d}.`,
+    heading: "Вам открыт новый силлабус",
+    intro: (s) => `Преподаватель открыл вам доступ к силлабусу «${s}». Уроки открываются по порядку: завершив один, вы откроете следующий.`,
+    later: (d) => `Доступ начнётся ${d}.`,
+    button: "Открыть силлабус",
+    footer: "Это письмо отправлено Resulio автоматически, потому что преподаватель открыл вам силлабус.",
+  },
+};
+
+export function syllabusAccessInApp(locale: ServerLocale, syllabusTitle: string, startsAt: string | null) {
+  const tx = SYL_ACCESS[locale];
+  const date = startsAt ? noticeDate(locale, startsAt) : "";
+  return { title: tx.title(cleanTitle(syllabusTitle, 120)), body: date ? tx.bodyLater(date) : tx.body };
+}
+
+export function buildSyllabusAccessEmail(input: { to: string; locale: ServerLocale; syllabusId: string; syllabusTitle: string; startsAt: string | null; appUrl: string }): EmailMessage {
+  const tx = SYL_ACCESS[input.locale];
+  const title = cleanTitle(input.syllabusTitle);
+  const date = input.startsAt ? noticeDate(input.locale, input.startsAt) : "";
+  const url = `${input.appUrl}${syllabusPath(input.syllabusId)}`;
+  const lines = [tx.intro(title), ...(date ? [tx.later(date)] : [])];
+  const html = emailLayout({
+    heading: escapeHtml(tx.heading),
+    paragraphs: lines.map(escapeHtml),
+    buttonLabel: escapeHtml(tx.button),
+    buttonUrl: escapeHtml(url),
+    footer: escapeHtml(tx.footer),
+  });
+  const text = [tx.heading, "", ...lines, "", `${tx.button}: ${url}`, "", tx.footer].join("\n");
+  return { to: input.to, subject: tx.title(title), html, text };
+}
+
+const SYL_UNLOCK: Record<ServerLocale, { lesson: string; lessons: (n: number) => string; module: string; body: (s: string, names: string) => string }> = {
+  az: {
+    lesson: "Yeni dərs açıldı",
+    lessons: (n) => `${n} yeni dərs açıldı`,
+    module: "Yeni modul açıldı",
+    body: (s, names) => `${s}: ${names}`,
+  },
+  en: {
+    lesson: "A new lesson is open",
+    lessons: (n) => `${n} new lessons are open`,
+    module: "A new module is open",
+    body: (s, names) => `${s}: ${names}`,
+  },
+  ru: {
+    lesson: "Открыт новый урок",
+    lessons: (n) => `Открыто новых уроков: ${n}`,
+    module: "Открыт новый модуль",
+    body: (s, names) => `${s}: ${names}`,
+  },
+};
+
+export function syllabusUnlockedInApp(locale: ServerLocale, d: { syllabusTitle: string; lessons: string[]; modules: string[] }) {
+  const tx = SYL_UNLOCK[locale];
+  const title = d.modules.length ? tx.module : d.lessons.length > 1 ? tx.lessons(d.lessons.length) : tx.lesson;
+  const names = [...d.modules, ...d.lessons].map((n) => cleanTitle(n, 60)).slice(0, 4);
+  const more = d.modules.length + d.lessons.length - names.length;
+  return { title, body: tx.body(cleanTitle(d.syllabusTitle, 80), names.join(", ") + (more > 0 ? ` +${more}` : "")) };
+}
+
+const SYL_APPROVAL: Record<ServerLocale, { title: string; one: (name: string, s: string) => string; many: (n: number, s: string) => string }> = {
+  az: {
+    title: "Təsdiq gözləyir",
+    one: (n, s) => `${n} «${s}» syllabus-unda növbəti mərhələyə keçmək üçün təsdiqinizi gözləyir.`,
+    many: (n, s) => `«${s}»: ${n} tələbə təsdiqinizi gözləyir.`,
+  },
+  en: {
+    title: "Approval needed",
+    one: (n, s) => `${n} is waiting for your approval to move on in “${s}”.`,
+    many: (n, s) => `“${s}”: ${n} students are waiting for your approval.`,
+  },
+  ru: {
+    title: "Требуется подтверждение",
+    one: (n, s) => `${n} ждёт вашего подтверждения, чтобы продолжить «${s}».`,
+    many: (n, s) => `«${s}»: подтверждения ждут студентов: ${n}.`,
+  },
+};
+
+export function syllabusApprovalInApp(locale: ServerLocale, d: { syllabusTitle: string; count: number; studentName: string | null }) {
+  const tx = SYL_APPROVAL[locale];
+  const s = cleanTitle(d.syllabusTitle, 80);
+  return { title: tx.title, body: d.count === 1 && d.studentName ? tx.one(cleanTitle(d.studentName, 60), s) : tx.many(d.count, s) };
+}
+
+const SYL_DONE: Record<ServerLocale, {
+  title: (s: string) => string;
+  body: string;
+  heading: string;
+  intro: (s: string) => string;
+  code: (c: string) => string;
+  button: string;
+  footer: string;
+}> = {
+  az: {
+    title: (s) => `Təbriklər! «${s}» tamamlandı`,
+    body: "Bütün dərsləri və tələbləri tamamladınız.",
+    heading: "Syllabus tamamlandı",
+    intro: (s) => `Təbriklər! «${s}» syllabus-unun bütün dərslərini və tələblərini tamamladınız.`,
+    code: (c) => `Tamamlanma kodu: ${c}`,
+    button: "Nəticəyə bax",
+    footer: "Bu məktub Resulio tərəfindən avtomatik göndərilib.",
+  },
+  en: {
+    title: (s) => `Congratulations! “${s}” completed`,
+    body: "You completed every lesson and requirement.",
+    heading: "Syllabus completed",
+    intro: (s) => `Congratulations! You completed every lesson and requirement of the syllabus “${s}”.`,
+    code: (c) => `Completion code: ${c}`,
+    button: "View result",
+    footer: "Resulio sent this e-mail automatically.",
+  },
+  ru: {
+    title: (s) => `Поздравляем! «${s}» завершён`,
+    body: "Вы выполнили все уроки и требования.",
+    heading: "Силлабус завершён",
+    intro: (s) => `Поздравляем! Вы выполнили все уроки и требования силлабуса «${s}».`,
+    code: (c) => `Код завершения: ${c}`,
+    button: "Посмотреть результат",
+    footer: "Это письмо отправлено Resulio автоматически.",
+  },
+};
+
+export function syllabusCompletedInApp(locale: ServerLocale, syllabusTitle: string) {
+  const tx = SYL_DONE[locale];
+  return { title: tx.title(cleanTitle(syllabusTitle, 120)), body: tx.body };
+}
+
+export function buildSyllabusCompletedEmail(input: { to: string; locale: ServerLocale; syllabusId: string; syllabusTitle: string; verificationCode: string | null; appUrl: string }): EmailMessage {
+  const tx = SYL_DONE[input.locale];
+  const title = cleanTitle(input.syllabusTitle);
+  const url = `${input.appUrl}${syllabusPath(input.syllabusId)}`;
+  const code = input.verificationCode ? cleanTitle(input.verificationCode, 40) : "";
+  const lines = [tx.intro(title), ...(code ? [tx.code(code)] : [])];
+  const html = emailLayout({
+    heading: escapeHtml(tx.heading),
+    paragraphs: lines.map(escapeHtml),
+    buttonLabel: escapeHtml(tx.button),
+    buttonUrl: escapeHtml(url),
+    footer: escapeHtml(tx.footer),
+  });
+  const text = [tx.heading, "", ...lines, "", `${tx.button}: ${url}`, "", tx.footer].join("\n");
+  return { to: input.to, subject: tx.title(title), html, text };
+}

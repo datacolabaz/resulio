@@ -8,6 +8,7 @@ import { serverLocale, type ServerLocale } from "../_core/locale";
 import { requireDb } from "../db";
 import { dispatch } from "../notifications/dispatcher";
 import { isMissingTable } from "../notifications/preferences";
+import { markDraftChangedForContainer } from "../syllabus/practiceTasks";
 import type { TeacherScope } from "./access";
 import { extractJson } from "./ai";
 import { clip, LANGUAGE_NAME, loadTaskAttachments, renderAttachments, sanitizeForPrompt, type TaskAttachmentDoc } from "./aiContext";
@@ -106,6 +107,7 @@ export async function saveAnswerKey(scope: TeacherScope, taskId: string, text: s
     if (isMissingTable(error)) throw new AppError("DATABASE_UNAVAILABLE");
     throw error;
   }
+  await markDraftChangedForContainer(requireDb(), taskId);
   return { ok: true };
 }
 

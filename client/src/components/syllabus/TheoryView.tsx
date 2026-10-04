@@ -1,9 +1,11 @@
 import { t } from "@/i18n/messages";
 import { parseMarkdown, safeHref, type Inline, type MdBlock } from "@/lib/syllabus";
+import { highlightCode, type CodeTokenKind } from "@/lib/syllabusCode";
+import { crossedMarks, VIDEO_DONE_PCT } from "@/lib/syllabusTracker";
 import { fileDownloadUrl } from "@/lib/uploadFile";
-import { videoEmbedUrl } from "@shared/syllabus";
+import { videoEmbedUrl, videoProviderOf, type VideoProvider } from "@shared/syllabus";
 import { Download, ExternalLink, FileText, FolderOpen } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useMemo, useRef, type ReactNode, type RefObject } from "react";
 
 export type MaterialRef = { title: string; fileId: string | null };
 
@@ -32,11 +34,24 @@ function InlineNodes({ nodes }: { nodes: Inline[] }) {
   );
 }
 
+const TOKEN_CLASS: Record<CodeTokenKind, string> = {
+  plain: "",
+  keyword: "font-semibold text-primary",
+  string: "text-success",
+  comment: "italic text-muted-foreground",
+  number: "text-info",
+};
+
 function CodeBlock({ language, code }: { language: string; code: string }) {
+  const tokens = useMemo(() => highlightCode(code, language), [code, language]);
   return (
     <figure className="overflow-hidden rounded-xl border border-border bg-muted">
       {language && <figcaption className="border-b border-border px-3 py-1 font-mono text-xs text-muted-foreground">{language}</figcaption>}
-      <pre className="overflow-x-auto p-3 text-sm"><code className="font-mono">{code}</code></pre>
+      <pre className="overflow-x-auto p-3 text-sm">
+        <code className="font-mono">
+          {tokens.map((tok, i) => (tok.k === "plain" ? <span key={i}>{tok.v}</span> : <span key={i} className={TOKEN_CLASS[tok.k]}>{tok.v}</span>))}
+        </code>
+      </pre>
     </figure>
   );
 }
@@ -77,9 +92,99 @@ export function Markdown({ md }: { md: string }) {
   return <div className="space-y-3 text-sm">{<MarkdownBlocks blocks={parseMarkdown(md)} />}</div>;
 }
 
-export function VideoEmbed({ url }: { url: string }) {
+export type VideoSignal = { kind: "opened" } | { kind: "started" } | { kind: "progress"; pct: number } | { kind: "completed" };
+
+const PLAYER_ORIGIN: Partial<Record<VideoProvider, string>> = { youtube: "https://www.youtube-nocookie.com", vimeo: "https://player.vimeo.com" };
+
+/**
+ * Playback signals without loading any player SDK: YouTube and Vimeo report progress over
+ * postMessage once asked to; Loom and Drive have no such API, so a click into the frame counts as started.
+ */
+function useVideoSignals(frame: RefObject<HTMLIFrameElement | null>, provider: VideoProvider | null, onSignal: ((s: VideoSignal) => void) | undefined) {
+  const handler = useRef(onSignal);
+  handler.current = onSignal;
+  const enabled = !!onSignal && !!provider;
+  useEffect(() => {
+    const el = frame.current;
+    if (!enabled || !el || !provider) return;
+    const signal = (s: VideoSignal) => handler.current?.(s);
+    let started = false;
+    let done = false;
+    let maxPct = 0;
+    let duration = 0;
+    const start = () => {
+      if (started) return;
+      started = true;
+      signal({ kind: "started" });
+    };
+    const progress = (p: number) => {
+      start();
+      for (const m of crossedMarks(maxPct, p)) signal({ kind: "progress", pct: m });
+      maxPct = Math.max(maxPct, p);
+      if (!done && p >= VIDEO_DONE_PCT) {
+        done = true;
+        signal({ kind: "completed" });
+      }
+    };
+    const origin = PLAYER_ORIGIN[provider];
+    const subscribe = () => {
+      if (!origin) return;
+      if (provider === "youtube") el.contentWindow?.postMessage(JSON.stringify({ event: "listening", id: 1, channel: "widget" }), origin);
+      else for (const value of ["play", "timeupdate", "ended"]) el.contentWindow?.postMessage(JSON.stringify({ method: "addEventListener", value }), origin);
+    };
+    const onMessage = (ev: MessageEvent) => {
+      if (ev.source !== el.contentWindow || ev.origin !== origin) return;
+      let data: unknown = ev.data;
+      if (typeof data === "string") {
+        try {
+          data = JSON.parse(data);
+        } catch {
+          return;
+        }
+      }
+      const d = data as { event?: string; info?: { currentTime?: number; duration?: number; playerState?: number }; data?: { percent?: number } };
+      if (provider === "youtube" && (d.event === "infoDelivery" || d.event === "initialDelivery") && d.info) {
+        if (typeof d.info.duration === "number" && d.info.duration > 0) duration = d.info.duration;
+        if (d.info.playerState === 1) start();
+        if (d.info.playerState === 0) progress(100);
+        else if (typeof d.info.currentTime === "number" && duration > 0 && started) progress((d.info.currentTime / duration) * 100);
+      }
+      if (provider === "vimeo") {
+        if (d.event === "ready") subscribe();
+        if (d.event === "play") start();
+        if (d.event === "timeupdate" && typeof d.data?.percent === "number") progress(d.data.percent * 100);
+        if (d.event === "ended") progress(100);
+      }
+    };
+    const onBlur = () => {
+      if (document.activeElement === el) start();
+    };
+    const seen = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        signal({ kind: "opened" });
+        seen.disconnect();
+      }
+    }, { threshold: 0.5 });
+    seen.observe(el);
+    window.addEventListener("message", onMessage);
+    window.addEventListener("blur", onBlur);
+    el.addEventListener("load", subscribe);
+    return () => {
+      seen.disconnect();
+      window.removeEventListener("message", onMessage);
+      window.removeEventListener("blur", onBlur);
+      el.removeEventListener("load", subscribe);
+    };
+  }, [enabled, provider, frame]);
+}
+
+export function VideoEmbed({ url, onSignal }: { url: string; onSignal?: (s: VideoSignal) => void }) {
   const embed = videoEmbedUrl(url);
+  const provider = videoProviderOf(url);
   const href = safeHref(url);
+  const frame = useRef<HTMLIFrameElement>(null);
+  useVideoSignals(frame, embed ? provider : null, onSignal);
+  const src = embed && onSignal && provider === "youtube" ? `${embed}?enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}` : embed;
   if (!embed) {
     return href ? (
       <a href={href} target="_blank" rel="noopener noreferrer nofollow" className="inline-flex items-center gap-1 text-sm text-link underline">
@@ -91,7 +196,8 @@ export function VideoEmbed({ url }: { url: string }) {
   return (
     <div className="aspect-video w-full overflow-hidden rounded-xl border border-border bg-muted">
       <iframe
-        src={embed}
+        ref={frame}
+        src={src ?? undefined}
         title={t("syllabus.theory.videoTitle")}
         className="h-full w-full"
         loading="lazy"
@@ -116,7 +222,15 @@ function FileLink({ fileId, name, icon }: { fileId: string; name: string; icon?:
   );
 }
 
-export function TheoryBlockView({ block, materials }: { block: Record<string, unknown>; materials?: Map<string, MaterialRef> }) {
+export function TheoryBlockView({
+  block,
+  materials,
+  onVideo,
+}: {
+  block: Record<string, unknown>;
+  materials?: Map<string, MaterialRef>;
+  onVideo?: (s: VideoSignal) => void;
+}) {
   const s = (k: string) => (typeof block[k] === "string" ? (block[k] as string) : "");
   switch (block.type) {
     case "markdown":
@@ -134,7 +248,7 @@ export function TheoryBlockView({ block, materials }: { block: Record<string, un
       );
     }
     case "video":
-      return <VideoEmbed url={s("url")} />;
+      return <VideoEmbed url={s("url")} onSignal={onVideo} />;
     case "link": {
       const href = safeHref(s("url"));
       if (!href) return null;
@@ -185,12 +299,21 @@ export function TheoryBlockView({ block, materials }: { block: Record<string, un
   }
 }
 
-export function TheoryView({ blocks, materials }: { blocks: unknown; materials?: Map<string, MaterialRef> }) {
+export function TheoryView({
+  blocks,
+  materials,
+  onVideo,
+}: {
+  blocks: unknown;
+  materials?: Map<string, MaterialRef>;
+  /** Playback signals of video blocks, with the block's index. */
+  onVideo?: (blockIndex: number, s: VideoSignal) => void;
+}) {
   const list = Array.isArray(blocks) ? (blocks as Record<string, unknown>[]) : [];
   if (!list.length) return <p className="text-sm text-muted-foreground">{t("syllabus.theory.empty")}</p>;
   return (
     <div className="space-y-4">
-      {list.map((b, i) => <TheoryBlockView key={i} block={b} materials={materials} />)}
+      {list.map((b, i) => <TheoryBlockView key={i} block={b} materials={materials} onVideo={onVideo ? (s) => onVideo(i, s) : undefined} />)}
     </div>
   );
 }
