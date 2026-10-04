@@ -1,6 +1,6 @@
 # Syllabus / Structured Learning Architecture — analysis, design and plan
 
-Status: **approved by the owner** (all 12 recommended defaults, with one change to Q7 — see §15). **Phase 1 (database + backend) implemented** behind the `SYLLABUS` feature flag — see §16. Phase 2 (teacher builder UI) is next.
+Status: **approved by the owner** (all 12 recommended defaults, with one change to Q7 — see §15). **Phase 1 (database + backend) implemented** behind the `SYLLABUS` feature flag — see §16. **Phase 2 (teacher builder UI) implemented** — see §17. Phase 3 (student progression UI) is next.
 Spec: [`docs/specs/SYLLABUS-SPEC.md`](specs/SYLLABUS-SPEC.md) (the owner's 45-section specification, Azerbaijani).
 Baseline analysed: `main` at `fc649af` (migrations up to `0025_task_answer_keys`).
 
@@ -800,7 +800,7 @@ Sizes are rough developer-day estimates for one experienced developer (including
 - **Acceptance**: create → publish v1 → grant group → student sees path with only lesson 1 open; editing draft does not change student's view; revoke keeps progress; cross-workspace access is NOT_FOUND; app works with tables missing.
 - **Tests**: rules/progression/access/publishing unit tests; `syllabus.it.ts` happy path + authorization.
 
-### Phase 2 — Teacher Syllabus builder (≈ 8–10 days)
+### Phase 2 — Teacher Syllabus builder (≈ 8–10 days) — ✅ delivered (see §17)
 - **Scope**: list/new/detail pages, tree builder with drag & drop, lesson tabs (Theory block editor, Teacher Practice, Student Practice incl. answer key/AI toggle, Assessment link stub, Resources/material picker), completion rules form with inheritance hints, publish dialog with validation, versions tab, access tab, preview-as-student, Teach mode, i18n AZ/EN/RU.
 - **Acceptance**: a teacher builds the spec's Java example (10 modules × 7 lessons) without leaving the builder; reorder/duplicate persist; preview matches student view; publish creates v1.0/v1.1 with change note.
 - **Tests**: component smoke via browser-smoke script; API tests for reorder/duplicate/revision conflicts.
@@ -911,3 +911,46 @@ Hooks in existing code (no behaviour change for non-syllabus data): task submiss
 - `server/syllabusEngine.test.ts` — rule inheritance, publish snapshot, every item rule, sequential progression, assessment pass/retry/FAILED, approvals, sticky completion, manual unlock and revoke, version pinning and grandfathering.
 - `server/syllabusPermissions.test.ts` — cross-workspace isolation (service and router), feature flag gate, grant states at the student gate, locked content never loaded or returned, groupmate visibility setting.
 - `server/syllabusRules.test.ts` — grant date rules and revoke/re-grant, activity validation (whitelist, locks, kind, metadata, clamping, batch limits), visibility rows, serialization, env flag.
+
+---
+
+## 17. Phase 2 — what was implemented
+
+Teacher builder UI behind the same `SYLLABUS` flag. No migrations. The only change to existing screens is the sidebar entry **Syllabus**, which shows only when the flag is on for the teacher's workspace.
+
+### 17.1 Pages (`client/src/pages/teacher/syllabus/*`)
+| Route | What the teacher can do |
+|---|---|
+| `/teacher/syllabus` | List (cards with module/lesson counts, status, archived toggle), create dialog, **"Nümunə syllabus yarat"** demo button (locale-aware sample: 2 modules, every item kind) |
+| `/teacher/syllabus/:id` | Tabs **Structure** (sortable modules → sortable lessons, drag & drop or keyboard/arrow buttons, move lesson to another module, duplicate, delete, module and final assessments), **Settings** (title, description, subject, level, cover, duration, language, status, syllabus-level completion rules, archive), **Versions** (history, move all students to the current version), **Access** (grant to groups/students with dates, edit dates, revoke, restore = new grant, per-group "progress visible to group"). **Publish** dialog: validation problems, diff summary vs the last version, version label and note. **Preview as student** link |
+| `/teacher/syllabus/:id/lessons/:lessonId` | Lesson editor: lesson fields + lesson rules, tabs Theory / Teacher Practice / Student Practice / Assessment / Resources, each with sortable items |
+| `/teacher/syllabus/:id/present/:itemId` | Present mode for teacher practice: large text, zoom, fullscreen, hints one by one, solution hidden until "Reveal", teacher notes toggle |
+| `/teacher/syllabus/:id/preview` | Student preview of the current draft (teacher-only fields stripped server-side) |
+
+### 17.2 Lesson item editors
+- **Theory**: block editor — mini-markdown (headings, bold, italic, code, links, lists, quote, fenced code) with toolbar and preview, code, image (upload or URL), video (YouTube / Vimeo / Loom / Google Drive only; the embed URL is derived from the whitelist), link, file, material reference, table (≤ 60 × 12).
+- **Teacher Practice**: task, hints, teacher-only solution / notes / reveal setting.
+- **Student Practice**: instructions, deadline (none / fixed / relative), evaluation AI auto-grade or teacher review, own pass %, attachments, answer key (existing `teacher.tasks.answerKey` / `saveAnswerKey` / AI draft).
+- **Assessment**: pick an existing assessment, "Create in ExamBuilder" opens `/teacher/assessments/new` in a new tab + refresh; pass mark and retry overrides.
+- **Resources**: Materials by reference (never copied).
+- **Completion rules** on syllabus / module / lesson: each field shows the inherited value and its source; "override here" checkbox per field.
+
+### 17.3 Server additions
+- `teacher.syllabus.createSample` (rate-limited), `preview`, `publishPreview` (`server/syllabus/draft.ts`, `sample.ts`); `snapshot.diffStructures` for the diff summary.
+- Theory content is validated and sanitized server-side (`shared/syllabus.ts`: video whitelist, `sanitizeMarkdown`, safe link/image schemes). Referenced files and materials must belong to the teacher (`authoring.assertOwnRefs` / `assertOwnFiles`).
+- New private upload context `syllabus` (`server/_core/files.ts`).
+
+### 17.4 Decisions
+- Markdown is rendered by a small in-house parser to React elements (no HTML injection, no new dependency).
+- Drag & drop is native HTML5 + keyboard + arrow buttons (no new dependency); reorders send the full ordered id set.
+- "Restore" a revoked grant creates a new grant (history kept). `expectedRevision` is not sent by the UI yet (last write wins inside one teacher's session).
+
+### 17.5 Known limitations (to address in Phase 3)
+- Students cannot download files uploaded with the `syllabus` context yet (file access rules are Phase 3).
+- Saving only an answer key does not flip the "unpublished changes" badge, although the publish diff/hash includes it.
+- Already-saved attachments show "(0 B)" as size in the file chip.
+- Visual check: no local MySQL, so pages were smoke-tested through the dev server (modules compile, API answers 401 without login), not clicked through in a browser.
+
+### 17.6 Tests
+- `server/syllabusBuilder.test.ts` — video whitelist/embed, sanitizer and theory schema, content refs, sample syllabus validity in AZ/EN/RU, publish diff, reorder helpers, rule override helpers, markdown parser and safe links, block serialization, every dynamic i18n key exists.
+- `server/syllabusPermissions.test.ts` — flag gate and cross-workspace isolation for `createSample`, `preview`, `publishPreview`.

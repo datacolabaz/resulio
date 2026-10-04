@@ -14,8 +14,10 @@ import * as access from "./access";
 import { clientActivityBatchSchema } from "./activityRules";
 import * as authoring from "./authoring";
 import { assertSyllabusEnabled, syllabusEnabledFor } from "./availability";
+import * as draft from "./draft";
 import * as learning from "./learning";
 import * as publishing from "./publishing";
+import * as sample from "./sample";
 import * as teacherViews from "./teacherViews";
 
 const MINUTE = 60_000;
@@ -144,6 +146,12 @@ export const teacherSyllabusRouter = router({
     .input(z.object({ syllabusId: entityId, placement, orderedIds, expectedRevision: revision }))
     .mutation(({ ctx, input }) => authoring.reorderItems(ctx.scope, input.syllabusId, input.placement, input.orderedIds, input.expectedRevision)),
 
+  createSample: syllabusTeacherProcedure
+    .use(rateLimit("syllabusCreateSample", 5, MINUTE))
+    .input(z.object({ locale: z.enum(["az", "en", "ru"]).default("az") }))
+    .mutation(({ ctx, input }) => sample.createSampleSyllabus(ctx.scope, input.locale)),
+  preview: syllabusTeacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => draft.preview(ctx.scope, input.id)),
+  publishPreview: syllabusTeacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => draft.publishPreview(ctx.scope, input.id)),
   publish: syllabusTeacherProcedure
     .use(rateLimit("syllabusPublish", 10, MINUTE))
     .input(z.object({ id: entityId, label: shortText(16).optional(), changeNote: shortText(2_000).optional() }))

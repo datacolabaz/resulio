@@ -33,6 +33,10 @@ import { EditAssessmentPage, NewAssessmentPage } from "@/pages/teacher/ExamBuild
 import { GroupDetailPage, GroupsPage } from "@/pages/teacher/Groups";
 import { AssessmentParticipantsPage } from "@/pages/teacher/Participants";
 import { ResultDetailPage, ResultsPage } from "@/pages/teacher/Results";
+import { LessonEditorPage } from "@/pages/teacher/syllabus/LessonEditor";
+import { PresentModePage, SyllabusPreviewPage } from "@/pages/teacher/syllabus/PresentAndPreview";
+import { SyllabusDetailPage } from "@/pages/teacher/syllabus/SyllabusDetail";
+import { SyllabusListPage } from "@/pages/teacher/syllabus/SyllabusList";
 import TeacherHome from "@/pages/teacher/TeacherHome";
 import { AssignmentsPage, LibraryPage, UsagePage } from "@/pages/teacher/TeacherModules";
 import { useEffect, useRef } from "react";
@@ -148,6 +152,11 @@ function Router() {
       <Route path="/teacher/groups">{teacher(<GroupsPage />)}</Route>
       <Route path="/teacher/groups/:id">{teacher(<GroupDetailPage />)}</Route>
       <Route path="/teacher/assignments">{teacher(<AssignmentsPage />)}</Route>
+      <Route path="/teacher/syllabus">{teacher(<SyllabusListPage />)}</Route>
+      <Route path="/teacher/syllabus/:id/lessons/:lessonId">{teacher(<LessonEditorPage />)}</Route>
+      <Route path="/teacher/syllabus/:id/present/:itemId">{teacher(<PresentModePage />)}</Route>
+      <Route path="/teacher/syllabus/:id/preview">{teacher(<SyllabusPreviewPage />)}</Route>
+      <Route path="/teacher/syllabus/:id">{teacher(<SyllabusDetailPage />)}</Route>
       <Route path="/teacher/library">{teacher(<LibraryPage />)}</Route>
       <Route path="/teacher/results">{teacher(<ResultsPage />)}</Route>
       <Route path="/teacher/results/:id">{teacher(<ResultDetailPage />)}</Route>

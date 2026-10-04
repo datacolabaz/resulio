@@ -18,6 +18,7 @@ import { errorText, fmtDateTime } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import {
   Bell,
+  BookOpen,
   Check,
   ClipboardList,
   FileText,
@@ -64,6 +65,7 @@ const TEACHER_NAV: { href: string; key: MessageKey; icon: typeof LayoutDashboard
   { href: "/teacher/assessments", key: "nav.exams", icon: ClipboardList },
   { href: "/teacher/groups", key: "nav.groups", icon: Users },
   { href: "/teacher/assignments", key: "nav.assignments", icon: FileText },
+  { href: "/teacher/syllabus", key: "nav.syllabus", icon: BookOpen },
   { href: "/teacher/library", key: "nav.materials", icon: FolderOpen },
   { href: "/teacher/results", key: "nav.results", icon: ListChecks },
   { href: "/teacher/analytics", key: "nav.analytics", icon: LineChart },
@@ -167,6 +169,8 @@ export function AppShell({
   const notes = trpc.inbox.list.useQuery(undefined, { refetchInterval: 60_000 });
   const markRead = trpc.inbox.read.useMutation({ onSuccess: () => utils.inbox.list.invalidate() });
   const unread = notes.data?.filter((n) => !n.read).length ?? 0;
+  const syllabusFlag = trpc.teacher.syllabus.enabled.useQuery(undefined, { enabled: area === "teaching", staleTime: 5 * 60_000 });
+  const teacherNav = syllabusFlag.data?.enabled ? TEACHER_NAV : TEACHER_NAV.filter((i) => i.href !== "/teacher/syllabus");
   const drawerOpen = open && !desktop;
 
   useEffect(() => {
@@ -196,7 +200,7 @@ export function AppShell({
     ...(user ? availableContexts(user) : []).map((c) => ({ href: CONTEXT_HOME[c], label: contextLabel(c), icon: CONTEXT_ICON[c], exact: true })),
     { href: "/settings", label: t("nav.settings"), icon: Settings },
   ];
-  const items = area === "teaching" ? toItems(TEACHER_NAV) : area === "learning" ? toItems(STUDENT_NAV) : area === "partner" ? partnerNav : neutralNav;
+  const items = area === "teaching" ? toItems(teacherNav) : area === "learning" ? toItems(STUDENT_NAV) : area === "partner" ? partnerNav : neutralNav;
   const activeWorkspace = user?.workspaces.find((w) => w.id === getActiveWorkspaceId()) ?? user?.workspaces[0];
   const isActive = (i: NavItem) => (i.exact ? location === i.href : location === i.href || location.startsWith(`${i.href}/`));
   const title = titleOverride ?? items.find(isActive)?.label ?? "Resulio";

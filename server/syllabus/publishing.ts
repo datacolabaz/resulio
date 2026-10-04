@@ -1,55 +1,23 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import {
-  assessments,
-  syllabi,
-  syllabusEnrollments,
-  syllabusItems,
-  syllabusLessons,
-  syllabusModules,
-  syllabusVersionItems,
-  syllabusVersions,
-} from "../../drizzle/schema";
-import { parseItemContent } from "../../shared/syllabus";
+import { syllabi, syllabusEnrollments, syllabusVersionItems, syllabusVersions } from "../../drizzle/schema";
 import { requireDb } from "../db";
 import type { TeacherScope } from "../modules/access";
 import { AppError } from "../modules/errors";
 import { ownedSyllabus } from "./access";
+import { loadDraft } from "./draft";
 import { allItems } from "./engine";
 import { answerKeyOf, cloneContainer, createContainer } from "./practiceTasks";
-import { buildStructure, contentHash, nextVersionLabel, type DraftItem, type PublishProblem } from "./snapshot";
+import { buildStructure, contentHash, nextVersionLabel } from "./snapshot";
 
 /**
  * Publish = freeze the draft into an immutable version (§4.4). Existing enrollments stay on the
  * version they started with; only new enrollments (and explicit moves) get this one.
  */
 export async function publish(scope: TeacherScope, syllabusId: string, opts: { label?: string; changeNote?: string } = {}) {
-  const syllabus = await ownedSyllabus(scope, syllabusId);
+  const { syllabus, modules, lessons, items, problems, publishedAssessments } = await loadDraft(scope, syllabusId);
   if (syllabus.archivedAt) throw new AppError("SYLLABUS_ARCHIVED");
   const db = requireDb();
-  const [modules, lessons, itemRows] = await Promise.all([
-    db.select().from(syllabusModules).where(and(eq(syllabusModules.syllabusId, syllabusId), isNull(syllabusModules.deletedAt))),
-    db.select().from(syllabusLessons).where(and(eq(syllabusLessons.syllabusId, syllabusId), isNull(syllabusLessons.deletedAt))),
-    db.select().from(syllabusItems).where(and(eq(syllabusItems.syllabusId, syllabusId), isNull(syllabusItems.deletedAt))),
-  ]);
-
-  const problems: PublishProblem[] = [];
-  const items: DraftItem[] = [];
-  for (const it of itemRows) {
-    try {
-      items.push({ ...it, content: parseItemContent(it.kind, it.content) as Record<string, unknown> });
-    } catch {
-      problems.push({ code: "SYLLABUS_INVALID_CONTENT", itemId: it.id, title: it.title });
-    }
-  }
-  const assessmentIds = [...new Set(items.flatMap((it) => (it.kind === "ASSESSMENT" && it.assessmentId ? [it.assessmentId] : [])))];
-  const published = assessmentIds.length
-    ? await db
-        .select({ id: assessments.id, versionId: assessments.currentVersionId, status: assessments.status })
-        .from(assessments)
-        .where(and(inArray(assessments.id, assessmentIds), eq(assessments.providerWorkspaceId, scope.workspaceId)))
-    : [];
-  const publishedAssessments = new Map(published.flatMap((a) => (a.status === "PUBLISHED" && a.versionId ? [[a.id, a.versionId] as const] : [])));
 
   const dryRun = buildStructure({ syllabusRules: syllabus.completionRules, modules, lessons, items, publishedAssessments, frozenTaskIds: new Map() });
   problems.push(...dryRun.problems);

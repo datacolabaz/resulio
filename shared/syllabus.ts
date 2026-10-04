@@ -45,7 +45,9 @@ export type ApprovalTargetType = (typeof APPROVAL_TARGET_TYPES)[number];
 export const APPROVAL_DECISIONS = ["APPROVED", "RETURNED"] as const;
 
 export const DIFFICULTY_LEVELS = ["EASY", "MEDIUM", "HARD"] as const;
-export const VIDEO_PROVIDERS = ["youtube", "vimeo", "loom", "drive", "url"] as const;
+/** Video embeds are links to these hosts only (no uploads, no arbitrary iframes). */
+export const VIDEO_PROVIDERS = ["youtube", "vimeo", "loom", "drive"] as const;
+export type VideoProvider = (typeof VIDEO_PROVIDERS)[number];
 export const SUBMISSION_TYPES = ["TEXT", "FILE", "TEXT_OR_FILE", "CODE"] as const;
 export const PRACTICE_EVALUATIONS = ["TEACHER", "AI_AUTO"] as const;
 
@@ -182,6 +184,72 @@ export function resolveRules(...layers: Array<CompletionRulesPatch | null | unde
 // Item content (validated per kind)
 // ---------------------------------------------------------------------------
 
+function parseUrl(raw: string): URL | null {
+  try {
+    const url = new URL(raw.trim());
+    return url.protocol === "https:" || url.protocol === "http:" ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+const hostIs = (host: string, domain: string) => host === domain || host.endsWith(`.${domain}`);
+
+export function videoProviderOf(raw: string): VideoProvider | null {
+  const url = parseUrl(raw);
+  if (!url) return null;
+  const host = url.hostname.toLowerCase();
+  if (hostIs(host, "youtube.com") || hostIs(host, "youtu.be") || hostIs(host, "youtube-nocookie.com")) return "youtube";
+  if (hostIs(host, "vimeo.com")) return "vimeo";
+  if (hostIs(host, "loom.com")) return "loom";
+  if (host === "drive.google.com") return "drive";
+  return null;
+}
+
+const ID_PART = /^[A-Za-z0-9_-]{4,64}$/;
+
+/** The iframe URL for a supported video link, or null (then the link is shown as a plain link). */
+export function videoEmbedUrl(raw: string): string | null {
+  const url = parseUrl(raw);
+  const provider = url ? videoProviderOf(raw) : null;
+  if (!url || !provider) return null;
+  const parts = url.pathname.split("/").filter(Boolean);
+  const pick = (id: string | null | undefined) => (id && ID_PART.test(id) ? id : null);
+  if (provider === "youtube") {
+    const id = pick(url.hostname.endsWith("youtu.be") ? parts[0] : parts[0] === "watch" ? url.searchParams.get("v") : ["embed", "shorts", "live"].includes(parts[0]) ? parts[1] : null);
+    return id ? `https://www.youtube-nocookie.com/embed/${id}` : null;
+  }
+  if (provider === "vimeo") {
+    const id = [...parts].reverse().find((p) => /^\d{5,12}$/.test(p));
+    return id ? `https://player.vimeo.com/video/${id}` : null;
+  }
+  if (provider === "loom") {
+    const id = pick(["share", "embed"].includes(parts[0]) ? parts[1] : null);
+    return id ? `https://www.loom.com/embed/${id}` : null;
+  }
+  const id = pick(parts[0] === "file" && parts[1] === "d" ? parts[2] : url.searchParams.get("id"));
+  return id ? `https://drive.google.com/file/d/${id}/preview` : null;
+}
+
+/**
+ * Theory text is a small Markdown subset rendered without HTML. Defence in depth for any other
+ * renderer: raw HTML tags and comments are removed outside code spans, and links may only use
+ * http(s) or mailto.
+ */
+export function sanitizeMarkdown(md: string): string {
+  return md
+    .split(/(`[^`\n]*`)/g)
+    .map((part, i) =>
+      i % 2 === 1
+        ? part
+        : part
+            .replace(/<!--[\s\S]*?-->/g, "")
+            .replace(/<\/?[A-Za-z][^>]*>/g, "")
+            .replace(/\]\(\s*(?!https?:\/\/|mailto:)[^)]*\)/gi, "](#)"),
+    )
+    .join("");
+}
+
 const entityRef = z.string().trim().min(1).max(32);
 const webUrl = z
   .string()
@@ -193,13 +261,22 @@ const longText = z.string().max(20_000);
 const attachment = z.object({ fileId: entityRef, name: z.string().max(255), size: z.number().int().nonnegative() });
 
 export const theoryBlockSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("markdown"), md: z.string().max(50_000) }),
+  z.object({ type: z.literal("markdown"), md: z.string().max(50_000).transform(sanitizeMarkdown) }),
   z.object({ type: z.literal("code"), language: z.string().trim().max(32).default(""), code: z.string().max(50_000) }),
-  z.object({ type: z.literal("image"), fileId: entityRef.optional(), url: webUrl.optional(), caption: shortText.default("") }),
-  z.object({ type: z.literal("video"), provider: z.enum(VIDEO_PROVIDERS), url: webUrl, durationSec: z.number().int().min(0).max(36_000).optional() }),
+  z
+    .object({ type: z.literal("image"), fileId: entityRef.optional(), url: webUrl.optional(), caption: shortText.default("") })
+    .refine((b) => !!b.fileId || !!b.url, "IMAGE_SOURCE_REQUIRED"),
+  z
+    .object({ type: z.literal("video"), provider: z.enum(VIDEO_PROVIDERS), url: webUrl, durationSec: z.number().int().min(0).max(36_000).optional() })
+    .refine((b) => videoProviderOf(b.url) === b.provider, "VIDEO_HOST_NOT_ALLOWED"),
   z.object({ type: z.literal("file"), fileId: entityRef, name: shortText }),
   z.object({ type: z.literal("material"), materialId: entityRef }),
   z.object({ type: z.literal("link"), url: webUrl, title: shortText.default("") }),
+  z.object({
+    type: z.literal("table"),
+    header: z.boolean().default(true),
+    rows: z.array(z.array(z.string().max(500)).min(1).max(12)).min(1).max(60),
+  }),
 ]);
 export type TheoryBlock = z.infer<typeof theoryBlockSchema>;
 
@@ -245,6 +322,8 @@ export const assessmentItemContentSchema = z.object({
 });
 
 export const resourceContentSchema = z.object({
+  /** A teaching material referenced as-is (never copied or modified). */
+  materialId: entityRef.optional(),
   note: z.string().max(2000).default(""),
   url: webUrl.optional(),
   title: shortText.optional(),

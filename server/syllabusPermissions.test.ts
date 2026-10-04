@@ -219,12 +219,17 @@ describe("teacher isolation", () => {
     m.availability.assertSyllabusEnabled.mockRejectedValue(new AppError("SYLLABUS_NOT_AVAILABLE"));
     expect(await codeOf(caller(user(99)).teacher.syllabus.list())).toBe("FORBIDDEN:SYLLABUS_NOT_AVAILABLE");
     expect(m.availability.assertSyllabusEnabled).toHaveBeenCalledWith("ws_other");
+    expect(await codeOf(caller(user(99)).teacher.syllabus.createSample({ locale: "az" }))).toBe("FORBIDDEN:SYLLABUS_NOT_AVAILABLE");
+    expect(await codeOf(caller(user(99)).teacher.syllabus.preview({ id: "syl1" }))).toBe("FORBIDDEN:SYLLABUS_NOT_AVAILABLE");
+    expect(await codeOf(caller(user(99)).teacher.syllabus.publishPreview({ id: "syl1" }))).toBe("FORBIDDEN:SYLLABUS_NOT_AVAILABLE");
   });
 
   it("another teacher cannot read a syllabus through the router", async () => {
     m.access.resolveWorkspace.mockResolvedValue({ id: "ws_other", ownerUserId: 99 } as never);
     expect(await codeOf(caller(user(99)).teacher.syllabus.get({ id: "syl1" }))).toBe("NOT_FOUND:NOT_FOUND");
     expect(await codeOf(caller(user(99)).teacher.syllabus.grants({ id: "syl1" }))).toBe("NOT_FOUND:NOT_FOUND");
+    expect(await codeOf(caller(user(99)).teacher.syllabus.preview({ id: "syl1" }))).toBe("NOT_FOUND:NOT_FOUND");
+    expect(await codeOf(caller(user(99)).teacher.syllabus.publishPreview({ id: "syl1" }))).toBe("NOT_FOUND:NOT_FOUND");
   });
 });
 

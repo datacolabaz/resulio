@@ -2,6 +2,8 @@ import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
   assessments,
+  files,
+  materials,
   syllabi,
   syllabusAccessGrants,
   syllabusEnrollments,
@@ -108,6 +110,45 @@ async function ownedItem(scope: TeacherScope, itemId: string) {
   return { item: it, syllabus: await ownedSyllabus(scope, it.syllabusId) };
 }
 
+/** Materials and uploaded files an item points at (theory blocks, attachments, resource). */
+export function contentRefs(kind: SyllabusItemKind, content: Record<string, unknown>) {
+  const materialIds: string[] = [];
+  const fileIds: string[] = [];
+  const attachments = (list: unknown) => {
+    if (Array.isArray(list)) for (const a of list) if (a && typeof a.fileId === "string") fileIds.push(a.fileId);
+  };
+  if (kind === "THEORY" && Array.isArray(content.blocks)) {
+    for (const b of content.blocks as Array<Record<string, unknown>>) {
+      if (b.type === "material" && typeof b.materialId === "string") materialIds.push(b.materialId);
+      if ((b.type === "image" || b.type === "file") && typeof b.fileId === "string") fileIds.push(b.fileId);
+    }
+  }
+  if (kind === "TEACHER_PRACTICE" || kind === "STUDENT_PRACTICE") attachments(content.attachments);
+  if (kind === "RESOURCE" && typeof content.materialId === "string") materialIds.push(content.materialId);
+  return { materialIds: [...new Set(materialIds)], fileIds: [...new Set(fileIds)] };
+}
+
+async function assertOwnRefs(scope: TeacherScope, refs: { materialIds: string[]; fileIds: string[] }) {
+  const db = requireDb();
+  if (refs.materialIds.length) {
+    const rows = await db
+      .select({ id: materials.id })
+      .from(materials)
+      .where(and(inArray(materials.id, refs.materialIds), eq(materials.providerWorkspaceId, scope.workspaceId)));
+    if (rows.length !== refs.materialIds.length) throw new AppError("NOT_FOUND");
+  }
+  await assertOwnFiles(scope, refs.fileIds);
+}
+
+export async function assertOwnFiles(scope: TeacherScope, fileIds: string[]) {
+  if (!fileIds.length) return;
+  const rows = await requireDb()
+    .select({ id: files.id })
+    .from(files)
+    .where(and(inArray(files.id, fileIds), eq(files.workspaceId, scope.workspaceId)));
+  if (rows.length !== fileIds.length) throw new AppError("NOT_FOUND");
+}
+
 async function assertOwnAssessment(scope: TeacherScope, assessmentId: string | null) {
   if (!assessmentId) return;
   const [a] = await requireDb()
@@ -154,6 +195,7 @@ export async function listSyllabi(scope: TeacherScope) {
 }
 
 export async function createSyllabus(scope: TeacherScope, input: Partial<SyllabusFields> & { title: string }) {
+  if (input.coverFileId) await assertOwnFiles(scope, [input.coverFileId]);
   const id = nanoid();
   await requireDb()
     .insert(syllabi)
@@ -176,6 +218,7 @@ export async function createSyllabus(scope: TeacherScope, input: Partial<Syllabu
 
 export async function updateSyllabus(scope: TeacherScope, id: string, patch: Partial<SyllabusFields>, expectedRevision?: number) {
   const syllabus = await ownedSyllabus(scope, id);
+  if (patch.coverFileId) await assertOwnFiles(scope, [patch.coverFileId]);
   await touchDraft(syllabus, expectedRevision);
   const values = defined(patch);
   if (Object.keys(values).length) await requireDb().update(syllabi).set(values).where(eq(syllabi.id, id));
@@ -368,6 +411,7 @@ export async function createItem(
   const content = validContent(input.kind, input.content ?? {});
   const assessmentId = input.kind === "ASSESSMENT" ? (input.assessmentId ?? null) : null;
   await assertOwnAssessment(scope, assessmentId);
+  await assertOwnRefs(scope, contentRefs(input.kind, content));
   await touchDraft(syllabus, expectedRevision);
   const id = nanoid();
   const position = await nextPosition(syllabusItems, placementWhere(syllabusId, placement.scope, where.moduleId, where.lessonId));
@@ -389,19 +433,30 @@ export async function createItem(
       required: input.required ?? true,
       content,
       assessmentId,
+      materialId: resourceMaterialId(input.kind, content),
       taskId,
     });
   });
   return (await ownedItem(scope, id)).item;
 }
 
+const resourceMaterialId = (kind: SyllabusItemKind, content: Record<string, unknown>) =>
+  kind === "RESOURCE" && typeof content.materialId === "string" ? content.materialId : null;
+
 export async function updateItem(scope: TeacherScope, itemId: string, patch: Partial<ItemFields>, expectedRevision?: number) {
   const { item, syllabus } = await ownedItem(scope, itemId);
   const content = patch.content !== undefined ? validContent(item.kind, patch.content) : undefined;
   if (patch.assessmentId !== undefined && item.kind !== "ASSESSMENT") throw new AppError("SYLLABUS_INVALID_TARGET");
   if (patch.assessmentId) await assertOwnAssessment(scope, patch.assessmentId);
+  if (content) await assertOwnRefs(scope, contentRefs(item.kind, content));
   await touchDraft(syllabus, expectedRevision);
-  const values = defined({ title: patch.title, required: patch.required, content, assessmentId: patch.assessmentId });
+  const values = defined({
+    title: patch.title,
+    required: patch.required,
+    content,
+    assessmentId: patch.assessmentId,
+    materialId: content && item.kind === "RESOURCE" ? resourceMaterialId(item.kind, content) : undefined,
+  });
   const db = requireDb();
   if (Object.keys(values).length) await db.update(syllabusItems).set(values).where(eq(syllabusItems.id, itemId));
   if (item.kind === "STUDENT_PRACTICE" && item.taskId && (content || patch.title)) {
