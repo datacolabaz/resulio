@@ -178,24 +178,46 @@ const DESCRIPTION: L = {
 };
 const LANGUAGE: L = { az: "az", en: "en", ru: "ru" };
 
+/** Pure: everything the sample creates, in one language (tests run it without a database). */
+export function samplePlan(locale: SampleLocale) {
+  return {
+    syllabus: {
+      title: TITLE[locale],
+      description: DESCRIPTION[locale],
+      subject: "Java",
+      level: "Beginner",
+      language: LANGUAGE[locale],
+      estimatedDurationLabel: "",
+      estimatedHours: 8,
+    },
+    modules: MODULES.map((m) => ({
+      title: m.title[locale],
+      description: m.description[locale],
+      lessons: m.lessons.map((l) => ({
+        title: l.title[locale],
+        estimatedMinutes: l.minutes,
+        objectives: l.objectives.map((o) => o[locale]),
+        items: l.items.map((it) => ({ kind: it.kind, title: it.title[locale], content: it.content(locale) })),
+      })),
+    })),
+  };
+}
+
+/** All or nothing: if any step fails, the half-built draft is removed before the error surfaces. */
 export async function createSampleSyllabus(scope: TeacherScope, locale: SampleLocale) {
-  const syllabus = await authoring.createSyllabus(scope, {
-    title: TITLE[locale],
-    description: DESCRIPTION[locale],
-    subject: "Java",
-    level: "Beginner",
-    language: LANGUAGE[locale],
-    estimatedDurationLabel: "",
-    estimatedHours: 8,
-  });
-  for (const m of MODULES) {
-    const mod = await authoring.createModule(scope, syllabus.id, { title: m.title[locale], description: m.description[locale] });
-    for (const l of m.lessons) {
-      const lesson = await authoring.createLesson(scope, mod.id, { title: l.title[locale], estimatedMinutes: l.minutes, objectives: l.objectives.map((o) => o[locale]) });
-      for (const it of l.items) {
-        await authoring.createItem(scope, syllabus.id, { scope: "LESSON", lessonId: lesson.id }, { kind: it.kind, title: it.title[locale], content: it.content(locale) });
+  const plan = samplePlan(locale);
+  const syllabus = await authoring.createSyllabus(scope, plan.syllabus);
+  try {
+    for (const m of plan.modules) {
+      const mod = await authoring.createModule(scope, syllabus.id, { title: m.title, description: m.description });
+      for (const l of m.lessons) {
+        const lesson = await authoring.createLesson(scope, mod.id, { title: l.title, estimatedMinutes: l.estimatedMinutes, objectives: l.objectives });
+        for (const it of l.items) await authoring.createItem(scope, syllabus.id, { scope: "LESSON", lessonId: lesson.id }, it);
       }
     }
+  } catch (error) {
+    await authoring.discardDraft(scope, syllabus.id).catch((cleanup) => console.error("[syllabus] sample cleanup failed", { syllabusId: syllabus.id }, cleanup));
+    throw error;
   }
   return syllabus;
 }

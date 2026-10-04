@@ -1,7 +1,7 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { syllabi, syllabusPracticeTasks, taskAnswerKeys, taskGradingSettings, tasks } from "../../drizzle/schema";
-import { studentPracticeContentSchema } from "../../shared/syllabus";
+import { studentPracticeContentSchema, TIMESTAMP_MAX } from "../../shared/syllabus";
 import type { DbOrTx } from "../db";
 import { isMissingTable } from "../notifications/preferences";
 
@@ -11,7 +11,8 @@ import { isMissingTable } from "../notifications/preferences";
  * normal task paths (GROUPS mode with no groups), and never shows in the teacher's task list.
  */
 
-export const CONTAINER_DEADLINE = new Date(Date.UTC(2099, 11, 31, 23, 59, 59));
+/** "Never closes" for the task engine, but inside the TIMESTAMP range (a 2099 date failed every insert). */
+export const CONTAINER_DEADLINE = TIMESTAMP_MAX;
 const shareCode = () => nanoid(10).replace(/[-_]/g, "x").toUpperCase();
 
 function taskFields(title: string, content: Record<string, unknown>) {

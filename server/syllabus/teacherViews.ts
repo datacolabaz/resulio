@@ -273,7 +273,7 @@ export async function setProgressVisibleToGroup(scope: TeacherScope, groupId: st
       .values({ groupId, progressVisibleToGroup: visible })
       .onDuplicateKeyUpdate({ set: { progressVisibleToGroup: visible } });
   } catch (error) {
-    if (isMissingTable(error)) throw new AppError("SYLLABUS_NOT_AVAILABLE");
+    if (isMissingTable(error)) throw new AppError("SYLLABUS_DB_NOT_READY");
     throw error;
   }
   return { groupId, progressVisibleToGroup: visible };

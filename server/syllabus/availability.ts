@@ -69,12 +69,27 @@ export async function setWorkspaceEnabled(workspaceId: string, enabled: boolean,
   return { before, after: await syllabusEnabledFor(workspaceId), envForced: envEnables(workspaceId) };
 }
 
-/** Syllabus tables not migrated yet → a stable "not available" error instead of a 500. */
+/**
+ * The database is behind the code: a syllabus table (1146) or column (1054) does not exist yet,
+ * i.e. a migration has not been applied. `db:verify` keeps schema and migrations in step, so in
+ * practice these errors only mean "deploy has not migrated yet".
+ */
+export function isSchemaBehind(error: unknown): boolean {
+  if (isMissingTable(error)) return true;
+  let e = error as { errno?: number; code?: string; cause?: unknown } | undefined;
+  for (let i = 0; e && i < 5; i++) {
+    if (e.errno === 1054 || e.code === "ER_BAD_FIELD_ERROR") return true;
+    e = e.cause as typeof e;
+  }
+  return false;
+}
+
+/** Syllabus tables not migrated yet → a stable "database not ready" error instead of a 500. */
 export async function guardTables<T>(fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
   } catch (error) {
-    if (isMissingTable(error)) throw new AppError("SYLLABUS_NOT_AVAILABLE");
+    if (isSchemaBehind(error)) throw new AppError("SYLLABUS_DB_NOT_READY");
     throw error;
   }
 }

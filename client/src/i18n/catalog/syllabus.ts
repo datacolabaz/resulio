@@ -17,6 +17,17 @@ export const syllabus = {
   "error.SYLLABUS_PRACTICE_TASK_IN_USE": ["Bu tapşırıq syllabus-da istifadə olunur.", "This task is used by a syllabus.", "Это задание используется в силлабусе."],
   "error.SYLLABUS_PROGRESS_HIDDEN": ["Qrupun irəliləyişi gizlədilib.", "Group progress is hidden.", "Прогресс группы скрыт."],
   "error.SYLLABUS_RETRY_COOLDOWN": ["Yenidən cəhd üçün bir az gözləyin.", "Please wait before retrying.", "Подождите перед повторной попыткой."],
+  "error.SYLLABUS_DB_NOT_READY": [
+    "Syllabus hələ aktivləşdirilməyib: verilənlər bazası yenilənməlidir. Bir neçə dəqiqə sonra yenidən yoxlayın.",
+    "Syllabus is not active yet: the database needs to be updated. Please try again in a few minutes.",
+    "Силлабус ещё не активирован: базу данных нужно обновить. Попробуйте снова через несколько минут.",
+  ],
+  "error.INVALID_INPUT": ["Daxil edilən məlumatlar düzgün deyil. Sahələri yoxlayın.", "Some of the entered data is invalid. Check the fields.", "Часть введённых данных некорректна. Проверьте поля."],
+  "error.NOT_DRAFT": ["Bu yalnız qaralama vəziyyətində mümkündür.", "This is only possible for a draft.", "Это возможно только для черновика."],
+  "error.FILE_NOT_FOUND": ["Fayl tapılmadı.", "File not found.", "Файл не найден."],
+  "error.FILE_TOO_LARGE": ["Fayl çox böyükdür.", "The file is too large.", "Файл слишком большой."],
+  "error.FILE_TYPE_NOT_ALLOWED": ["Bu fayl növünə icazə verilmir.", "This file type is not allowed.", "Этот тип файла не разрешён."],
+  "syllabus.dbNotReady.title": ["Syllabus hələ aktivləşdirilməyib", "Syllabus is not active yet", "Силлабус ещё не активирован"],
 
   "syllabus.unavailable.title": ["Syllabus aktiv deyil", "Syllabus is not enabled", "Силлабус не включён"],
   "syllabus.unavailable.body": [

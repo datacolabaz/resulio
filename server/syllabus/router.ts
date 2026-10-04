@@ -6,14 +6,15 @@ import {
   SYLLABUS_ITEM_KINDS,
   SYLLABUS_ITEM_SCOPES,
   SYLLABUS_NODE_STATUSES,
+  TIMESTAMP_MAX,
+  TIMESTAMP_MIN,
   UNLOCK_TARGET_TYPES,
 } from "../../shared/syllabus";
 import { rateLimit, router, studentProcedure, teacherProcedure } from "../_core/trpc";
-import { isMissingTable } from "../notifications/preferences";
 import * as access from "./access";
 import { clientActivityBatchSchema } from "./activityRules";
 import * as authoring from "./authoring";
-import { assertSyllabusEnabled, syllabusEnabledFor } from "./availability";
+import { assertSyllabusEnabled, isSchemaBehind, syllabusEnabledFor } from "./availability";
 import * as draft from "./draft";
 import * as learning from "./learning";
 import * as publishing from "./publishing";
@@ -27,20 +28,26 @@ const revision = z.number().int().min(0).optional();
 const shortText = (max: number) => z.string().trim().max(max);
 const objectives = z.array(z.string().trim().min(1).max(300)).max(30);
 
-/** Syllabus tables not migrated yet → "not available" instead of a 500. */
-const tablesGuard = async <T extends { ok: boolean; error?: { cause?: unknown } }>(result: T) => {
-  if (!result.ok && isMissingTable(result.error?.cause)) throw new TRPCError({ code: "FORBIDDEN", message: "SYLLABUS_NOT_AVAILABLE" });
+/**
+ * Syllabus tables or columns not migrated yet → SYLLABUS_DB_NOT_READY on every endpoint, so the UI
+ * can say "the database is being updated" instead of a generic error or a silently empty list.
+ */
+const tablesGuard = async <T extends { ok: boolean; error?: { cause?: unknown } }>(path: string, result: T) => {
+  if (!result.ok && isSchemaBehind(result.error)) {
+    console.warn(`[syllabus] ${path}: database schema is behind (migration not applied yet)`);
+    throw new TRPCError({ code: "PRECONDITION_FAILED", message: "SYLLABUS_DB_NOT_READY" });
+  }
   return result;
 };
 
 /** Teacher side: owner of the workspace (teacherProcedure) and the feature flag on for it. */
-const syllabusTeacherProcedure = teacherProcedure.use(async ({ ctx, next }) => {
+const syllabusTeacherProcedure = teacherProcedure.use(async ({ ctx, next, path }) => {
   await assertSyllabusEnabled(ctx.scope.workspaceId);
-  return tablesGuard(await next());
+  return tablesGuard(path, await next());
 });
 
 /** Student side: access is decided per syllabus (grant + its workspace's flag) inside learning.ts. */
-const syllabusStudentProcedure = studentProcedure.use(async ({ next }) => tablesGuard(await next()));
+const syllabusStudentProcedure = studentProcedure.use(async ({ next, path }) => tablesGuard(path, await next()));
 
 const syllabusFields = z.object({
   title: shortText(255).min(1),
@@ -74,7 +81,7 @@ const itemFields = z.object({
 
 const placement = z.object({ scope: z.enum(SYLLABUS_ITEM_SCOPES), moduleId: entityId.nullish(), lessonId: entityId.nullish() });
 const orderedIds = z.array(entityId).max(500);
-const dateOrNull = z.coerce.date().nullable();
+const dateOrNull = z.coerce.date().min(TIMESTAMP_MIN).max(TIMESTAMP_MAX).nullable();
 
 export const teacherSyllabusRouter = router({
   /** Lets the client show or hide the Syllabus entry for this workspace; never throws. */

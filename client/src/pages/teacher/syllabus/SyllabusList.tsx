@@ -60,6 +60,7 @@ function SyllabusListBody() {
   const [open, setOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   if (list.isLoading) return <Loading />;
+  if (list.error?.message === "SYLLABUS_DB_NOT_READY") return <EmptyState title={t("syllabus.dbNotReady.title")} body={t("error.SYLLABUS_DB_NOT_READY")} />;
   if (list.error) return <ErrorNote error={list.error} />;
   const rows = list.data ?? [];
   const archivedCount = rows.filter((r) => r.archivedAt).length;

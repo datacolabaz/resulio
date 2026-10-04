@@ -6,6 +6,8 @@ export function errorText(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error ?? "");
   const key = `error.${message}`;
   if (isMessageKey(key)) return t(key);
+  // Input validation failures arrive as a JSON list of issues, never meant for people.
+  if (/^\s*[[{]/.test(message)) return t("error.INVALID_INPUT");
   return message && message.length < 120 ? message : t("error.INTERNAL_ERROR");
 }
 

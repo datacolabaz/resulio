@@ -10,7 +10,10 @@ import {
   syllabusItems,
   syllabusLessons,
   syllabusModules,
+  syllabusPracticeTasks,
   syllabusVersions,
+  taskAnswerKeys,
+  tasks,
   type Syllabus,
   type SyllabusItemRow,
 } from "../../drizzle/schema";
@@ -214,6 +217,31 @@ export async function createSyllabus(scope: TeacherScope, input: Partial<Syllabu
       completionRules: input.completionRules ?? {},
     });
   return ownedSyllabus(scope, id);
+}
+
+/**
+ * Hard-deletes a draft that was never published nor shared (e.g. a sample whose seeding failed
+ * halfway), including its hidden practice containers. Anything published or granted is refused.
+ */
+export async function discardDraft(scope: TeacherScope, id: string) {
+  const syllabus = await ownedSyllabus(scope, id);
+  const db = requireDb();
+  const [grant] = await db.select({ id: syllabusAccessGrants.id }).from(syllabusAccessGrants).where(eq(syllabusAccessGrants.syllabusId, id)).limit(1);
+  if (syllabus.currentVersionId || grant) throw new AppError("SYLLABUS_INVALID_TARGET");
+  await db.transaction(async (tx) => {
+    const containers = await tx.select({ taskId: syllabusPracticeTasks.taskId }).from(syllabusPracticeTasks).where(eq(syllabusPracticeTasks.syllabusId, id));
+    const taskIds = containers.map((c) => c.taskId);
+    if (taskIds.length) {
+      await tx.delete(taskAnswerKeys).where(inArray(taskAnswerKeys.taskId, taskIds));
+      await tx.delete(tasks).where(and(inArray(tasks.id, taskIds), eq(tasks.providerWorkspaceId, scope.workspaceId)));
+      await tx.delete(syllabusPracticeTasks).where(eq(syllabusPracticeTasks.syllabusId, id));
+    }
+    await tx.delete(syllabusItems).where(eq(syllabusItems.syllabusId, id));
+    await tx.delete(syllabusLessons).where(eq(syllabusLessons.syllabusId, id));
+    await tx.delete(syllabusModules).where(eq(syllabusModules.syllabusId, id));
+    await tx.delete(syllabi).where(eq(syllabi.id, id));
+  });
+  return { ok: true };
 }
 
 export async function updateSyllabus(scope: TeacherScope, id: string, patch: Partial<SyllabusFields>, expectedRevision?: number) {

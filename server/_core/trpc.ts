@@ -17,10 +17,11 @@ const t = initTRPC.context<TrpcContext>().create({
 export const router = t.router;
 
 /** Domain errors (AppError / known codes) become typed tRPC errors; unknown errors are not leaked. */
-const domainErrors = t.middleware(async ({ next }) => {
+const domainErrors = t.middleware(async ({ ctx, next, path, type }) => {
   const result = await next();
   if (!result.ok && result.error.code === "INTERNAL_SERVER_ERROR" && result.error.cause) {
-    throw toTrpcError(result.error.cause);
+    const header = ctx.req?.headers?.[WORKSPACE_HEADER];
+    throw toTrpcError(result.error.cause, { path, type, userId: ctx.user?.id ?? null, workspaceId: typeof header === "string" ? header.slice(0, 64) : null });
   }
   return result;
 });

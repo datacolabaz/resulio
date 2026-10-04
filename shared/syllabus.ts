@@ -114,6 +114,9 @@ export const VIDEO_PROGRESS_MARKS = [25, 50, 75] as const;
 
 export const MAX_ITEM_CONTENT_CHARS = 200_000;
 export const MAX_ATTEMPTS_LIMIT = 20;
+/** MySQL TIMESTAMP columns end at 2038-01-19 03:14:07 UTC; later dates fail in strict mode. */
+export const TIMESTAMP_MIN = new Date(Date.UTC(1970, 0, 2));
+export const TIMESTAMP_MAX = new Date(Date.UTC(2037, 11, 31, 23, 59, 59));
 
 // ---------------------------------------------------------------------------
 // Completion rules (§8, §9, §16, §17) — partial at syllabus/module/lesson level, resolved by inheritance

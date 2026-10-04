@@ -69,6 +69,7 @@ export type AppErrorCode =
   | "SUBMISSION_EMPTY"
   | "SUBMISSION_ALREADY_GRADED"
   | "SYLLABUS_NOT_AVAILABLE"
+  | "SYLLABUS_DB_NOT_READY"
   | "SYLLABUS_EMPTY"
   | "SYLLABUS_ASSESSMENT_NOT_PUBLISHED"
   | "SYLLABUS_INVALID_CONTENT"
@@ -154,6 +155,7 @@ const HTTP: Partial<Record<AppErrorCode, TRPCError["code"]>> = {
   SUBMISSION_EMPTY: "BAD_REQUEST",
   SUBMISSION_ALREADY_GRADED: "CONFLICT",
   SYLLABUS_NOT_AVAILABLE: "FORBIDDEN",
+  SYLLABUS_DB_NOT_READY: "PRECONDITION_FAILED",
   SYLLABUS_EMPTY: "PRECONDITION_FAILED",
   SYLLABUS_ASSESSMENT_NOT_PUBLISHED: "PRECONDITION_FAILED",
   SYLLABUS_INVALID_CONTENT: "BAD_REQUEST",
@@ -168,13 +170,33 @@ const HTTP: Partial<Record<AppErrorCode, TRPCError["code"]>> = {
   SYLLABUS_RETRY_COOLDOWN: "PRECONDITION_FAILED",
 };
 
+/** Where an unexpected error happened, for the server log only (never sent to the client). */
+export interface ErrorContext {
+  path?: string;
+  type?: string;
+  userId?: number | null;
+  workspaceId?: string | null;
+}
+
+/** Driver details worth logging (MySQL errno / code / sqlMessage), found anywhere in the cause chain. */
+export function errorDetails(error: unknown) {
+  let e = error as { errno?: unknown; code?: unknown; sqlMessage?: unknown; cause?: unknown } | undefined;
+  for (let i = 0; e && i < 5; i++) {
+    if (typeof e.errno === "number" || typeof e.sqlMessage === "string") {
+      return { errno: e.errno, code: e.code, sqlMessage: typeof e.sqlMessage === "string" ? e.sqlMessage.slice(0, 300) : undefined };
+    }
+    e = e.cause as typeof e;
+  }
+  return {};
+}
+
 /** Convert domain errors into tRPC errors; the message stays a stable machine code. */
-export function toTrpcError(error: unknown): TRPCError {
+export function toTrpcError(error: unknown, context: ErrorContext = {}): TRPCError {
   if (error instanceof TRPCError) return error;
   const code = error instanceof AppError ? error.code : error instanceof Error ? error.message : "UNKNOWN";
   const mapped = HTTP[code as AppErrorCode];
   if (mapped) return new TRPCError({ code: mapped, message: code });
   if (error instanceof AppError) return new TRPCError({ code: "BAD_REQUEST", message: code });
-  console.error("[Resulio] Unexpected error", error);
+  console.error("[Resulio] Unexpected error", { ...context, ...errorDetails(error) }, error);
   return new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "INTERNAL_ERROR" });
 }
