@@ -13,6 +13,7 @@ import { requestIdMiddleware } from "./requestMeta";
 import { registerFileRoutes } from "./files";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
+import { getMigrationStatus, runAutoMigrate } from "./autoMigrate";
 import { serveStatic, setupVite } from "./vite";
 import { getDb, warnIfGoogleAuthSchemaMissing } from "../db";
 import { sweepExpiredAttempts } from "../modules/attempts";
@@ -61,6 +62,7 @@ function startSyllabusProgression() {
 }
 
 async function startServer() {
+  await runAutoMigrate();
   const app = express();
   const server = createServer(app);
   app.set("trust proxy", 1);
@@ -72,7 +74,10 @@ async function startServer() {
   app.use(csrfGuard);
   app.use(express.json({ limit: "2mb" }));
   app.use(express.urlencoded({ limit: "2mb", extended: true }));
-  app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
+  app.get("/api/health", (_req, res) => {
+    const { state, latest } = getMigrationStatus();
+    res.json({ status: "ok", migrations: { state, latest } });
+  });
   app.get("/api/platform/config.js", (_req, res) => {
     res.set("Cache-Control", "no-store").type("application/javascript").send(publicPlatformScript());
   });

@@ -15,7 +15,7 @@ React / Express / tRPC / Drizzle (MySQL) modular monolith.
    time so the Google button calls the API. Vars on the API alone do not help if the button
    still hits `https://resulio.co/api/auth/google/start`.
 2. `pnpm install`
-3. `pnpm db:migrate` — apply the checked-in migrations in `drizzle/`.
+3. `pnpm db:migrate` — apply the checked-in migrations in `drizzle/`. The server also applies pending migrations itself on every start (`AUTO_MIGRATE=0` turns that off); see [RAILWAY.md](RAILWAY.md#automatic-migrations).
 4. Optional: `pnpm db:seed` — demo teacher/student, a group and a published assessment (refuses to run in production unless `ALLOW_SEED=1`). In development the home page then shows demo login buttons.
 
 ## Sign-in
@@ -68,7 +68,7 @@ Uploads (task attachments, materials, submissions; max 8 MB) are stored in MySQL
 
 - `pnpm dev`: development server; honors `PORT` (default 3000).
 - `pnpm build` / `pnpm start`: build and serve `dist/index.js` and `dist/public/`.
-- `pnpm db:migrate`: apply checked-in migrations. `pnpm db:generate`: create a new migration after editing `drizzle/schema.ts`. `pnpm db:push` runs both.
+- `pnpm db:migrate`: apply checked-in migrations. `pnpm db:generate`: create a new migration after editing `drizzle/schema.ts`. `pnpm db:push` runs both. Hand-written migrations need `--> statement-breakpoint` between statements and a journal `when` newer than the previous entry (both checked by `server/_core/autoMigrate.test.ts`).
 - `pnpm check` / `pnpm test`: TypeScript and vitest.
 
 ## Structure

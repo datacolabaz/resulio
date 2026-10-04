@@ -42,8 +42,8 @@ production **only after explicit approval**.
 | Framework | Express 4 + tRPC 11 (`/api/trpc`), superjson |
 | Start | `node dist/index.js` (Dockerfile `CMD`; `pnpm start` equivalent) |
 | Build | `pnpm build` = `vite build` + `esbuild server/_core/index.ts → dist/index.js` |
-| Migration command | `pnpm db:migrate` (`drizzle-kit migrate`, reads `DATABASE_URL`). **Manual only** |
-| Health | `GET /api/health` → `{"status":"ok"}` (process liveness; does not check the database) |
+| Migration command | **Automatic on server start** (drizzle-orm migrator, `server/_core/autoMigrate.ts`; `AUTO_MIGRATE=0` disables). `pnpm db:migrate` (`drizzle-kit migrate`) still works by hand. See `RAILWAY.md` → Automatic migrations |
+| Health | `GET /api/health` → `{"status":"ok","migrations":{"state":…,"latest":…}}` (process liveness + startup migration outcome; does not ping the database) |
 | Google OAuth | Backend-managed: `GET /api/auth/google/start`, `GET /api/auth/google/callback`. Redirect URI = `GOOGLE_REDIRECT_URI` or derived from request host. PKCE + nonce state cookie `resulio_oauth` |
 | After login | Redirects to a **relative** path (`returnTo`, default `/app`); cancel → `/?login=cancelled` |
 | CORS | **None** (same-origin only today) |
@@ -94,7 +94,7 @@ The push report for each branch is part of the change record, not this file.
 | Push triggers deploy | Unknown. GitHub repo `datacolabaz/resulio` was **empty** (no branches) at audit time, so no Railway service can have deployed from it yet | In Railway → service → Settings → Source: note repo, branch, "auto deploy" and "PR environments" |
 | `main` auto-deploys | Railway's default is to deploy the configured branch on every push | Keep production's trigger branch = `main`; disable auto-deploy on production until cut-over is approved |
 | First push becomes default branch | On an empty GitHub repo the first pushed branch becomes the default; a Railway service connected later would pre-select it | Create `main` deliberately (approved) or set the default branch in GitHub after the first push |
-| Migrations run automatically | **No**: no `preDeployCommand`, no migration in `Dockerfile`/`CMD` | Keep it that way (section 11) |
+| Migrations run automatically | **Yes** (owner decision): the API applies pending migrations at startup, under a MySQL lock | Back up before deploying a release with new migrations (section 11) |
 | One service vs two | **One** today: Express serves API + SPA | The two-service split needs the code changes in section 5 |
 | Refresh on client routes | Works today (Express fallback) | Frontend service must keep an SPA fallback (section 6) |
 | Railway-generated URL in API/OAuth | Code has no hard-coded URL; callback derives from the request host unless `GOOGLE_REDIRECT_URI` is set. `RAILWAY.md` suggests a `*.up.railway.app` callback | Set `GOOGLE_REDIRECT_URI=https://api.resulio.co/api/auth/google/callback` explicitly |
@@ -268,6 +268,10 @@ approvals for migration and window recorded.
 14. Re-enable auto-deploy only if desired; keep `main` protected (PR + review).
 
 ## 11. Migration command strategy
+
+> Update: the owner approved automatic migrations. The API server now applies pending migrations on every start
+> (`RAILWAY.md` → Automatic migrations; `AUTO_MIGRATE=0` turns it off, `AUTO_MIGRATE_BASELINE` adopts a database
+> without migration history). The manual procedure below remains the fallback for risky data migrations.
 
 - Migrations are **never** part of a Railway build, start command or `preDeployCommand` for 0002–0004.
 - Command: `pnpm db:migrate` (drizzle-kit, applies pending files in `drizzle/` in journal order), run once by an
