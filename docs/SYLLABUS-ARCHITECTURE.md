@@ -729,7 +729,7 @@ All changes are additive or behaviour-preserving refactors.
 - `shared/syllabus.ts` — enums, zod schemas (item content union, completion rules, activity types, inputs), `resolveRules`, constants (thresholds).
 
 **Server** (`server/syllabus/`, a domain folder because the feature is large; same style as `server/notifications/`)
-- `availability.ts` — feature flag check (env `SYLLABUS_ENABLED` + `feature_flag_overrides` WORKSPACE rows) and "not migrated" detection (`isMissingTable` → `SYLLABUS_NOT_AVAILABLE` error code).
+- `availability.ts` — feature flag check (env `SYLLABUS_ENABLED` + `feature_flag_overrides` WORKSPACE rows) and "not migrated" detection (`isSchemaBehind` → `SYLLABUS_DB_NOT_READY` error code, §19.1).
 - `authoring.ts` — draft CRUD, reorder, duplicate, soft delete, `ownedSyllabus`.
 - `publishing.ts` — validation, rule resolution, content hashing, copy-on-publish containers, version write, version cache.
 - `access.ts` — grants CRUD, derived status, `effectiveAccess`, `assertStudentAccess`.
@@ -767,7 +767,7 @@ All changes are additive or behaviour-preserving refactors.
 | Risk | Impact | Mitigation |
 |---|---|---|
 | Adding columns to existing tables breaks queries when the migration isn't applied (Drizzle selects all declared columns) | Production 500s on tasks/assessments | **No new columns on existing tables** — side tables only (`syllabus_practice_tasks`, `syllabus_assessment_assignments`) |
-| Syllabus tables missing in production (migration not yet run on Railway) | Syllabus pages fail | `availability.ts` returns `SYLLABUS_NOT_AVAILABLE`; nav hidden; hooks no-op on `isMissingTable` — existing features untouched |
+| Syllabus tables missing in production (migration not yet run on Railway) | Syllabus pages fail | every syllabus endpoint returns `SYLLABUS_DB_NOT_READY` with a clear "database is being updated" message; student nav hidden; hooks no-op on `isMissingTable` — existing features untouched |
 | Hidden container tasks leaking into `/teacher/assignments`, student task lists, file access, leaderboards | Confusing UI / access leaks | Containers reach nobody (`groupIds=[]`, `studentIds=[]`, GROUPS mode); teacher list filtered; integration test asserts they never appear |
 | JIT assessment assignments showing in `/student/assessments` or being moved by `publish({moveAssignments})` | Duplicate entry points, broken version pinning | Filter + skip via `syllabus_assessment_assignments` |
 | Refactor of `submitAssignment` changes existing behaviour | Homework submission regressions | Pure extraction; existing unit/integration tests (`taskAccess.test.ts`, `autoGrade.test.ts`, …) must pass unchanged |
@@ -810,7 +810,7 @@ Sizes are rough developer-day estimates for one experienced developer (including
 - **Acceptance**: the default rule chain of §8/§9 works end-to-end; locked lesson URL shows lock reason, API returns no content; manual unlock creates audit row and does not complete the lesson; resubmission and AI auto-grade drive completion; 100 students progress independently.
 - **Tests**: progression scenarios incl. concurrency (parallel triggers), idempotent notifications, hidden containers never visible elsewhere.
 
-### Phase 4 — Assessment integration (≈ 4–5 days)
+### Phase 4 — Assessment integration (≈ 4–5 days) — ✅ delivered (see §19)
 - **Scope**: lesson/module/final assessments, JIT assignments, pass %, retry max/cooldown/score policy, results hook, pending manual review handling, ExamBuilder `returnTo`, exam list filtering, `publish({moveAssignments})` guard, final completion + `syllabus_completions`.
 - **Acceptance**: 82 % → passed → next module unlocked; 58 % → retry allowed with remaining attempts and cooldown; locked assessment cannot be started via direct API; open-answer exam waits for teacher grading then unlocks; completion record created exactly once.
 - **Tests**: integration with real attempts engine (start/submit/sweeper auto-submit), retry/cooldown edge cases.
@@ -893,7 +893,7 @@ Hooks in existing code (no behaviour change for non-syllabus data): task submiss
        ON DUPLICATE KEY UPDATE enabled = 1;
      ```
    - **Admin API:** `admin.syllabus.setWorkspaceEnabled({ workspaceId, enabled: true, reason })` (permission `flags.change`, audited). There is no admin screen for it yet.
-3. The migrations must have been applied (`pnpm db:migrate`); otherwise the API answers `SYLLABUS_NOT_AVAILABLE` and nothing else changes.
+3. The migrations must have been applied (`pnpm db:migrate`); otherwise the API answers `SYLLABUS_DB_NOT_READY` and nothing else changes (auto-migrate applies them on deploy).
 
 ### 16.4 Implementation decisions made in Phase 1
 - **Practice items** are hidden container tasks (no groups, no students, deadline 2099-12-31), registered in `syllabus_practice_tasks`. Submissions go through the existing task core, so AI review, auto-grade and answer keys work unchanged. A published version references a frozen copy; editing the draft never changes what started students submit to.
@@ -989,12 +989,50 @@ Student progression UI behind the same `SYLLABUS` flag. **No migrations.** Chang
 
 ### 18.7 Phase 4 (assessment integration) — already done vs remaining
 - **Already done** (Phases 1–3): lesson/module/final assessment items, just-in-time per-student assignments with attempt limit and cooldown (`availableFrom`), pass % / retry / score policy in the engine, recompute on result and manual grading hooks + reconciler, pending manual review keeps the lesson in review, `syllabus_completions` written once, starting from the lesson player and returning to it.
-- **Remaining**: ExamBuilder `returnTo` back into the lesson editor; hiding syllabus JIT assignments from the generic exam lists; `publish({moveAssignments})` guard when an assessment version changes under enrolled students; end-to-end tests against the real attempts engine (start / submit / sweeper auto-submit, open-answer grading then unlock); "back to lesson" on the result page.
+- **Remaining**: done in Phase 4, see §19.
 
 ### 18.8 Known limitations
 - Visual check: no local MySQL, so pages were type-checked, unit-tested and built, not clicked through in a browser with data.
-- Unlock notices are batched in memory (per server process); a restart inside the 2-minute window drops that batch (progress itself is unaffected).
+- ~~Unlock notices are batched in memory~~ — persisted since Phase 4 (§19.4).
 
 ### 18.9 Tests
 - `server/syllabusLearning.test.ts` — notice planning (unlock / approval / first-lesson exclusion, unseen filter, dedupe keys), templates in AZ/EN/RU and escaping, assessment state (pass mark, attempts, cooldown, resume, held scores), practice due dates, progress summary, file-usage lookup, code highlighter (incl. large input), activity queue (dedupe, heartbeat merge, batch limit, restore), lock-reason numbering, node visuals, safe `returnTo`.
 - `server/syllabusPermissions.test.ts` — overview (active / ended / no grant), nav flag never throws, teacher student endpoints isolated by workspace.
+
+## 19. Phase 4 — what was implemented
+
+### 19.1 Production fix: "Create a sample syllabus" failed with a generic error
+- **Cause**: the hidden `tasks` row behind every student-practice item had `deadline = 2099-12-31`. MySQL `TIMESTAMP` ends at 2038-01-19, so in strict mode the insert failed ("Incorrect datetime value") and the user saw `INTERNAL_ERROR`. The same bug broke adding any student-practice item in the builder. The tables were present (the list showed the empty state with the sample button).
+- **Fix**: `CONTAINER_DEADLINE = TIMESTAMP_MAX` (2037-12-31, `shared/syllabus.ts`); grant dates are validated against `TIMESTAMP_MIN..TIMESTAMP_MAX`.
+- **Sample is all-or-nothing**: `samplePlan(locale)` (pure) + `createSampleSyllabus`, which calls `authoring.discardDraft` (hard delete of a never-published, never-granted draft incl. its practice containers) if any step fails.
+- **Database behind the code**: a missing syllabus table (1146) or column (1054) now gives `SYLLABUS_DB_NOT_READY` (412) on **every** teacher and student syllabus endpoint, including `list` and `createSample` (`router.ts` `tablesGuard`, `availability.isSchemaBehind`). The UI says "Syllabus is not active yet: the database needs to be updated. Please try again in a few minutes." `SYLLABUS_NOT_AVAILABLE` keeps its meaning: the feature flag is off for the workspace.
+- **Errors in the UI**: every `SYLLABUS_*` code and the common codes a syllabus page can hit have AZ/EN/RU texts (test-enforced); zod validation errors show "Some of the entered data is invalid" instead of the generic text (`errorText`).
+- **Server logs**: unexpected errors are logged with `path`, `type`, `userId`, the workspace header and the MySQL `errno` / `code` / `sqlMessage` (`toTrpcError(error, context)`); nothing extra reaches the client.
+
+### 19.2 Assessments on the exam engine
+- **Per-student assignment, explicitly**: `learning.startAssessment` looks up the item's syllabus assignment (`progression.assignmentForItem`, one extra recompute if it is not there yet) and calls `startAttempt(assessmentId, studentId, assignmentId)`. The attempt runs on that assignment's pinned version, attempt limit and cooldown.
+- **Separation from normal exam use**: `resolveAssignment` ignores syllabus-owned rows, so (a) a syllabus exam is not in the student's general exam list and cannot be started from there, and (b) a teacher's normal group assignment of the same exam is never hidden or replaced by the syllabus row. The teacher's roster / activity cards for the exam leave syllabus rows out (their attempts and results still appear under the exam).
+- **Window**: a syllabus assignment always has `availableFrom` (cooldown, otherwise `TIMESTAMP_MIN`), so the exam's own start date — meant for a group sitting — does not hold back syllabus students. The exam's end date and "closed" status still apply.
+
+### 19.3 Version policy (enforced)
+- The exam version is snapshotted per item when the syllabus version is published (`syllabus_version_items.assessmentVersionId`). Republishing the exam — even with "move assignments" — never moves syllabus assignments; students keep the snapshotted version until the **syllabus** is republished and they are moved to that version.
+- Moving a student to a newer syllabus version re-pins their syllabus assignment to the exam version of that syllabus version (in-progress attempts keep theirs). If the item now points at a different exam, the old assignment is revoked and a new one is created.
+- The exam builder shows this policy when it was opened from a syllabus.
+
+### 19.4 Persisted notice batches (migration `0028_syllabus_notice_batches`, add-only)
+- `syllabus_notice_batches(batchKey PK, kind UNLOCK|APPROVAL, syllabusId, payload json, revision, dueAt)`: one open batch per recipient, merged under a row lock on every recompute (`notify.enqueueNotice`), sent by `flushDueNotices` every 30 s once `dueAt` (first event + 2 min) has passed. A batch is sent by whoever deletes it at the revision it read, so several instances never double-send and a batch merged meanwhile waits for the next sweep. A restart no longer loses notices.
+- Before the migration runs the batch lives in memory for its window, as before.
+
+### 19.5 Navigation
+- Assessment item → "Create in ExamBuilder" / "Open in ExamBuilder" pass `returnTo` (the lesson or syllabus editor); the builder keeps it across steps and shows "Back to the syllabus".
+- After submitting an exam started from a lesson the student lands on the result page, which shows "Back to lesson"; the attempt list in the lesson links to results the same way. Only `/student/syllabus/...` and `/teacher/syllabus/...` paths are accepted as return targets.
+
+### 19.6 Tests
+- `server/syllabusSample.test.ts` — sample plan fits every column and passes validation in AZ/EN/RU; practice container writes a deadline inside the `TIMESTAMP` range and fills every NOT NULL column; sample built through authoring with lesson placement; failure removes the half-built draft and rethrows; error texts exist for all syllabus codes; unexpected errors logged with context.
+- `server/syllabusDbNotReady.test.ts` — a database without syllabus tables: every teacher and student endpoint (incl. `list`, `createSample`) answers `SYLLABUS_DB_NOT_READY`, the nav flag answers "no".
+- `server/syllabusPhase4.test.ts` — exam-engine rules for a syllabus assignment (pinned version after republish, open despite the exam's start date, cooldown, syllabus attempt limit), return paths, notice batch merge / retry / in-memory fallback / claim-before-send / missing table.
+- `server/integration/syllabusAssessments.it.ts` (`pnpm test:db`, real MySQL) — start on the syllabus assignment and pinned version, republish with "move assignments" keeps the pin, syllabus retry limit instead of the exam's, hidden from the general list and not startable there, the teacher's normal group assignment unaffected, another student's assignment unusable.
+
+### 19.7 Known limitations
+- No local MySQL: the integration suite was written and type-checked but runs only with `TEST_DATABASE_URL` (`pnpm test:db`).
+- Sweeper auto-submit and open-answer grading → unlock are covered by the existing hooks/reconciler and unit tests, not by a new MySQL scenario.

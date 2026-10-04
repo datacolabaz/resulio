@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { t } from "@/i18n/messages";
 import { errorText, fmtClock } from "@/lib/format";
-import { safeReturnPath } from "@/lib/syllabusLearn";
+import { resultPath, safeReturnPath } from "@/lib/syllabusLearn";
 import { trpc } from "@/lib/trpc";
 import type { StudentAnswer } from "@shared/assessment";
 import { AlarmClock, Check, Clock, CloudOff } from "lucide-react";
@@ -228,8 +228,8 @@ export default function StudentSession() {
       if (returnTo) {
         void utils.student.syllabus.invalidate();
         toast.success(t("learn.assessment.submitted"));
-        navigate(returnTo);
-      } else if (r.resultId) navigate(`/student/results/${r.resultId}`);
+        navigate(r.resultId ? resultPath(r.resultId, returnTo) : returnTo);
+      } else if (r.resultId) navigate(resultPath(r.resultId, null));
       else {
         toast.info(t("session.timeUpNoAnswers"));
         navigate(`/student/assessments/${data?.assessmentId ?? ""}`);
@@ -253,7 +253,7 @@ export default function StudentSession() {
     );
   }
   if (session.data?.done) {
-    return <Redirect to={returnTo ?? (session.data.resultId ? `/student/results/${session.data.resultId}` : "/student/results")} />;
+    return <Redirect to={session.data.resultId ? resultPath(session.data.resultId, returnTo) : (returnTo ?? "/student/results")} />;
   }
   if (!data) return <Loading />;
 

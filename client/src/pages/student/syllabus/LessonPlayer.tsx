@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { t, type MessageKey } from "@/i18n/messages";
 import { errorText, fmtDateTime } from "@/lib/format";
-import { minutesUntil, nodeVisual, type LockReason } from "@/lib/syllabusLearn";
+import { minutesUntil, nodeVisual, resultPath, type LockReason } from "@/lib/syllabusLearn";
 import type { ActivityEvent } from "@/lib/syllabusTracker";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import type { UploadedFile } from "@/lib/uploadFile";
@@ -439,7 +439,7 @@ function AssessmentPanel({ id, lessonId, item }: { id: string; lessonId: string;
                   <span className="text-xs text-muted-foreground">{r.held ? t("learn.assessment.held") : t("learn.assessment.pending")}</span>
                 )}
                 {r.resultId && !r.held && (
-                  <Link href={`/student/results/${r.resultId}`} className="text-xs text-link hover:underline">
+                  <Link href={resultPath(r.resultId, lessonPath(id, lessonId))} className="text-xs text-link hover:underline">
                     {t("learn.assessment.viewResult")}
                   </Link>
                 )}

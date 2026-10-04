@@ -25,7 +25,7 @@ import {
   recordEvent,
   upsertAssessmentProgress,
 } from "./activity";
-import { accessibleAssessmentIds, loadVersion, resolveAssignment, summary } from "./assessments";
+import { accessibleAssessmentIds, loadVersion, resolveAssignment, summary, syllabusAssignment } from "./assessments";
 import {
   checkCanStart,
   computeDeadline,
@@ -124,14 +124,18 @@ export async function visibilityForResults(
 // Start
 // ---------------------------------------------------------------------------
 
-/** Server-side start chain: published → access → window → attempt limit. */
-export async function startAttempt(assessmentId: string, studentId: number) {
+/**
+ * Server-side start chain: published → access → window → attempt limit. `viaAssignmentId` is the
+ * syllabus path: the attempt runs on that per-student assignment and its pinned version.
+ */
+export async function startAttempt(assessmentId: string, studentId: number, viaAssignmentId?: number) {
   const db = requireDb();
   const [a] = await db.select().from(assessments).where(eq(assessments.id, assessmentId)).limit(1);
   if (!a) throw new AppError("NOT_FOUND");
   if (a.status === "DRAFT" || !a.currentVersionId) throw new AppError("NOT_PUBLISHED");
 
-  const assignment = await resolveAssignment(assessmentId, studentId, db);
+  const assignment =
+    viaAssignmentId !== undefined ? await syllabusAssignment(viaAssignmentId, assessmentId, studentId, db) : await resolveAssignment(assessmentId, studentId, db);
   if (!assignment) throw new AppError("NO_ACCESS");
 
   const existing = await db

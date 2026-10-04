@@ -26,6 +26,7 @@ import { participantState, throttleElapsed } from "./engine";
 import { AppError } from "./errors";
 import { activeStudentIdsOfGroups } from "./groups";
 import * as shareTracking from "./shareTracking";
+import { syllabusOwnedAssignments } from "./syllabusLinks";
 import * as tasksModule from "./tasks";
 import { workspaceOwnerId } from "./workspaces";
 
@@ -271,10 +272,13 @@ export function summarize(participants: Participant[]) {
 /** Loads everything `buildParticipants` needs for many assessments in a fixed number of queries. */
 async function loadParticipantData(assessmentIds: string[], db: DbOrTx) {
   if (!assessmentIds.length) return { assignments: [], members: [], progress: [], attempts: [], results: [], people: new Map() };
-  const assignmentRows = await db
+  const allAssignments = await db
     .select()
     .from(assessmentAssignments)
     .where(and(inArray(assessmentAssignments.assessmentId, assessmentIds), eq(assessmentAssignments.status, "ACTIVE")));
+  // Syllabus per-student rows are not the teacher's roster for this exam (their attempts still show).
+  const syllabusOwned = await syllabusOwnedAssignments(allAssignments.map((r) => r.id), db);
+  const assignmentRows = syllabusOwned.size ? allAssignments.filter((r) => !syllabusOwned.has(r.id)) : allAssignments;
   const groupIds = [...new Set(assignmentRows.flatMap((r) => (r.groupId ? [r.groupId] : [])))];
   const members = groupIds.length
     ? await db

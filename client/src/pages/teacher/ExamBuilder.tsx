@@ -11,7 +11,8 @@ import { t, type MessageKey } from "@/i18n/messages";
 import { errorText, fmtDuration, fromLocalInput, questionTypeLabel, releaseLabel, reviewLabel, toLocalInput, typeLabel } from "@/lib/format";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { QUESTION_TYPES, type AssessmentType, type QuestionInput } from "@shared/assessment";
-import { ArrowDown, ArrowUp, Check, Pencil, Sparkles, Trash2 } from "lucide-react";
+import { builderPath, safeSyllabusEditorPath } from "@/lib/syllabusLearn";
+import { ArrowDown, ArrowLeft, ArrowUp, Check, Pencil, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useParams, useSearch } from "wouter";
@@ -55,19 +56,33 @@ function Stepper({ current, onSelect, disabled }: { current: StepKey; onSelect: 
   );
 }
 
+function BackToSyllabus({ href }: { href: string }) {
+  return (
+    <Link href={href} className="inline-flex items-center gap-1 text-sm text-link underline-offset-4 hover:underline">
+      <ArrowLeft className="h-4 w-4" aria-hidden />
+      {t("builder.backToSyllabus")}
+    </Link>
+  );
+}
+
 /** `/teacher/assessments/new` — step 1 creates the draft, then continues in the edit route. */
 export function NewAssessmentPage() {
   const [, nav] = useLocation();
-  const initialType = (new URLSearchParams(useSearch()).get("type") ?? "EXAM") as AssessmentType;
+  const search = new URLSearchParams(useSearch());
+  const initialType = (search.get("type") ?? "EXAM") as AssessmentType;
+  const returnTo = safeSyllabusEditorPath(search.get("returnTo"));
   const [form, setForm] = useState({ type: initialType, title: "", subject: "", description: "", instructions: "" });
   const create = trpc.teacher.assessments.create.useMutation({
-    onSuccess: (a) => nav(`/teacher/assessments/${a.id}/edit?step=questions`),
+    onSuccess: (a) => nav(builderPath(`/teacher/assessments/${a.id}/edit?step=questions`, returnTo)),
     onError: (e) => toast.error(errorText(e)),
   });
   return (
     <AppShell area="teaching" title={t("builder.newTitle")}>
       <div className="mx-auto max-w-4xl space-y-5">
-        <Stepper current="basics" onSelect={() => undefined} disabled />
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <Stepper current="basics" onSelect={() => undefined} disabled />
+          {returnTo && <BackToSyllabus href={returnTo} />}
+        </div>
         <Panel title={t("builder.step.basics")}>
           <BasicsForm value={form} onChange={setForm} typeEditable />
           <div className="mt-5 flex justify-end">
@@ -129,9 +144,10 @@ export function EditAssessmentPage() {
   const search = new URLSearchParams(useSearch());
   const [, nav] = useLocation();
   const step = (STEPS.some((s) => s.key === search.get("step")) ? search.get("step") : "basics") as StepKey;
+  const returnTo = safeSyllabusEditorPath(search.get("returnTo"));
   const detail = trpc.teacher.assessments.detail.useQuery({ id });
   const stepper = useRef<HTMLDivElement>(null);
-  const go = (s: StepKey) => nav(`/teacher/assessments/${id}/edit?step=${s}`);
+  const go = (s: StepKey) => nav(builderPath(`/teacher/assessments/${id}/edit?step=${s}`, returnTo));
   const next = () => go(STEPS[Math.min(STEPS.length - 1, STEPS.findIndex((s) => s.key === step) + 1)].key);
   const a = detail.data;
 
@@ -151,8 +167,12 @@ export function EditAssessmentPage() {
         <div className="mx-auto max-w-5xl space-y-5">
           <div ref={stepper} className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <Stepper current={step} onSelect={go} />
-            <Link href={`/teacher/assessments/${id}`} className="text-sm text-link underline-offset-4 hover:underline">{t("builder.detailLink")}</Link>
+            <div className="flex flex-wrap items-center gap-3">
+              {returnTo && <BackToSyllabus href={returnTo} />}
+              <Link href={`/teacher/assessments/${id}`} className="text-sm text-link underline-offset-4 hover:underline">{t("builder.detailLink")}</Link>
+            </div>
           </div>
+          {returnTo && a.status !== "PUBLISHED" && <div className="rounded-xl bg-muted p-3 text-sm">{t("builder.syllabusPublishHint")}</div>}
           {a.status === "CLOSED" && <div className="rounded-xl bg-muted p-3 text-sm">{t("builder.closedNote")}</div>}
           {a.currentVersionId && a.status !== "CLOSED" && (
             <div className="rounded-xl border border-warning/40 bg-warning-surface p-3 text-sm text-foreground">{t("builder.editingPublished")}</div>

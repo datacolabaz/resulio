@@ -213,4 +213,11 @@ export const syllabusLearn = {
   "syllabus.students.markCovered": ["Keçildi kimi qeyd et", "Mark as covered", "Отметить как пройденное"],
   "syllabus.students.markGroup": ["Bütün qrup üçün", "For the whole group", "Для всей группы"],
   "syllabus.students.marked": ["{count} tələbə üçün qeyd edildi", "Marked for {count} {count|student|students}", "Отмечено для {count} {count|студента|студентов|студентов}"],
+
+  "builder.backToSyllabus": ["Syllabus-a qayıt", "Back to the syllabus", "Вернуться к силлабусу"],
+  "builder.syllabusPublishHint": [
+    "Syllabus-da istifadə üçün qiymətləndirməni dərc edin. Syllabus öz versiyasında dərc anındakı sual versiyasını saxlayır; sonrakı dəyişikliklər yalnız syllabus yenidən dərc olunanda tətbiq edilir.",
+    "Publish the assessment to use it in the syllabus. Each syllabus version keeps the question version that was live when it was published; later edits apply only after the syllabus is republished.",
+    "Опубликуйте оценивание, чтобы использовать его в силлабусе. Каждая версия силлабуса хранит версию вопросов на момент публикации; последующие правки применяются только после повторной публикации силлабуса.",
+  ],
 } as const satisfies Record<string, Entry>;

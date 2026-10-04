@@ -197,6 +197,13 @@
       "when": 1791101337504,
       "tag": "0027_learning_activity",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "5",
+      "when": 1791107060718,
+      "tag": "0028_syllabus_notice_batches",
+      "breakpoints": true
     }
   ]
 }

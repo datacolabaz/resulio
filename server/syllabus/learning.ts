@@ -306,7 +306,14 @@ export async function startAssessment(userId: number, syllabusId: string, itemId
   const o = await open(userId, syllabusId);
   const found = unlockedItem(o, itemId);
   if (found.item.kind !== "ASSESSMENT" || !found.item.assessmentId) throw new AppError("SYLLABUS_INVALID_TARGET");
-  const started = await startAttempt(found.item.assessmentId, userId);
+  // The assignment is created by the recompute that unlocked the item; one more recompute covers a lost race.
+  let assignmentId = await progression.assignmentForItem(o.enrollment.id, itemId);
+  if (assignmentId === null) {
+    await progression.recompute(o.enrollment.id);
+    assignmentId = await progression.assignmentForItem(o.enrollment.id, itemId);
+  }
+  if (assignmentId === null) throw new AppError("SYLLABUS_LOCKED");
+  const started = await startAttempt(found.item.assessmentId, userId, assignmentId);
   if (!started.resumed) {
     await logActivity([{ ...activityBase(o), moduleId: found.module?.id, lessonId: found.lesson?.id, itemId, assessmentId: found.item.assessmentId, activityType: "ASSESSMENT_STARTED", source: "SERVER" }]);
   }

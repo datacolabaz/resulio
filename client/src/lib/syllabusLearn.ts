@@ -45,6 +45,25 @@ export function safeReturnPath(raw: string | null | undefined): string | null {
   return /^\/student\/syllabus\/[A-Za-z0-9_-]+(\/lessons\/[A-Za-z0-9_-]+)?$/.test(raw) ? raw : null;
 }
 
+/** The result page, keeping the way back to the lesson when the exam was started from one. */
+export function resultPath(resultId: string, returnTo: string | null) {
+  const back = safeReturnPath(returnTo);
+  return back ? `/student/results/${resultId}?returnTo=${encodeURIComponent(back)}` : `/student/results/${resultId}`;
+}
+
+/** Teacher side: only a syllabus or lesson editor page may be the "back" target of the exam builder. */
+export function safeSyllabusEditorPath(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  return /^\/teacher\/syllabus\/[A-Za-z0-9_-]+(\/lessons\/[A-Za-z0-9_-]+)?$/.test(raw) ? raw : null;
+}
+
+/** Exam builder URL that offers a way back to the syllabus page it was opened from. */
+export function builderPath(base: string, returnTo: string | null) {
+  const back = safeSyllabusEditorPath(returnTo);
+  if (!back) return base;
+  return `${base}${base.includes("?") ? "&" : "?"}returnTo=${encodeURIComponent(back)}`;
+}
+
 /** Remaining time as whole minutes (rounded up), for cooldowns. */
 export function minutesUntil(at: Date | string | null | undefined, now = Date.now()): number {
   if (!at) return 0;

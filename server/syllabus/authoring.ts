@@ -10,10 +10,7 @@ import {
   syllabusItems,
   syllabusLessons,
   syllabusModules,
-  syllabusPracticeTasks,
   syllabusVersions,
-  taskAnswerKeys,
-  tasks,
   type Syllabus,
   type SyllabusItemRow,
 } from "../../drizzle/schema";
@@ -29,7 +26,7 @@ import { requireDb, type DbOrTx } from "../db";
 import type { TeacherScope } from "../modules/access";
 import { AppError } from "../modules/errors";
 import { ownedSyllabus } from "./access";
-import { cloneContainer, createContainer, syncContainer } from "./practiceTasks";
+import { cloneContainer, createContainer, deleteContainers, syncContainer } from "./practiceTasks";
 
 /**
  * Draft editing. Students never read these tables (they read the pinned version), so every edit
@@ -229,13 +226,7 @@ export async function discardDraft(scope: TeacherScope, id: string) {
   const [grant] = await db.select({ id: syllabusAccessGrants.id }).from(syllabusAccessGrants).where(eq(syllabusAccessGrants.syllabusId, id)).limit(1);
   if (syllabus.currentVersionId || grant) throw new AppError("SYLLABUS_INVALID_TARGET");
   await db.transaction(async (tx) => {
-    const containers = await tx.select({ taskId: syllabusPracticeTasks.taskId }).from(syllabusPracticeTasks).where(eq(syllabusPracticeTasks.syllabusId, id));
-    const taskIds = containers.map((c) => c.taskId);
-    if (taskIds.length) {
-      await tx.delete(taskAnswerKeys).where(inArray(taskAnswerKeys.taskId, taskIds));
-      await tx.delete(tasks).where(and(inArray(tasks.id, taskIds), eq(tasks.providerWorkspaceId, scope.workspaceId)));
-      await tx.delete(syllabusPracticeTasks).where(eq(syllabusPracticeTasks.syllabusId, id));
-    }
+    await deleteContainers(tx, scope.workspaceId, id);
     await tx.delete(syllabusItems).where(eq(syllabusItems.syllabusId, id));
     await tx.delete(syllabusLessons).where(eq(syllabusLessons.syllabusId, id));
     await tx.delete(syllabusModules).where(eq(syllabusModules.syllabusId, id));

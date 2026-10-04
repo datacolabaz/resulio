@@ -18,6 +18,7 @@ import { serveStatic, setupVite } from "./vite";
 import { getDb, warnIfGoogleAuthSchemaMissing } from "../db";
 import { sweepExpiredAttempts } from "../modules/attempts";
 import { startNotificationWorker } from "../notifications/dispatcher";
+import { flushDueNotices } from "../syllabus/notify";
 import { installSyllabusHooks, reconcileDirty } from "../syllabus/progression";
 
 const SWEEP_INTERVAL_MS = 30_000;
@@ -59,6 +60,18 @@ function startSyllabusProgression() {
       running = false;
     }
   }, SYLLABUS_RECONCILE_MS).unref();
+  let flushing = false;
+  setInterval(async () => {
+    if (flushing) return;
+    flushing = true;
+    try {
+      await flushDueNotices();
+    } catch (error) {
+      console.error("[Syllabus] Notice flush failed", error);
+    } finally {
+      flushing = false;
+    }
+  }, SWEEP_INTERVAL_MS).unref();
 }
 
 async function startServer() {

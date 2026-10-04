@@ -1368,6 +1368,27 @@ export const learningActivity = mysqlTable(
   ],
 );
 
+export const SYLLABUS_NOTICE_KINDS = ["UNLOCK", "APPROVAL"] as const;
+
+/**
+ * Notices waiting for their batching window (server/syllabus/notify.ts): one open row per recipient
+ * batch, merged on every recompute and deleted when sent, so a restart never loses one.
+ */
+export const syllabusNoticeBatches = mysqlTable(
+  "syllabus_notice_batches",
+  {
+    batchKey: varchar("batchKey", { length: 96 }).primaryKey(),
+    kind: mysqlEnum("kind", SYLLABUS_NOTICE_KINDS).notNull(),
+    syllabusId: id("syllabusId").notNull(),
+    payload: json("payload").$type<Record<string, unknown>>().notNull(),
+    /** Bumped by every merge; the sender deletes only the revision it read. */
+    revision: int("revision").notNull().default(0),
+    dueAt: timestamp("dueAt").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [index("syllabus_notice_batches_due_idx").on(t.dueAt)],
+);
+
 export type Syllabus = typeof syllabi.$inferSelect;
 export type SyllabusModuleRow = typeof syllabusModules.$inferSelect;
 export type SyllabusLessonRow = typeof syllabusLessons.$inferSelect;

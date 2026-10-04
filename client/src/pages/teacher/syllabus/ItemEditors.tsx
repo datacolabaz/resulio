@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { t, type MessageKey } from "@/i18n/messages";
 import { difficultyLabel, errorText, fromLocalInput, toLocalInput } from "@/lib/format";
 import { blocksForSave, blocksFromContent, type EditableBlock } from "@/lib/syllabus";
+import { builderPath } from "@/lib/syllabusLearn";
 import { trpc } from "@/lib/trpc";
 import {
   assessmentItemContentSchema,
@@ -27,6 +28,7 @@ import {
 import { ExternalLink, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useLocation } from "wouter";
 import { fieldLabel, selectCls } from "./shared";
 
 type Attachment = { fileId: string; name: string; size: number };
@@ -305,7 +307,8 @@ export function AssessmentFields({
   assessmentId: string | null;
   onAssessment: (id: string | null) => void;
 }) {
-  const list = trpc.teacher.assessments.list.useQuery({});
+  const list = trpc.teacher.assessments.list.useQuery({}, { refetchOnWindowFocus: true });
+  const [here] = useLocation();
   const set = (patch: Partial<AssessmentItemContent>) => onChange({ ...c, ...patch });
   const selected = list.data?.find((a) => a.id === assessmentId);
   return (
@@ -324,7 +327,7 @@ export function AssessmentFields({
           </select>
         </label>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <a href="/teacher/assessments/new" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-link underline">
+          <a href={builderPath("/teacher/assessments/new", here)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-link underline">
             <ExternalLink className="h-4 w-4" aria-hidden />
             {t("syllabus.as.createNew")}
           </a>
@@ -333,7 +336,7 @@ export function AssessmentFields({
             {t("syllabus.as.refresh")}
           </Button>
           {selected && (
-            <a href={`/teacher/assessments/${selected.id}/edit`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-link underline">
+            <a href={builderPath(`/teacher/assessments/${selected.id}/edit`, here)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-link underline">
               {t("syllabus.as.openBuilder")}
             </a>
           )}

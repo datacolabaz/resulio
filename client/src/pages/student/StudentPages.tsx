@@ -23,7 +23,8 @@ import { normalizeJoinInput, resolveJoinInput } from "@/lib/joinInput";
 import { itemStatus, liveStatus } from "@/lib/status";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { fileDownloadUrl, type UploadedFile } from "@/lib/uploadFile";
-import { CheckCircle2, Clock, History, Sparkles, X } from "lucide-react";
+import { safeReturnPath } from "@/lib/syllabusLearn";
+import { ArrowLeft, CheckCircle2, Clock, History, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useParams, useSearch } from "wouter";
@@ -262,11 +263,21 @@ export function StudentResults() {
 export function StudentResultDetail() {
   const { id } = useParams<{ id: string }>();
   const r = trpc.student.result.useQuery({ id: id! }, { enabled: Boolean(id) });
+  const returnTo = safeReturnPath(new URLSearchParams(useSearch()).get("returnTo"));
   const d = r.data;
+  const back = returnTo && (
+    <Button asChild size="sm" variant="outline">
+      <Link href={returnTo}>
+        <ArrowLeft className="mr-1 h-4 w-4" aria-hidden />
+        {t("learn.backToLesson")}
+      </Link>
+    </Button>
+  );
   return (
     <AppShell area="learning" title={d?.title}>
-      {r.error ? <ErrorNote error={r.error} /> : !d ? <Loading /> : (
+      {r.error ? <div className="space-y-3"><ErrorNote error={r.error} />{back}</div> : !d ? <Loading /> : (
         <div className="space-y-5">
+          {back}
           {!d.released ? (
             <Panel>
               <div className="flex items-center gap-2 text-lg font-semibold">

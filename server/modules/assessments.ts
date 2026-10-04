@@ -237,15 +237,25 @@ export async function assignedStudentIds(assessmentId: string, db: DbOrTx = requ
 
 /**
  * The assignment through which a student takes an assessment. An individual assignment wins
- * over a group assignment; among equals the most recent wins.
+ * over a group assignment; among equals the most recent wins. Syllabus-owned rows never count
+ * here: they are reached only from their lesson (`syllabusAssignment`), so a syllabus never hides
+ * or replaces a teacher's normal group assignment.
  */
 export async function resolveAssignment(assessmentId: string, studentId: number, db: DbOrTx = requireDb()) {
-  const rows = await activeAssignments(assessmentId, db);
+  const owned = new Set(await syllabusAssignmentIds(assessmentId, db));
+  const rows = (await activeAssignments(assessmentId, db)).filter((r) => !owned.has(r.id));
   const individual = rows.filter((r) => r.studentId === studentId);
   if (individual.length) return individual.sort((x, y) => y.assignedAt.getTime() - x.assignedAt.getTime())[0];
   const mine = await activeGroupIdsOfStudent(studentId, db);
   const viaGroup = rows.filter((r) => r.groupId && mine.includes(r.groupId));
   return viaGroup.sort((x, y) => y.assignedAt.getTime() - x.assignedAt.getTime())[0] ?? null;
+}
+
+/** A syllabus-owned assignment, only if it is this student's, for this assessment, and still active. */
+export async function syllabusAssignment(assignmentId: number, assessmentId: string, studentId: number, db: DbOrTx = requireDb()) {
+  const [row] = await db.select().from(assessmentAssignments).where(eq(assessmentAssignments.id, assignmentId)).limit(1);
+  if (!row || row.assessmentId !== assessmentId || row.studentId !== studentId || row.status !== "ACTIVE") return null;
+  return row;
 }
 
 /** Assessments visible to a student through an active group or individual assignment. */

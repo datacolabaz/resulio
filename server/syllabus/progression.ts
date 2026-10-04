@@ -17,7 +17,7 @@ import {
   type Syllabus,
   type SyllabusEnrollment,
 } from "../../drizzle/schema";
-import { MAX_ATTEMPTS_LIMIT, type UnlockTargetType } from "../../shared/syllabus";
+import { MAX_ATTEMPTS_LIMIT, TIMESTAMP_MIN, type UnlockTargetType } from "../../shared/syllabus";
 import { requireDb, type DbOrTx, type Tx } from "../db";
 import { AppError } from "../modules/errors";
 import { onLearningEvent, type LearningEvent } from "../modules/learningEvents";
@@ -36,9 +36,15 @@ import type { EngineInput, EngineOutput, ItemFact, PrevNode, VersionStructure } 
 export const cooldownUntil = (lastFinishedAt: Date | null, minutes: number) =>
   lastFinishedAt && minutes > 0 ? new Date(lastFinishedAt.getTime() + minutes * 60_000) : null;
 
+/**
+ * `availableFrom` of a syllabus assignment: the retry cooldown, otherwise "open now". Never null, so
+ * the exam's own start date (meant for its group sitting) does not hold back syllabus students.
+ */
+export const syllabusAvailableFrom = (cooldown: Date | null) => cooldown ?? TIMESTAMP_MIN;
+
 interface LoadedInput extends EngineInput {
   /** itemId → the per-student assessment assignment created for it. */
-  jit: Map<string, { assignmentId: number; availableFrom: Date | null; attemptLimitOverride: number | null }>;
+  jit: Map<string, { assignmentId: number; assessmentId: string; assessmentVersionId: string | null; availableFrom: Date | null; attemptLimitOverride: number | null }>;
   moduleRows: Map<string, typeof syllabusModuleProgress.$inferSelect>;
   lessonRows: Map<string, typeof syllabusLessonProgress.$inferSelect>;
   /** Approval decisions recorded so far (any target). */
@@ -122,7 +128,9 @@ export async function loadInput(e: SyllabusEnrollment, structure: VersionStructu
     manualModules: new Set(unlocks.filter((u) => u.targetType === "MODULE").map((u) => u.targetId)),
     manualLessons: new Set(unlocks.filter((u) => u.targetType === "LESSON").map((u) => u.targetId)),
     approvals: new Set([...latestDecision].filter(([, d]) => d === "APPROVED").map(([k]) => k)),
-    jit: new Map(jitRows.map((r) => [r.itemId, { assignmentId: r.a.id, availableFrom: r.a.availableFrom, attemptLimitOverride: r.a.attemptLimitOverride }])),
+    jit: new Map(
+      jitRows.map((r) => [r.itemId, { assignmentId: r.a.id, assessmentId: r.a.assessmentId, assessmentVersionId: r.a.assessmentVersionId, availableFrom: r.a.availableFrom, attemptLimitOverride: r.a.attemptLimitOverride }]),
+    ),
     moduleRows: new Map(moduleRows.map((r) => [r.moduleId, r])),
     lessonRows: new Map(lessonRows.map((r) => [r.lessonId, r])),
     decisions: approvalRows.length,
@@ -183,8 +191,14 @@ async function syncAssessmentAssignments(tx: Tx, e: SyllabusEnrollment, syllabus
     const retry = item.retry ?? located?.rules.retry ?? input.structure.rules.retry;
     const limit = retry.maxAttempts ?? MAX_ATTEMPTS_LIMIT;
     const met = evals.get(item.id)?.state === "MET";
-    const from = met ? null : cooldownUntil(input.facts.get(item.id)?.assessment?.lastFinishedAt ?? null, retry.cooldownMinutes);
-    const existing = input.jit.get(item.id);
+    const from = syllabusAvailableFrom(met ? null : cooldownUntil(input.facts.get(item.id)?.assessment?.lastFinishedAt ?? null, retry.cooldownMinutes));
+    let existing = input.jit.get(item.id);
+    // The item points at another exam in this syllabus version: retire the old assignment.
+    if (existing && existing.assessmentId !== item.assessmentId) {
+      await tx.update(assessmentAssignments).set({ status: "REVOKED" }).where(eq(assessmentAssignments.id, existing.assignmentId));
+      await tx.delete(syllabusAssessmentAssignments).where(eq(syllabusAssessmentAssignments.assignmentId, existing.assignmentId));
+      existing = undefined;
+    }
     if (!existing) {
       const [created] = await tx
         .insert(assessmentAssignments)
@@ -198,10 +212,15 @@ async function syncAssessmentAssignments(tx: Tx, e: SyllabusEnrollment, syllabus
         })
         .$returningId();
       await tx.insert(syllabusAssessmentAssignments).values({ assignmentId: created.id, syllabusId: e.syllabusId, enrollmentId: e.id, itemId: item.id });
-    } else if ((existing.availableFrom?.getTime() ?? null) !== (from?.getTime() ?? null) || existing.attemptLimitOverride !== limit) {
+    } else if (
+      existing.assessmentVersionId !== item.assessmentVersionId ||
+      existing.availableFrom?.getTime() !== from.getTime() ||
+      existing.attemptLimitOverride !== limit
+    ) {
+      // A student moved to a newer syllabus version takes the exam version pinned there (in-progress attempts keep theirs).
       await tx
         .update(assessmentAssignments)
-        .set({ availableFrom: from, attemptLimitOverride: limit, status: "ACTIVE" })
+        .set({ assessmentVersionId: item.assessmentVersionId, availableFrom: from, attemptLimitOverride: limit, status: "ACTIVE" })
         .where(eq(assessmentAssignments.id, existing.assignmentId));
     }
   }
@@ -476,6 +495,16 @@ async function enrollmentsForAttempt(attemptId: string) {
     .innerJoin(assessmentAssignments, eq(assessmentAssignments.id, syllabusAssessmentAssignments.assignmentId))
     .where(and(eq(assessmentAssignments.assessmentId, a.assessmentId), eq(assessmentAssignments.studentId, a.studentId)));
   return [...new Set(rows.map((r) => r.id))];
+}
+
+/** The per-student assignment this enrollment's assessment item runs on (created when the item unlocks). */
+export async function assignmentForItem(enrollmentId: string, itemId: string): Promise<number | null> {
+  const [row] = await requireDb()
+    .select({ id: syllabusAssessmentAssignments.assignmentId })
+    .from(syllabusAssessmentAssignments)
+    .where(and(eq(syllabusAssessmentAssignments.enrollmentId, enrollmentId), eq(syllabusAssessmentAssignments.itemId, itemId)))
+    .limit(1);
+  return row?.id ?? null;
 }
 
 export async function handleLearningEvent(event: LearningEvent) {

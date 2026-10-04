@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { syllabi, syllabusPracticeTasks, taskAnswerKeys, taskGradingSettings, tasks } from "../../drizzle/schema";
 import { studentPracticeContentSchema, TIMESTAMP_MAX } from "../../shared/syllabus";
@@ -51,6 +51,21 @@ export async function createContainer(
   await db.insert(syllabusPracticeTasks).values({ taskId: id, ...link });
   await setAutoGrade(db, id, autoGrade);
   return id;
+}
+
+/** Removes every container of a never-published syllabus (with keys and grading switches). */
+export async function deleteContainers(db: DbOrTx, workspaceId: string, syllabusId: string) {
+  const rows = await db.select({ taskId: syllabusPracticeTasks.taskId }).from(syllabusPracticeTasks).where(eq(syllabusPracticeTasks.syllabusId, syllabusId));
+  const taskIds = rows.map((r) => r.taskId);
+  if (!taskIds.length) return;
+  await db.delete(taskAnswerKeys).where(inArray(taskAnswerKeys.taskId, taskIds));
+  try {
+    await db.delete(taskGradingSettings).where(inArray(taskGradingSettings.taskId, taskIds));
+  } catch (error) {
+    if (!isMissingTable(error)) throw error;
+  }
+  await db.delete(tasks).where(and(inArray(tasks.id, taskIds), eq(tasks.providerWorkspaceId, workspaceId)));
+  await db.delete(syllabusPracticeTasks).where(eq(syllabusPracticeTasks.syllabusId, syllabusId));
 }
 
 /** Keeps the draft container in step with the item (the frozen copies of versions are never touched). */
