@@ -62,6 +62,7 @@ import { CHANNELS, EVENT_TYPES } from "./notifications/events";
 import * as notificationPreferences from "./notifications/preferences";
 import * as push from "./notifications/push";
 import { store } from "./resulioStore";
+import { studentSyllabusRouter, teacherSyllabusRouter } from "./syllabus/router";
 import { SHARE_CAMPAIGNS, SHARE_CHANNELS, SHARE_TARGET_TYPES, VISITOR_ID_PATTERN } from "../shared/shareTracking";
 
 const MINUTE = 60_000;
@@ -703,6 +704,7 @@ const teacherRouter = router({
   analytics: teacherAnalyticsRouter,
   ai: teacherAiRouter,
   tasks: teacherTasksRouter,
+  syllabus: teacherSyllabusRouter,
 });
 
 // ---------------------------------------------------------------------------
@@ -888,6 +890,7 @@ const studentRouter = router({
       });
       return result;
     }),
+  syllabus: studentSyllabusRouter,
 });
 
 // ---------------------------------------------------------------------------

@@ -47,6 +47,8 @@ import {
 } from "./engine";
 import type { TeacherScope } from "./access";
 import { AppError } from "./errors";
+import { emitLearningEvent } from "./learningEvents";
+import { syllabusOwnedAssignments } from "./syllabusLinks";
 
 /** drizzle wraps driver errors (DrizzleQueryError), so the MySQL code may sit on `cause`. */
 const isDuplicateKey = (e: unknown): boolean => {
@@ -461,6 +463,7 @@ export async function finalizeAttempt(attemptId: string, opts: { auto: boolean }
     return id;
   });
 
+  emitLearningEvent({ type: "ATTEMPT_FINISHED", attemptId });
   if (notify) {
     const n = notify as { ownerUserId: number | null; studentId: number; title: string; percentage: number };
     if (n.ownerUserId) await notifications.notify(n.ownerUserId, "İmtahan tamamlandı", `${n.title}: ${n.percentage}%`);
@@ -592,10 +595,17 @@ export async function studentAssessments(studentId: number) {
   const vis = await visibilityForResults(withResults.filter((x) => x.assessment), db);
   const now = new Date();
   const out = [];
+  const resolved = new Map<string, AssessmentAssignment>();
   for (const a of rows) {
     if (a.status === "DRAFT" || !a.currentVersionId) continue;
     const assignment = await resolveAssignment(a.id, studentId, db);
-    if (!assignment) continue;
+    if (assignment) resolved.set(a.id, assignment);
+  }
+  // Syllabus assessments are taken from inside their lesson, not from the general exam list.
+  const syllabusOwned = await syllabusOwnedAssignments([...resolved.values()].map((x) => x.id), db);
+  for (const a of rows) {
+    const assignment = resolved.get(a.id);
+    if (!assignment || syllabusOwned.has(assignment.id)) continue;
     const rules = effectiveRules(a, assignment, a.settings);
     const counted = mine.filter((m) => m.a.assessmentId === a.id && countsTowardLimit(m.a.status));
     const latest = counted[0];
@@ -831,6 +841,7 @@ export async function gradeOpenAnswer(scope: TeacherScope, resultId: string, que
       .where(eq(results.id, resultId));
     return { resultId, studentId: result.studentId, ...totals };
   });
+  emitLearningEvent({ type: "ASSESSMENT_RESULT_CHANGED", resultId });
   if (outcome.pendingReviewCount === 0) await notifications.notify(outcome.studentId, "Yoxlama tamamlandı", "Açıq cavablarınız qiymətləndirildi");
   return outcome;
 }

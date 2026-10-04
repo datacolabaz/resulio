@@ -1,6 +1,6 @@
 # Syllabus / Structured Learning Architecture — analysis, design and plan
 
-Status: **design proposal, no implementation code yet** (as the owner requested in §25 of the spec).
+Status: **approved by the owner** (all 12 recommended defaults, with one change to Q7 — see §15). **Phase 1 (database + backend) implemented** behind the `SYLLABUS` feature flag — see §16. Phase 2 (teacher builder UI) is next.
 Spec: [`docs/specs/SYLLABUS-SPEC.md`](specs/SYLLABUS-SPEC.md) (the owner's 45-section specification, Azerbaijani).
 Baseline analysed: `main` at `fc649af` (migrations up to `0025_task_answer_keys`).
 
@@ -13,6 +13,7 @@ Baseline analysed: `main` at `fc649af` (migrations up to `0025_task_answer_keys`
 - **Yeni olan:** Syllabus → Modul → Dərs → Dərs elementləri (Nəzəriyyə / Müəllim praktikası / Tələbə praktikası / Qiymətləndirmə / Resurs), versiyalar, giriş icazələri, irəliləyiş cədvəlləri, əl ilə açma (audit ilə), fəaliyyət jurnalı, sertifikata hazır tamamlanma qeydi.
 - **Versiyalama:** müəllim həmişə "qaralama" üzərində işləyir; "Dərc et" düyməsi dəyişməz (immutable) versiya yaradır (v1.0, v1.1…). Hər tələbə öz versiyasına bağlıdır — müəllimin sonrakı dəyişikliyi başlamış tələbələrin irəliləyişini pozmur.
 - **İrəliləyiş məntiqi:** qaydalar (nəzəriyyə, praktika, imtahan keçid balı, təkrar cəhd, müəllim təsdiqi) Syllabus → Modul → Dərs səviyyəsində konfiqurasiya olunur və irsən keçir. Server hər hadisədən sonra tələbənin vəziyyətini yenidən hesablayır; kilidli məzmun serverdən heç vaxt göndərilmir.
+- **Qrup yoldaşlarının irəliləyişi (Q7, təsdiqlənib):** tələbələr qrup yoldaşlarının syllabus irəliləyişini görür; müəllim bunu hər qrup üçün yeni "İrəliləyiş qrupda görünsün" ayarı ilə bağlaya bilər (default AÇIQ). Yalnız irəliləyiş göstərilir — cavablar, rəylər, ballar heç vaxt.
 - **Analitika:** əvvəlcə real vaxtda SQL ilə irəliləyiş cədvəllərindən (sürətli və dəqiq); yalnız lazım olarsa sonradan gündəlik yığım (rollup) cədvəlləri. Risk qrupu və "insight"-lar sadə qaydalarla.
 - **Təhlükəsizlik yayımı:** bütün miqrasiyalar yalnız yeni cədvəl əlavə edir (ADD-ONLY), mövcud cədvəllərə sütun əlavə olunmur; kod miqrasiya işləməyibsə də çökmür; funksiya bayraq (feature flag) ilə əvvəl pilot workspace-də açılır.
 
@@ -471,7 +472,7 @@ There are exactly these actors in the current system: **workspace owner** (the t
 | See student-level analytics & timelines (§33) | Students enrolled in / granted to **own** syllabi only | — | — | — | Read-only on request |
 | See group/module/lesson/task analytics, funnel, at-risk, insights (§34–40) | Own syllabi + own groups | — | — | — | Read-only |
 | See own path, own progress, own activity, own scores | — | — | Yes (only self) | — | — |
-| See classmates' progress | — | — | **No** by default (Q7) | — | — |
+| See groupmates' progress (progress fields only) | Turns it on/off per group ("İrəliləyiş qrupda görünsün", default ON) | — | **Yes** while the group setting is ON (Q7, approved) | — | — |
 | System-wide aggregate counts (no content) | — | — | — | `syllabus.view` | `syllabus.view` |
 
 Server-side enforcement points (all in the new `server/syllabus/*` modules, called from routers):
@@ -783,7 +784,7 @@ All changes are additive or behaviour-preserving refactors.
 
 1. **Add-only SQL**: new `CREATE TABLE` statements only, no `ALTER` of existing tables, no data backfill (there is no existing syllabus data). Generated with `pnpm db:generate`, journal + snapshot committed, verified with `pnpm db:verify` and `pnpm db:rehearse` (`scripts/migration-rehearsal.mjs`).
 2. **Code tolerant if not migrated**: deploy code first or migration first — both orders are safe. Without tables: flag reports unavailable, nav hidden, hooks no-op.
-3. **Feature flag `SYLLABUS`**: default off. Enable order: (a) local/dev, (b) owner's own workspace via `feature_flag_overrides (flagKey='SYLLABUS', scopeType='WORKSPACE')`, (c) a few pilot teachers, (d) everyone (`feature_flags` row or env `SYLLABUS_ENABLED=true`).
+3. **Feature flag `SYLLABUS`**: default off. Enable order: (a) local/dev, (b) owner's own workspace via env `SYLLABUS_ENABLED_WORKSPACES=<id>` or a `feature_flag_overrides (flagKey='SYLLABUS', scopeType='WORKSPACE')` row (admin toggle), (c) a few pilot teachers, (d) everyone (`feature_flags` row `SYLLABUS` enabled, or env `SYLLABUS_ENABLED_WORKSPACES=*`). Exact steps in §16.3.
 4. **Rollout order per phase**: merge → `pnpm db:migrate` against Railway (manual, `RAILWAY.md`) → deploy → enable flag for pilot → smoke test (`scripts/browser-smoke.mjs` extended) → widen.
 5. **Rollback**: turn the flag off (instant). Tables can stay (unused); a `docs/migrations/00NN-rollback.sql` with `DROP TABLE` is provided like `docs/migrations/0002-rollback.sql`, to be used only if the feature is abandoned.
 6. **Backfill**: none needed.
@@ -792,8 +793,9 @@ All changes are additive or behaviour-preserving refactors.
 
 Sizes are rough developer-day estimates for one experienced developer (including tests and review fixes).
 
-### Phase 1 — Database + backend domain model (≈ 7–9 days)
-- **Scope**: migrations 0026/0027, `shared/syllabus.ts`, `server/syllabus/{availability, authoring, publishing, access, enrollment, rules, progression (core), serialize, router}`; teacher CRUD/reorder/duplicate/publish/grant APIs; student read APIs (list, path, lesson with lock enforcement); feature flag.
+### Phase 1 — Database + backend domain model (≈ 7–9 days) — ✅ delivered (see §16)
+- **Status**: implemented as planned, and it also covers the backend of several later items: recompute hooks + reconciler, manual unlock/approval APIs (teacher + admin with audit), version move, activity ingestion, just-in-time assessment assignments. Phases 3 and 4 are therefore mostly UI + notifications + end-to-end checks. The seeded demo syllabus moves to Phase 2 (it needs the builder to be useful).
+- **Scope (original plan)**: migrations 0026/0027, `shared/syllabus.ts`, `server/syllabus/{availability, authoring, publishing, access, enrollment, rules, progression (core), serialize, router}`; teacher CRUD/reorder/duplicate/publish/grant APIs; student read APIs (list, path, lesson with lock enforcement); feature flag.
 - **Deliverables**: working API (no UI), seeded demo syllabus in `server/seed.ts`.
 - **Acceptance**: create → publish v1 → grant group → student sees path with only lesson 1 open; editing draft does not change student's view; revoke keeps progress; cross-workspace access is NOT_FOUND; app works with tables missing.
 - **Tests**: rules/progression/access/publishing unit tests; `syllabus.it.ts` happy path + authorization.
@@ -824,9 +826,16 @@ Sizes are rough developer-day estimates for one experienced developer (including
 
 **Total ≈ 36–47 developer-days.** Each phase ships behind the flag and can be reviewed/merged separately.
 
-## 15. Open questions for the owner (with recommended defaults)
+## 15. Owner decisions (approved)
 
-| # | Question | Recommended default |
+The owner approved all twelve recommended defaults below, with **one change: Q7**. The table keeps the original wording; the decision that applies is in bold where it differs.
+
+**Q7 — approved change.** Students **can** see their groupmates' syllabus progress. It is controlled per group by the teacher with a new setting **"İrəliləyiş qrupda görünsün"** (default **ON**), a sibling of the existing "Ballar qrupda görünsün" (`study_groups.scoresVisibleToGroup`).
+- *Why a sibling, not a reuse:* progress ("Aysel finished 6 of 10 lessons") and scores ("Aysel got 58 %") are different things to hide. Reusing the scores switch would either expose scores whenever a teacher wants progress visible, or hide progress whenever a teacher hides scores (scores are hidden in many groups today). A separate switch also needs no column on an existing table: it lives in the new side table `group_learning_settings (groupId, progressVisibleToGroup)`; no row = default ON.
+- *Server-side enforcement* (`server/syllabus/learning.ts → groupProgress`): the caller must have live access to the syllabus, be an ACTIVE member of the group, the group must belong to the syllabus's workspace and hold an ACTIVE grant on it, and the setting must be ON (otherwise `FORBIDDEN: SYLLABUS_PROGRESS_HIDDEN`).
+- *What is returned* (`server/syllabus/visibility.ts`): name, started/completed, progress %, completed/total lessons, current module title. **Never** answers, feedback, scores (released or not), attempts, activity times or anything from another student's lesson.
+
+| # | Question | Approved default |
 |---|---|---|
 | Q1 | Who is "Teacher" — only the workspace owner, or should we also add co-teachers/assistants now? | Owner only now; co-teachers as a separate later feature (design is ready for it) |
 | Q2 | When a new version is published, should students already in progress move automatically? | **No** — they stay on their version; teacher moves them explicitly (per group/student); new students get the newest version |
@@ -834,9 +843,71 @@ Sizes are rough developer-day estimates for one experienced developer (including
 | Q4 | Teacher Practice is done in class — what makes it "completed" for a student? | Student opened it (VIEWED); teacher can switch a syllabus to "teacher marks covered for the group" |
 | Q5 | Should syllabus assessments also appear in the student's general "Exams" list? | No — only inside the lesson (avoids duplicate entry points) |
 | Q6 | Can a teacher grant access to a student who is not in any of their groups (by e-mail)? | Not in v1 (individual grants = teacher's existing students); add e-mail invite to a syllabus later |
-| Q7 | Should students see classmates' syllabus progress / a leaderboard? | No by default; optional later per group, respecting "Ballar qrupda görünsün" |
+| Q7 | Should students see classmates' syllabus progress / a leaderboard? | ~~No by default~~ → **Yes: groupmates see progress (not scores) while the per-group setting "İrəliləyiş qrupda görünsün" is ON (default ON)** — see above |
 | Q8 | After access expires/revokes, may the student still read completed lessons? | No access to content (spec §28), but they see their progress summary and history |
 | Q9 | Videos: is "external link/embed only (YouTube, Vimeo, Loom, Drive)" acceptable for now? | Yes; uploading big videos requires object storage — separate project |
 | Q10 | Should completion be "sticky" (a lower regrade never re-locks content already completed)? | Yes, sticky; teacher can reset a lesson explicitly (audited) |
 | Q11 | Retention for detailed activity history | 24 months raw events; progress and completion records forever |
 | Q12 | Certificates: just store completion data now, generate PDF later? | Yes — data + verification code now, PDF/branding later |
+
+---
+
+## 16. Phase 1 — what was implemented
+
+Backend only, no UI. Everything is behind the `SYLLABUS` flag (off by default) and tolerant of the new tables being absent.
+
+### 16.1 Migrations (add-only, no change to existing tables)
+- `drizzle/0026_syllabus_core.sql` — 17 tables: `syllabi`, `syllabus_modules`, `syllabus_lessons`, `syllabus_items`, `syllabus_versions`, `syllabus_version_items`, `syllabus_access_grants`, `syllabus_enrollments`, `syllabus_module_progress`, `syllabus_lesson_progress`, `syllabus_item_progress`, `syllabus_manual_unlocks`, `syllabus_approvals`, `syllabus_practice_tasks`, `syllabus_assessment_assignments`, `syllabus_completions`, `group_learning_settings`.
+- `drizzle/0027_learning_activity.sql` — `learning_activity` (append-only event log).
+- Snapshots `0026/0027` chain from `0025`; `pnpm db:verify` checks it. Rollback (only if the feature is abandoned): `docs/migrations/0026-0027-rollback.sql`.
+
+### 16.2 Server modules (`server/syllabus/*`)
+| Module | Role |
+|---|---|
+| `availability.ts` | Feature flag: env list → workspace override row → global row; 30 s cache; missing tables = off |
+| `authoring.ts` | Draft CRUD for syllabus / module / lesson / item, reorder, duplicate, move lesson, optimistic `expectedRevision` |
+| `snapshot.ts`, `publishing.ts` | Validate + freeze the draft into an immutable version (`v1.0`, `v2.0` …); copy-on-publish practice containers keyed by a content hash that includes the answer key |
+| `access.ts`, `accessRules.ts` | Grants to groups / individual students with start/end dates; PENDING/EXPIRED derived from dates; revoke keeps the enrollment and progress; the single student gate `assertStudentAccess` |
+| `engine.ts` (pure) | Progression engine: inherited rules, theory / teacher practice / student practice / assessment (BEST/LATEST, max attempts, pending review), approvals, sticky completion, manual unlock, grandfathered lessons |
+| `progression.ts` | Loads facts, runs the engine, persists diffs in a transaction (`FOR UPDATE`), JIT assessment assignments, completion record, manual unlocks, version move, event hooks, 2-minute reconciler of `dirtyAt` enrollments |
+| `learning.ts` | Student API: list, path, lesson, complete theory, activity tracking, start assessment, submit practice, groupmate progress |
+| `teacherViews.ts` | Teacher oversight: students, student detail, manual unlock/revoke, approvals, mark teacher practice, move students between versions, group setting |
+| `serialize.ts` | Student shapes: a locked lesson is only `{id, title, position, status, lockReason}`; teacher-only fields always stripped |
+| `activityRules.ts`, `activityLog.ts` | Client activity whitelist and validation; best-effort logging |
+| `visibility.ts` | Groupmate progress rows (Q7) |
+| `admin.ts` | Admin: workspace toggle (audited), overview counts, manual unlock/revoke (audited, `syllabus.override`, re-auth) |
+| `router.ts` | `teacher.syllabus.*` and `student.syllabus.*` tRPC routers |
+
+Hooks in existing code (no behaviour change for non-syllabus data): task submission/grading and auto-grade release, attempt finish and open-answer grading emit `server/modules/learningEvents.ts` events; hidden practice containers are filtered out of the teacher task list and cannot be deleted there; syllabus JIT assessment assignments are hidden from the student's Exams list and ignored by the assessment targets editor and `publish({moveAssignments})`.
+
+### 16.3 Turning it on for the owner's workspace
+1. Find the workspace id (Railway → MySQL → Query):
+   ```sql
+   SELECT w.id, w.title FROM provider_workspaces w JOIN users u ON u.id = w.ownerUserId WHERE u.email = '<owner e-mail>';
+   ```
+2. Pick one:
+   - **Env (simplest):** on the API service set `SYLLABUS_ENABLED_WORKSPACES=<id>` (comma-separated for several, `*` for everyone) and redeploy.
+   - **DB row (no redeploy, effective within 30 s):**
+     ```sql
+     INSERT INTO feature_flag_overrides (flagKey, scopeType, scopeId, enabled) VALUES ('SYLLABUS', 'WORKSPACE', '<id>', 1)
+       ON DUPLICATE KEY UPDATE enabled = 1;
+     ```
+   - **Admin API:** `admin.syllabus.setWorkspaceEnabled({ workspaceId, enabled: true, reason })` (permission `flags.change`, audited). There is no admin screen for it yet.
+3. The migrations must have been applied (`pnpm db:migrate`); otherwise the API answers `SYLLABUS_NOT_AVAILABLE` and nothing else changes.
+
+### 16.4 Implementation decisions made in Phase 1
+- **Practice items** are hidden container tasks (no groups, no students, deadline 2099-12-31), registered in `syllabus_practice_tasks`. Submissions go through the existing task core, so AI review, auto-grade and answer keys work unchanged. A published version references a frozen copy; editing the draft never changes what started students submit to.
+- **Assessments**: when an assessment item becomes available to a student, a per-student `assessment_assignments` row is created just in time (attempt limit = the item's max attempts, `availableFrom` = cooldown end). Every attempt of the student on that assessment counts toward the item, consistent with the engine's attempt limit.
+- **Manual unlock** opens exactly the chosen node for that student; it does not complete it. Unlocking one lesson inside a still-locked module opens only that lesson; to let a student continue through a module, unlock the module. Revoking re-locks it unless the student already completed it.
+- **Group setting** `progressVisibleToGroup` is read with the default ON when no row exists (Q7).
+
+### 16.5 Deferred (not in Phase 1)
+- All UI (Phase 2 builder, Phase 3 student pages), seeded demo syllabus (Phase 2).
+- Syllabus notifications (access granted, unlocked, approval needed, completed) and download rules for files embedded in theory blocks (Phase 3).
+- Extra attempts per student, relative practice deadlines, teacher "reset lesson" (Q10) (Phases 3–4).
+- Analytics dashboards and the activity retention job (Phase 5); certificate PDF (later, Q12).
+
+### 16.6 Tests
+- `server/syllabusEngine.test.ts` — rule inheritance, publish snapshot, every item rule, sequential progression, assessment pass/retry/FAILED, approvals, sticky completion, manual unlock and revoke, version pinning and grandfathering.
+- `server/syllabusPermissions.test.ts` — cross-workspace isolation (service and router), feature flag gate, grant states at the student gate, locked content never loaded or returned, groupmate visibility setting.
+- `server/syllabusRules.test.ts` — grant date rules and revoke/re-grant, activity validation (whitelist, locks, kind, metadata, clamping, batch limits), visibility rows, serialization, env flag.
