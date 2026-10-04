@@ -17,6 +17,7 @@ import { serveStatic, setupVite } from "./vite";
 import { getDb, warnIfGoogleAuthSchemaMissing } from "../db";
 import { sweepExpiredAttempts } from "../modules/attempts";
 import { startNotificationWorker } from "../notifications/dispatcher";
+import { installSyllabusHooks, reconcileDirty } from "../syllabus/progression";
 
 const SWEEP_INTERVAL_MS = 30_000;
 
@@ -37,6 +38,26 @@ function startAttemptSweeper() {
       running = false;
     }
   }, SWEEP_INTERVAL_MS).unref();
+}
+
+const SYLLABUS_RECONCILE_MS = 2 * 60_000;
+
+/** Progress recompute hooks plus a safety net for enrollments a crashed hook left dirty. */
+function startSyllabusProgression() {
+  if (!getDb()) return;
+  installSyllabusHooks();
+  let running = false;
+  setInterval(async () => {
+    if (running) return;
+    running = true;
+    try {
+      await reconcileDirty();
+    } catch (error) {
+      console.error("[Syllabus] Reconcile failed", error);
+    } finally {
+      running = false;
+    }
+  }, SYLLABUS_RECONCILE_MS).unref();
 }
 
 async function startServer() {
@@ -74,6 +95,7 @@ async function startServer() {
 
   startAttemptSweeper();
   startNotificationWorker();
+  startSyllabusProgression();
 
   const port = Number(process.env.PORT || "3000");
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid PORT");

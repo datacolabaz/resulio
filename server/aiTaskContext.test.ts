@@ -206,7 +206,8 @@ describe("the answer key never reaches students", () => {
       .filter((path) => /taskAnswerKeys|task_answer_keys|modules\/answerKey"|\.\/answerKey"/.test(readFileSync(path, "utf8")))
       .map((path) => relative(root, path).replace(/\\/g, "/"))
       .sort();
-    expect(users).toEqual(["server/modules/aiReview.ts", "server/modules/answerKey.ts", "server/routers.ts"]);
+    // practiceTasks copies the key server-side when a syllabus practice container is frozen or duplicated.
+    expect(users).toEqual(["server/modules/aiReview.ts", "server/modules/answerKey.ts", "server/routers.ts", "server/syllabus/practiceTasks.ts"]);
   });
 
   it("is exposed only through teacher procedures", () => {

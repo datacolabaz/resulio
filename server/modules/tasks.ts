@@ -1,6 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { files, materials, submissionAiReviews, taskSubmissions, tasks, type SubmissionAiReview, type TaskAccessMode, type TaskSubmission } from "../../drizzle/schema";
+import { files, materials, submissionAiReviews, taskSubmissions, tasks, type SubmissionAiReview, type Task, type TaskAccessMode, type TaskSubmission } from "../../drizzle/schema";
 import { sendEmailInBackground } from "../_core/email";
 import { requireDb } from "../db";
 import { dispatch } from "../notifications/dispatcher";
@@ -10,7 +10,9 @@ import { aiOverrideNeedsNotice, autoGradeEnabledForTasks, clampScore, gradeOwner
 import { AppError } from "./errors";
 import { deliverGradeEmail, gradeEmailKind } from "./gradeEmail";
 import { activeGroupIdsOfStudent } from "./groups";
+import { emitLearningEvent } from "./learningEvents";
 import * as notifications from "./notifications";
+import { syllabusContainerTaskIds } from "./syllabusLinks";
 import { canSeeTaskContent, taskReachesStudent, taskViewerAccess, type TaskAccessSubject, type TaskViewerAccess } from "./taskAccess";
 import { workspaceOwnerId } from "./workspaces";
 
@@ -52,7 +54,10 @@ export async function assignmentOf(scope: TeacherScope, id: string) {
 
 export async function listForWorkspace(workspaceId: string) {
   const db = requireDb();
-  const rows = await db.select().from(tasks).where(eq(tasks.providerWorkspaceId, workspaceId)).orderBy(tasks.createdAt);
+  const all = await db.select().from(tasks).where(eq(tasks.providerWorkspaceId, workspaceId)).orderBy(tasks.createdAt);
+  // Syllabus practice containers are edited only through the syllabus builder.
+  const containers = await syllabusContainerTaskIds(all.map((r) => r.id));
+  const rows = containers.size ? all.filter((r) => !containers.has(r.id)) : all;
   if (!rows.length) return [];
   const subs = await db
     .select()
@@ -84,6 +89,7 @@ export async function updateAssignment(scope: TeacherScope, id: string, patch: P
 
 export async function deleteAssignment(scope: TeacherScope, id: string) {
   await assignmentOf(scope, id);
+  if ((await syllabusContainerTaskIds([id])).size) throw new AppError("SYLLABUS_PRACTICE_TASK_IN_USE");
   const db = requireDb();
   await db.delete(submissionAiReviews).where(eq(submissionAiReviews.taskId, id));
   await db.delete(taskSubmissions).where(eq(taskSubmissions.taskId, id));
@@ -177,11 +183,16 @@ export async function submitAssignment(
   fileRefs: Array<{ fileId: string }>,
   answerText = "",
 ) {
-  const db = requireDb();
-  const [task] = await db.select().from(tasks).where(eq(tasks.id, assignmentId)).limit(1);
+  const [task] = await requireDb().select().from(tasks).where(eq(tasks.id, assignmentId)).limit(1);
   if (!task) throw new AppError("NOT_FOUND");
   if (!taskReachesStudent(task, studentId, groupIds)) throw new AppError(task.accessMode === "GROUPS" ? "TASK_NO_ACCESS" : "NOT_FOUND");
+  return submitToTask(studentId, task, fileRefs, answerText);
+}
 
+/** The write half of a submission; callers have already decided the student may submit to `task`. */
+export async function submitToTask(studentId: number, task: Task, fileRefs: Array<{ fileId: string }>, answerText = "") {
+  const db = requireDb();
+  const assignmentId = task.id;
   const text = answerText.trim().slice(0, MAX_ANSWER_TEXT);
   const ids = [...new Set(fileRefs.map((f) => f.fileId))];
   const owned = ids.length ? await db.select({ id: files.id, fileName: files.fileName, sizeBytes: files.sizeBytes, uploadedBy: files.uploadedBy, workspaceId: files.workspaceId }).from(files).where(inArray(files.id, ids)) : [];
@@ -213,6 +224,7 @@ export async function submitAssignment(
 
   const [row] = await db.select().from(taskSubmissions).where(and(eq(taskSubmissions.taskId, assignmentId), eq(taskSubmissions.studentId, studentId))).limit(1);
   await scheduleAiReview(row.id);
+  emitLearningEvent({ type: "TASK_SUBMISSION_CHANGED", submissionId: row.id });
   return studentSubmissionView(row, undefined);
 }
 
@@ -237,6 +249,7 @@ export async function gradeSubmission(
     })
     .where(eq(taskSubmissions.id, input.submissionId));
   await recordTeacherGrade(input.submissionId);
+  emitLearningEvent({ type: "TASK_SUBMISSION_CHANGED", submissionId: input.submissionId });
   const taskTitle = async () => (await requireDb().select({ title: tasks.title }).from(tasks).where(eq(tasks.id, current.taskId)).limit(1))[0]?.title ?? "";
   if (input.release && !current.feedbackReleasedAt) {
     dispatch({

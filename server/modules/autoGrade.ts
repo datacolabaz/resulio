@@ -8,6 +8,7 @@ import { cleanAiFeedback, formatAiGradeFeedback } from "../notifications/templat
 import type { TeacherScope } from "./access";
 import { AppError } from "./errors";
 import { recordAnnouncedScore } from "./gradeEmail";
+import { emitLearningEvent } from "./learningEvents";
 
 /**
  * Automatic grading: when a task has auto-grade on (the default) and the AI review of a
@@ -222,6 +223,7 @@ export async function applyAutoGrade(submissionId: string, runId: string): Promi
   if (updated.affectedRows !== 1) return { kind: "SKIP", why: "TEACHER_GRADED" };
 
   await writeGrading(submissionId, { source: "AI", autoStatus: "AI_GRADED", autoReason: null, aiScore: action.score, reviewRunId: runId });
+  emitLearningEvent({ type: "TASK_SUBMISSION_CHANGED", submissionId });
   if (action.kind === "RELEASE") {
     await recordAnnouncedScore(submissionId, action.score);
     dispatch({

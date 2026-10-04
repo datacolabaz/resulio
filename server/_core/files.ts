@@ -11,6 +11,7 @@ import { AppError, type AppErrorCode } from "../modules/errors";
 import * as filesModule from "../modules/files";
 import { activeGroupIdsOfStudent } from "../modules/groups";
 import { taskReachesStudent } from "../modules/taskAccess";
+import { practiceUploadAllowed } from "../syllabus/learning";
 import { hitRateLimit } from "./rateLimit";
 import { sdk } from "./sdk";
 
@@ -107,7 +108,7 @@ export function registerFileRoutes(app: Express) {
           const [task] = await requireDb().select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
           if (!task) throw new AppError("NOT_FOUND");
           const groupIds = await activeGroupIdsOfStudent(user.id);
-          if (!taskReachesStudent(task, user.id, groupIds)) throw new AppError("FORBIDDEN");
+          if (!taskReachesStudent(task, user.id, groupIds) && !(await practiceUploadAllowed(user.id, task.id))) throw new AppError("FORBIDDEN");
           workspaceId = task.providerWorkspaceId;
         } else {
           const header = req.headers[WORKSPACE_HEADER];

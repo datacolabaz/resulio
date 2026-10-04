@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNotNull, isNull, like, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, like, notInArray, or, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
   assessmentAssignments,
@@ -29,6 +29,7 @@ import type { TeacherScope } from "./access";
 import { liveStatus, toStudentQuestion, type FrozenQuestion } from "./engine";
 import { AppError } from "./errors";
 import { activeGroupIdsOfStudent, activeStudentIdsOfGroups, teacherStudentIds } from "./groups";
+import { syllabusAssignmentIds } from "./syllabusLinks";
 
 export const DEFAULT_SETTINGS: AssessmentSettings = {
   title: "Yeni imtahan",
@@ -132,11 +133,14 @@ export async function setTargets(scope: TeacherScope, id: string, targets: Targe
     const own = new Set(await teacherStudentIds(scope));
     if (!studentIds.every((s) => own.has(s))) throw new AppError("FORBIDDEN");
   }
+  const syllabusOwned = new Set(await syllabusAssignmentIds(id));
   await db.transaction(async (tx) => {
-    const current = await tx
-      .select()
-      .from(assessmentAssignments)
-      .where(and(eq(assessmentAssignments.assessmentId, id), eq(assessmentAssignments.status, "ACTIVE")));
+    const current = (
+      await tx
+        .select()
+        .from(assessmentAssignments)
+        .where(and(eq(assessmentAssignments.assessmentId, id), eq(assessmentAssignments.status, "ACTIVE")))
+    ).filter((r) => !syllabusOwned.has(r.id));
     const keep = (r: AssessmentAssignment) =>
       (r.groupId && groupIds.includes(r.groupId)) || (r.studentId && studentIds.includes(r.studentId));
     const revoke = current.filter((r) => !keep(r)).map((r) => r.id);
@@ -182,8 +186,15 @@ export async function activeAssignments(assessmentId: string, db: DbOrTx = requi
     .where(and(eq(assessmentAssignments.assessmentId, assessmentId), eq(assessmentAssignments.status, "ACTIVE")));
 }
 
-export async function getTargets(assessmentId: string, db: DbOrTx = requireDb()): Promise<Targets> {
+/** Assignments the teacher manages in the exam builder (syllabus per-student rows are managed by the syllabus). */
+async function teacherAssignments(assessmentId: string, db: DbOrTx) {
   const rows = await activeAssignments(assessmentId, db);
+  const owned = new Set(await syllabusAssignmentIds(assessmentId, db));
+  return owned.size ? rows.filter((r) => !owned.has(r.id)) : rows;
+}
+
+export async function getTargets(assessmentId: string, db: DbOrTx = requireDb()): Promise<Targets> {
+  const rows = await teacherAssignments(assessmentId, db);
   return {
     groupIds: rows.flatMap((r) => (r.groupId ? [r.groupId] : [])),
     studentIds: rows.flatMap((r) => (r.studentId ? [r.studentId] : [])),
@@ -193,7 +204,7 @@ export async function getTargets(assessmentId: string, db: DbOrTx = requireDb())
 /** Assignment rows with display names and pinned version numbers, for the teacher. */
 export async function assignmentsOf(assessmentId: string) {
   const db = requireDb();
-  const rows = await activeAssignments(assessmentId, db);
+  const rows = await teacherAssignments(assessmentId, db);
   const versionIds = [...new Set(rows.flatMap((r) => (r.assessmentVersionId ? [r.assessmentVersionId] : [])))];
   const versions = versionIds.length
     ? await db.select().from(assessmentVersions).where(inArray(assessmentVersions.id, versionIds))
@@ -392,6 +403,9 @@ export async function questionBank(
  */
 export async function publish(scope: TeacherScope, assessmentId: string, opts: { moveAssignments?: boolean } = {}) {
   const db = requireDb();
+  // A syllabus pins its own per-student assignments to the version frozen in the syllabus version.
+  const keepPinned = opts.moveAssignments ? await syllabusAssignmentIds(assessmentId) : [];
+  const movable = keepPinned.length ? notInArray(assessmentAssignments.id, keepPinned) : undefined;
   return db.transaction(async (tx) => {
     const [a] = await tx
       .select()
@@ -413,7 +427,7 @@ export async function publish(scope: TeacherScope, assessmentId: string, opts: {
           and(
             eq(assessmentAssignments.assessmentId, assessmentId),
             eq(assessmentAssignments.status, "ACTIVE"),
-            opts.moveAssignments ? undefined : isNull(assessmentAssignments.assessmentVersionId),
+            opts.moveAssignments ? movable : isNull(assessmentAssignments.assessmentVersionId),
           ),
         );
       return { versionId: current.id, versionNo: current.versionNo, created: false };
@@ -466,7 +480,7 @@ export async function publish(scope: TeacherScope, assessmentId: string, opts: {
         and(
           eq(assessmentAssignments.assessmentId, assessmentId),
           eq(assessmentAssignments.status, "ACTIVE"),
-          opts.moveAssignments ? undefined : isNull(assessmentAssignments.assessmentVersionId),
+          opts.moveAssignments ? movable : isNull(assessmentAssignments.assessmentVersionId),
         ),
       );
     return { versionId, versionNo, created: true };

@@ -18,8 +18,12 @@ import * as security from "./modules/admin/security";
 import * as adminUsers from "./modules/admin/users";
 import { AppError } from "./modules/errors";
 import * as partners from "./modules/partners";
+import * as syllabusAdmin from "./syllabus/admin";
+import { UNLOCK_TARGET_TYPES } from "../shared/syllabus";
 
 const reason = z.string().trim().min(ADMIN_REASON_MIN).max(ADMIN_REASON_MAX);
+const entityId = z.string().trim().min(1).max(32);
+const workspaceId = entityId;
 const userId = z.number().int().positive();
 const cursor = z.number().int().positive().optional();
 const limit = z.number().int().min(1).max(200).optional();
@@ -107,5 +111,22 @@ export const adminRouter = router({
     review: adminProcedure("security.review")
       .input(z.object({ id: z.number().int().positive(), status: z.enum(["REVIEWED", "DISMISSED"]), reason }))
       .mutation(({ ctx, input }) => security.reviewSecurityEvent(ctx.admin, input.id, input.status, input.reason)),
+  }),
+
+  syllabus: router({
+    overview: adminProcedure("syllabus.view").query(() => syllabusAdmin.overview()),
+    workspaceFlag: adminProcedure("flags.view")
+      .input(z.object({ workspaceId }))
+      .query(({ input }) => syllabusAdmin.workspaceFlag(input.workspaceId)),
+    /** Per-workspace Syllabus toggle (feature_flag_overrides); the SYLLABUS_ENABLED_WORKSPACES env list still wins. */
+    setWorkspaceEnabled: adminProcedure("flags.change")
+      .input(z.object({ workspaceId, enabled: z.boolean(), reason }))
+      .mutation(({ ctx, input }) => syllabusAdmin.toggleWorkspace(ctx.admin, input.workspaceId, input.enabled, input.reason)),
+    manualUnlock: adminProcedure("syllabus.override")
+      .input(z.object({ syllabusId: entityId, studentId: userId, targetType: z.enum(UNLOCK_TARGET_TYPES), targetId: entityId, reason }))
+      .mutation(({ ctx, input }) => syllabusAdmin.manualUnlock(ctx.admin, input)),
+    revokeUnlock: adminProcedure("syllabus.override")
+      .input(z.object({ syllabusId: entityId, studentId: userId, unlockId: entityId, reason }))
+      .mutation(({ ctx, input }) => syllabusAdmin.revokeUnlock(ctx.admin, input)),
   }),
 });

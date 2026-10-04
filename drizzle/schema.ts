@@ -37,6 +37,22 @@ import {
 import { REFERRAL_SOURCES } from "../shared/referralSources";
 import type { ClassScheduleEntry } from "../shared/schedule";
 import { SHARE_CHANNELS, SHARE_EVENT_TYPES, SHARE_TARGET_TYPES } from "../shared/shareTracking";
+import {
+  APPROVAL_DECISIONS,
+  APPROVAL_TARGET_TYPES,
+  LESSON_PROGRESS_STATES,
+  MODULE_PROGRESS_STATES,
+  SYLLABUS_ENROLLMENT_STATUSES,
+  SYLLABUS_GRANT_STATUSES,
+  SYLLABUS_ITEM_KINDS,
+  SYLLABUS_ITEM_SCOPES,
+  SYLLABUS_NODE_STATUSES,
+  SYLLABUS_STATUSES,
+  SYLLABUS_VERSION_STATUSES,
+  UNLOCK_SOURCES,
+  UNLOCK_TARGET_TYPES,
+  type CompletionRulesPatch,
+} from "../shared/syllabus";
 
 const ID = 32;
 const id = (name: string) => varchar(name, { length: ID });
@@ -968,6 +984,403 @@ export const taskAnswerKeys = mysqlTable("task_answer_keys", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+// ---------------------------------------------------------------------------
+// Syllabus / structured learning (docs/SYLLABUS-ARCHITECTURE.md). New tables only: existing
+// tables are extended through side tables so code keeps working before the migration runs.
+// ---------------------------------------------------------------------------
+
+/** The editable head of a syllabus: draft metadata plus a pointer to the latest published version. */
+export const syllabi = mysqlTable(
+  "syllabi",
+  {
+    id: id("id").primaryKey(),
+    providerWorkspaceId: id("providerWorkspaceId").notNull(),
+    createdBy: int("createdBy").notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    description: text("description"),
+    subject: varchar("subject", { length: 120 }).notNull().default(""),
+    level: varchar("level", { length: 64 }).notNull().default(""),
+    language: varchar("language", { length: 64 }).notNull().default(""),
+    coverFileId: id("coverFileId"),
+    estimatedDurationLabel: varchar("estimatedDurationLabel", { length: 64 }).notNull().default(""),
+    estimatedHours: int("estimatedHours"),
+    status: mysqlEnum("status", SYLLABUS_STATUSES).notNull().default("DRAFT"),
+    /** Partial CompletionRules (shared/syllabus.ts); missing fields fall back to the defaults. */
+    completionRules: json("completionRules").$type<CompletionRulesPatch>().notNull(),
+    currentVersionId: id("currentVersionId"),
+    hasDraftChanges: boolean("hasDraftChanges").notNull().default(true),
+    /** Bumped by every draft write; the builder sends it back to detect a stale tab. */
+    draftRevision: int("draftRevision").notNull().default(0),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    archivedAt: timestamp("archivedAt"),
+  },
+  (t) => [index("syllabi_workspace_idx").on(t.providerWorkspaceId, t.status)],
+);
+
+/** Draft modules. Ids are stable across versions: progress and analytics key on them. Soft-deleted only. */
+export const syllabusModules = mysqlTable(
+  "syllabus_modules",
+  {
+    id: id("id").primaryKey(),
+    syllabusId: id("syllabusId").notNull(),
+    position: int("position").notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    description: text("description"),
+    estimatedMinutes: int("estimatedMinutes"),
+    objectives: json("objectives").$type<string[]>().notNull(),
+    prerequisitesText: text("prerequisitesText"),
+    status: mysqlEnum("status", SYLLABUS_NODE_STATUSES).notNull().default("READY"),
+    completionRules: json("completionRules").$type<CompletionRulesPatch>(),
+    deletedAt: timestamp("deletedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [index("syllabus_modules_syllabus_idx").on(t.syllabusId, t.position)],
+);
+
+export const syllabusLessons = mysqlTable(
+  "syllabus_lessons",
+  {
+    id: id("id").primaryKey(),
+    syllabusId: id("syllabusId").notNull(),
+    moduleId: id("moduleId").notNull(),
+    position: int("position").notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    description: text("description"),
+    estimatedMinutes: int("estimatedMinutes"),
+    objectives: json("objectives").$type<string[]>().notNull(),
+    status: mysqlEnum("status", SYLLABUS_NODE_STATUSES).notNull().default("READY"),
+    completionRules: json("completionRules").$type<CompletionRulesPatch>(),
+    deletedAt: timestamp("deletedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [index("syllabus_lessons_module_idx").on(t.moduleId, t.position), index("syllabus_lessons_syllabus_idx").on(t.syllabusId)],
+);
+
+/** Everything inside a lesson, plus module (scope MODULE) and final (scope SYLLABUS) assessments. */
+export const syllabusItems = mysqlTable(
+  "syllabus_items",
+  {
+    id: id("id").primaryKey(),
+    syllabusId: id("syllabusId").notNull(),
+    scope: mysqlEnum("scope", SYLLABUS_ITEM_SCOPES).notNull().default("LESSON"),
+    moduleId: id("moduleId"),
+    lessonId: id("lessonId"),
+    kind: mysqlEnum("kind", SYLLABUS_ITEM_KINDS).notNull(),
+    position: int("position").notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    required: boolean("required").notNull().default(true),
+    /** Typed by `kind` (shared/syllabus.ts ITEM_CONTENT_SCHEMAS). */
+    content: json("content").$type<Record<string, unknown>>().notNull(),
+    assessmentId: id("assessmentId"),
+    materialId: id("materialId"),
+    /** STUDENT_PRACTICE: the draft's hidden container task (answer key, AI settings live on it). */
+    taskId: id("taskId"),
+    deletedAt: timestamp("deletedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [index("syllabus_items_lesson_idx").on(t.lessonId, t.kind, t.position), index("syllabus_items_syllabus_idx").on(t.syllabusId, t.scope)],
+);
+
+/** Immutable published snapshot. Rows are never updated except `status`. */
+export const syllabusVersions = mysqlTable(
+  "syllabus_versions",
+  {
+    id: id("id").primaryKey(),
+    syllabusId: id("syllabusId").notNull(),
+    versionNo: int("versionNo").notNull(),
+    label: varchar("label", { length: 16 }).notNull(),
+    status: mysqlEnum("status", SYLLABUS_VERSION_STATUSES).notNull().default("PUBLISHED"),
+    /** Tree of module/lesson/item stubs with resolved rules (server/syllabus/types.ts VersionStructure). */
+    structure: json("structure").$type<Record<string, unknown>>().notNull(),
+    meta: json("meta").$type<Record<string, unknown>>().notNull(),
+    changeNote: text("changeNote"),
+    publishedBy: int("publishedBy").notNull(),
+    publishedAt: timestamp("publishedAt").defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex("syllabus_versions_no_unique").on(t.syllabusId, t.versionNo)],
+);
+
+/** Frozen item content per version, incl. teacher-only fields (stripped when serving students). */
+export const syllabusVersionItems = mysqlTable(
+  "syllabus_version_items",
+  {
+    versionId: id("versionId").notNull(),
+    itemId: id("itemId").notNull(),
+    moduleId: id("moduleId"),
+    lessonId: id("lessonId"),
+    kind: mysqlEnum("kind", SYLLABUS_ITEM_KINDS).notNull(),
+    content: json("content").$type<Record<string, unknown>>().notNull(),
+    taskId: id("taskId"),
+    assessmentId: id("assessmentId"),
+    assessmentVersionId: id("assessmentVersionId"),
+    materialSnapshot: json("materialSnapshot").$type<Record<string, unknown>>(),
+    contentHash: varchar("contentHash", { length: 64 }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.versionId, t.itemId] }), index("syllabus_version_items_lesson_idx").on(t.versionId, t.lessonId)],
+);
+
+/** Group or individual access. PENDING/EXPIRED are derived from the dates; re-granting inserts a new row. */
+export const syllabusAccessGrants = mysqlTable(
+  "syllabus_access_grants",
+  {
+    id: id("id").primaryKey(),
+    syllabusId: id("syllabusId").notNull(),
+    groupId: id("groupId"),
+    studentId: int("studentId"),
+    status: mysqlEnum("status", SYLLABUS_GRANT_STATUSES).notNull().default("ACTIVE"),
+    startsAt: timestamp("startsAt"),
+    endsAt: timestamp("endsAt"),
+    note: varchar("note", { length: 255 }),
+    grantedBy: int("grantedBy").notNull(),
+    grantedAt: timestamp("grantedAt").defaultNow().notNull(),
+    revokedBy: int("revokedBy"),
+    revokedAt: timestamp("revokedAt"),
+  },
+  (t) => [
+    index("syllabus_grants_syllabus_idx").on(t.syllabusId, t.status),
+    index("syllabus_grants_group_idx").on(t.groupId),
+    index("syllabus_grants_student_idx").on(t.studentId),
+  ],
+);
+
+/** One per (syllabus, student), created on first open with access; pinned to a version. Survives revocation. */
+export const syllabusEnrollments = mysqlTable(
+  "syllabus_enrollments",
+  {
+    id: id("id").primaryKey(),
+    syllabusId: id("syllabusId").notNull(),
+    studentId: int("studentId").notNull(),
+    versionId: id("versionId").notNull(),
+    status: mysqlEnum("status", SYLLABUS_ENROLLMENT_STATUSES).notNull().default("ACTIVE"),
+    enrolledAt: timestamp("enrolledAt").defaultNow().notNull(),
+    startedAt: timestamp("startedAt"),
+    completedAt: timestamp("completedAt"),
+    progressPct: double("progressPct").notNull().default(0),
+    completedLessons: int("completedLessons").notNull().default(0),
+    totalLessons: int("totalLessons").notNull().default(0),
+    currentModuleId: id("currentModuleId"),
+    currentLessonId: id("currentLessonId"),
+    lastCompletedLessonId: id("lastCompletedLessonId"),
+    lastCompletedItemId: id("lastCompletedItemId"),
+    lastActivityAt: timestamp("lastActivityAt"),
+    viaGroupId: id("viaGroupId"),
+    upgradedFromVersionId: id("upgradedFromVersionId"),
+    /** Facts changed but the recompute has not finished; the reconciler picks these up. */
+    dirtyAt: timestamp("dirtyAt"),
+    stateRevision: int("stateRevision").notNull().default(0),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("syllabus_enrollments_unique").on(t.syllabusId, t.studentId),
+    index("syllabus_enrollments_activity_idx").on(t.syllabusId, t.lastActivityAt),
+    index("syllabus_enrollments_student_idx").on(t.studentId),
+    index("syllabus_enrollments_dirty_idx").on(t.dirtyAt),
+  ],
+);
+
+export const syllabusModuleProgress = mysqlTable(
+  "syllabus_module_progress",
+  {
+    enrollmentId: id("enrollmentId").notNull(),
+    moduleId: id("moduleId").notNull(),
+    syllabusId: id("syllabusId").notNull(),
+    status: mysqlEnum("status", MODULE_PROGRESS_STATES).notNull().default("LOCKED"),
+    unlockedAt: timestamp("unlockedAt"),
+    unlockSource: mysqlEnum("unlockSource", UNLOCK_SOURCES),
+    startedAt: timestamp("startedAt"),
+    completedAt: timestamp("completedAt"),
+    completedLessons: int("completedLessons").notNull().default(0),
+    totalLessons: int("totalLessons").notNull().default(0),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.enrollmentId, t.moduleId] }), index("syllabus_module_progress_idx").on(t.syllabusId, t.moduleId, t.status)],
+);
+
+export const syllabusLessonProgress = mysqlTable(
+  "syllabus_lesson_progress",
+  {
+    enrollmentId: id("enrollmentId").notNull(),
+    lessonId: id("lessonId").notNull(),
+    syllabusId: id("syllabusId").notNull(),
+    moduleId: id("moduleId").notNull(),
+    status: mysqlEnum("status", LESSON_PROGRESS_STATES).notNull().default("LOCKED"),
+    unlockedAt: timestamp("unlockedAt"),
+    unlockSource: mysqlEnum("unlockSource", UNLOCK_SOURCES),
+    openedAt: timestamp("openedAt"),
+    startedAt: timestamp("startedAt"),
+    theoryCompletedAt: timestamp("theoryCompletedAt"),
+    completedAt: timestamp("completedAt"),
+    activeSeconds: int("activeSeconds").notNull().default(0),
+    /** Which requirements are met, for the "what is left" UI. */
+    requirements: json("requirements").$type<Record<string, unknown>>(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.enrollmentId, t.lessonId] }), index("syllabus_lesson_progress_idx").on(t.syllabusId, t.lessonId, t.status)],
+);
+
+/** Student-side facts per item. Practice and assessment outcomes are read live from task_submissions / results. */
+export const syllabusItemProgress = mysqlTable(
+  "syllabus_item_progress",
+  {
+    enrollmentId: id("enrollmentId").notNull(),
+    itemId: id("itemId").notNull(),
+    syllabusId: id("syllabusId").notNull(),
+    lessonId: id("lessonId"),
+    kind: mysqlEnum("kind", SYLLABUS_ITEM_KINDS).notNull(),
+    openedAt: timestamp("openedAt"),
+    startedAt: timestamp("startedAt"),
+    completedAt: timestamp("completedAt"),
+    teacherMarkedAt: timestamp("teacherMarkedAt"),
+    teacherMarkedBy: int("teacherMarkedBy"),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.enrollmentId, t.itemId] }), index("syllabus_item_progress_idx").on(t.syllabusId, t.itemId)],
+);
+
+/** Audit of per-student exceptions (§12). Never deleted; revocation is a timestamp. */
+export const syllabusManualUnlocks = mysqlTable(
+  "syllabus_manual_unlocks",
+  {
+    id: id("id").primaryKey(),
+    syllabusId: id("syllabusId").notNull(),
+    enrollmentId: id("enrollmentId").notNull(),
+    studentId: int("studentId").notNull(),
+    targetType: mysqlEnum("targetType", UNLOCK_TARGET_TYPES).notNull(),
+    targetId: id("targetId").notNull(),
+    reason: text("reason").notNull(),
+    unlockedBy: int("unlockedBy").notNull(),
+    actorKind: mysqlEnum("actorKind", ["TEACHER", "ADMIN"]).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    revokedAt: timestamp("revokedAt"),
+    revokedBy: int("revokedBy"),
+  },
+  (t) => [index("syllabus_unlocks_enrollment_idx").on(t.enrollmentId), index("syllabus_unlocks_syllabus_idx").on(t.syllabusId, t.createdAt)],
+);
+
+export const syllabusApprovals = mysqlTable(
+  "syllabus_approvals",
+  {
+    id: id("id").primaryKey(),
+    enrollmentId: id("enrollmentId").notNull(),
+    targetType: mysqlEnum("targetType", APPROVAL_TARGET_TYPES).notNull(),
+    targetId: id("targetId").notNull(),
+    decision: mysqlEnum("decision", APPROVAL_DECISIONS).notNull(),
+    note: varchar("note", { length: 500 }),
+    decidedBy: int("decidedBy").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [index("syllabus_approvals_target_idx").on(t.enrollmentId, t.targetType, t.targetId)],
+);
+
+/** Certificate-ready completion record (§18). Written once; never updated except revocation. */
+export const syllabusCompletions = mysqlTable(
+  "syllabus_completions",
+  {
+    id: id("id").primaryKey(),
+    enrollmentId: id("enrollmentId").notNull().unique(),
+    syllabusId: id("syllabusId").notNull(),
+    versionId: id("versionId").notNull(),
+    studentId: int("studentId").notNull(),
+    completedAt: timestamp("completedAt").notNull(),
+    overallPct: double("overallPct").notNull(),
+    finalAssessmentPct: double("finalAssessmentPct"),
+    verificationCode: varchar("verificationCode", { length: 24 }).notNull().unique(),
+    certificateNo: varchar("certificateNo", { length: 32 }).unique(),
+    certificateIssuedAt: timestamp("certificateIssuedAt"),
+    snapshot: json("snapshot").$type<Record<string, unknown>>().notNull(),
+    revokedAt: timestamp("revokedAt"),
+    revokedBy: int("revokedBy"),
+    revokeReason: varchar("revokeReason", { length: 500 }),
+  },
+  (t) => [index("syllabus_completions_syllabus_idx").on(t.syllabusId, t.completedAt)],
+);
+
+/** Marks hidden `tasks` rows that serve as syllabus practice submission containers (versionId null = draft copy). */
+export const syllabusPracticeTasks = mysqlTable(
+  "syllabus_practice_tasks",
+  {
+    taskId: id("taskId").primaryKey(),
+    syllabusId: id("syllabusId").notNull(),
+    itemId: id("itemId").notNull(),
+    versionId: id("versionId"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [index("syllabus_practice_tasks_item_idx").on(t.syllabusId, t.itemId)],
+);
+
+/** Marks per-student assessment_assignments created when a syllabus assessment item unlocks. */
+export const syllabusAssessmentAssignments = mysqlTable(
+  "syllabus_assessment_assignments",
+  {
+    assignmentId: int("assignmentId").primaryKey(),
+    syllabusId: id("syllabusId").notNull(),
+    enrollmentId: id("enrollmentId").notNull(),
+    itemId: id("itemId").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex("syllabus_assessment_assignments_item_unique").on(t.enrollmentId, t.itemId)],
+);
+
+/**
+ * Per-group learning settings kept beside study_groups (add-only). No row = defaults:
+ * groupmates see each other's syllabus progress (owner decision, docs/SYLLABUS-ARCHITECTURE.md Q7).
+ */
+export const groupLearningSettings = mysqlTable("group_learning_settings", {
+  groupId: id("groupId").primaryKey(),
+  progressVisibleToGroup: boolean("progressVisibleToGroup").notNull().default(true),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+/**
+ * Append-only learning history (§29, §30, §42). History only: progression state lives in the progress
+ * tables, so retention deletes here never change what a student has unlocked.
+ */
+export const learningActivity = mysqlTable(
+  "learning_activity",
+  {
+    id: bigint("id", { mode: "number" }).autoincrement().primaryKey(),
+    userId: int("userId").notNull(),
+    workspaceId: id("workspaceId").notNull(),
+    syllabusId: id("syllabusId").notNull(),
+    versionId: id("versionId"),
+    moduleId: id("moduleId"),
+    lessonId: id("lessonId"),
+    itemId: id("itemId"),
+    taskId: id("taskId"),
+    assessmentId: id("assessmentId"),
+    groupId: id("groupId"),
+    activityType: varchar("activityType", { length: 40 }).notNull(),
+    occurredAt: timestamp("occurredAt", { fsp: 3 }).notNull(),
+    durationSeconds: int("durationSeconds"),
+    source: mysqlEnum("source", ["CLIENT", "SERVER"]).notNull(),
+    metadata: json("metadata").$type<Record<string, unknown>>(),
+  },
+  (t) => [
+    index("learning_activity_syllabus_idx").on(t.syllabusId, t.occurredAt),
+    index("learning_activity_user_idx").on(t.userId, t.syllabusId, t.occurredAt),
+    index("learning_activity_lesson_idx").on(t.syllabusId, t.lessonId, t.activityType),
+    index("learning_activity_item_idx").on(t.syllabusId, t.itemId, t.activityType),
+  ],
+);
+
+export type Syllabus = typeof syllabi.$inferSelect;
+export type SyllabusModuleRow = typeof syllabusModules.$inferSelect;
+export type SyllabusLessonRow = typeof syllabusLessons.$inferSelect;
+export type SyllabusItemRow = typeof syllabusItems.$inferSelect;
+export type SyllabusVersion = typeof syllabusVersions.$inferSelect;
+export type SyllabusVersionItem = typeof syllabusVersionItems.$inferSelect;
+export type SyllabusAccessGrant = typeof syllabusAccessGrants.$inferSelect;
+export type SyllabusEnrollment = typeof syllabusEnrollments.$inferSelect;
+export type SyllabusModuleProgressRow = typeof syllabusModuleProgress.$inferSelect;
+export type SyllabusLessonProgressRow = typeof syllabusLessonProgress.$inferSelect;
+export type SyllabusItemProgressRow = typeof syllabusItemProgress.$inferSelect;
+export type SyllabusManualUnlock = typeof syllabusManualUnlocks.$inferSelect;
+
 export type ProviderWorkspace = typeof providerWorkspaces.$inferSelect;
 export type PartnerProfile = typeof partnerProfiles.$inferSelect;
 export type Group = typeof groups.$inferSelect;
@@ -982,6 +1395,7 @@ export type Result = typeof results.$inferSelect;
 export type ResultItem = typeof resultItems.$inferSelect;
 export type AssessmentAssignment = typeof assessmentAssignments.$inferSelect;
 export type FileRow = typeof files.$inferSelect;
+export type Task = typeof tasks.$inferSelect;
 export type TaskSubmission = typeof taskSubmissions.$inferSelect;
 export type SubmissionAiReview = typeof submissionAiReviews.$inferSelect;
 export type SubmissionGrading = typeof submissionGrading.$inferSelect;

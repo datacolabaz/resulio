@@ -104,6 +104,13 @@ export const ENV = {
   get aiReviewEnabled() { return this.llmConfigured && envString("AI_REVIEW_DISABLED") !== "1"; },
   /** Optional model name for submission pre-review; empty = AI_MODEL / the provider default. */
   get aiReviewModel() { return envString("AI_REVIEW_MODEL"); },
+  /** Workspaces with Syllabus turned on: comma-separated workspace ids, or "*" for all. Empty = off everywhere. */
+  get syllabusEnabledWorkspaces(): string[] {
+    return envString("SYLLABUS_ENABLED_WORKSPACES")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  },
   /** Max AI pre-reviews per workspace in a rolling 24 hours. */
   get aiReviewDailyLimit() {
     const n = Number.parseInt(envString("AI_REVIEW_DAILY_LIMIT"), 10);
