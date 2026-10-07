@@ -29,9 +29,29 @@ export function SiteFooter() {
             </li>
           </ul>
         </nav>
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <p id="footer-partners" className="font-semibold text-foreground-secondary">
+            {t("site.partners.title")}:
+          </p>
+          <PartnerLinks aria-labelledby="footer-partners" className="flex flex-wrap gap-x-4 gap-y-1" />
+        </div>
         <p className="text-muted-foreground">{t("site.footer.founder")}</p>
       </div>
     </footer>
+  );
+}
+
+function PartnerLinks(props: React.HTMLAttributes<HTMLUListElement>) {
+  return (
+    <ul {...props}>
+      {SITE.partners.map((partner) => (
+        <li key={partner.url}>
+          <a href={partner.url} target="_blank" rel="noopener" className="text-link hover:underline">
+            {partner.name}
+          </a>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -104,6 +124,7 @@ function SitePageView({ page }: { page: SitePage }) {
                 </a>
               </p>
             )}
+            {section.partners && <PartnerLinks className="mt-4 list-disc space-y-2 pl-6" />}
           </section>
         ))}
 

@@ -14,6 +14,8 @@ export type Section = {
   faq?: FaqItem[];
   /** Adds the public contact email after the paragraphs. */
   email?: boolean;
+  /** Adds the official partner links (SITE.partners) after the paragraphs. */
+  partners?: boolean;
 };
 
 export type SitePage = {
@@ -61,6 +63,7 @@ export const HOME: SitePage = {
     { heading: "site.glance.title", paragraphs: ["site.definition"] },
     { heading: "site.glance.features", items: FEATURES },
     { heading: "site.faq.title", faq: faq("what", "who", "azerbaijan", "price", "founder") },
+    { heading: "site.partners.title", paragraphs: ["site.partners.lead"], partners: true },
   ],
 };
 

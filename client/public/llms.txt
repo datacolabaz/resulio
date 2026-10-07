@@ -10,6 +10,7 @@ Key facts:
 - Audience: teachers, trainers, learning centres and schools in Azerbaijan, and their students. One account can be used both to teach and to learn.
 - Languages: Azerbaijani, Russian, English.
 - Price: free to start; all core features are free during the beta.
+- Official partners: [sayt.az](https://sayt.az), [metbuat.az](https://metbuat.az), [spotva.co](https://spotva.co), [tehvil.az](https://tehvil.az).
 
 ## What Resulio does
 

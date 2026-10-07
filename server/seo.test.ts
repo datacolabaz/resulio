@@ -47,6 +47,20 @@ describe("public site pages", () => {
     expect(pageJsonLd(SITE_PAGES.find((p) => p.id === "home")!)).toBeNull();
   });
 
+  it("names the official partners on every page, in llms.txt and llms-full.txt", () => {
+    const domains = ["sayt.az", "metbuat.az", "spotva.co", "tehvil.az"];
+    const llms = readFileSync(join(PUBLIC, "llms.txt"), "utf8");
+    const full = llmsFullTxt();
+    for (const domain of domains) {
+      const link = `<a href="https://${domain}" target="_blank" rel="noopener">${domain}</a>`;
+      for (const page of SITE_PAGES) expect(prerender(shell, page)).toContain(link);
+      expect(prerender(shell, SITE_PAGES[0]).split(link)).toHaveLength(3);
+      expect(llms).toContain(`[${domain}](https://${domain})`);
+      expect(full).toContain(`[${domain}](https://${domain})`);
+    }
+    expect(prerender(shell, SITE_PAGES[0])).toContain("<h2>Rəsmi tərəfdaşlar</h2>");
+  });
+
   it("hides prerendered text from JavaScript visitors before first paint", () => {
     const index = readFileSync(join(__dirname, "..", "client", "index.html"), "utf8");
     const head = index.slice(index.indexOf("<head>"), index.indexOf("</head>"));

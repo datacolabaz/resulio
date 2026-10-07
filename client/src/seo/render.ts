@@ -129,6 +129,8 @@ export function pageHead(page: SitePage) {
   return { title, description, tags: tags.join("\n    ") };
 }
 
+const partnerList = `<ul>${SITE.partners.map((x) => `<li><a href="${x.url}" target="_blank" rel="noopener">${escapeHtml(x.name)}</a></li>`).join("")}</ul>`;
+
 /** Plain semantic HTML of a page; React replaces it on load, crawlers without JavaScript read it as is. */
 export function pageBody(page: SitePage) {
   const p = (key: MessageKey) => `<p>${escapeHtml(tx(key))}</p>`;
@@ -143,10 +145,12 @@ export function pageBody(page: SitePage) {
       }
       for (const { q, a } of s.faq ?? []) parts.push(`<h3>${escapeHtml(tx(q))}</h3>`, p(a));
       if (s.email) parts.push(`<p><a href="mailto:${SITE.contactEmail}">${SITE.contactEmail}</a></p>`);
+      if (s.partners) parts.push(partnerList);
       return `<section>${parts.join("")}</section>`;
     })
     .join("");
   const links = SITE_PAGES.map((x) => `<li><a href="${x.path}">${escapeHtml(tx(x.nav))}</a></li>`).join("");
+  const partners = `<p>${escapeHtml(tx("site.partners.title"))}:</p>${partnerList}`;
   return [
     `<header><a href="/"><img src="${SITE.logo.path}" alt="${SITE.name}" width="44" height="44" /> ${SITE.name}</a> — ${escapeHtml(tx("brand.tagline"))}</header>`,
     `<main>`,
@@ -156,7 +160,7 @@ export function pageBody(page: SitePage) {
     p(page.lead),
     sections,
     `</main>`,
-    `<footer><p>${escapeHtml(tx("site.definitionShort"))}</p><ul>${links}<li><a href="/privacy.html">${escapeHtml(tx("site.nav.privacy"))}</a></li></ul><p>${escapeHtml(tx("site.footer.founder"))}</p></footer>`,
+    `<footer><p>${escapeHtml(tx("site.definitionShort"))}</p><ul>${links}<li><a href="/privacy.html">${escapeHtml(tx("site.nav.privacy"))}</a></li></ul>${partners}<p>${escapeHtml(tx("site.footer.founder"))}</p></footer>`,
   ].join("");
 }
 
@@ -181,7 +185,14 @@ export function sitemapXml(lastmod: string) {
 /** Every public page in all three languages as Markdown, for AI assistants (llmstxt.org convention). */
 export function llmsFullTxt() {
   const out: string[] = [`# ${SITE.name}`, "", `> ${translate("en", "site.definition")}`, ""];
-  out.push(`- Website: ${absoluteUrl("/")}`, `- Founder: ${SITE.founder.name}`, `- Contact: ${SITE.contactEmail}`, `- Languages: Azerbaijani, Russian, English`, "");
+  out.push(
+    `- Website: ${absoluteUrl("/")}`,
+    `- Founder: ${SITE.founder.name}`,
+    `- Contact: ${SITE.contactEmail}`,
+    `- Languages: Azerbaijani, Russian, English`,
+    `- Official partners: ${SITE.partners.map((x) => `[${x.name}](${x.url})`).join(", ")}`,
+    "",
+  );
   for (const locale of ["en", "az", "ru"] as Locale[]) {
     for (const page of SITE_PAGES) {
       out.push(`## ${translate(locale, page.h1)} (${locale})`, "", `URL: ${absoluteUrl(page.path)}`, "", translate(locale, page.lead), "");
@@ -192,6 +203,7 @@ export function llmsFullTxt() {
         if (s.items) out.push("");
         for (const { q, a } of s.faq ?? []) out.push(`**${translate(locale, q)}**`, "", translate(locale, a), "");
         if (s.email) out.push(SITE.contactEmail, "");
+        if (s.partners) out.push(...SITE.partners.map((x) => `- [${x.name}](${x.url})`), "");
       }
     }
   }
