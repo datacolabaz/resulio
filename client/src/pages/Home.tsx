@@ -7,6 +7,7 @@ import { BrowserFrame } from "@/components/landing/BrowserFrame";
 import { DemoNote } from "@/components/landing/DemoNote";
 import { ExamBuilderPreview } from "@/components/landing/ExamBuilderPreview";
 import { HeroDashboardPreview } from "@/components/landing/HeroDashboardPreview";
+import { PartnersSection } from "@/components/landing/PartnersSection";
 import { SharePreview } from "@/components/landing/SharePreview";
 import { StudentSessionPreview } from "@/components/landing/StudentSessionPreview";
 import { Button } from "@/components/ui/button";
@@ -188,6 +189,8 @@ export default function Home() {
             <DemoNote className="mt-3" />
           </div>
         </section>
+
+        <PartnersSection />
       </main>
       <SiteFooter />
     </div>

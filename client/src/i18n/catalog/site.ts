@@ -67,6 +67,8 @@ export const site = {
   "site.nav.public": ["Sayt naviqasiyası", "Site navigation", "Навигация по сайту"],
   "site.nav.start": ["Pulsuz başla", "Start for free", "Начать бесплатно"],
   "site.footer.founder": ["Təsisçi: Telman Abdulla", "Founder: Telman Abdulla", "Основатель: Тельман Абдулла"],
+  "site.partners.title": ["Rəsmi tərəfdaşlar", "Official partners", "Официальные партнёры"],
+  "site.partners.lead": ["Resulio-nun rəsmi tərəfdaşları.", "Resulio's official partners.", "Официальные партнёры Resulio."],
   "site.breadcrumb": ["Naviqasiya zənciri", "Breadcrumb", "Навигационная цепочка"],
   "site.related": ["Digər səhifələr", "More about Resulio", "Ещё о Resulio"],
 

@@ -25,6 +25,13 @@ export const SITE = {
     /** TODO(owner): real public profiles of Telman Abdulla (LinkedIn, GitHub, …). */
     sameAs: [] as string[],
   },
+  /** Official partners, confirmed by the owner. The domain is the visible label; no logos. */
+  partners: [
+    { name: "sayt.az", url: "https://sayt.az" },
+    { name: "metbuat.az", url: "https://metbuat.az" },
+    { name: "spotva.co", url: "https://spotva.co" },
+    { name: "tehvil.az", url: "https://tehvil.az" },
+  ],
 };
 
 export const absoluteUrl = (path: string) => `${SITE.url}${path === "/" ? "/" : path}`;
