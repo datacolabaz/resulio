@@ -418,6 +418,9 @@ const teacherQuestionsRouter = router({
   update: teacherProcedure
     .input(z.object({ id: entityId, question: questionInputSchema }))
     .mutation(({ ctx, input }) => bank.updateBankQuestion(ctx.scope, input.id, input.question)),
+  confirmAnswers: teacherProcedure
+    .input(z.object({ ids: z.array(entityId).min(1).max(200) }))
+    .mutation(({ ctx, input }) => bank.confirmBankAnswers(ctx.scope, input.ids)),
 });
 
 const teacherAssessmentsRouter = router({

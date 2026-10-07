@@ -1,9 +1,10 @@
 import { AppShell, ChoiceChip, ErrorNote, Loading, Panel, Pill } from "@/components/AppShell";
 import { draftFromQuestion, QuestionEditor } from "@/components/QuestionEditor";
+import { QuestionPreview } from "@/components/questionBank/QuestionPreview";
 import { bankLabel, SectionPicker, sectionsOf, subjectsOf, TopicSelect, useTopics, type TopicRow } from "@/components/questionBank/Topics";
 import { QuestionRenderer } from "@/components/QuestionRenderer";
 import { ShareBox, ShareFunnelSummary } from "@/components/ShareBox";
-import { StatusBadge } from "@/components/StatusBadge";
+import { StatusBadge, toneSurface } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -11,9 +12,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { t, type MessageKey } from "@/i18n/messages";
 import { errorText, fmtDuration, fromLocalInput, questionTypeLabel, releaseLabel, reviewLabel, toLocalInput, typeLabel } from "@/lib/format";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
-import { CLOSED_QUESTION_TYPES, DEFAULT_WRONG_PENALTY, QUESTION_TYPES, type AssessmentType, type QuestionInput, type QuestionType } from "@shared/assessment";
+import { CLOSED_QUESTION_TYPES, DEFAULT_WRONG_PENALTY, QUESTION_TYPES, type AssessmentType, type QuestionType } from "@shared/assessment";
 import { builderPath, safeSyllabusEditorPath } from "@/lib/syllabusLearn";
-import { ArrowDown, ArrowLeft, ArrowUp, Check, FileUp, Library, Pencil, Replace, Sparkles, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Check, FileUp, Library, Pencil, Replace, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useParams, useSearch } from "wouter";
@@ -260,6 +261,7 @@ function QuestionsStep({ a, onNext }: { a: Detail; onNext: () => void }) {
           </div>
         }
       >
+        <AnswerChecksNote questions={a.questions} className="mb-3" />
         <ol className="space-y-3">
           {a.questions.map((q, i) => (
             <li key={q.id} className="rounded-xl border p-3">
@@ -280,7 +282,7 @@ function QuestionsStep({ a, onNext }: { a: Detail; onNext: () => void }) {
                       {q.skill && <span>· {q.skill}</span>}
                       {q.source === "AI" && <StatusBadge tone="info" icon={Sparkles}>AI</StatusBadge>}
                     </div>
-                    <div className="mt-1 line-clamp-3 whitespace-pre-wrap break-words text-sm" title={q.text}>{q.text}</div>
+                    <QuestionPreview q={q} clamp className="mt-1" onChangeAnswer={() => setEditing(q.id)} />
                   </div>
                   <div className="flex gap-1">
                     <button type="button" onClick={() => setReplacing(q)} className={iconButton} aria-label={t("builder.replaceN", { n: i + 1 })} title={t("builder.replaceFromBank")}><Replace className="h-4 w-4" aria-hidden /></button>
@@ -457,7 +459,7 @@ function SectionQuestionPicker({ section, topics, inExam, picked, onChange }: { 
               <span className="min-w-0 flex-1">
                 <span className="text-xs font-medium text-link">{bankLabel(topics, q)}</span>
                 {added && <span className="ms-2 text-xs">{t("builder.alreadyInExam")}</span>}
-                <span className="line-clamp-2 block break-words" title={q.text}>{q.text}</span>
+                <QuestionPreview q={q} clamp />
               </span>
             </label>
           </li>
@@ -502,7 +504,7 @@ function ReplaceDialog({ onOpenChange, a, question, topics }: { onOpenChange: (v
                 <li key={q.id} className="flex items-center gap-3 py-2 text-sm">
                   <div className="min-w-0 flex-1">
                     <div className="text-xs font-medium text-link">{bankLabel(topics, q) ?? t("qbank.unsorted")}</div>
-                    <div className="line-clamp-2 break-words" title={q.text}>{q.text}</div>
+                    <QuestionPreview q={q} clamp />
                     <div className="text-xs text-muted-foreground">{questionTypeLabel(q.type)} · {t("common.points", { count: q.points })}</div>
                   </div>
                   <Button size="sm" disabled={replace.isPending} onClick={() => replace.mutate({ id: a.id, questionId: question.id, withQuestionId: q.id })}>
@@ -552,7 +554,7 @@ function BankDialog({ open, onOpenChange, assessmentId, existing }: { open: bool
                 <li key={q.id} className="flex items-center gap-3 py-2 text-sm">
                   <div className="min-w-0 flex-1">
                     <div className="text-xs font-medium text-link">{bankLabel(topicList, q) ?? t("qbank.unsorted")}</div>
-                    <div className="line-clamp-2 break-words" title={q.text}>{q.text}</div>
+                    <QuestionPreview q={q} clamp />
                     <div className="text-xs text-muted-foreground">
                       {questionTypeLabel(q.type)} · {t("common.points", { count: q.points })}{!q.sectionId && q.topic ? ` · ${q.topic}` : ""}
                     </div>
@@ -628,7 +630,7 @@ function AiDialog({ open, onOpenChange, assessmentId }: { open: boolean; onOpenC
                   <li key={tempId} className="rounded-xl border p-3 text-sm">
                     <label className="flex gap-3">
                       <input type="checkbox" className="mt-1 accent-link" checked={picked.includes(tempId)} onChange={(e) => setPicked(e.target.checked ? [...picked, tempId] : picked.filter((x) => x !== tempId))} />
-                      <AiPreview q={question} />
+                      <QuestionPreview q={question} explanation />
                     </label>
                   </li>
                 ))}
@@ -646,35 +648,6 @@ function AiDialog({ open, onOpenChange, assessmentId }: { open: boolean; onOpenC
         )}
       </DialogContent>
     </Dialog>
-  );
-}
-
-function AiPreview({ q }: { q: QuestionInput }) {
-  const c = q.content as Record<string, any>;
-  const k = q.answerKey as Record<string, any>;
-  const answer = (value: string) => <div className="mt-1 text-xs text-success">{t("builder.answerValue", { value })}</div>;
-  return (
-    <div className="min-w-0 flex-1">
-      <div className="whitespace-pre-wrap break-words">{q.text}</div>
-      {Array.isArray(c.options) && (
-        <ul className="mt-1 text-xs text-foreground-secondary">
-          {c.options.map((o: { key: string; text: string }) => {
-            const ok = Array.isArray(k.correct) ? k.correct.includes(o.key) : k.correct === o.key;
-            return (
-              <li key={o.key} className={ok ? "font-semibold text-success" : ""}>
-                {ok && <Check className="mr-1 inline h-3 w-3" aria-label={t("common.correct")} />}
-                {o.key}. {o.text}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {q.type === "TRUE_FALSE" && answer(k.correct ? t("common.true") : t("common.false"))}
-      {q.type === "SHORT_ANSWER" && answer((k.accepted ?? []).join(" / "))}
-      {q.type === "FILL_BLANK" && answer((k.blanks ?? []).map((b: string[]) => b.join("/")).join(" | "))}
-      {q.type === "NUMERIC" && answer(`${k.value}${k.tolerance ? ` ± ${k.tolerance}` : ""}`)}
-      {q.explanation && <div className="mt-1 text-xs text-muted-foreground">{t("builder.explanationValue", { value: q.explanation })}</div>}
-    </div>
   );
 }
 
@@ -895,6 +868,18 @@ function RulesStep({ a, onNext }: { a: Detail; onNext: () => void }) {
   );
 }
 
+/** A warning, not a block: the teacher may publish with answers the AI chose. */
+function AnswerChecksNote({ questions, className = "" }: { questions: Detail["questions"]; className?: string }) {
+  const count = questions.filter((q) => q.answerCheck).length;
+  if (!count) return null;
+  return (
+    <div role="status" className={`flex items-start gap-2 rounded-xl border p-3 text-sm ${toneSurface("warning")} ${className}`}>
+      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+      <span>{t("qbank.answerChecksPending", { count })} {t("qbank.answerCheckHelp")}</span>
+    </div>
+  );
+}
+
 function PublishStep({ a }: { a: Detail }) {
   const preview = trpc.teacher.assessments.preview.useQuery({ id: a.id });
   const invalidate = useInvalidateDetail(a.id);
@@ -925,6 +910,7 @@ function PublishStep({ a }: { a: Detail }) {
             {a.settings.emailResults && <span className="block">{t("builder.emailResultsOn")}</span>}
           </dd>
         </dl>
+        <AnswerChecksNote questions={a.questions} className="mt-4" />
         <div className="mt-4 flex flex-wrap items-center gap-3">
           {canPublish ? (
             <Button disabled={!a.questions.length} onClick={() => setOpen(true)}>{a.currentVersionId ? t("assessment.publishNew") : t("assessment.publish")}</Button>
@@ -980,8 +966,7 @@ function PublishStep({ a }: { a: Detail }) {
             {a.questions.map((q, i) => (
               <li key={q.id} className="rounded-xl border p-3 text-sm">
                 <div className="text-xs text-muted-foreground">{i + 1}. {questionTypeLabel(q.type)} · {t("common.points", { count: q.points })}</div>
-                <div className="mt-1 whitespace-pre-wrap break-words">{q.text}</div>
-                <pre className="mt-2 overflow-x-auto rounded-lg border border-success/40 bg-success-surface p-2 text-xs text-foreground">{JSON.stringify(q.answerKey, null, 1)}</pre>
+                <QuestionPreview q={q} className="mt-1" />
               </li>
             ))}
           </ol>

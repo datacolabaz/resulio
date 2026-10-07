@@ -13,6 +13,14 @@ export type AnswerSource = (typeof ANSWER_SOURCES)[number];
 export const CONFIDENCE_LEVELS = ["LOW", "MEDIUM", "HIGH"] as const;
 export type Confidence = (typeof CONFIDENCE_LEVELS)[number];
 
+/**
+ * An imported answer the teacher has not confirmed yet: the AI chose it, or the AI disagreed with
+ * the answer marked in the file (stored with LOW confidence). Confirming or editing sets TEACHER.
+ */
+export function needsAnswerCheck(meta: { answerSource: AnswerSource | null; aiConfidence: Confidence | null }): boolean {
+  return meta.answerSource === "AI" || (meta.answerSource === "SOURCE" && meta.aiConfidence === "LOW");
+}
+
 /** Question types the extractor may produce; matching/ordering are left to manual authoring. */
 export const IMPORT_QUESTION_TYPES = ["MULTIPLE_CHOICE", "MULTIPLE_SELECT", "TRUE_FALSE", "SHORT_ANSWER", "LONG_ANSWER", "FILL_BLANK", "NUMERIC"] as const;
 export type ImportQuestionType = (typeof IMPORT_QUESTION_TYPES)[number];

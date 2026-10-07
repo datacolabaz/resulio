@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { questionMeta, questions, questionTopics, syllabi, syllabusModules, type QuestionTopic } from "../../drizzle/schema";
-import { normalizeForMatch, type TopicInput } from "../../shared/questionImport";
+import { needsAnswerCheck, normalizeForMatch, type TopicInput } from "../../shared/questionImport";
 import { requireDb, type DbOrTx } from "../db";
 import type { TeacherScope } from "../modules/access";
 import { AppError } from "../modules/errors";
@@ -302,6 +302,8 @@ export async function moveQuestions(scope: TeacherScope, questionIds: string[], 
 export interface Placement {
   sectionId: string | null;
   bankNumber: number | null;
+  /** The imported answer still waits for the teacher's confirmation (see `needsAnswerCheck`). */
+  answerCheck: boolean;
 }
 
 /** Section and number per question; empty when the bank tables are not migrated yet. */
@@ -309,12 +311,32 @@ export async function placementsOf(workspaceId: string, questionIds: string[]): 
   if (!questionIds.length) return new Map();
   try {
     const rows = await requireDb()
-      .select({ questionId: questionMeta.questionId, sectionId: questionMeta.sectionId, bankNumber: questionMeta.bankNumber })
+      .select({
+        questionId: questionMeta.questionId,
+        sectionId: questionMeta.sectionId,
+        bankNumber: questionMeta.bankNumber,
+        answerSource: questionMeta.answerSource,
+        aiConfidence: questionMeta.aiConfidence,
+      })
       .from(questionMeta)
       .where(and(eq(questionMeta.providerWorkspaceId, workspaceId), inArray(questionMeta.questionId, questionIds)));
-    return new Map(rows.map((r) => [r.questionId, { sectionId: r.sectionId, bankNumber: r.bankNumber }]));
+    return new Map(rows.map((r) => [r.questionId, { sectionId: r.sectionId, bankNumber: r.bankNumber, answerCheck: needsAnswerCheck(r) }]));
   } catch (error) {
     if (isMissingTable(error)) return new Map();
+    throw error;
+  }
+}
+
+/** Marks the questions' stored answers as checked by the teacher; returns how many were waiting. */
+export async function confirmAnswers(workspaceId: string, questionIds: string[], db: DbOrTx = requireDb()): Promise<number> {
+  if (!questionIds.length) return 0;
+  try {
+    const waiting = (await placementsOf(workspaceId, questionIds)).entries();
+    const ids = [...waiting].filter(([, p]) => p.answerCheck).map(([id]) => id);
+    if (ids.length) await db.update(questionMeta).set({ answerSource: "TEACHER" }).where(and(eq(questionMeta.providerWorkspaceId, workspaceId), inArray(questionMeta.questionId, ids)));
+    return ids.length;
+  } catch (error) {
+    if (isMissingTable(error)) return 0;
     throw error;
   }
 }
