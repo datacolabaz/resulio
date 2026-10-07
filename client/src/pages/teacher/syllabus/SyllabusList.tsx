@@ -2,14 +2,60 @@ import { EmptyState, ErrorNote, Loading, Pill } from "@/components/AppShell";
 import { TeacherWorkflowOverview } from "@/components/syllabus/Workflow";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { getLocale, t } from "@/i18n/messages";
-import { trpc } from "@/lib/trpc";
+import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { fileDownloadUrl } from "@/lib/uploadFile";
-import { BookOpen, Plus, Sparkles } from "lucide-react";
+import { Archive, ArchiveRestore, BookOpen, EllipsisVertical, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { Link, useLocation } from "wouter";
+import { DeleteSyllabusDialog } from "./DeleteSyllabusDialog";
 import { emptySyllabusFields, fieldsPayload, SyllabusFieldsForm } from "./SyllabusFields";
 import { SyllabusShell, SyllabusStatusBadge, toastError } from "./shared";
+
+type SyllabusRow = RouterOutputs["teacher"]["syllabus"]["list"][number];
+
+function CardMenu({ s, onDelete }: { s: SyllabusRow; onDelete: () => void }) {
+  const utils = trpc.useUtils();
+  const archived = !!s.archivedAt;
+  const archive = trpc.teacher.syllabus.setArchived.useMutation({
+    onSuccess: () => {
+      toast.success(t(archived ? "syllabus.restored.done" : "syllabus.archived.done", { title: s.title }));
+      void utils.teacher.syllabus.list.invalidate();
+      void utils.teacher.syllabus.get.invalidate({ id: s.id });
+    },
+    onError: toastError,
+  });
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          size="icon"
+          variant="outline"
+          className="absolute right-2 top-2 h-8 w-8 bg-card/90 backdrop-blur"
+          aria-label={t("syllabus.card.actions", { title: s.title })}
+        >
+          <EllipsisVertical className="h-4 w-4" aria-hidden />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem
+          disabled={archive.isPending}
+          onSelect={() => (archived || confirm(t("syllabus.settings.archiveConfirm"))) && archive.mutate({ id: s.id, archived: !archived })}
+        >
+          {archived ? <ArchiveRestore aria-hidden /> : <Archive aria-hidden />}
+          {archived ? t("syllabus.settings.unarchive") : t("syllabus.settings.archive")}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant="destructive" onSelect={onDelete}>
+          <Trash2 aria-hidden />
+          {t("syllabus.delete.action")}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 function CreateDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const [, nav] = useLocation();
@@ -62,6 +108,7 @@ function SyllabusListBody() {
   const list = trpc.teacher.syllabus.list.useQuery();
   const [open, setOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
   if (list.isLoading) return <Loading />;
   if (list.error?.message === "SYLLABUS_DB_NOT_READY") return <EmptyState title={t("syllabus.dbNotReady.title")} body={t("error.SYLLABUS_DB_NOT_READY")} />;
   if (list.error) return <ErrorNote error={list.error} />;
@@ -107,7 +154,7 @@ function SyllabusListBody() {
           )}
           <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {visible.map((s) => (
-              <li key={s.id}>
+              <li key={s.id} className="relative">
                 <Link
                   href={`/teacher/syllabus/${s.id}`}
                   className="flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card transition-colors hover:border-link focus-visible:outline-2 focus-visible:outline-link"
@@ -134,12 +181,14 @@ function SyllabusListBody() {
                     </div>
                   </div>
                 </Link>
+                <CardMenu s={s} onDelete={() => setDeleting(s.id)} />
               </li>
             ))}
           </ul>
         </>
       )}
       <CreateDialog open={open} onOpenChange={setOpen} />
+      <DeleteSyllabusDialog syllabusId={deleting} open={deleting !== null} onOpenChange={(v) => !v && setDeleting(null)} />
     </div>
   );
 }

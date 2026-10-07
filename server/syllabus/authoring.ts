@@ -3,13 +3,23 @@ import { nanoid } from "nanoid";
 import {
   assessments,
   files,
+  learningActivity,
   materials,
   syllabi,
   syllabusAccessGrants,
+  syllabusAnalyticsSettings,
+  syllabusAssessmentAssignments,
+  syllabusCompletions,
   syllabusEnrollments,
+  syllabusItemProgress,
   syllabusItems,
+  syllabusLessonProgress,
   syllabusLessons,
+  syllabusManualUnlocks,
+  syllabusModuleProgress,
   syllabusModules,
+  syllabusNoticeBatches,
+  syllabusVersionItems,
   syllabusVersions,
   type Syllabus,
   type SyllabusItemRow,
@@ -24,7 +34,7 @@ import {
 } from "../../shared/syllabus";
 import { requireDb, type DbOrTx } from "../db";
 import type { TeacherScope } from "../modules/access";
-import { AppError } from "../modules/errors";
+import { AppError, type AppErrorCode } from "../modules/errors";
 import { ownedSyllabus } from "./access";
 import { cloneContainer, createContainer, deleteContainers, syncContainer } from "./practiceTasks";
 
@@ -225,14 +235,53 @@ export async function discardDraft(scope: TeacherScope, id: string) {
   const db = requireDb();
   const [grant] = await db.select({ id: syllabusAccessGrants.id }).from(syllabusAccessGrants).where(eq(syllabusAccessGrants.syllabusId, id)).limit(1);
   if (syllabus.currentVersionId || grant) throw new AppError("SYLLABUS_INVALID_TARGET");
-  await db.transaction(async (tx) => {
-    await deleteContainers(tx, scope.workspaceId, id);
-    await tx.delete(syllabusItems).where(eq(syllabusItems.syllabusId, id));
-    await tx.delete(syllabusLessons).where(eq(syllabusLessons.syllabusId, id));
-    await tx.delete(syllabusModules).where(eq(syllabusModules.syllabusId, id));
-    await tx.delete(syllabi).where(eq(syllabi.id, id));
-  });
+  await db.transaction((tx) => purgeSyllabus(tx, scope.workspaceId, id));
   return { ok: true };
+}
+
+/**
+ * A syllabus with enrollments holds student progress, submissions and certificates: it can only be
+ * archived. Without any enrollment nothing a student did depends on it, so it may be deleted even if
+ * it was published or still has grants (nobody has opened it yet).
+ */
+export function deleteBlocker(stats: { enrollments: number }): AppErrorCode | null {
+  return stats.enrollments > 0 ? "SYLLABUS_HAS_STUDENTS" : null;
+}
+
+/** Every row keyed on the syllabus: draft tree, versions, practice containers, grants, logs, settings. */
+async function purgeSyllabus(tx: DbOrTx, workspaceId: string, id: string) {
+  await deleteContainers(tx, workspaceId, id);
+  const versionIds = (await tx.select({ id: syllabusVersions.id }).from(syllabusVersions).where(eq(syllabusVersions.syllabusId, id))).map((v) => v.id);
+  if (versionIds.length) await tx.delete(syllabusVersionItems).where(inArray(syllabusVersionItems.versionId, versionIds));
+  await tx.delete(syllabusVersions).where(eq(syllabusVersions.syllabusId, id));
+  await tx.delete(syllabusItems).where(eq(syllabusItems.syllabusId, id));
+  await tx.delete(syllabusLessons).where(eq(syllabusLessons.syllabusId, id));
+  await tx.delete(syllabusModules).where(eq(syllabusModules.syllabusId, id));
+  await tx.delete(syllabusAccessGrants).where(eq(syllabusAccessGrants.syllabusId, id));
+  // Enrollment-scoped tables are empty when deletion is allowed; cleared anyway so no orphan can survive.
+  await tx.delete(syllabusItemProgress).where(eq(syllabusItemProgress.syllabusId, id));
+  await tx.delete(syllabusLessonProgress).where(eq(syllabusLessonProgress.syllabusId, id));
+  await tx.delete(syllabusModuleProgress).where(eq(syllabusModuleProgress.syllabusId, id));
+  await tx.delete(syllabusManualUnlocks).where(eq(syllabusManualUnlocks.syllabusId, id));
+  await tx.delete(syllabusCompletions).where(eq(syllabusCompletions.syllabusId, id));
+  await tx.delete(syllabusAssessmentAssignments).where(eq(syllabusAssessmentAssignments.syllabusId, id));
+  await tx.delete(syllabusAnalyticsSettings).where(eq(syllabusAnalyticsSettings.syllabusId, id));
+  await tx.delete(syllabusNoticeBatches).where(eq(syllabusNoticeBatches.syllabusId, id));
+  await tx.delete(learningActivity).where(eq(learningActivity.syllabusId, id));
+  await tx.delete(syllabi).where(eq(syllabi.id, id));
+}
+
+/** Hard delete (see `deleteBlocker`); the enrollment check and the purge share one transaction. */
+export async function deleteSyllabus(scope: TeacherScope, id: string) {
+  await ownedSyllabus(scope, id);
+  await requireDb().transaction(async (tx) => {
+    await tx.select({ id: syllabi.id }).from(syllabi).where(eq(syllabi.id, id)).for("update");
+    const [row] = await tx.select({ n: sql<number>`count(*)` }).from(syllabusEnrollments).where(eq(syllabusEnrollments.syllabusId, id));
+    const blocker = deleteBlocker({ enrollments: Number(row?.n ?? 0) });
+    if (blocker) throw new AppError(blocker);
+    await purgeSyllabus(tx, scope.workspaceId, id);
+  });
+  return { ok: true, id };
 }
 
 export async function updateSyllabus(scope: TeacherScope, id: string, patch: Partial<SyllabusFields>, expectedRevision?: number) {

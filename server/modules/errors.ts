@@ -81,7 +81,8 @@ export type AppErrorCode =
   | "SYLLABUS_INVALID_TARGET"
   | "SYLLABUS_PRACTICE_TASK_IN_USE"
   | "SYLLABUS_PROGRESS_HIDDEN"
-  | "SYLLABUS_RETRY_COOLDOWN";
+  | "SYLLABUS_RETRY_COOLDOWN"
+  | "SYLLABUS_HAS_STUDENTS";
 
 export class AppError extends Error {
   constructor(public readonly code: AppErrorCode) {
@@ -168,6 +169,7 @@ const HTTP: Partial<Record<AppErrorCode, TRPCError["code"]>> = {
   SYLLABUS_PRACTICE_TASK_IN_USE: "CONFLICT",
   SYLLABUS_PROGRESS_HIDDEN: "FORBIDDEN",
   SYLLABUS_RETRY_COOLDOWN: "PRECONDITION_FAILED",
+  SYLLABUS_HAS_STUDENTS: "CONFLICT",
 };
 
 /** Where an unexpected error happened, for the server log only (never sent to the client). */
