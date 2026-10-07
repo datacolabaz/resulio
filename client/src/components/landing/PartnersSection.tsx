@@ -1,8 +1,32 @@
 import { t } from "@/i18n/messages";
-import { SITE } from "@/seo/config";
+import { SITE, type Partner } from "@/seo/config";
 import { ArrowUpRight } from "lucide-react";
 
-/** Official partners as text wordmark cards; each opens the partner's site in a new tab. */
+const logoClass = "h-7 w-auto max-w-full object-contain";
+
+function PartnerLogo({ partner }: { partner: Partner }) {
+  const { logo } = partner;
+  const alt = `${partner.name} logo`;
+  return (
+    <span className="flex h-10 max-w-full items-center justify-center gap-2">
+      {logo.srcOnDark ? (
+        <>
+          <img src={logo.src} alt={alt} width={logo.width} height={logo.height} loading="lazy" decoding="async" className={`${logoClass} dark:hidden`} />
+          <img src={logo.srcOnDark} alt={alt} width={logo.width} height={logo.height} loading="lazy" decoding="async" className={`${logoClass} hidden dark:block`} />
+        </>
+      ) : (
+        <img src={logo.src} alt={alt} width={logo.width} height={logo.height} loading="lazy" decoding="async" className={logoClass} />
+      )}
+      {partner.wordmark && (
+        <span aria-hidden className="text-2xl font-extrabold tracking-tight text-[var(--partner)] dark:text-[var(--partner-dark)]">
+          {partner.wordmark}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** Official partners as logo cards; each opens the partner's site in a new tab. */
 export function PartnersSection() {
   return (
     <section id="partners" aria-labelledby="partners-title">
@@ -19,13 +43,14 @@ export function PartnersSection() {
               href={partner.url}
               target="_blank"
               rel="noopener"
-              className="group flex h-full min-h-20 items-center justify-center gap-1.5 rounded-2xl border border-border bg-card px-5 py-6 text-lg font-semibold tracking-tight text-foreground shadow-card transition-colors outline-none hover:border-link hover:text-link focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring"
+              style={{ "--partner": partner.color, "--partner-dark": partner.colorOnDark } as React.CSSProperties}
+              className="group flex h-full flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-card px-5 py-6 shadow-card outline-none transition-colors hover:border-[var(--partner)] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring dark:hover:border-[var(--partner-dark)]"
             >
-              <span className="break-all">{partner.name}</span>
-              <ArrowUpRight
-                aria-hidden
-                className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-link"
-              />
+              <PartnerLogo partner={partner} />
+              <span aria-hidden className="flex items-center gap-1 text-xs text-muted-foreground transition-colors group-hover:text-foreground">
+                {partner.name}
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </span>
             </a>
           </li>
         ))}

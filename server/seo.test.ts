@@ -1,8 +1,9 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { isMessageKey } from "../client/src/i18n/messages";
+import { SITE } from "../client/src/seo/config";
 import { SITE_PAGES } from "../client/src/seo/pages";
 import { llmsFullTxt, pageJsonLd, prerender, siteJsonLd, sitemapXml } from "../client/src/seo/render";
 import { prerenderedPage } from "./_core/spa";
@@ -54,11 +55,20 @@ describe("public site pages", () => {
     for (const domain of domains) {
       const link = `<a href="https://${domain}" target="_blank" rel="noopener">${domain}</a>`;
       for (const page of SITE_PAGES) expect(prerender(shell, page)).toContain(link);
-      expect(prerender(shell, SITE_PAGES[0]).split(link)).toHaveLength(3);
+      expect(prerender(shell, SITE_PAGES[0])).toContain(`alt="${domain} logo"`);
       expect(llms).toContain(`[${domain}](https://${domain})`);
       expect(full).toContain(`[${domain}](https://${domain})`);
     }
     expect(prerender(shell, SITE_PAGES[0])).toContain("<h2>Rəsmi tərəfdaşlar</h2>");
+  });
+
+  it("serves every partner logo from the site itself", () => {
+    for (const { logo } of SITE.partners) {
+      for (const src of [logo.src, logo.srcOnDark].filter(Boolean) as string[]) {
+        expect(src).toMatch(/^\/partners\//);
+        expect(existsSync(join(PUBLIC, src))).toBe(true);
+      }
+    }
   });
 
   it("hides prerendered text from JavaScript visitors before first paint", () => {
