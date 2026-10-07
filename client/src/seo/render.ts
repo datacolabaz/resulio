@@ -130,6 +130,12 @@ export function pageHead(page: SitePage) {
 }
 
 const partnerList = `<ul>${SITE.partners.map((x) => `<li><a href="${x.url}" target="_blank" rel="noopener">${escapeHtml(x.name)}</a></li>`).join("")}</ul>`;
+const partnerLogoList = `<ul>${SITE.partners
+  .map(
+    (x) =>
+      `<li><a href="${x.url}" target="_blank" rel="noopener"><img src="${x.logo.src}" alt="${escapeHtml(x.name)} logo" width="${x.logo.width}" height="${x.logo.height}" loading="lazy" /> ${escapeHtml(x.name)}</a></li>`,
+  )
+  .join("")}</ul>`;
 
 /** Plain semantic HTML of a page; React replaces it on load, crawlers without JavaScript read it as is. */
 export function pageBody(page: SitePage) {
@@ -145,7 +151,7 @@ export function pageBody(page: SitePage) {
       }
       for (const { q, a } of s.faq ?? []) parts.push(`<h3>${escapeHtml(tx(q))}</h3>`, p(a));
       if (s.email) parts.push(`<p><a href="mailto:${SITE.contactEmail}">${SITE.contactEmail}</a></p>`);
-      if (s.partners) parts.push(partnerList);
+      if (s.partners) parts.push(partnerLogoList);
       return `<section>${parts.join("")}</section>`;
     })
     .join("");

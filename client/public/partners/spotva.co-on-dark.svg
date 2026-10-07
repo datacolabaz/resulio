@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 381.33 96">
+  <!-- Spotva primary horizontal lockup. Wordmark is real Fraunces
+       SemiBold (600), embedded as a subsetted woff2 (glyphs S,p,o,t,v,a
+       only) so the mark is self-contained with no external font
+       dependency. Icon: verified two-arc "S + Spot" mark, scaled to
+       match the wordmark's cap-height (guidelines §12). -->
+  <defs>
+    <style>
+      @font-face {
+        font-family: 'Fraunces Spotva Subset';
+        src: url(data:font/woff2;base64,d09GMgABAAAAAAYMAA8AAAAAChAAAAWxAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGyAcKgZgP1NUQVSBFABUEQgKiAyGcgE2AiQDHAsQAAQgBYUcByAMBxtkCCg+BG8MaJMgGSZLJIRESSjFoYX9/LIhaLl0wx8peB7t/js3yZPnc0WVEjMrohNLwe3+i7W2j4j5qb1ahOmQVDs0tZAJHSL1Dr4pFmW2+DJB6pBeXioZScoN9vZrmYXj5kaefkASAAp4gaKlXnUsXcuWzwVckfY/gD9snRzh5RkkgSWcpi2gGBON6n+AX9f//73j2h7I/L9BAUeJJzLmPbc9XtiJxrRwgyRWGC2dmyILnLaVbeJ+gY3Js9O7ESBIblJQNe4xsQF+GIAcAYAkRcnDY7CQIUhMGIhDGcw2ZpDHHHiDxzHHAGtug6gzqKgawqYp7Nf22gC4gEn6Pvw9gEBh1RPAn0RfKSMA+fFEEPx4AAcvoDYew+XoJAig9dOzgTyQ8VRADKRCtR81M4Y80QO1niFQLF74yU0ZXTwQlKQAACALQKFAgqoDgPwFagFAoUHSAQAACxQGJZkAWMD0JShAAw6eCODgRX1AGD8KQ2sImZZ+hdYQEvU0s90qyy1LEgQigJPv4wMgCgRBugPInTxhQMSh9hWkVSETBYUQmyBhlaFFp/eD696mW0cETE5Nw/z9N4wnuWpo45WD5367+0Rc74NHA8Odjp8m+KyOjSM8PbdMp8LhCycb2grV4rzuDpccj8vybFC6i+PgJ3hZPychff1mBfq7vuY/w/R5okZ5WJEuF7z1Ktgmd457X43m3RMfbAZX3G3u5gZ9F08m3m99Xt3eQWA9ovCCAHJDfvn+CyjgGnx6fU2PYXsEmWOtg5YVFpW+du1D09Xosj86uWqfBBtxmQmF7YcXei/wOpOux4f5CdwmmCvebmAPBZPETkGhLqzYgtqG6PhM2YiZc2A9HpmZS0lXE/fpMTm5RpGXTuPh6bmUCGhBa9isYvmMeKlo6sV6atqBIR1dWXG7eMmNuuEZ2cXyhn6xgY6E1V1q7avE68tgp+VwVGIUst9vkVMsjzEvI10czEK3dcT1EwX8/LVg1eSSslpVU7+EGDdFGc9ql2LpphrYYdYREBo6vTOIS0HLbaunZ6KpjMnuoGKuYaj2VVnPP2HDVqFTNekESYNp6WyS9FDC8HFWsKy+i5SeY5CFXUPq7XQNBtBaubPrUQpau9gYG5uZq8t5STA7yJmiNgHZXZmgyMz3jd/UGferlby7b67d9D595v1KNe/2m6WVJmkTTtB0SGxGTMZsX7yhLnFXAKlEA8dkxqT/ZSBJz5EQCXYSp6UsDQV1b3JjUm0kuVM0kJYkX5zxxaMzEhMSXmDoWkftM6IgVpl0dCR5p0TcXHzQcbtpn2vleCRcOVBHUcIyyVxfN8hcdcCdpNxOm2kbpNkB3zf/WVQmc3bFqjJgfPgtQ3tq2kRGez05Q0neEl0IBbnO8DdHMlWsMyoysgSYDJbxeg/Sd0UwSSsBpMnU8d8iD/+1lz9hzkrcheqSFNQ+ehcY/OmvLznxjZnG3BQ0s3EUjLNRZH+n5w8mBd8/AAAEEBh0njO7kzf98/P03QTwpClVb4sC/v8Y/yjfdAAvStT083L7DyJ8X3uAiu1Sn/4Iz52VIDCTEzTLn0YdpLDpAb4INhSr4OUqfBSgNjQvzjM8ERMAtgCCEgqyTSmiXKA0VfluNCDloaIYqZeCUrVEIFM65JQQlhGUIi5TKE1QFlFB4rIGUq+cPYx0zjEqgyC5AJnF9ld1kshM1BgUmlYaFZSdSBpTaAYBPVAuQkeEkaApGGNCCYswCkI7AlqRmEQ9Z/OgMPR0HVQJGImgVBEDB3UOCP5sgpaJjFBqql2+8UdMIggYHSQ83AQCRYeHUCunhLJ9+EamdZrSqEh9MWPG4Hp/hkSUNhcuQtVSc4ayGaqQbpcV4+g/BplQkXeeMMzy1Cwi3TApAOQNRUW6HWed6M0xqYxNooNMy0aA9Xisn9aMwRxOJLoAIfJk0/b/UkH+CZJjOIsBAAAA) format('woff2');
+        font-weight: 600;
+        font-style: normal;
+      }
+    </style>
+  </defs>
+  <g transform="translate(6,0) scale(1.043478)">
+  <path d="M 31 16 A 15 15 0 0 0 31 46 A 15 15 0 0 1 31 76" fill="none" stroke="#FBFAF6" stroke-width="20" stroke-linecap="round"/><circle cx="31" cy="16" r="11" fill="#DB8A2E"/>
+</g>
+  <text x="135.39" y="73.01" font-family="Fraunces Spotva Subset, Fraunces, Georgia, serif" font-size="70" font-weight="600" fill="#FBFAF6">Spotva</text>
+</svg>

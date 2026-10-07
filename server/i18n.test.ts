@@ -25,6 +25,7 @@ const ALLOWED_LITERALS: { file: string; text: string; reason: string }[] = [
   { file: "components/BrandMark.tsx", text: "Resulio", reason: "brand name" },
   { file: "pages/Home.tsx", text: "Resulio", reason: "brand name" },
   { file: "pages/SitePages.tsx", text: "Resulio", reason: "brand name" },
+  { file: "seo/config.ts", text: "Təhvil", reason: "partner brand name (tehvil.az wordmark)" },
   { file: "components/landing/BrowserFrame.tsx", text: "resulio.co/app", reason: "decorative fake address bar in a product-preview mockup, identical in every language" },
   { file: "pages/teacher/TeacherModules.tsx", text: "AI", reason: "product term, identical in every language" },
   { file: "pages/teacher/ExamBuilder.tsx", text: "AI", reason: "product term, identical in every language" },

@@ -25,13 +25,49 @@ export const SITE = {
     /** TODO(owner): real public profiles of Telman Abdulla (LinkedIn, GitHub, …). */
     sameAs: [] as string[],
   },
-  /** Official partners, confirmed by the owner. The domain is the visible label; no logos. */
+  /** Official partners, confirmed by the owner. Logos are the partners' own files from their websites, served locally. */
   partners: [
-    { name: "sayt.az", url: "https://sayt.az" },
-    { name: "metbuat.az", url: "https://metbuat.az" },
-    { name: "spotva.co", url: "https://spotva.co" },
-    { name: "tehvil.az", url: "https://tehvil.az" },
-  ],
+    {
+      name: "sayt.az",
+      url: "https://sayt.az",
+      logo: { src: "/partners/sayt.az.svg", srcOnDark: "/partners/sayt.az-on-dark.svg", width: 131, height: 40 },
+      color: "#7D3BE2",
+      colorOnDark: "#60A5FA",
+    },
+    {
+      name: "metbuat.az",
+      url: "https://metbuat.az",
+      logo: { src: "/partners/metbuat.az.png", srcOnDark: "/partners/metbuat.az-on-dark.png", width: 720, height: 134 },
+      color: "#03B3C1",
+      colorOnDark: "#03B3C1",
+    },
+    {
+      name: "spotva.co",
+      url: "https://spotva.co",
+      logo: { src: "/partners/spotva.co.svg", srcOnDark: "/partners/spotva.co-on-dark.svg", width: 381, height: 96 },
+      color: "#26453A",
+      colorOnDark: "#DB8A2E",
+    },
+    {
+      name: "tehvil.az",
+      url: "https://tehvil.az",
+      /** tehvil.az publishes only its square mark; its own site sets the name "Təhvil" next to it. */
+      logo: { src: "/partners/tehvil.az.svg", width: 64, height: 64 },
+      wordmark: "Təhvil",
+      color: "#29473F",
+      colorOnDark: "#F8F6F1",
+    },
+  ] as Partner[],
+};
+
+export type Partner = {
+  name: string;
+  url: string;
+  logo: { src: string; srcOnDark?: string; width: number; height: number };
+  /** Text set next to a mark-only logo, in the brand colour. */
+  wordmark?: string;
+  color: string;
+  colorOnDark: string;
 };
 
 export const absoluteUrl = (path: string) => `${SITE.url}${path === "/" ? "/" : path}`;
