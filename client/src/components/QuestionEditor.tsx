@@ -184,12 +184,15 @@ export function QuestionEditor({
   busy,
   onSubmit,
   onCancel,
+  hideTopic,
 }: {
   initial?: Draft;
   submitLabel?: string;
   busy?: boolean;
   onSubmit: (q: QuestionInput) => void | Promise<void>;
   onCancel?: () => void;
+  /** The question is filed in a bank section chosen elsewhere; its topic text is the section name. */
+  hideTopic?: boolean;
 }) {
   const uid = useId();
   const [d, setD] = useState<Draft>(initial ?? emptyDraft("MULTIPLE_CHOICE"));
@@ -377,7 +380,7 @@ export function QuestionEditor({
       )}
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="text-sm"><span className={label}>{t("common.topic")}</span><Input value={d.topic} onChange={(e) => set("topic", e.target.value)} placeholder={t("editor.topicPlaceholder")} /></label>
+        {!hideTopic && <label className="text-sm"><span className={label}>{t("common.topic")}</span><Input value={d.topic} onChange={(e) => set("topic", e.target.value)} placeholder={t("editor.topicPlaceholder")} /></label>}
         <label className="text-sm"><span className={label}>{t("common.skill")}</span><Input value={d.skill} onChange={(e) => set("skill", e.target.value)} placeholder={t("editor.skillPlaceholder")} /></label>
       </div>
       <label className="block text-sm">

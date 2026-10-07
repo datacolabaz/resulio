@@ -367,6 +367,7 @@ export const app = {
   "settings.event.SYLLABUS_AT_RISK_DIGEST": ["Gündəlik xülasə: risk altında olan tələbələr", "Daily digest: students at risk", "Ежедневная сводка: студенты в зоне риска"],
   "settings.event.TASK_ASSIGNED": ["Mənə yeni tapşırıq verildi", "A new task was assigned to me", "Мне выдано новое задание"],
   "settings.event.TASK_UPDATED": ["Tapşırığın son tarixi dəyişdi", "A task's deadline changed", "Изменён срок задания"],
+  "settings.event.EXAM_RESULT_READY": ["İmtahan nəticəsi (müəllim seçibsə)", "Exam result (if the teacher chose to send it)", "Результат экзамена (если преподаватель включил отправку)"],
   "settings.partner": ["Partner proqramı", "Partner programme", "Партнёрская программа"],
   "settings.partnerStatus": ["Status: {status}", "Status: {status}", "Статус: {status}"],
   "settings.partnerPanel": ["Partner paneli →", "Partner panel →", "Панель партнёра →"],

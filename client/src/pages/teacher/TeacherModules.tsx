@@ -12,14 +12,16 @@ import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTi
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { bankLabel, SectionPicker, SectionSelect, TopicManagerDialog, TopicSelect, useTopics } from "@/components/questionBank/Topics";
 import { t } from "@/i18n/messages";
 import { errorText, fmtDateTime, fromLocalInput, questionTypeLabel, subscriptionLabel, toLocalInput } from "@/lib/format";
 import { fileDownloadUrl } from "@/lib/uploadFile";
 import { trpc } from "@/lib/trpc";
 import { QUESTION_TYPES } from "@shared/assessment";
-import { Sparkles } from "lucide-react";
+import { FileUp, FolderTree, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { Link } from "wouter";
 
 const fieldLabel = "text-foreground-secondary";
 const filterSelect = "rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground";
@@ -487,15 +489,48 @@ function QuestionBankTab() {
   const [search, setSearch] = useState("");
   const [type, setType] = useState("");
   const [source, setSource] = useState("");
-  const bank = trpc.teacher.questions.bank.useQuery({ search: search || undefined, type: (type || undefined) as never, source: (source || undefined) as never });
+  const [topicId, setTopicId] = useState("");
+  const topics = useTopics();
+  const topicList = topics.data ?? [];
+  const bank = trpc.teacher.questions.bank.useQuery({
+    search: search || undefined,
+    type: (type || undefined) as never,
+    source: (source || undefined) as never,
+    topicId: topicId || undefined,
+  });
   const [editing, setEditing] = useState<string | "new" | null>(null);
-  const done = () => { setEditing(null); void utils.teacher.questions.bank.invalidate(); };
-  const create = trpc.teacher.questions.create.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
+  const [newSection, setNewSection] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [topicsOpen, setTopicsOpen] = useState(false);
+  const done = () => {
+    setEditing(null);
+    void utils.teacher.questions.bank.invalidate();
+    void utils.teacher.questionTopics.list.invalidate();
+  };
+  const create = trpc.teacher.questions.create.useMutation({
+    onSuccess: (q) => {
+      done();
+      const label = bankLabel(topicList, q);
+      if (label) toast.success(t("qbank.filedAs", { ref: label }));
+    },
+    onError: (e) => toast.error(errorText(e)),
+  });
   const update = trpc.teacher.questions.update.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
+  const move = trpc.teacher.questionTopics.move.useMutation({
+    onSuccess: (r) => {
+      toast.success(t("qbank.moved", { count: r.count }));
+      setSelected(new Set());
+      done();
+    },
+    onError: (e) => toast.error(errorText(e)),
+  });
+  const rows = bank.data ?? [];
+  const toggle = (id: string, on: boolean) => setSelected((cur) => { const next = new Set(cur); if (on) next.add(id); else next.delete(id); return next; });
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <Input className="max-w-xs" placeholder={t("common.search")} aria-label={t("common.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
+        <TopicSelect topics={topicList} value={topicId} onChange={setTopicId} emptyLabel={t("qbank.allTopics")} ariaLabel={t("qbank.filterTopic")} className={`max-w-[16rem] ${filterSelect}`} />
         <select className={filterSelect} aria-label={t("modules.filterType")} value={type} onChange={(e) => setType(e.target.value)}>
           <option value="">{t("modules.allTypes")}</option>
           {QUESTION_TYPES.map((k) => <option key={k} value={k}>{questionTypeLabel(k)}</option>)}
@@ -505,25 +540,60 @@ function QuestionBankTab() {
           <option value="MANUAL">{t("modules.sourceManual")}</option>
           <option value="AI">AI</option>
         </select>
-        <Button className="ml-auto" onClick={() => setEditing("new")}>{t("modules.newQuestion")}</Button>
+        <div className="ml-auto flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setTopicsOpen(true)}><FolderTree className="mr-1 h-4 w-4" aria-hidden />{t("qbank.topics.manage")}</Button>
+          <Button variant="outline" asChild><Link href="/teacher/library/import"><FileUp className="mr-1 h-4 w-4" aria-hidden />{t("qimport.open")}</Link></Button>
+          <Button onClick={() => setEditing("new")}>{t("modules.newQuestion")}</Button>
+        </div>
       </div>
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-muted p-3 text-sm">
+          <span>{t("qbank.selected", { count: selected.size })}</span>
+          <SectionSelect
+            topics={topicList}
+            value=""
+            disabled={move.isPending}
+            onChange={(sectionId) => sectionId && move.mutate({ questionIds: [...selected], sectionId })}
+            emptyLabel={t("qbank.moveTo")}
+            ariaLabel={t("qbank.moveTo")}
+            className={filterSelect}
+          />
+          <span className="text-xs text-muted-foreground">{t("qbank.moveNote")}</span>
+          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>{t("common.cancel")}</Button>
+        </div>
+      )}
       {editing === "new" && (
-        <Panel title={t("modules.newQuestionTitle")}><QuestionEditor busy={create.isPending} onCancel={() => setEditing(null)} onSubmit={(question) => create.mutate({ question })} /></Panel>
+        <Panel title={t("modules.newQuestionTitle")}>
+          <SectionPicker className="mb-4" value={newSection} onChange={setNewSection} />
+          {newSection ? (
+            <QuestionEditor hideTopic busy={create.isPending} onCancel={() => setEditing(null)} onSubmit={(question) => create.mutate({ question, sectionId: newSection })} />
+          ) : (
+            <p className="text-sm text-muted-foreground">{t("qbank.pickSectionFirst")}</p>
+          )}
+        </Panel>
       )}
       <Panel>
-        {bank.isLoading ? <Loading /> : !bank.data?.length ? <p className="text-sm text-muted-foreground">{t("modules.noQuestions")}</p> : (
+        {bank.isLoading ? <Loading /> : !rows.length ? <p className="text-sm text-muted-foreground">{t("modules.noQuestions")}</p> : (
           <ul className="divide-y">
-            {bank.data.map((q) => (
+            <li className="pb-2">
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <input type="checkbox" className="accent-link" checked={rows.every((q) => selected.has(q.id))} onChange={(e) => setSelected(new Set(e.target.checked ? rows.map((q) => q.id) : []))} />
+                {t("qbank.selectAll")}
+              </label>
+            </li>
+            {rows.map((q) => (
               <li key={q.id} className="py-3">
                 {editing === q.id ? (
-                  <QuestionEditor initial={draftFromQuestion(q)} busy={update.isPending} onCancel={() => setEditing(null)} onSubmit={(question) => update.mutate({ id: q.id, question })} />
+                  <QuestionEditor hideTopic={!!q.sectionId} initial={draftFromQuestion(q)} busy={update.isPending} onCancel={() => setEditing(null)} onSubmit={(question) => update.mutate({ id: q.id, question })} />
                 ) : (
                   <div className="flex items-start gap-3">
+                    <input type="checkbox" className="mt-1 accent-link" aria-label={t("qbank.selectQuestion")} checked={selected.has(q.id)} onChange={(e) => toggle(q.id, e.target.checked)} />
                     <div className="min-w-0 flex-1">
+                      <div className="text-xs font-medium text-link">{bankLabel(topicList, q) ?? t("qbank.unsorted")}</div>
                       <div className="whitespace-pre-wrap break-words text-sm">{q.text}</div>
                       <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
                         <span>{questionTypeLabel(q.type)}</span><span>· {t("common.points", { count: q.points })}</span>
-                        {q.topic && <span>· {q.topic}</span>}{q.skill && <span>· {q.skill}</span>}
+                        {!q.sectionId && q.topic && <span>· {q.topic}</span>}{q.skill && <span>· {q.skill}</span>}
                         {q.source === "AI" && <StatusBadge tone="info" icon={Sparkles}>AI</StatusBadge>}
                       </div>
                     </div>
@@ -535,6 +605,7 @@ function QuestionBankTab() {
           </ul>
         )}
       </Panel>
+      <TopicManagerDialog open={topicsOpen} onOpenChange={setTopicsOpen} />
     </div>
   );
 }
