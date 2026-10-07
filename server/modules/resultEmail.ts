@@ -1,4 +1,4 @@
-import { and, eq, gte, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gt, gte, isNull, sql } from "drizzle-orm";
 import { assessments, attempts, resultEmailLog, results, users } from "../../drizzle/schema";
 import { requireDb } from "../db";
 import { dispatchNow } from "../notifications/dispatcher";
@@ -36,33 +36,54 @@ export function examResultNotice(result: typeof results.$inferSelect, title: str
   };
 }
 
-export async function sweepResultEmails(limit = 100) {
+/** Pages through all candidates (keyset on the result id), so results still held back never starve newer ones. */
+export async function sweepResultEmails(pageSize = 100, maxPages = 50) {
   const db = requireDb();
   const since = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
-  let rows;
-  try {
-    rows = await db
-      .select({ result: results, assessment: assessments, assignmentId: attempts.assignmentId, email: users.email })
-      .from(results)
-      .innerJoin(assessments, eq(assessments.id, results.assessmentId))
-      .innerJoin(attempts, eq(attempts.id, results.attemptId))
-      .innerJoin(users, eq(users.id, results.studentId))
-      .leftJoin(resultEmailLog, eq(resultEmailLog.resultId, results.id))
-      .where(
-        and(
-          isNull(resultEmailLog.resultId),
-          eq(results.pendingReviewCount, 0),
-          gte(results.completedAt, since),
-          sql`JSON_EXTRACT(${assessments.settings}, '$.emailResults') = CAST('true' AS JSON)`,
-        ),
-      )
-      .limit(limit);
-  } catch (error) {
-    if (isMissingTable(error)) return 0;
-    throw error;
+  let cursor = "";
+  let sent = 0;
+  for (let page = 0; page < maxPages; page++) {
+    let rows;
+    try {
+      rows = await db
+        .select({ result: results, assessment: assessments, assignmentId: attempts.assignmentId, email: users.email })
+        .from(results)
+        .innerJoin(assessments, eq(assessments.id, results.assessmentId))
+        .innerJoin(attempts, eq(attempts.id, results.attemptId))
+        .innerJoin(users, eq(users.id, results.studentId))
+        .leftJoin(resultEmailLog, eq(resultEmailLog.resultId, results.id))
+        .where(
+          and(
+            gt(results.id, cursor),
+            isNull(resultEmailLog.resultId),
+            eq(results.pendingReviewCount, 0),
+            gte(results.completedAt, since),
+            sql`JSON_EXTRACT(${assessments.settings}, '$.emailResults') = CAST('true' AS JSON)`,
+          ),
+        )
+        .orderBy(asc(results.id))
+        .limit(pageSize);
+    } catch (error) {
+      if (isMissingTable(error)) return sent;
+      throw error;
+    }
+    if (!rows.length) break;
+    sent += await sendPage(rows);
+    cursor = rows[rows.length - 1].result.id;
+    if (rows.length < pageSize) break;
   }
-  if (!rows.length) return 0;
+  return sent;
+}
 
+type Candidate = {
+  result: typeof results.$inferSelect;
+  assessment: typeof assessments.$inferSelect;
+  assignmentId: number | null;
+  email: string | null;
+};
+
+async function sendPage(rows: Candidate[]) {
+  const db = requireDb();
   const vis = await visibilityForResults(rows, db);
   let sent = 0;
   for (const row of rows) {
