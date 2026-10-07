@@ -2,8 +2,10 @@ import { z } from "zod";
 import { DIFFICULTIES, questionInputSchema, type QuestionInput } from "../../shared/assessment";
 import { ENV } from "../_core/env";
 import { invokeLLM } from "../_core/llm";
+import { createBankQuestion } from "../questionBank/bank";
+import { guardBankTables, ownedSection } from "../questionBank/topics";
 import { store } from "../resulioStore";
-import { addQuestionToAssessment, createQuestion, ownedAssessment } from "./assessments";
+import { addQuestionToAssessment, ownedAssessment } from "./assessments";
 import type { TeacherScope } from "./access";
 import { providerAlertFor, sendAiAlert } from "./aiAlerts";
 import { AppError } from "./errors";
@@ -111,8 +113,9 @@ export async function generateQuestions(scope: TeacherScope, input: AiGenerateIn
   }
 }
 
-/** Accepted AI questions enter the teacher's bank (source AI) and optionally a draft assessment. */
-export async function acceptAiQuestions(scope: TeacherScope, draftId: string, tempIds: string[], assessmentId?: string) {
+/** Accepted AI questions are filed in a bank section (source AI) and optionally added to a draft assessment. */
+export async function acceptAiQuestions(scope: TeacherScope, draftId: string, tempIds: string[], sectionId: string, assessmentId?: string) {
+  await guardBankTables(() => ownedSection(scope, sectionId));
   if (assessmentId) {
     const a = await ownedAssessment(scope, assessmentId);
     if (a.status === "CLOSED") throw new AppError("CLOSED");
@@ -125,7 +128,7 @@ export async function acceptAiQuestions(scope: TeacherScope, draftId: string, te
   }
   const created = [];
   for (const q of selected) {
-    const row = await createQuestion(scope, q, "AI");
+    const row = await createBankQuestion(scope, q, { sectionId, source: "AI" });
     if (assessmentId) await addQuestionToAssessment(scope, assessmentId, row.id);
     created.push(row);
   }

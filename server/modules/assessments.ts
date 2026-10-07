@@ -16,6 +16,7 @@ import {
 } from "../../drizzle/schema";
 import {
   assessmentSettingsSchema,
+  DEFAULT_WRONG_PENALTY,
   questionInputSchema,
   type AssessmentSettings,
   type AssessmentType,
@@ -43,6 +44,8 @@ export const DEFAULT_SETTINGS: AssessmentSettings = {
   reviewMode: "FULL",
   showCorrectAnswers: false,
   showExplanations: false,
+  wrongPenalty: DEFAULT_WRONG_PENALTY,
+  emailResults: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -337,6 +340,35 @@ export async function addQuestionToAssessment(scope: TeacherScope, assessmentId:
   return draftQuestions(assessmentId);
 }
 
+/** Appends several bank questions in the given order; ones already in the draft are skipped. */
+export async function addQuestionsToAssessment(scope: TeacherScope, assessmentId: string, questionIds: string[]) {
+  const db = requireDb();
+  const a = await ownedAssessment(scope, assessmentId);
+  if (a.status === "CLOSED") throw new AppError("CLOSED");
+  const unique = [...new Set(questionIds)];
+  if (!unique.length) return 0;
+  const owned = await db
+    .select({ id: questions.id })
+    .from(questions)
+    .where(and(eq(questions.providerWorkspaceId, scope.workspaceId), inArray(questions.id, unique)));
+  if (owned.length !== unique.length) throw new AppError("NOT_FOUND");
+  return db.transaction(async (tx) => {
+    const present = await tx
+      .select({ questionId: assessmentQuestions.questionId, position: assessmentQuestions.position })
+      .from(assessmentQuestions)
+      .where(eq(assessmentQuestions.assessmentId, assessmentId))
+      .for("update");
+    const have = new Set(present.map((p) => p.questionId));
+    const fresh = unique.filter((id) => !have.has(id));
+    let pos = present.reduce((m, p) => Math.max(m, p.position), 0);
+    if (fresh.length) {
+      await tx.insert(assessmentQuestions).values(fresh.map((questionId) => ({ assessmentId, questionId, position: ++pos })));
+      await markDraftChanged(assessmentId, tx);
+    }
+    return fresh.length;
+  });
+}
+
 export async function createQuestionInAssessment(scope: TeacherScope, assessmentId: string, input: QuestionInput) {
   await ownedAssessment(scope, assessmentId);
   const q = await createQuestion(scope, input);
@@ -350,6 +382,30 @@ export async function removeQuestionFromAssessment(scope: TeacherScope, assessme
   await db.transaction(async (tx) => {
     await tx
       .delete(assessmentQuestions)
+      .where(and(eq(assessmentQuestions.assessmentId, assessmentId), eq(assessmentQuestions.questionId, questionId)));
+    await markDraftChanged(assessmentId, tx);
+  });
+  return draftQuestions(assessmentId);
+}
+
+/** Swaps one draft question for another bank question in the same position. */
+export async function replaceQuestionInAssessment(scope: TeacherScope, assessmentId: string, questionId: string, withQuestionId: string) {
+  const db = requireDb();
+  const a = await ownedAssessment(scope, assessmentId);
+  if (a.status === "CLOSED") throw new AppError("CLOSED");
+  await ownedQuestion(scope, withQuestionId);
+  await db.transaction(async (tx) => {
+    const links = await tx
+      .select({ questionId: assessmentQuestions.questionId })
+      .from(assessmentQuestions)
+      .where(and(eq(assessmentQuestions.assessmentId, assessmentId), inArray(assessmentQuestions.questionId, [questionId, withQuestionId])))
+      .for("update");
+    if (!links.some((l) => l.questionId === questionId)) throw new AppError("UNKNOWN_QUESTION");
+    if (questionId === withQuestionId) return;
+    if (links.some((l) => l.questionId === withQuestionId)) throw new AppError("QUESTION_ALREADY_IN_EXAM");
+    await tx
+      .update(assessmentQuestions)
+      .set({ questionId: withQuestionId })
       .where(and(eq(assessmentQuestions.assessmentId, assessmentId), eq(assessmentQuestions.questionId, questionId)));
     await markDraftChanged(assessmentId, tx);
   });

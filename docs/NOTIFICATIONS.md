@@ -29,6 +29,7 @@ Code: `server/notifications/` — `events.ts` (events and their channels), `temp
 | `SYLLABUS_AT_RISK_DIGEST` | syllabus creator | IN_APP, EMAIL (e-mail off by default) | daily after 08:00 Baku when students are at risk and the syllabus' digest is on (`syllabus/analytics.ts`); key `syl-risk:<syllabusId>:<YYYY-MM-DD>` |
 | `TASK_ASSIGNED` | student | IN_APP, EMAIL, PUSH | a teacher creates a task, or an edit makes it reach new students; or a student joins a group with open tasks (`modules/taskNotify.ts`); key `task-assigned:<taskId>:<userId>` |
 | `TASK_UPDATED` | student | IN_APP, PUSH, EMAIL (e-mail off by default) | an edit moves the deadline by ≥ 1 hour; to students the task already reached; key `task-deadline:<taskId>:<userId>:<deadlineMs>` |
+| `EXAM_RESULT_READY` | student | EMAIL | only for exams with "E-mail results to students" ticked: the 30 s sweeper (`server/modules/resultEmail.ts`) mails each result once it is final (no manual grading pending) and released; score, percentage and the wrong-answer deduction, never the answers. Claimed in `result_email_log` (one row per result; students without an address are logged as `NO_EMAIL` and skipped); key `exam-result:<resultId>` |
 
 ### Tasks
 

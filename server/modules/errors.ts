@@ -92,7 +92,10 @@ export type AppErrorCode =
   | "IMPORT_BUSY"
   | "IMPORT_ITEM_INVALID"
   | "TOPIC_EXISTS"
-  | "TOPIC_INVALID_PARENT";
+  | "TOPIC_INVALID_PARENT"
+  | "TOPIC_NOT_EMPTY"
+  | "SECTION_REQUIRED"
+  | "QUESTION_ALREADY_IN_EXAM";
 
 export class AppError extends Error {
   constructor(public readonly code: AppErrorCode) {
@@ -190,6 +193,9 @@ const HTTP: Partial<Record<AppErrorCode, TRPCError["code"]>> = {
   IMPORT_ITEM_INVALID: "BAD_REQUEST",
   TOPIC_EXISTS: "CONFLICT",
   TOPIC_INVALID_PARENT: "BAD_REQUEST",
+  TOPIC_NOT_EMPTY: "CONFLICT",
+  SECTION_REQUIRED: "BAD_REQUEST",
+  QUESTION_ALREADY_IN_EXAM: "CONFLICT",
 };
 
 /** Where an unexpected error happened, for the server log only (never sent to the client). */

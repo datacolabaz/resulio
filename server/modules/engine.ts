@@ -3,6 +3,7 @@
  * Everything that decides what a student may see, whether an attempt may start
  * and how an answer is graded lives here.
  */
+import { CLOSED_QUESTION_TYPES } from "../../shared/assessment";
 import type {
   AnswerKey,
   AssessmentSettings,
@@ -216,22 +217,58 @@ export function gradeQuestion(q: FrozenQuestion, answer: StudentAnswer | undefin
   }
 }
 
+/** The deduction of the wrong-answer rule; null when the version has the rule off. */
+export type PenaltyOutcome = { ratio: number; wrongCount: number; closedEarned: number; penaltyPoints: number };
+
 export type AttemptScore = {
   totalPoints: number;
+  /** Net of `penalty.penaltyPoints`. */
   earnedPoints: number;
   percentage: number;
   correctCount: number;
   wrongCount: number;
   unansweredCount: number;
   pendingReviewCount: number;
+  penalty: PenaltyOutcome | null;
   items: GradedItem[];
 };
 
 export const round1 = (n: number) => Math.round(n * 10) / 10;
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
-export function scoreItems(questions: FrozenQuestion[], items: GradedItem[]): Omit<AttemptScore, "items"> {
+/** The rule a version's settings turn on; old versions without the setting have none. */
+export function penaltyRule(settings: Partial<Pick<AssessmentSettings, "wrongPenalty">> | undefined): number | null {
+  const rule = settings?.wrongPenalty;
+  return rule?.enabled && rule.ratio >= 2 ? rule.ratio : null;
+}
+
+/**
+ * "N wrong cancel one correct" on closed questions: every wrong closed answer takes off its
+ * points / N (exact, not rounded down to whole answers); unanswered ones are not wrong; the
+ * deduction never exceeds what the closed questions earned, so their part never goes below 0.
+ */
+export function wrongAnswerPenalty(questions: FrozenQuestion[], items: GradedItem[], ratio: number | null): PenaltyOutcome | null {
+  if (!ratio) return null;
+  const closed = new Map(questions.filter((q) => CLOSED_QUESTION_TYPES.includes(q.type as QuestionType)).map((q) => [q.id, q]));
+  let wrongCount = 0;
+  let wrongPoints = 0;
+  let closedEarned = 0;
+  for (const item of items) {
+    const q = closed.get(item.questionId);
+    if (!q) continue;
+    closedEarned += item.earned;
+    if (item.status === "WRONG") {
+      wrongCount++;
+      wrongPoints += q.points;
+    }
+  }
+  return { ratio, wrongCount, closedEarned: round2(closedEarned), penaltyPoints: round2(Math.min(closedEarned, wrongPoints / ratio)) };
+}
+
+export function scoreItems(questions: FrozenQuestion[], items: GradedItem[], ratio: number | null = null): Omit<AttemptScore, "items"> {
   const totalPoints = questions.reduce((s, q) => s + q.points, 0);
-  const earnedPoints = items.reduce((s, i) => s + i.earned, 0);
+  const penalty = wrongAnswerPenalty(questions, items, ratio);
+  const earnedPoints = Math.max(0, round2(items.reduce((s, i) => s + i.earned, 0) - (penalty?.penaltyPoints ?? 0)));
   return {
     totalPoints,
     earnedPoints,
@@ -240,12 +277,13 @@ export function scoreItems(questions: FrozenQuestion[], items: GradedItem[]): Om
     wrongCount: items.filter((i) => i.status === "WRONG").length,
     unansweredCount: items.filter((i) => i.status === "UNANSWERED").length,
     pendingReviewCount: items.filter((i) => i.status === "PENDING_REVIEW").length,
+    penalty,
   };
 }
 
-export function gradeAttempt(questions: FrozenQuestion[], answers: Record<string, StudentAnswer | undefined>): AttemptScore {
+export function gradeAttempt(questions: FrozenQuestion[], answers: Record<string, StudentAnswer | undefined>, ratio: number | null = null): AttemptScore {
   const items = questions.map((q) => gradeQuestion(q, answers[q.id]));
-  return { ...scoreItems(questions, items), items };
+  return { ...scoreItems(questions, items, ratio), items };
 }
 
 /** The correct answer in the same shape a student would submit it. Only used after submission. */

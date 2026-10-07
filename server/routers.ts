@@ -63,7 +63,8 @@ import * as workspaces from "./modules/workspaces";
 import { CHANNELS, EVENT_TYPES } from "./notifications/events";
 import * as notificationPreferences from "./notifications/preferences";
 import * as push from "./notifications/push";
-import { bankWithTopics, questionBankFilter, questionImportRouter, questionTopicsRouter } from "./questionBank/router";
+import * as bank from "./questionBank/bank";
+import { questionBankFilter, questionImportRouter, questionTopicsRouter, sectionPicksSchema } from "./questionBank/router";
 import { store } from "./resulioStore";
 import { studentSyllabusRouter, teacherSyllabusRouter } from "./syllabus/router";
 import { SHARE_CAMPAIGNS, SHARE_CHANNELS, SHARE_TARGET_TYPES, VISITOR_ID_PATTERN } from "../shared/shareTracking";
@@ -409,13 +410,14 @@ const teacherGroupsRouter = router({
 });
 
 const teacherQuestionsRouter = router({
-  bank: teacherProcedure.input(questionBankFilter).query(({ ctx, input }) => bankWithTopics(ctx.scope, input)),
+  bank: teacherProcedure.input(questionBankFilter).query(({ ctx, input }) => bank.bankRows(ctx.scope, input)),
+  /** A new bank question is always filed in a section, which gives it its bank number. */
   create: teacherProcedure
-    .input(z.object({ question: questionInputSchema }))
-    .mutation(({ ctx, input }) => assessments.createQuestion(ctx.scope, input.question)),
+    .input(z.object({ question: questionInputSchema, sectionId: entityId }))
+    .mutation(({ ctx, input }) => bank.createBankQuestion(ctx.scope, input.question, { sectionId: input.sectionId })),
   update: teacherProcedure
     .input(z.object({ id: entityId, question: questionInputSchema }))
-    .mutation(({ ctx, input }) => assessments.updateQuestion(ctx.scope, input.id, input.question)),
+    .mutation(({ ctx, input }) => bank.updateBankQuestion(ctx.scope, input.id, input.question)),
 });
 
 const teacherAssessmentsRouter = router({
@@ -424,7 +426,10 @@ const teacherAssessmentsRouter = router({
     .query(({ ctx, input }) => assessments.listForTeacher(ctx.scope, input)),
   detail: teacherProcedure
     .input(z.object({ id: assessmentId }))
-    .query(({ ctx, input }) => assessments.teacherDetail(ctx.scope, input.id)),
+    .query(async ({ ctx, input }) => {
+      const detail = await assessments.teacherDetail(ctx.scope, input.id);
+      return { ...detail, questions: await bank.withPlacements(ctx.scope, detail.questions) };
+    }),
   create: teacherProcedure
     .input(z.object({ type: z.enum(ASSESSMENT_TYPES), settings: assessmentSettingsPatchSchema.optional() }))
     .mutation(({ ctx, input }) => assessments.createAssessment(ctx.scope, input)),
@@ -441,8 +446,15 @@ const teacherAssessmentsRouter = router({
     .input(z.object({ id: assessmentId, questionId: entityId }))
     .mutation(({ ctx, input }) => assessments.addQuestionToAssessment(ctx.scope, input.id, input.questionId)),
   createQuestion: teacherProcedure
-    .input(z.object({ id: assessmentId, question: questionInputSchema }))
-    .mutation(({ ctx, input }) => assessments.createQuestionInAssessment(ctx.scope, input.id, input.question)),
+    .input(z.object({ id: assessmentId, question: questionInputSchema, sectionId: entityId }))
+    .mutation(({ ctx, input }) => bank.createInAssessment(ctx.scope, input.id, input.question, input.sectionId)),
+  /** Hand-picked and/or randomly drawn questions from one or more bank sections. */
+  addFromBank: teacherProcedure
+    .input(z.object({ id: assessmentId, picks: sectionPicksSchema }))
+    .mutation(({ ctx, input }) => bank.addFromBank(ctx.scope, input.id, input.picks)),
+  replaceQuestion: teacherProcedure
+    .input(z.object({ id: assessmentId, questionId: entityId, withQuestionId: entityId }))
+    .mutation(({ ctx, input }) => assessments.replaceQuestionInAssessment(ctx.scope, input.id, input.questionId, input.withQuestionId)),
   removeQuestion: teacherProcedure
     .input(z.object({ id: assessmentId, questionId: entityId }))
     .mutation(({ ctx, input }) => assessments.removeQuestionFromAssessment(ctx.scope, input.id, input.questionId)),
@@ -528,8 +540,8 @@ const teacherAiRouter = router({
     .input(ai.aiGenerateSchema)
     .mutation(({ ctx, input }) => ai.generateQuestions(ctx.scope, input)),
   accept: teacherProcedure
-    .input(z.object({ draftId: z.string().min(1).max(32), tempIds: z.array(z.string().min(1).max(32)).min(1).max(50), assessmentId: assessmentId.optional() }))
-    .mutation(({ ctx, input }) => ai.acceptAiQuestions(ctx.scope, input.draftId, input.tempIds, input.assessmentId)),
+    .input(z.object({ draftId: z.string().min(1).max(32), tempIds: z.array(z.string().min(1).max(32)).min(1).max(50), assessmentId: assessmentId.optional(), sectionId: entityId }))
+    .mutation(({ ctx, input }) => ai.acceptAiQuestions(ctx.scope, input.draftId, input.tempIds, input.sectionId, input.assessmentId)),
 });
 
 const recipients = {

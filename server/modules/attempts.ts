@@ -7,6 +7,7 @@ import {
   attempts,
   providerWorkspaces,
   resultItems,
+  resultPenalties,
   results,
   studentAnswers,
   users,
@@ -36,6 +37,7 @@ import {
   isAnswered,
   isExpired,
   liveStatus,
+  penaltyRule,
   throttleElapsed,
   questionOrderFor,
   resultVisibility,
@@ -43,8 +45,10 @@ import {
   scoreItems,
   toStudentQuestion,
   type FrozenQuestion,
+  type PenaltyOutcome,
   type ResultVisibility,
 } from "./engine";
+import { isMissingTable } from "../notifications/preferences";
 import type { TeacherScope } from "./access";
 import { AppError } from "./errors";
 import { emitLearningEvent } from "./learningEvents";
@@ -419,7 +423,7 @@ export async function finalizeAttempt(attemptId: string, opts: { auto: boolean }
     }
 
     const { version, questions } = await loadVersion(attempt.versionId, tx);
-    const score = gradeAttempt(questions, answers);
+    const score = gradeAttempt(questions, answers, penaltyRule(version.settings));
 
     const id = nanoid();
     await tx.insert(results).values({
@@ -448,6 +452,7 @@ export async function finalizeAttempt(attemptId: string, opts: { auto: boolean }
         skill: item.skill,
       })),
     );
+    if (score.penalty) await savePenalty(tx, id, score.penalty);
     await tx
       .update(attempts)
       .set({ status: auto ? "AUTO_SUBMITTED" : "SUBMITTED", submittedAt, answeredCount, autoSubmittedAt: auto ? submittedAt : null })
@@ -474,6 +479,29 @@ export async function finalizeAttempt(attemptId: string, opts: { auto: boolean }
     await notifications.notify(n.studentId, "Nəticəniz hazırdır", n.title);
   }
   return resultId;
+}
+
+/** Before migration 0031 the deduction is still applied to the score, only not itemized. */
+async function savePenalty(tx: DbOrTx, resultId: string, penalty: PenaltyOutcome) {
+  try {
+    await tx
+      .insert(resultPenalties)
+      .values({ resultId, ...penalty })
+      .onDuplicateKeyUpdate({ set: { ratio: penalty.ratio, wrongCount: penalty.wrongCount, closedEarned: penalty.closedEarned, penaltyPoints: penalty.penaltyPoints } });
+  } catch (error) {
+    if (!isMissingTable(error)) throw error;
+  }
+}
+
+/** The itemized deduction of a result, or null (rule off, or not migrated yet). */
+export async function penaltyOf(resultId: string, db: DbOrTx = requireDb()): Promise<PenaltyOutcome | null> {
+  try {
+    const [row] = await db.select().from(resultPenalties).where(eq(resultPenalties.resultId, resultId)).limit(1);
+    return row ? { ratio: row.ratio, wrongCount: row.wrongCount, closedEarned: row.closedEarned, penaltyPoints: row.penaltyPoints } : null;
+  } catch (error) {
+    if (isMissingTable(error)) return null;
+    throw error;
+  }
 }
 
 /** Background sweep: close attempts whose server deadline has passed. */
@@ -575,6 +603,7 @@ export async function resultForStudent(resultId: string, studentId: number) {
           wrongCount: result.wrongCount,
           unansweredCount: result.unansweredCount,
           pendingReviewCount: result.pendingReviewCount,
+          penalty: await penaltyOf(result.id, db),
         }
       : {}),
     questions: reviewed,
@@ -760,6 +789,7 @@ export async function resultForTeacher(scope: TeacherScope, resultId: string) {
     wrongCount: result.wrongCount,
     unansweredCount: result.unansweredCount,
     pendingReviewCount: result.pendingReviewCount,
+    penalty: await penaltyOf(result.id, db),
     questions: reviewQuestions(
       questions,
       attempt?.questionOrder ?? questions.map((q) => q.id),
@@ -810,7 +840,7 @@ export async function gradeOpenAnswer(scope: TeacherScope, resultId: string, que
   const db = requireDb();
   const outcome = await db.transaction(async (tx) => {
     const { r: result } = await ownedResult(scope, resultId, tx);
-    const { questions } = await loadVersion(result.versionId, tx);
+    const { version, questions } = await loadVersion(result.versionId, tx);
     const q = questions.find((x) => x.id === questionId);
     if (!q) throw new AppError("UNKNOWN_QUESTION");
     if (q.type !== "LONG_ANSWER") throw new AppError("NOT_REVIEWABLE");
@@ -831,7 +861,9 @@ export async function gradeOpenAnswer(scope: TeacherScope, resultId: string, que
     const totals = scoreItems(
       questions,
       items.map((i) => ({ questionId: i.versionQuestionId, status: i.status, earned: i.earned, topic: i.topic, skill: i.skill })),
+      penaltyRule(version.settings),
     );
+    if (totals.penalty) await savePenalty(tx, resultId, totals.penalty);
     await tx
       .update(results)
       .set({

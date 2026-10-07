@@ -1,8 +1,8 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "183f0a82-1894-4a91-b601-d8443f4c3c9e",
-  "prevId": "ecdeea52-b6f3-44ad-a379-71264f8817a4",
+  "id": "754b1d4e-3a61-4e8a-a15c-58ef192c1e5d",
+  "prevId": "183f0a82-1894-4a91-b601-d8443f4c3c9e",
   "tables": {
     "ai_usage_events": {
       "name": "ai_usage_events",
@@ -3548,6 +3548,52 @@
       },
       "checkConstraint": {}
     },
+    "result_email_log": {
+      "name": "result_email_log",
+      "columns": {
+        "resultId": {
+          "name": "resultId",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "studentId": {
+          "name": "studentId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "result_email_log_resultId": {
+          "name": "result_email_log_resultId",
+          "columns": [
+            "resultId"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
     "result_items": {
       "name": "result_items",
       "columns": {
@@ -3612,6 +3658,58 @@
           "columns": [
             "resultId",
             "versionQuestionId"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "result_penalties": {
+      "name": "result_penalties",
+      "columns": {
+        "resultId": {
+          "name": "resultId",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ratio": {
+          "name": "ratio",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "wrongCount": {
+          "name": "wrongCount",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "closedEarned": {
+          "name": "closedEarned",
+          "type": "double",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "penaltyPoints": {
+          "name": "penaltyPoints",
+          "type": "double",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "result_penalties_resultId": {
+          "name": "result_penalties_resultId",
+          "columns": [
+            "resultId"
           ]
         }
       },

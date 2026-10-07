@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { DIFFICULTIES } from "./assessment";
 
 export const IMPORT_JOB_STATUSES = ["QUEUED", "PROCESSING", "READY", "FAILED", "COMPLETED"] as const;
 export type ImportJobStatus = (typeof IMPORT_JOB_STATUSES)[number];
@@ -59,23 +58,31 @@ export const IMPORT_JOB_ERRORS = [
   "AI_UNAVAILABLE",
   "DAILY_LIMIT",
   "FILE_MISSING",
+  "SECTION_MISSING",
   "INTERRUPTED",
   "INTERNAL",
 ] as const;
 export type ImportJobError = (typeof IMPORT_JOB_ERRORS)[number];
 
-export const DIFFICULTY_RANK: Record<(typeof DIFFICULTIES)[number], number> = { EASY: 0, MEDIUM: 1, HARD: 2 };
-
 export const topicNameSchema = z.string().trim().min(1).max(120);
 
+/**
+ * A bank topic is a subject (no parent, e.g. "Informatika") or a section of a subject (parent =
+ * the subject, e.g. "İnformasiya prosesləri"). Questions live in sections only. A subject may be
+ * linked to a syllabus, a section to one of its modules.
+ */
 export const topicInputSchema = z.object({
   name: topicNameSchema,
   parentId: z.string().min(1).max(32).nullable().optional(),
   syllabusId: z.string().min(1).max(32).nullable().optional(),
   syllabusModuleId: z.string().min(1).max(32).nullable().optional(),
-  syllabusLessonId: z.string().min(1).max(32).nullable().optional(),
 });
 export type TopicInput = z.infer<typeof topicInputSchema>;
+
+/** "Informatika / İnformasiya prosesləri / #12"; without a number the path alone. */
+export function bankRef(path: string, number: number | null | undefined): string {
+  return number ? `${path} / #${number}` : path;
+}
 
 /** Lower-case, accent- and punctuation-insensitive form used for topic names and duplicate checks. */
 export function normalizeForMatch(text: string): string {

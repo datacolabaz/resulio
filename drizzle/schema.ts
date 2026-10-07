@@ -535,6 +535,31 @@ export const results = mysqlTable(
   (t) => [index("results_assessment_idx").on(t.assessmentId), index("results_student_idx").on(t.studentId)],
 );
 
+/**
+ * Kept beside `results` (add-only migrations): the wrong-answer deduction of a result whose
+ * version had the rule on. `results.earnedPoints` is already net of `penaltyPoints`; no row means
+ * no deduction.
+ */
+export const resultPenalties = mysqlTable("result_penalties", {
+  resultId: id("resultId").primaryKey(),
+  /** N in "N wrong answers cancel one correct one". */
+  ratio: int("ratio").notNull(),
+  /** Wrong closed answers counted. */
+  wrongCount: int("wrongCount").notNull(),
+  /** Points of the closed questions before the deduction. */
+  closedEarned: double("closedEarned").notNull(),
+  penaltyPoints: double("penaltyPoints").notNull(),
+});
+
+/** One row per result whose "exam result" e-mail was claimed, so a result is e-mailed at most once. */
+export const resultEmailLog = mysqlTable("result_email_log", {
+  resultId: id("resultId").primaryKey(),
+  studentId: int("studentId").notNull(),
+  /** SENT (handed to the notification outbox) or NO_EMAIL (student has no address). */
+  status: varchar("status", { length: 16 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
 export const resultItems = mysqlTable(
   "result_items",
   {
@@ -1403,9 +1428,10 @@ export const syllabusNoticeBatches = mysqlTable(
 );
 
 /**
- * Question bank topics: a per-workspace tree, optionally tied to a syllabus module or lesson.
- * `parentKey` is `parentId` or '' (MySQL unique indexes treat NULLs as distinct) and `nameKey` the
- * normalized name, so a sibling name can exist only once.
+ * Question bank structure, two levels per workspace: a subject (`parentId` null) and its sections
+ * (`parentId` = the subject). Questions live in sections. `parentKey` is `parentId` or '' (MySQL
+ * unique indexes treat NULLs as distinct) and `nameKey` the normalized name, so a sibling name
+ * can exist only once.
  */
 export const questionTopics = mysqlTable(
   "question_topics",
@@ -1418,7 +1444,8 @@ export const questionTopics = mysqlTable(
     nameKey: varchar("nameKey", { length: 120 }).notNull(),
     syllabusId: id("syllabusId"),
     syllabusModuleId: id("syllabusModuleId"),
-    syllabusLessonId: id("syllabusLessonId"),
+    /** Sections only: the bank number the next question filed here gets. Only ever increases. */
+    nextNumber: int("nextNumber").notNull().default(1),
     position: int("position").notNull().default(0),
     createdBy: int("createdBy").notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -1428,15 +1455,19 @@ export const questionTopics = mysqlTable(
 );
 
 /**
- * Side table of `questions` (one row per question that has a topic or came from an import), so the
- * bank keeps working before this migration runs. `questions.topic` mirrors the topic name.
+ * Side table of `questions`: the section a question is filed in and its bank number there, plus
+ * import provenance. A side table so the bank keeps working before this migration runs;
+ * `questions.topic` mirrors the section name. `sourceNumber` is the number printed in the
+ * imported file, kept for traceability only; the bank's own number is `bankNumber`.
  */
 export const questionMeta = mysqlTable(
   "question_meta",
   {
     questionId: id("questionId").primaryKey(),
     providerWorkspaceId: id("providerWorkspaceId").notNull(),
-    topicId: id("topicId"),
+    sectionId: id("sectionId"),
+    /** Unique within the section; taken from `question_topics.nextNumber`, never reused. */
+    bankNumber: int("bankNumber"),
     importJobId: id("importJobId"),
     sourceFileName: varchar("sourceFileName", { length: 255 }),
     sourcePage: int("sourcePage"),
@@ -1446,7 +1477,11 @@ export const questionMeta = mysqlTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },
-  (t) => [index("question_meta_topic_idx").on(t.providerWorkspaceId, t.topicId), index("question_meta_job_idx").on(t.importJobId)],
+  (t) => [
+    uniqueIndex("question_meta_number_unique").on(t.sectionId, t.bankNumber),
+    index("question_meta_section_idx").on(t.providerWorkspaceId, t.sectionId),
+    index("question_meta_job_idx").on(t.importJobId),
+  ],
 );
 
 /** One uploaded PDF/image being turned into bank questions (server/questionBank/importJobs.ts). */
@@ -1463,8 +1498,8 @@ export const questionImportJobs = mysqlTable(
     status: mysqlEnum("status", IMPORT_JOB_STATUSES).notNull().default("QUEUED"),
     /** An AppErrorCode when FAILED. */
     errorCode: varchar("errorCode", { length: 64 }),
-    /** Topic new questions fall under when the AI finds no better match. */
-    defaultTopicId: id("defaultTopicId"),
+    /** The section the teacher chose up front; every extracted question starts there. */
+    sectionId: id("sectionId").notNull(),
     pageCount: int("pageCount"),
     chunkCount: int("chunkCount").notNull().default(0),
     chunksDone: int("chunksDone").notNull().default(0),
@@ -1487,14 +1522,16 @@ export const questionImportItems = mysqlTable(
     id: id("id").primaryKey(),
     jobId: id("jobId").notNull(),
     providerWorkspaceId: id("providerWorkspaceId").notNull(),
-    /** System-assigned order (topic, difficulty, then source order), not the order in the file. */
+    /** Order of appearance in the file; accepted questions get bank numbers in this order. */
     position: int("position").notNull(),
     status: mysqlEnum("status", IMPORT_ITEM_STATUSES).notNull().default("PENDING"),
     question: json("question").$type<Record<string, unknown>>().notNull(),
     issues: json("issues").$type<ImportIssue[]>().notNull(),
-    topicId: id("topicId"),
-    /** Topic name the AI proposed when nothing existing matched; created on accept. */
-    proposedTopic: varchar("proposedTopic", { length: 120 }),
+    /** Where the question will be filed: the job's section unless the teacher changed it. */
+    sectionId: id("sectionId").notNull(),
+    /** The AI's hint: another existing section, or the name of a section that does not exist yet. Never applied without the teacher. */
+    suggestedSectionId: id("suggestedSectionId"),
+    suggestedSection: varchar("suggestedSection", { length: 120 }),
     answerSource: mysqlEnum("answerSource", ANSWER_SOURCES).notNull(),
     confidence: mysqlEnum("confidence", CONFIDENCE_LEVELS).notNull(),
     sourcePage: int("sourcePage"),

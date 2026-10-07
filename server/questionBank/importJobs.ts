@@ -1,15 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import {
-  aiUsageEvents,
-  questionImportItems,
-  questionImportJobs,
-  questionMeta,
-  questions,
-  type QuestionImportItem,
-  type QuestionImportJob,
-} from "../../drizzle/schema";
+import { aiUsageEvents, questionImportItems, questionImportJobs, questions, type QuestionImportItem, type QuestionImportJob } from "../../drizzle/schema";
 import { questionInputSchema, type QuestionInput } from "../../shared/assessment";
 import {
   BLOCKING_ISSUES,
@@ -26,17 +18,19 @@ import { invokeLLM, LlmHttpError, llmFailureReason, type MessageContent } from "
 import { requireDb } from "../db";
 import type { TeacherScope } from "../modules/access";
 import { providerAlertFor, sendAiAlert } from "../modules/aiAlerts";
-import { createQuestion } from "../modules/assessments";
 import { AppError } from "../modules/errors";
 import { extensionOf, fileRow, MAX_FILE_BYTES } from "../modules/files";
-import { buildExtractionMessages, findDuplicates, normalizeItem, orderDrafts, parseExtraction, planChunks, type ImportDraft, type TopicRef } from "./extraction";
+import { createBankQuestion } from "./bank";
+import { buildExtractionMessages, findDuplicates, normalizeItem, parseExtraction, planChunks, type ImportDraft, type SectionContext } from "./extraction";
 import { pdfPageCount, pdfPageTexts, pdfSlice } from "./pdf";
-import { descendantIds, ensureTopic, ownedTopic, PATH_SEPARATOR, topicPaths, topicsOf } from "./topics";
+import { ensureTopic, ownedSection, topicsOf } from "./topics";
 
 /**
- * Question import: an uploaded PDF/image becomes reviewable drafts in the background, then the
- * teacher accepts them into the bank. Same run discipline as the submission AI review: the job row
- * holds a run id, only that run may write results, and a run that outlives a restart goes stale.
+ * Question import: the teacher picks a subject section, uploads a PDF/image, the file becomes
+ * reviewable drafts in the background, and accepted drafts are filed in that section with the
+ * bank's own numbers (in the order they appear in the file). Same run discipline as the
+ * submission AI review: the job row holds a run id, only that run may write results, and a run
+ * that outlives a restart goes stale.
  */
 
 export const IMPORT_USAGE_KIND = "QUESTION_IMPORT";
@@ -119,12 +113,12 @@ async function loadFile(workspaceId: string, fileId: string) {
 const isBusy = (job: Pick<QuestionImportJob, "status" | "updatedAt">, now = Date.now()) =>
   (job.status === "QUEUED" || job.status === "PROCESSING") && now - job.updatedAt.getTime() <= IMPORT_STALE_MS;
 
-export async function startImport(scope: TeacherScope, input: { fileId: string; topicId?: string | null }) {
+export async function startImport(scope: TeacherScope, input: { fileId: string; sectionId: string }) {
   if (!ENV.questionImportEnabled) throw new AppError("IMPORT_UNAVAILABLE");
+  await ownedSection(scope, input.sectionId);
   const { file, mimeType, bytes } = await loadFile(scope.workspaceId, input.fileId);
   const pageCount = mimeType === "application/pdf" ? await pdfPageCount(bytes) : 1;
   if (pageCount > IMPORT_MAX_PAGES) throw new AppError("IMPORT_TOO_MANY_PAGES");
-  if (input.topicId) await ownedTopic(scope, input.topicId);
   const chunkCount = mimeType === "application/pdf" ? planChunks(pageCount, IMPORT_CHUNK_PAGES).length : 1;
   const used = await usedInLastDay(scope.workspaceId);
   if (used + chunkCount > ENV.questionImportDailyLimit) throw new AppError("IMPORT_DAILY_LIMIT");
@@ -142,7 +136,7 @@ export async function startImport(scope: TeacherScope, input: { fileId: string; 
       mimeType,
       sizeBytes: file.sizeBytes,
       status: "QUEUED",
-      defaultTopicId: input.topicId ?? null,
+      sectionId: input.sectionId,
       pageCount,
       chunkCount,
       runId,
@@ -206,24 +200,24 @@ interface Chunk {
 
 /** Reads one chunk with the model; falls back from the native PDF to its text once if the provider refuses the file. */
 async function readChunk(
-  ctx: { job: QuestionImportJob; bytes: Uint8Array; topics: TopicRef[]; mode: InputMode; pageTexts: () => Promise<string[]> },
+  ctx: { job: QuestionImportJob; bytes: Uint8Array; sections: SectionContext; mode: InputMode; pageTexts: () => Promise<string[]> },
   chunk: Chunk,
-): Promise<{ drafts: Omit<ImportDraft, "sourceIndex">[]; mode: InputMode }> {
+): Promise<{ drafts: ImportDraft[]; mode: InputMode }> {
   const config = ENV.llm;
   const nonce = randomBytes(6).toString("hex");
   const isPdf = ctx.job.mimeType === "application/pdf";
   let mode = ctx.mode;
   const messagesFor = async (m: InputMode) => {
-    if (!isPdf) return buildExtractionMessages({ parts: [filePart(ctx.job.mimeType, ctx.bytes, ctx.job.fileName, config)], pageRange: null, topics: ctx.topics, nonce });
+    if (!isPdf) return buildExtractionMessages({ parts: [filePart(ctx.job.mimeType, ctx.bytes, ctx.job.fileName, config)], pageRange: null, sections: ctx.sections, nonce });
     const range = chunk.range!;
     if (m === "native") {
       const slice = range.from === 1 && range.to === (ctx.job.pageCount ?? range.to) ? ctx.bytes : await pdfSlice(ctx.bytes, range.from, range.to);
-      return buildExtractionMessages({ parts: [filePart("application/pdf", slice, ctx.job.fileName, config)], pageRange: range, topics: ctx.topics, nonce });
+      return buildExtractionMessages({ parts: [filePart("application/pdf", slice, ctx.job.fileName, config)], pageRange: range, sections: ctx.sections, nonce });
     }
     const texts = (await ctx.pageTexts()).slice(range.from - 1, range.to);
     const documentText = texts.map((t, i) => `--- page ${i + 1} ---\n${t}`).join("\n\n");
     if (!texts.some((t) => t.trim().length > 20)) throw new ChunkError("NO_TEXT");
-    return buildExtractionMessages({ parts: null, documentText, pageRange: range, topics: ctx.topics, nonce });
+    return buildExtractionMessages({ parts: null, documentText, pageRange: range, sections: ctx.sections, nonce });
   };
   const call = async (m: InputMode) =>
     invokeLLM({
@@ -245,7 +239,7 @@ async function readChunk(
   const content = result.choices[0]?.message?.content;
   const parsed = parseExtraction(typeof content === "string" ? content : "");
   if (!parsed) throw new ChunkError("AI_OUTPUT");
-  const drafts = parsed.items.map((raw) => normalizeItem(raw, { topics: ctx.topics, pageOffset: chunk.pageOffset, sourceIndex: 0 }));
+  const drafts = parsed.items.map((raw) => normalizeItem(raw, { sections: ctx.sections, pageOffset: chunk.pageOffset }));
   return { drafts, mode };
 }
 
@@ -265,12 +259,19 @@ export async function runImport(jobId: string, runId: string) {
     await finishRun(jobId, runId, { status: "FAILED", errorCode: "FILE_MISSING" });
     return;
   }
-  if (!(await progress(jobId, runId, { status: "PROCESSING", chunksDone: 0 }))) return;
-
   const allTopics = await topicsOf(job.providerWorkspaceId);
-  const paths = topicPaths(allTopics);
-  const scoped = job.defaultTopicId ? descendantIds(allTopics, job.defaultTopicId) : allTopics.map((t) => t.id);
-  const topics: TopicRef[] = scoped.map((id) => ({ id, path: paths.get(id) ?? "" })).filter((t) => t.path);
+  const chosen = allTopics.find((t) => t.id === job.sectionId && t.parentId);
+  const subject = chosen && allTopics.find((t) => t.id === chosen.parentId);
+  if (!chosen || !subject) {
+    await finishRun(jobId, runId, { status: "FAILED", errorCode: "SECTION_MISSING" });
+    return;
+  }
+  if (!(await progress(jobId, runId, { status: "PROCESSING", chunksDone: 0 }))) return;
+  const sections: SectionContext = {
+    subject: subject.name,
+    chosen: { id: chosen.id, name: chosen.name },
+    others: allTopics.filter((t) => t.parentId === subject.id && t.id !== chosen.id).map((t) => ({ id: t.id, name: t.name })),
+  };
 
   const isPdf = job.mimeType === "application/pdf";
   const chunks: Chunk[] = isPdf
@@ -280,7 +281,7 @@ export async function runImport(jobId: string, runId: string) {
   const ctx = {
     job,
     bytes: loaded.bytes,
-    topics,
+    sections,
     mode: isPdf ? pdfInputMode(ENV.llm, ENV.questionImportPdfMode) : ("native" as InputMode),
     pageTexts: () => (texts ??= pdfPageTexts(loaded.bytes)),
   };
@@ -297,7 +298,7 @@ export async function runImport(jobId: string, runId: string) {
     try {
       const out = await readChunk(ctx, chunk);
       ctx.mode = out.mode;
-      for (const d of out.drafts) drafts.push({ ...d, sourceIndex: drafts.length });
+      drafts.push(...out.drafts);
     } catch (error) {
       if (error instanceof ChunkError) failures.push(error.code);
       else if (error instanceof AppError && error.code === "IMPORT_PDF_UNREADABLE") failures.push("PDF_UNREADABLE");
@@ -318,7 +319,7 @@ export async function runImport(jobId: string, runId: string) {
     await finishRun(jobId, runId, { status: "FAILED", errorCode: failures[0] ?? "NO_QUESTIONS" });
     return;
   }
-  const rows = await buildItems(scope, job, kept, paths);
+  const rows = await buildItems(scope, job, kept);
   const stillOurs = await db.transaction(async (tx) => {
     const [current] = await tx.select({ runId: questionImportJobs.runId }).from(questionImportJobs).where(eq(questionImportJobs.id, jobId)).for("update");
     if (current?.runId !== runId) return false;
@@ -329,8 +330,8 @@ export async function runImport(jobId: string, runId: string) {
   if (stillOurs) await finishRun(jobId, runId, { status: "READY", errorCode: failures[0] ?? null });
 }
 
-/** Duplicate flags, default topic and the system order, ready to insert. */
-async function buildItems(scope: TeacherScope, job: QuestionImportJob, drafts: ImportDraft[], paths: Map<string, string>) {
+/** Rows in file order, all in the job's section, with duplicate flags. */
+async function buildItems(scope: TeacherScope, job: QuestionImportJob, drafts: ImportDraft[]) {
   const bank = await requireDb()
     .select({ id: questions.id, text: questions.text, content: questions.content })
     .from(questions)
@@ -341,31 +342,28 @@ async function buildItems(scope: TeacherScope, job: QuestionImportJob, drafts: I
     drafts.map((d) => ({ text: String(d.question.text ?? ""), content: d.question.content })),
     bank,
   );
-  const defaultPath = job.defaultTopicId ? paths.get(job.defaultTopicId) ?? "" : "";
-  const labelled = drafts.map((d, i) => {
+  return drafts.map((d, i) => {
     const issues: ImportIssue[] = [...d.issues];
     if (dups[i].duplicateOfQuestionId) issues.push("DUPLICATE_IN_BANK");
     if (dups[i].duplicateInFile) issues.push("DUPLICATE_IN_FILE");
-    const topicId = d.topicId ?? (d.proposedTopic ? null : job.defaultTopicId);
-    const topicLabel = topicId ? paths.get(topicId) ?? "" : [defaultPath, d.proposedTopic ?? ""].filter(Boolean).join(PATH_SEPARATOR);
-    return { ...d, issues, topicId, topicLabel, duplicateOfQuestionId: dups[i].duplicateOfQuestionId };
+    return {
+      id: nanoid(),
+      jobId: job.id,
+      providerWorkspaceId: scope.workspaceId,
+      position: i + 1,
+      status: "PENDING" as const,
+      question: d.question,
+      issues,
+      sectionId: job.sectionId,
+      suggestedSectionId: d.suggestedSectionId,
+      suggestedSection: d.suggestedSection,
+      answerSource: d.answerSource,
+      confidence: d.confidence,
+      sourcePage: d.sourcePage,
+      sourceNumber: d.sourceNumber,
+      duplicateOfQuestionId: dups[i].duplicateOfQuestionId,
+    };
   });
-  return orderDrafts(labelled).map((d, i) => ({
-    id: nanoid(),
-    jobId: job.id,
-    providerWorkspaceId: scope.workspaceId,
-    position: i + 1,
-    status: "PENDING" as const,
-    question: d.question,
-    issues: d.issues,
-    topicId: d.topicId,
-    proposedTopic: d.topicId ? null : d.proposedTopic,
-    answerSource: d.answerSource,
-    confidence: d.confidence,
-    sourcePage: d.sourcePage,
-    sourceNumber: d.sourceNumber,
-    duplicateOfQuestionId: d.duplicateOfQuestionId,
-  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -382,7 +380,7 @@ function jobView(job: QuestionImportJob, now = Date.now()) {
     sizeBytes: job.sizeBytes,
     status: stale ? ("FAILED" as const) : job.status,
     errorCode: stale ? "INTERRUPTED" : job.errorCode,
-    defaultTopicId: job.defaultTopicId,
+    sectionId: job.sectionId,
     pageCount: job.pageCount,
     chunkCount: job.chunkCount,
     chunksDone: job.chunksDone,
@@ -428,8 +426,9 @@ export function itemView(item: QuestionImportItem) {
     question: item.question,
     issues: item.issues,
     blocking: item.issues.some((i) => BLOCKING_ISSUES.includes(i)),
-    topicId: item.topicId,
-    proposedTopic: item.proposedTopic,
+    sectionId: item.sectionId,
+    suggestedSectionId: item.suggestedSectionId,
+    suggestedSection: item.suggestedSection,
     answerSource: item.answerSource,
     confidence: item.confidence,
     sourcePage: item.sourcePage,
@@ -470,7 +469,7 @@ async function ownedItem(scope: TeacherScope, id: string): Promise<QuestionImpor
 export async function updateItem(
   scope: TeacherScope,
   id: string,
-  patch: { question?: QuestionInput; topicId?: string | null; proposedTopic?: string | null },
+  patch: { question?: QuestionInput; sectionId?: string; useSuggestion?: boolean },
 ) {
   const item = await ownedItem(scope, id);
   if (item.status === "ACCEPTED") throw new AppError("IMPORT_BUSY");
@@ -487,14 +486,18 @@ export async function updateItem(
       set.confidence = "HIGH";
     }
   }
-  if (patch.topicId !== undefined) {
-    if (patch.topicId) await ownedTopic(scope, patch.topicId);
-    set.topicId = patch.topicId;
-    if (patch.topicId) set.proposedTopic = null;
+  if (patch.sectionId) set.sectionId = (await ownedSection(scope, patch.sectionId)).id;
+  if (patch.useSuggestion) {
+    if (item.suggestedSectionId) set.sectionId = (await ownedSection(scope, item.suggestedSectionId)).id;
+    else if (item.suggestedSection) {
+      const job = await ownedJob(scope, item.jobId);
+      const chosen = await ownedSection(scope, job.sectionId);
+      set.sectionId = (await ensureTopic(scope, item.suggestedSection, chosen.parentId)).id;
+    }
   }
-  if (patch.proposedTopic !== undefined) {
-    set.proposedTopic = patch.proposedTopic?.trim().slice(0, 120) || null;
-    if (set.proposedTopic) set.topicId = null;
+  if (set.sectionId) {
+    set.suggestedSectionId = null;
+    set.suggestedSection = null;
   }
   if (Object.keys(set).length) await requireDb().update(questionImportItems).set(set).where(eq(questionImportItems.id, id));
   return itemView(await ownedItem(scope, id));
@@ -515,9 +518,9 @@ export async function rejectItems(scope: TeacherScope, ids: string[], rejected: 
 }
 
 /**
- * Saves pending items into the bank, each under its topic (a proposed topic is created on first
- * use, beneath the job's default topic if one was chosen). Items with blocking issues are skipped
- * and reported, never silently saved.
+ * Files pending items in their sections, in file order, each with the section's next bank number.
+ * Items with blocking issues are skipped and reported, never silently saved; an item whose section
+ * was deleted meanwhile falls back to the job's section, or is skipped if that is gone too.
  */
 export async function acceptItems(scope: TeacherScope, jobId: string, ids: string[] | "ALL", opts: { skipDuplicates?: boolean } = {}) {
   const db = requireDb();
@@ -528,8 +531,8 @@ export async function acceptItems(scope: TeacherScope, jobId: string, ids: strin
   const items = await db.select().from(questionImportItems).where(and(...conds)).orderBy(asc(questionImportItems.position));
 
   const accepted: string[] = [];
-  const skipped: { id: string; reason: "INVALID" | "DUPLICATE" }[] = [];
-  const topicCache = new Map<string, string>();
+  const skipped: { id: string; reason: "INVALID" | "DUPLICATE" | "SECTION_MISSING" }[] = [];
+  const sectionIds = new Set((await topicsOf(scope.workspaceId)).filter((t) => t.parentId).map((t) => t.id));
   for (const item of items) {
     const parsed = questionInputSchema.safeParse(item.question);
     if (!parsed.success || item.issues.some((i) => BLOCKING_ISSUES.includes(i))) {
@@ -540,43 +543,32 @@ export async function acceptItems(scope: TeacherScope, jobId: string, ids: strin
       skipped.push({ id: item.id, reason: "DUPLICATE" });
       continue;
     }
+    const sectionId = sectionIds.has(item.sectionId) ? item.sectionId : sectionIds.has(job.sectionId) ? job.sectionId : null;
+    if (!sectionId) {
+      skipped.push({ id: item.id, reason: "SECTION_MISSING" });
+      continue;
+    }
     await db.transaction(async (tx) => {
-      let topicId = item.topicId;
-      let topicName: string | null = null;
-      if (topicId) {
-        const topic = await ownedTopic(scope, topicId, tx).catch(() => null);
-        topicId = topic?.id ?? null;
-        topicName = topic?.name ?? null;
-      }
-      if (!topicId && item.proposedTopic) {
-        const key = item.proposedTopic.toLowerCase();
-        const cached = topicCache.get(key);
-        const topic = cached ? await ownedTopic(scope, cached, tx) : await ensureTopic(scope, item.proposedTopic, job.defaultTopicId, tx);
-        topicCache.set(key, topic.id);
-        topicId = topic.id;
-        topicName = topic.name;
-      }
-      if (!topicId && job.defaultTopicId) {
-        const topic = await ownedTopic(scope, job.defaultTopicId, tx).catch(() => null);
-        topicId = topic?.id ?? null;
-        topicName = topic?.name ?? null;
-      }
-      const question = { ...parsed.data, topic: (topicName ?? parsed.data.topic).slice(0, 120) };
-      const row = await createQuestion(scope, question, "AI", tx);
-      await tx.insert(questionMeta).values({
-        questionId: row.id,
-        providerWorkspaceId: scope.workspaceId,
-        topicId,
-        importJobId: job.id,
-        sourceFileName: job.fileName.slice(0, 255),
-        sourcePage: item.sourcePage,
-        sourceNumber: item.sourceNumber,
-        answerSource: item.answerSource,
-        aiConfidence: item.confidence,
-      });
+      const row = await createBankQuestion(
+        scope,
+        parsed.data,
+        {
+          sectionId,
+          source: "AI",
+          provenance: {
+            importJobId: job.id,
+            sourceFileName: job.fileName.slice(0, 255),
+            sourcePage: item.sourcePage,
+            sourceNumber: item.sourceNumber,
+            answerSource: item.answerSource,
+            aiConfidence: item.confidence,
+          },
+        },
+        tx,
+      );
       await tx
         .update(questionImportItems)
-        .set({ status: "ACCEPTED", questionId: row.id, topicId })
+        .set({ status: "ACCEPTED", questionId: row.id, sectionId })
         .where(and(eq(questionImportItems.id, item.id), eq(questionImportItems.status, "PENDING")));
     });
     accepted.push(item.id);

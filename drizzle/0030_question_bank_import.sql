@@ -6,8 +6,9 @@ CREATE TABLE `question_import_items` (
 	`status` enum('PENDING','ACCEPTED','REJECTED') NOT NULL DEFAULT 'PENDING',
 	`question` json NOT NULL,
 	`issues` json NOT NULL,
-	`topicId` varchar(32),
-	`proposedTopic` varchar(120),
+	`sectionId` varchar(32) NOT NULL,
+	`suggestedSectionId` varchar(32),
+	`suggestedSection` varchar(120),
 	`answerSource` enum('SOURCE','AI','TEACHER') NOT NULL,
 	`confidence` enum('LOW','MEDIUM','HIGH') NOT NULL,
 	`sourcePage` int,
@@ -29,7 +30,7 @@ CREATE TABLE `question_import_jobs` (
 	`sizeBytes` int NOT NULL,
 	`status` enum('QUEUED','PROCESSING','READY','FAILED','COMPLETED') NOT NULL DEFAULT 'QUEUED',
 	`errorCode` varchar(64),
-	`defaultTopicId` varchar(32),
+	`sectionId` varchar(32) NOT NULL,
 	`pageCount` int,
 	`chunkCount` int NOT NULL DEFAULT 0,
 	`chunksDone` int NOT NULL DEFAULT 0,
@@ -45,7 +46,8 @@ CREATE TABLE `question_import_jobs` (
 CREATE TABLE `question_meta` (
 	`questionId` varchar(32) NOT NULL,
 	`providerWorkspaceId` varchar(32) NOT NULL,
-	`topicId` varchar(32),
+	`sectionId` varchar(32),
+	`bankNumber` int,
 	`importJobId` varchar(32),
 	`sourceFileName` varchar(255),
 	`sourcePage` int,
@@ -54,7 +56,8 @@ CREATE TABLE `question_meta` (
 	`aiConfidence` enum('LOW','MEDIUM','HIGH'),
 	`createdAt` timestamp NOT NULL DEFAULT (now()),
 	`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
-	CONSTRAINT `question_meta_questionId` PRIMARY KEY(`questionId`)
+	CONSTRAINT `question_meta_questionId` PRIMARY KEY(`questionId`),
+	CONSTRAINT `question_meta_number_unique` UNIQUE(`sectionId`,`bankNumber`)
 );
 --> statement-breakpoint
 CREATE TABLE `question_topics` (
@@ -66,7 +69,7 @@ CREATE TABLE `question_topics` (
 	`nameKey` varchar(120) NOT NULL,
 	`syllabusId` varchar(32),
 	`syllabusModuleId` varchar(32),
-	`syllabusLessonId` varchar(32),
+	`nextNumber` int NOT NULL DEFAULT 1,
 	`position` int NOT NULL DEFAULT 0,
 	`createdBy` int NOT NULL,
 	`createdAt` timestamp NOT NULL DEFAULT (now()),
@@ -77,5 +80,5 @@ CREATE TABLE `question_topics` (
 --> statement-breakpoint
 CREATE INDEX `question_import_items_job_idx` ON `question_import_items` (`jobId`,`position`);--> statement-breakpoint
 CREATE INDEX `question_import_jobs_workspace_idx` ON `question_import_jobs` (`providerWorkspaceId`,`createdAt`);--> statement-breakpoint
-CREATE INDEX `question_meta_topic_idx` ON `question_meta` (`providerWorkspaceId`,`topicId`);--> statement-breakpoint
+CREATE INDEX `question_meta_section_idx` ON `question_meta` (`providerWorkspaceId`,`sectionId`);--> statement-breakpoint
 CREATE INDEX `question_meta_job_idx` ON `question_meta` (`importJobId`);

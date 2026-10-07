@@ -776,3 +776,92 @@ export function buildTaskUpdatedEmail(input: TaskUpdatedData & { to: string; loc
   const text = [tx.heading, "", tx.intro(title), now, before, "", `${tx.button}: ${url}`, "", tx.footer].join("\n");
   return { to: input.to, subject: tx.title(title), html, text };
 }
+
+// ---------------------------------------------------------------------------
+// Exam result (only for exams whose teacher chose to e-mail results)
+// ---------------------------------------------------------------------------
+
+export const examResultPath = (resultId: string) => `/student/results/${encodeURIComponent(resultId)}`;
+
+const EXAM_RESULT: Record<ServerLocale, {
+  subject: (t: string) => string;
+  heading: string;
+  intro: (t: string) => string;
+  score: (earned: string, total: string, pct: string) => string;
+  counts: (correct: number, wrong: number) => string;
+  penaltyRule: (ratio: number) => string;
+  penalty: (wrong: number, points: string) => string;
+  button: string;
+  footer: string;
+}> = {
+  az: {
+    subject: (t) => `İmtahan nəticəniz: ${t}`,
+    heading: "İmtahan nəticəniz hazırdır",
+    intro: (t) => `«${t}» imtahanının nəticəsi:`,
+    score: (e, t, p) => `Bal: ${e} / ${t} (${p}%)`,
+    counts: (c, w) => `Düzgün: ${c}, səhv: ${w}`,
+    penaltyRule: (r) => `Bu imtahanda ${r} səhv cavab 1 düzgün cavabı aparır (qapalı suallar).`,
+    penalty: (w, p) => `${w} səhv cavaba görə çıxılan bal: ${p}`,
+    button: "Ətraflı bax",
+    footer: "Bu məktub Resulio tərəfindən avtomatik göndərilib, çünki müəlliminiz imtahan nəticələrinin e-poçtla göndərilməsini seçib.",
+  },
+  en: {
+    subject: (t) => `Your exam result: ${t}`,
+    heading: "Your exam result is ready",
+    intro: (t) => `Your result for “${t}”:`,
+    score: (e, t, p) => `Score: ${e} / ${t} (${p}%)`,
+    counts: (c, w) => `Correct: ${c}, wrong: ${w}`,
+    penaltyRule: (r) => `In this exam every ${r} wrong answers cancel 1 correct answer (closed questions).`,
+    penalty: (w, p) => `Deducted for ${w} wrong ${w === 1 ? "answer" : "answers"}: ${p}`,
+    button: "View details",
+    footer: "Resulio sent this e-mail automatically because your teacher chose to e-mail exam results.",
+  },
+  ru: {
+    subject: (t) => `Ваш результат экзамена: ${t}`,
+    heading: "Результат экзамена готов",
+    intro: (t) => `Результат экзамена «${t}»:`,
+    score: (e, t, p) => `Баллы: ${e} / ${t} (${p}%)`,
+    counts: (c, w) => `Верно: ${c}, неверно: ${w}`,
+    penaltyRule: (r) => `В этом экзамене каждые ${r} неверных ответа отменяют 1 верный (закрытые вопросы).`,
+    penalty: (w, p) => `Снято за неверные ответы (${w}): ${p}`,
+    button: "Подробнее",
+    footer: "Это письмо отправлено Resulio автоматически, потому что преподаватель выбрал отправку результатов экзамена по e-mail.",
+  },
+};
+
+/** Up to two decimals with the locale's decimal mark (server ICU builds may lack `az`). */
+function formatScore(n: number, locale: ServerLocale) {
+  const s = String(Math.round(n * 100) / 100);
+  return locale === "en" ? s : s.replace(".", ",");
+}
+
+export function buildExamResultEmail(input: {
+  to: string;
+  locale: ServerLocale;
+  appUrl: string;
+  resultId: string;
+  title: string;
+  earnedPoints: number;
+  totalPoints: number;
+  percentage: number;
+  correctCount: number;
+  wrongCount: number;
+  penalty: { ratio: number; wrongCount: number; penaltyPoints: number } | null;
+}): EmailMessage {
+  const tx = EXAM_RESULT[input.locale];
+  const num = (n: number) => formatScore(n, input.locale);
+  const title = cleanTitle(input.title);
+  const url = `${input.appUrl}${examResultPath(input.resultId)}`;
+  const score = tx.score(num(input.earnedPoints), num(input.totalPoints), num(input.percentage));
+  const counts = tx.counts(input.correctCount, input.wrongCount);
+  const penalty = input.penalty ? [tx.penaltyRule(input.penalty.ratio), tx.penalty(input.penalty.wrongCount, `−${num(input.penalty.penaltyPoints)}`)] : [];
+  const html = emailLayout({
+    heading: escapeHtml(tx.heading),
+    paragraphs: [escapeHtml(tx.intro(title)), `<strong>${escapeHtml(score)}</strong>`, escapeHtml(counts), ...penalty.map(escapeHtml)],
+    buttonLabel: escapeHtml(tx.button),
+    buttonUrl: escapeHtml(url),
+    footer: escapeHtml(tx.footer),
+  });
+  const text = [tx.heading, "", tx.intro(title), score, counts, ...penalty, "", `${tx.button}: ${url}`, "", tx.footer].join("\n");
+  return { to: input.to, subject: tx.subject(title), html, text };
+}
