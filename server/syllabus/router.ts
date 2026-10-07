@@ -101,6 +101,10 @@ export const teacherSyllabusRouter = router({
   setArchived: syllabusTeacherProcedure
     .input(z.object({ id: entityId, archived: z.boolean() }))
     .mutation(({ ctx, input }) => authoring.setArchived(ctx.scope, input.id, input.archived)),
+  remove: syllabusTeacherProcedure
+    .use(rateLimit("syllabusRemove", 20, MINUTE))
+    .input(z.object({ id: entityId }))
+    .mutation(({ ctx, input }) => authoring.deleteSyllabus(ctx.scope, input.id)),
 
   createModule: syllabusTeacherProcedure
     .input(z.object({ syllabusId: entityId, data: moduleFields.partial().extend({ title: shortText(255).min(1) }), expectedRevision: revision }))

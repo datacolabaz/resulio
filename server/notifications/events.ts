@@ -21,6 +21,7 @@ export const EVENT_TYPES = [
   "SYLLABUS_AT_RISK_DIGEST",
   "TASK_ASSIGNED",
   "TASK_UPDATED",
+  "EXAM_RESULT_READY",
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -46,6 +47,19 @@ export interface EventData {
   TASK_ASSIGNED: { tasks: TaskNoticeItem[]; total: number; from: string };
   /** The deadline of a task the student already had moved. */
   TASK_UPDATED: { taskId: string; title: string; deadline: string; previousDeadline: string };
+  /** A final, released exam result, for exams whose teacher chose "e-mail results". Never the answers. */
+  EXAM_RESULT_READY: ExamResultNotice;
+}
+
+export interface ExamResultNotice {
+  resultId: string;
+  title: string;
+  earnedPoints: number;
+  totalPoints: number;
+  percentage: number;
+  correctCount: number;
+  wrongCount: number;
+  penalty: { ratio: number; wrongCount: number; penaltyPoints: number } | null;
 }
 
 export interface TaskNoticeItem {
@@ -84,6 +98,8 @@ export const EVENTS: Record<EventType, EventDefinition> = {
   TASK_ASSIGNED: { channels: ["IN_APP", "EMAIL", "PUSH"] },
   // A moved deadline: in-app by default, e-mail only when the student opts in.
   TASK_UPDATED: { channels: ["IN_APP", "EMAIL", "PUSH"], defaultOff: ["EMAIL"] },
+  // Only for exams whose teacher ticked "e-mail results"; the in-app "result ready" notice exists already.
+  EXAM_RESULT_READY: { channels: ["EMAIL"] },
 };
 
 export const isEventType = (v: string): v is EventType => (EVENT_TYPES as readonly string[]).includes(v);

@@ -17,6 +17,11 @@ export const syllabus = {
   "error.SYLLABUS_PRACTICE_TASK_IN_USE": ["Bu tapşırıq syllabus-da istifadə olunur.", "This task is used by a syllabus.", "Это задание используется в силлабусе."],
   "error.SYLLABUS_PROGRESS_HIDDEN": ["Qrupun irəliləyişi gizlədilib.", "Group progress is hidden.", "Прогресс группы скрыт."],
   "error.SYLLABUS_RETRY_COOLDOWN": ["Yenidən cəhd üçün bir az gözləyin.", "Please wait before retrying.", "Подождите перед повторной попыткой."],
+  "error.SYLLABUS_HAS_STUDENTS": [
+    "Bu syllabus-u tələbələr artıq açıb: onların irəliləyişi və sertifikatları itməsin deyə silmək olmur. Əvəzinə arxivləşdirin.",
+    "Students have already opened this syllabus, so it cannot be deleted without losing their progress and certificates. Archive it instead.",
+    "Студенты уже открыли этот силлабус: удалить его нельзя, иначе пропадут их прогресс и сертификаты. Вместо этого архивируйте его.",
+  ],
   "error.SYLLABUS_DB_NOT_READY": [
     "Syllabus hələ aktivləşdirilməyib: verilənlər bazası yenilənməlidir. Bir neçə dəqiqə sonra yenidən yoxlayın.",
     "Syllabus is not active yet: the database needs to be updated. Please try again in a few minutes.",
@@ -357,6 +362,42 @@ export const syllabus = {
   "syllabus.settings.archive": ["Arxivləşdir", "Archive", "Архивировать"],
   "syllabus.settings.unarchive": ["Arxivdən çıxar", "Restore", "Вернуть"],
   "syllabus.settings.archiveConfirm": ["Syllabus arxivləşdirilsin?", "Archive this syllabus?", "Архивировать силлабус?"],
+  "syllabus.settings.deleteTitle": ["Syllabus-u sil", "Delete syllabus", "Удалить силлабус"],
+  "syllabus.settings.deleteHelp": [
+    "Syllabus bütün modulları, dərsləri, versiyaları və girişləri ilə birdəfəlik silinir. Tələbələr onu artıq açıbsa, yalnız arxivləşdirmək olar.",
+    "The syllabus is removed for good with all its modules, lessons, versions and access grants. Once students have opened it, it can only be archived.",
+    "Силлабус удаляется навсегда со всеми модулями, уроками, версиями и доступами. Если студенты его уже открыли, его можно только архивировать.",
+  ],
+
+  "syllabus.card.actions": ["{title}: əməliyyatlar", "Actions for {title}", "Действия: {title}"],
+  "syllabus.delete.action": ["Sil", "Delete", "Удалить"],
+  "syllabus.delete.title": ["Syllabus silinsin?", "Delete this syllabus?", "Удалить силлабус?"],
+  "syllabus.delete.body": [
+    "«{title}» bütün modulları ({modules}), dərsləri ({lessons}) və məzmunu ilə birdəfəlik silinəcək. Bu əməliyyatı geri qaytarmaq olmur.",
+    "“{title}” will be removed for good with all its modules ({modules}), lessons ({lessons}) and content. This cannot be undone.",
+    "«{title}» будет удалён навсегда со всеми модулями ({modules}), уроками ({lessons}) и содержимым. Это действие нельзя отменить.",
+  ],
+  "syllabus.delete.published": [
+    "Bu syllabus dərc olunub: bütün dərc olunmuş versiyaları da silinəcək.",
+    "This syllabus is published: all of its published versions are deleted too.",
+    "Этот силлабус опубликован: все его опубликованные версии тоже будут удалены.",
+  ],
+  "syllabus.delete.grants": [
+    "{count} aktiv giriş ləğv olunacaq. Həmin tələbələr syllabus-u hələ açmayıb.",
+    "{count} active {count|grant is|grants are} removed. Those students have not opened the syllabus yet.",
+    "{count} {count|активный доступ будет отозван|активных доступа будут отозваны|активных доступов будут отозваны}. Эти студенты ещё не открывали силлабус.",
+  ],
+  "syllabus.delete.blocked": [
+    "{count} tələbə bu syllabus-u artıq açıb. Onların irəliləyişi, tapşırıqları və sertifikatları itməsin deyə syllabus silinə bilməz. Arxivləşdirsəniz, siyahıdan gizlənəcək və yeni giriş verilməyəcək.",
+    "{count} {count|student has|students have} already opened this syllabus. To keep their progress, submissions and certificates it cannot be deleted. Archiving hides it from the list and stops new access.",
+    "{count} {count|студент уже открыл|студента уже открыли|студентов уже открыли} этот силлабус. Чтобы сохранить их прогресс, работы и сертификаты, его нельзя удалить. Архивирование скроет его из списка и закроет новый доступ.",
+  ],
+  "syllabus.delete.confirm": ["Birdəfəlik sil", "Delete permanently", "Удалить навсегда"],
+  "syllabus.delete.deleting": ["Silinir…", "Deleting…", "Удаляется…"],
+  "syllabus.delete.archiveInstead": ["Əvəzinə arxivləşdir", "Archive instead", "Архивировать вместо этого"],
+  "syllabus.delete.done": ["«{title}» silindi.", "“{title}” was deleted.", "«{title}» удалён."],
+  "syllabus.archived.done": ["«{title}» arxivləşdirildi.", "“{title}” was archived.", "«{title}» архивирован."],
+  "syllabus.restored.done": ["«{title}» arxivdən çıxarıldı.", "“{title}” was restored.", "«{title}» возвращён из архива."],
 
   "syllabus.versions.help": [
     "Hər dərc yeni dəyişməz versiya yaradır. Tələbələr başladıqları versiyada qalır; istəsəniz onları cari versiyaya keçirə bilərsiniz.",

@@ -2,6 +2,7 @@ import { FirstSubmittersList, ScoreBoardTable } from "@/components/ActivityBlock
 import { ProgressChart, TopicBars } from "@/components/AnalyticsBlocks";
 import { AppShell, ChoiceChip, EmptyState, ErrorNote, Loading, Panel, Pill, StatCard } from "@/components/AppShell";
 import { SingleFileUpload } from "@/components/FileUpload";
+import { ResultPenalty } from "@/components/ResultPenalty";
 import { StatusBadge, toneSurface } from "@/components/StatusBadge";
 import { ContinueLearning } from "@/components/syllabus/CrossLinks";
 import { Button } from "@/components/ui/button";
@@ -297,6 +298,7 @@ export function StudentResultDetail() {
               <StatCard label={t("common.duration")} value={fmtDuration(d.durationSeconds)} hint={d.pendingReviewCount ? t("common.pendingReviewCount", { count: d.pendingReviewCount }) : undefined} />
             </div>
           )}
+          {d.released && <ResultPenalty penalty={d.penalty} />}
           {d.questions.length > 0 && (
             <Panel title={d.visibility.showQuestions === "WRONG_ONLY" ? t("student.wrongOnlyTitle") : t("common.questions")}>
               <ol className="space-y-3">

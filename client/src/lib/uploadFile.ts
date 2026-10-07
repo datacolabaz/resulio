@@ -14,7 +14,7 @@ export class UploadError extends Error {
   }
 }
 
-export type UploadContext = "task-attachment" | "material" | "submission" | "syllabus";
+export type UploadContext = "task-attachment" | "material" | "submission" | "syllabus" | "question-import";
 
 /** Uploads one file to the server's blob store (see server/_core/files.ts); `taskId` is required
  *  for "submission" uploads so the server can verify the student may actually submit to that task. */

@@ -1,4 +1,5 @@
 import { AppShell, EmptyState, ErrorNote, Loading, Panel, StatCard } from "@/components/AppShell";
+import { ResultPenalty } from "@/components/ResultPenalty";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,6 +71,7 @@ export function ResultDetailPage() {
             <StatCard label={t("common.duration")} value={fmtDuration(d.durationSeconds)} hint={fmtDateTime(d.completedAt)} />
             <StatCard label={t("results.toReview")} value={d.pendingReviewCount} />
           </div>
+          <ResultPenalty penalty={d.penalty} />
           <ol className="space-y-3">
             {d.questions.map((q) => {
               const status = itemStatus(q.status);

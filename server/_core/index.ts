@@ -17,6 +17,7 @@ import { getMigrationStatus, runAutoMigrate } from "./autoMigrate";
 import { serveStatic, setupVite } from "./vite";
 import { getDb, warnIfGoogleAuthSchemaMissing } from "../db";
 import { sweepExpiredAttempts } from "../modules/attempts";
+import { sweepResultEmails } from "../modules/resultEmail";
 import { startNotificationWorker } from "../notifications/dispatcher";
 import { runDailyDigest, runDailyRetention } from "../syllabus/analytics";
 import { flushDueNotices } from "../syllabus/notify";
@@ -35,6 +36,7 @@ function startAttemptSweeper() {
     running = true;
     try {
       await sweepExpiredAttempts();
+      await sweepResultEmails();
     } catch (error) {
       console.error("[Sweeper] Sweep failed", error);
     } finally {

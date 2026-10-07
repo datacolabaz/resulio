@@ -228,6 +228,20 @@ export const studentAnswerSchema = z.union([
 ]);
 export type StudentAnswer = z.infer<typeof studentAnswerSchema>;
 
+/** Question types the wrong-answer rule applies to: closed questions with one correct option (A–E). */
+export const CLOSED_QUESTION_TYPES: readonly QuestionType[] = ["MULTIPLE_CHOICE"];
+
+/**
+ * "N wrong answers cancel one correct one" for closed questions: each wrong closed answer takes off
+ * its points / N. Unanswered questions are not wrong; the closed part never goes below 0.
+ */
+export const wrongPenaltySchema = z.object({
+  enabled: z.boolean(),
+  ratio: z.number().int().min(2).max(10),
+});
+export type WrongPenalty = z.infer<typeof wrongPenaltySchema>;
+export const DEFAULT_WRONG_PENALTY: WrongPenalty = { enabled: false, ratio: 4 };
+
 export const assessmentSettingsSchema = z.object({
   title: z.string().trim().min(1).max(255),
   description: z.string().trim().max(5000).default(""),
@@ -240,6 +254,9 @@ export const assessmentSettingsSchema = z.object({
   reviewMode: z.enum(REVIEW_MODES).default("FULL"),
   showCorrectAnswers: z.boolean().default(false),
   showExplanations: z.boolean().default(false),
+  wrongPenalty: wrongPenaltySchema.default(DEFAULT_WRONG_PENALTY),
+  /** E-mail each student their result once it is final and released. */
+  emailResults: z.boolean().default(false),
 });
 export type AssessmentSettings = z.infer<typeof assessmentSettingsSchema>;
 
@@ -256,6 +273,8 @@ export const assessmentSettingsPatchSchema = z.object({
   reviewMode: z.enum(REVIEW_MODES).optional(),
   showCorrectAnswers: z.boolean().optional(),
   showExplanations: z.boolean().optional(),
+  wrongPenalty: wrongPenaltySchema.optional(),
+  emailResults: z.boolean().optional(),
 });
 export type AssessmentSettingsPatch = z.infer<typeof assessmentSettingsPatchSchema>;
 

@@ -10,9 +10,11 @@ import { t } from "@/i18n/messages";
 import { fmtDateTime, fromLocalInput, toLocalInput } from "@/lib/format";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { DEFAULT_COMPLETION_RULES, type CompletionRulesPatch, type SyllabusGrantState } from "@shared/syllabus";
-import { Plus, RotateCcw } from "lucide-react";
+import { Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useLocation } from "wouter";
+import { DeleteSyllabusDialog } from "./DeleteSyllabusDialog";
 import type { Tree } from "./SyllabusDetail";
 import { fieldsFromSyllabus, fieldsPayload, SyllabusFieldsForm } from "./SyllabusFields";
 import { fieldLabel, GrantStateBadge, problemText, toastError, useSyllabusRefresh } from "./shared";
@@ -37,6 +39,8 @@ export function SettingsTab({ tree }: { tree: Tree }) {
   });
   const archive = trpc.teacher.syllabus.setArchived.useMutation({ onSuccess: refresh, onError: toastError });
   const archived = !!s.archivedAt;
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [, nav] = useLocation();
   return (
     <div className="space-y-4">
       <Panel title={t("syllabus.settings.details")}>
@@ -62,6 +66,14 @@ export function SettingsTab({ tree }: { tree: Tree }) {
           {archived ? t("syllabus.settings.unarchive") : t("syllabus.settings.archive")}
         </Button>
       </Panel>
+      <Panel title={t("syllabus.settings.deleteTitle")}>
+        <p className="mb-3 text-sm text-muted-foreground">{t("syllabus.settings.deleteHelp")}</p>
+        <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+          <Trash2 className="mr-1 h-4 w-4" aria-hidden />
+          {t("syllabus.delete.action")}
+        </Button>
+      </Panel>
+      <DeleteSyllabusDialog syllabusId={s.id} open={deleteOpen} onOpenChange={setDeleteOpen} onDeleted={() => nav("/teacher/syllabus")} />
     </div>
   );
 }

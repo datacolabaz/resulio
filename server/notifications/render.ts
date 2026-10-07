@@ -6,7 +6,9 @@ import {
   aiGradeInAppText,
   answerKeyDraftedText,
   buildAiGradeEmail,
+  buildExamResultEmail,
   buildGradeEmail,
+  examResultPath,
   buildSyllabusAccessEmail,
   buildSyllabusAtRiskEmail,
   buildSyllabusCompletedEmail,
@@ -102,6 +104,11 @@ export function renderNotification<E extends EventType>(event: E, data: EventDat
     case "TASK_UPDATED": {
       const d = data as EventData["TASK_UPDATED"];
       return { ...taskUpdatedInApp(locale, d), path: studentTaskPath(d.taskId), email: buildTaskUpdatedEmail({ ...d, to, locale, appUrl }) };
+    }
+    case "EXAM_RESULT_READY": {
+      const d = data as EventData["EXAM_RESULT_READY"];
+      const email = buildExamResultEmail({ ...d, to, locale, appUrl });
+      return { title: email.subject, body: "", path: examResultPath(d.resultId), email };
     }
     default:
       throw new Error(`No renderer for ${String(event)}`);

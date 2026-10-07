@@ -50,6 +50,8 @@ const PresentModePage = lazy(() => import("@/pages/teacher/syllabus/PresentAndPr
 const SyllabusPreviewPage = lazy(() => import("@/pages/teacher/syllabus/PresentAndPreview").then((m) => ({ default: m.SyllabusPreviewPage })));
 const SyllabusDetailPage = lazy(() => import("@/pages/teacher/syllabus/SyllabusDetail").then((m) => ({ default: m.SyllabusDetailPage })));
 const SyllabusListPage = lazy(() => import("@/pages/teacher/syllabus/SyllabusList").then((m) => ({ default: m.SyllabusListPage })));
+const QuestionImportPage = lazy(() => import("@/pages/teacher/QuestionImport").then((m) => ({ default: m.QuestionImportPage })));
+const QuestionImportReviewPage = lazy(() => import("@/pages/teacher/QuestionImport").then((m) => ({ default: m.QuestionImportReviewPage })));
 
 function PageLoading() {
   return <div role="status" className="p-10 text-center text-muted-foreground">{t("app.loading")}</div>;
@@ -167,6 +169,8 @@ function Router() {
       <Route path="/teacher/syllabus/:id/present/:itemId">{teacher(<PresentModePage />)}</Route>
       <Route path="/teacher/syllabus/:id/preview">{teacher(<SyllabusPreviewPage />)}</Route>
       <Route path="/teacher/syllabus/:id">{teacher(<SyllabusDetailPage />)}</Route>
+      <Route path="/teacher/library/import/:id">{teacher(<QuestionImportReviewPage />)}</Route>
+      <Route path="/teacher/library/import">{teacher(<QuestionImportPage />)}</Route>
       <Route path="/teacher/library">{teacher(<LibraryPage />)}</Route>
       <Route path="/teacher/results">{teacher(<ResultsPage />)}</Route>
       <Route path="/teacher/results/:id">{teacher(<ResultDetailPage />)}</Route>

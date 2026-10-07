@@ -24,7 +24,16 @@ export type FileContent = {
   };
 };
 
-export type MessageContent = string | TextContent | ImageContent | FileContent;
+/** OpenAI's inline file part (`file_data` is a `data:` URI), e.g. a PDF for vision models. */
+export type FileDataContent = {
+  type: "file";
+  file: {
+    filename?: string;
+    file_data: string;
+  };
+};
+
+export type MessageContent = string | TextContent | ImageContent | FileContent | FileDataContent;
 
 export type Message = {
   role: Role;
@@ -70,6 +79,8 @@ export type InvokeParams = {
   model?: string;
   thinking?: Record<string, unknown>;
   reasoning?: Record<string, unknown>;
+  /** Per attempt; defaults to REQUEST_TIMEOUT_MS. */
+  timeoutMs?: number;
 };
 
 export type ToolCall = {
@@ -120,7 +131,7 @@ const ensureArray = (
 
 const normalizeContentPart = (
   part: MessageContent
-): TextContent | ImageContent | FileContent => {
+): TextContent | ImageContent | FileContent | FileDataContent => {
   if (typeof part === "string") {
     return { type: "text", text: part };
   }
@@ -133,7 +144,7 @@ const normalizeContentPart = (
     return part;
   }
 
-  if (part.type === "file_url") {
+  if (part.type === "file_url" || part.type === "file") {
     return part;
   }
 
@@ -333,13 +344,14 @@ const computeBackoffDelay = (
 // returns the final Response so callers keep their existing error handling.
 const fetchWithBackoff = async (
   url: string,
-  init: FetchInit
+  init: FetchInit,
+  timeoutMs = REQUEST_TIMEOUT_MS
 ): Promise<Response> => {
   let lastError: unknown;
 
   for (let attempt = 0; attempt <= RETRY_MAX_RETRIES; attempt++) {
     try {
-      const response = await fetch(url, { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+      const response = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
       if (response.ok || attempt === RETRY_MAX_RETRIES || !isRetryableStatus(response.status)) {
         return response;
       }
@@ -389,6 +401,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     reasoning,
     maxTokens,
     max_tokens,
+    timeoutMs,
   } = params;
 
   const payload: Record<string, unknown> = {
@@ -448,7 +461,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
       authorization: `Bearer ${config.apiKey}`,
     },
     body: JSON.stringify(payload),
-  });
+  }, timeoutMs);
 
   if (!response.ok) {
     throw await providerError(response, "LLM invoke", resolvedModel, url);

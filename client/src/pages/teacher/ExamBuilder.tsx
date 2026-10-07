@@ -1,5 +1,6 @@
 import { AppShell, ChoiceChip, ErrorNote, Loading, Panel, Pill } from "@/components/AppShell";
 import { draftFromQuestion, QuestionEditor } from "@/components/QuestionEditor";
+import { bankLabel, SectionPicker, sectionsOf, subjectsOf, TopicSelect, useTopics, type TopicRow } from "@/components/questionBank/Topics";
 import { QuestionRenderer } from "@/components/QuestionRenderer";
 import { ShareBox, ShareFunnelSummary } from "@/components/ShareBox";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -10,9 +11,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { t, type MessageKey } from "@/i18n/messages";
 import { errorText, fmtDuration, fromLocalInput, questionTypeLabel, releaseLabel, reviewLabel, toLocalInput, typeLabel } from "@/lib/format";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
-import { QUESTION_TYPES, type AssessmentType, type QuestionInput } from "@shared/assessment";
+import { CLOSED_QUESTION_TYPES, DEFAULT_WRONG_PENALTY, QUESTION_TYPES, type AssessmentType, type QuestionInput, type QuestionType } from "@shared/assessment";
 import { builderPath, safeSyllabusEditorPath } from "@/lib/syllabusLearn";
-import { ArrowDown, ArrowLeft, ArrowUp, Check, Pencil, Sparkles, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowUp, Check, FileUp, Library, Pencil, Replace, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useParams, useSearch } from "wouter";
@@ -213,11 +214,24 @@ function BasicsStep({ a, onNext }: { a: Detail; onNext: () => void }) {
 
 function QuestionsStep({ a, onNext }: { a: Detail; onNext: () => void }) {
   const invalidate = useInvalidateDetail(a.id);
+  const utils = trpc.useUtils();
+  const topics = useTopics();
+  const topicList = topics.data ?? [];
   const [editing, setEditing] = useState<string | "new" | null>(a.questions.length ? null : "new");
+  const [newSection, setNewSection] = useState("");
   const [bankOpen, setBankOpen] = useState(false);
+  const [buildOpen, setBuildOpen] = useState(false);
+  const [replacing, setReplacing] = useState<Detail["questions"][number] | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
   const onError = (e: unknown) => toast.error(errorText(e));
-  const create = trpc.teacher.assessments.createQuestion.useMutation({ onSuccess: () => { setEditing(null); void invalidate(); }, onError });
+  const create = trpc.teacher.assessments.createQuestion.useMutation({
+    onSuccess: () => {
+      setEditing(null);
+      void invalidate();
+      void utils.teacher.questionTopics.list.invalidate();
+    },
+    onError,
+  });
   const update = trpc.teacher.questions.update.useMutation({ onSuccess: () => { setEditing(null); void invalidate(); }, onError });
   const remove = trpc.teacher.assessments.removeQuestion.useMutation({ onSuccess: () => void invalidate(), onError });
   const reorder = trpc.teacher.assessments.reorder.useMutation({ onSuccess: () => void invalidate(), onError });
@@ -239,6 +253,7 @@ function QuestionsStep({ a, onNext }: { a: Detail; onNext: () => void }) {
         title={t("builder.questionsTitle", { count: a.questions.length, points: total })}
         action={
           <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => setBuildOpen(true)}><Library className="h-4 w-4" aria-hidden /> {t("builder.buildFromBank")}</Button>
             <Button size="sm" variant="outline" onClick={() => setBankOpen(true)}>{t("builder.fromBank")}</Button>
             <Button size="sm" variant="outline" onClick={() => setAiOpen(true)}><Sparkles className="h-4 w-4" aria-hidden /> {t("builder.withAi")}</Button>
             <Button size="sm" onClick={() => setEditing("new")}>{t("builder.newQuestion")}</Button>
@@ -249,7 +264,7 @@ function QuestionsStep({ a, onNext }: { a: Detail; onNext: () => void }) {
           {a.questions.map((q, i) => (
             <li key={q.id} className="rounded-xl border p-3">
               {editing === q.id ? (
-                <QuestionEditor initial={draftFromQuestion(q)} busy={update.isPending} onCancel={() => setEditing(null)} onSubmit={(question) => update.mutate({ id: q.id, question })} />
+                <QuestionEditor hideTopic={!!q.sectionId} initial={draftFromQuestion(q)} busy={update.isPending} onCancel={() => setEditing(null)} onSubmit={(question) => update.mutate({ id: q.id, question })} />
               ) : (
                 <div className="flex gap-3">
                   <div className="flex flex-col gap-1">
@@ -261,13 +276,14 @@ function QuestionsStep({ a, onNext }: { a: Detail; onNext: () => void }) {
                       <span className="font-semibold text-foreground-secondary">{i + 1}.</span>
                       <Pill>{questionTypeLabel(q.type)}</Pill>
                       <span>{t("common.points", { count: q.points })}</span>
-                      {q.topic && <span>· {q.topic}</span>}
+                      {bankLabel(topicList, q) ? <span className="text-link">· {bankLabel(topicList, q)}</span> : q.topic && <span>· {q.topic}</span>}
                       {q.skill && <span>· {q.skill}</span>}
                       {q.source === "AI" && <StatusBadge tone="info" icon={Sparkles}>AI</StatusBadge>}
                     </div>
                     <div className="mt-1 line-clamp-3 whitespace-pre-wrap break-words text-sm" title={q.text}>{q.text}</div>
                   </div>
                   <div className="flex gap-1">
+                    <button type="button" onClick={() => setReplacing(q)} className={iconButton} aria-label={t("builder.replaceN", { n: i + 1 })} title={t("builder.replaceFromBank")}><Replace className="h-4 w-4" aria-hidden /></button>
                     <button type="button" onClick={() => setEditing(q.id)} className={iconButton} aria-label={t("builder.editN", { n: i + 1 })}><Pencil className="h-4 w-4" aria-hidden /></button>
                     <button
                       type="button"
@@ -286,22 +302,230 @@ function QuestionsStep({ a, onNext }: { a: Detail; onNext: () => void }) {
         {editing === "new" && (
           <div className="mt-4 rounded-xl border border-dashed border-link p-4">
             <div className="mb-3 font-medium">{t("builder.newQuestionTitle")}</div>
-            <QuestionEditor busy={create.isPending} submitLabel={t("common.add")} onCancel={a.questions.length ? () => setEditing(null) : undefined} onSubmit={(question) => create.mutate({ id: a.id, question })} />
+            <SectionPicker className="mb-4" value={newSection} onChange={setNewSection} />
+            {newSection ? (
+              <QuestionEditor hideTopic busy={create.isPending} submitLabel={t("common.add")} onCancel={a.questions.length ? () => setEditing(null) : undefined} onSubmit={(question) => create.mutate({ id: a.id, question, sectionId: newSection })} />
+            ) : (
+              <p className="text-sm text-muted-foreground">{t("qbank.pickSectionFirst")}</p>
+            )}
           </div>
         )}
         <p className="mt-3 text-xs text-muted-foreground">{t("builder.bankEditNote")}</p>
       </Panel>
       <div className="flex justify-end"><Button disabled={!a.questions.length} onClick={onNext}>{t("common.continue")}</Button></div>
       <BankDialog open={bankOpen} onOpenChange={setBankOpen} assessmentId={a.id} existing={a.questions.map((q) => q.id)} />
+      {buildOpen && <BuildFromBankDialog onOpenChange={setBuildOpen} a={a} topics={topicList} />}
+      {replacing && <ReplaceDialog onOpenChange={(v) => !v && setReplacing(null)} a={a} question={replacing} topics={topicList} />}
       <AiDialog open={aiOpen} onOpenChange={setAiOpen} assessmentId={a.id} />
     </div>
+  );
+}
+
+const filterCls = "rounded-lg border border-input bg-card px-2 text-sm text-foreground";
+
+/** How many of a section's bank questions are not in the exam yet. */
+function availableIn(section: TopicRow, a: Detail) {
+  return Math.max(0, section.questionCount - a.questions.filter((q) => q.sectionId === section.id).length);
+}
+
+type SectionPlan = { on: boolean; count: number; picked: string[]; byHand: boolean };
+
+/**
+ * A general exam (several sections) or a topic exam (one): per section, a random number of
+ * questions and/or hand-picked ones. Questions already in the exam are never drawn again.
+ */
+function BuildFromBankDialog({ onOpenChange, a, topics }: { onOpenChange: (v: boolean) => void; a: Detail; topics: TopicRow[] }) {
+  const invalidate = useInvalidateDetail(a.id);
+  const subjects = subjectsOf(topics);
+  const [subjectId, setSubjectId] = useState(() => {
+    const first = a.questions.find((q) => q.sectionId)?.sectionId;
+    return topics.find((x) => x.id === first)?.parentId ?? subjects[0]?.id ?? "";
+  });
+  const [plan, setPlan] = useState<Record<string, SectionPlan>>({});
+  const sections = subjectId ? sectionsOf(topics, subjectId) : [];
+  const planOf = (id: string): SectionPlan => plan[id] ?? { on: false, count: 0, picked: [], byHand: false };
+  const patch = (id: string, p: Partial<SectionPlan>) => setPlan((cur) => ({ ...cur, [id]: { ...planOf(id), ...p } }));
+  const picks = sections
+    .map((s) => ({ s, p: planOf(s.id) }))
+    .filter(({ p }) => p.on && (p.count > 0 || p.picked.length > 0))
+    .map(({ s, p }) => ({ sectionId: s.id, count: p.count || undefined, questionIds: p.picked.length ? p.picked : undefined }));
+  const total = picks.reduce((n, p) => n + (p.count ?? 0) + (p.questionIds?.length ?? 0), 0);
+  const add = trpc.teacher.assessments.addFromBank.useMutation({
+    onSuccess: (r) => {
+      toast.success(t("builder.bankAdded", { count: r.added }));
+      for (const s of r.short) {
+        const name = topics.find((x) => x.id === s.sectionId)?.name ?? "";
+        toast.message(t("builder.bankShort", { name, requested: s.requested, drawn: s.drawn }));
+      }
+      void invalidate();
+      onOpenChange(false);
+    },
+    onError: (e) => toast.error(errorText(e)),
+  });
+  return (
+    <Dialog open onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{t("builder.buildTitle")}</DialogTitle>
+          <DialogDescription>{t("builder.buildHelp")}</DialogDescription>
+        </DialogHeader>
+        <DialogBody className="grid content-start gap-4">
+          {!subjects.length ? (
+            <p className="text-sm text-muted-foreground">{t("builder.buildNoSections")}</p>
+          ) : (
+            <label className="text-sm">
+              <span className={fieldLabel}>{t("qbank.subject")}</span>
+              <select className={selectClass} value={subjectId} onChange={(e) => { setSubjectId(e.target.value); setPlan({}); }}>
+                {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </label>
+          )}
+          {subjectId && !sections.length && <p className="text-sm text-muted-foreground">{t("builder.buildNoSections")}</p>}
+          <ul className="divide-y">
+            {sections.map((s) => {
+              const p = planOf(s.id);
+              const available = availableIn(s, a);
+              return (
+                <li key={s.id} className="space-y-2 py-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label className="flex min-w-0 flex-1 items-center gap-2 text-sm">
+                      <input type="checkbox" className="accent-link" checked={p.on} disabled={!available && !p.on} onChange={(e) => patch(s.id, { on: e.target.checked })} />
+                      <span className="break-words font-medium">{s.name}</span>
+                      <span className="text-xs text-muted-foreground">{t("builder.available", { count: available })}</span>
+                    </label>
+                    {p.on && (
+                      <>
+                        <label className="flex items-center gap-2 text-sm">
+                          <span className="text-muted-foreground">{t("builder.randomCount")}</span>
+                          <Input
+                            type="number"
+                            className="w-20"
+                            min={0}
+                            max={Math.max(0, available - p.picked.length)}
+                            value={p.count}
+                            onChange={(e) => patch(s.id, { count: Math.min(Math.max(0, available - p.picked.length), Math.max(0, Math.floor(Number(e.target.value) || 0))) })}
+                          />
+                        </label>
+                        <Button size="sm" variant="ghost" aria-expanded={p.byHand} onClick={() => patch(s.id, { byHand: !p.byHand })}>
+                          {t("builder.pickByHand", { count: p.picked.length })}
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                  {p.on && p.byHand && (
+                    <SectionQuestionPicker
+                      section={s}
+                      topics={topics}
+                      inExam={a.questions.map((q) => q.id)}
+                      picked={p.picked}
+                      onChange={(picked) => patch(s.id, { picked, count: Math.min(p.count, Math.max(0, available - picked.length)) })}
+                    />
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </DialogBody>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <span className="mr-auto text-sm text-muted-foreground">{t("builder.buildTotal", { count: total })}</span>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
+          <Button disabled={!picks.length || add.isPending} onClick={() => add.mutate({ id: a.id, picks })}>{t("builder.buildAdd", { count: total })}</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SectionQuestionPicker({ section, topics, inExam, picked, onChange }: { section: TopicRow; topics: TopicRow[]; inExam: string[]; picked: string[]; onChange: (ids: string[]) => void }) {
+  const bank = trpc.teacher.questions.bank.useQuery({ topicId: section.id });
+  if (bank.isLoading) return <Loading />;
+  const rows = bank.data ?? [];
+  return (
+    <ul className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
+      {rows.map((q) => {
+        const added = inExam.includes(q.id);
+        return (
+          <li key={q.id}>
+            <label className={`flex items-start gap-2 text-sm ${added ? "text-muted-foreground" : ""}`}>
+              <input
+                type="checkbox"
+                className="mt-1 accent-link"
+                disabled={added}
+                checked={added || picked.includes(q.id)}
+                onChange={(e) => onChange(e.target.checked ? [...picked, q.id] : picked.filter((x) => x !== q.id))}
+              />
+              <span className="min-w-0 flex-1">
+                <span className="text-xs font-medium text-link">{bankLabel(topics, q)}</span>
+                {added && <span className="ms-2 text-xs">{t("builder.alreadyInExam")}</span>}
+                <span className="line-clamp-2 block break-words" title={q.text}>{q.text}</span>
+              </span>
+            </label>
+          </li>
+        );
+      })}
+      {!rows.length && <li className="py-3 text-center text-sm text-muted-foreground">{t("builder.bankEmpty")}</li>}
+    </ul>
+  );
+}
+
+/** Swap one exam question for another bank question (same place in the exam), from its section by default. */
+function ReplaceDialog({ onOpenChange, a, question, topics }: { onOpenChange: (v: boolean) => void; a: Detail; question: Detail["questions"][number]; topics: TopicRow[] }) {
+  const invalidate = useInvalidateDetail(a.id);
+  const [topicId, setTopicId] = useState(question.sectionId ?? "");
+  const [search, setSearch] = useState("");
+  const bank = trpc.teacher.questions.bank.useQuery({ topicId: topicId || undefined, search: search || undefined });
+  const replace = trpc.teacher.assessments.replaceQuestion.useMutation({
+    onSuccess: () => {
+      toast.success(t("builder.replaced"));
+      void invalidate();
+      onOpenChange(false);
+    },
+    onError: (e) => toast.error(errorText(e)),
+  });
+  const inExam = new Set(a.questions.map((q) => q.id));
+  const rows = (bank.data ?? []).filter((q) => !inExam.has(q.id));
+  return (
+    <Dialog open onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{t("builder.replaceFromBank")}</DialogTitle>
+          <DialogDescription className="line-clamp-2 break-words">{question.text}</DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-wrap gap-2">
+          <Input className="min-w-0 flex-1" placeholder={t("common.search")} aria-label={t("common.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
+          <TopicSelect topics={topics} value={topicId} onChange={setTopicId} emptyLabel={t("qbank.allTopics")} ariaLabel={t("qbank.filterTopic")} className={`max-w-[16rem] ${filterCls}`} />
+        </div>
+        <DialogBody>
+          {bank.isLoading ? <Loading /> : (
+            <ul className="divide-y">
+              {rows.map((q) => (
+                <li key={q.id} className="flex items-center gap-3 py-2 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-medium text-link">{bankLabel(topics, q) ?? t("qbank.unsorted")}</div>
+                    <div className="line-clamp-2 break-words" title={q.text}>{q.text}</div>
+                    <div className="text-xs text-muted-foreground">{questionTypeLabel(q.type)} · {t("common.points", { count: q.points })}</div>
+                  </div>
+                  <Button size="sm" disabled={replace.isPending} onClick={() => replace.mutate({ id: a.id, questionId: question.id, withQuestionId: q.id })}>
+                    {t("builder.useThis")}
+                  </Button>
+                </li>
+              ))}
+              {!rows.length && <li className="py-6 text-center text-sm text-muted-foreground">{t("builder.bankEmpty")}</li>}
+            </ul>
+          )}
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 function BankDialog({ open, onOpenChange, assessmentId, existing }: { open: boolean; onOpenChange: (v: boolean) => void; assessmentId: string; existing: string[] }) {
   const [search, setSearch] = useState("");
   const [type, setType] = useState("");
-  const bank = trpc.teacher.questions.bank.useQuery({ search: search || undefined, type: (type || undefined) as never }, { enabled: open });
+  const [topicId, setTopicId] = useState("");
+  const topics = useTopics(open);
+  const topicList = topics.data ?? [];
+  const bank = trpc.teacher.questions.bank.useQuery({ search: search || undefined, type: (type || undefined) as never, topicId: topicId || undefined }, { enabled: open });
   const invalidate = useInvalidateDetail(assessmentId);
   const add = trpc.teacher.assessments.addQuestion.useMutation({ onSuccess: () => void invalidate(), onError: (e) => toast.error(errorText(e)) });
   return (
@@ -310,10 +534,15 @@ function BankDialog({ open, onOpenChange, assessmentId, existing }: { open: bool
         <DialogHeader><DialogTitle>{t("builder.bankTitle")}</DialogTitle></DialogHeader>
         <div className="flex flex-wrap gap-2">
           <Input className="min-w-0 flex-1" placeholder={t("common.search")} aria-label={t("common.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
-          <select className="rounded-lg border border-input bg-card px-2 text-sm text-foreground" aria-label={t("modules.filterType")} value={type} onChange={(e) => setType(e.target.value)}>
+          <TopicSelect topics={topicList} value={topicId} onChange={setTopicId} emptyLabel={t("qbank.allTopics")} ariaLabel={t("qbank.filterTopic")} className={`max-w-[14rem] ${filterCls}`} />
+          <select className={filterCls} aria-label={t("modules.filterType")} value={type} onChange={(e) => setType(e.target.value)}>
             <option value="">{t("modules.allTypes")}</option>
             {QUESTION_TYPES.map((k) => <option key={k} value={k}>{questionTypeLabel(k)}</option>)}
           </select>
+          <Link href="/teacher/library/import" className="inline-flex items-center gap-1 self-center text-sm text-link hover:underline">
+            <FileUp className="h-4 w-4" aria-hidden />
+            {t("qimport.open")}
+          </Link>
         </div>
         <DialogBody>
           <ul className="divide-y">
@@ -322,8 +551,11 @@ function BankDialog({ open, onOpenChange, assessmentId, existing }: { open: bool
               return (
                 <li key={q.id} className="flex items-center gap-3 py-2 text-sm">
                   <div className="min-w-0 flex-1">
+                    <div className="text-xs font-medium text-link">{bankLabel(topicList, q) ?? t("qbank.unsorted")}</div>
                     <div className="line-clamp-2 break-words" title={q.text}>{q.text}</div>
-                    <div className="text-xs text-muted-foreground">{questionTypeLabel(q.type)} · {t("common.points", { count: q.points })} · {q.topic || t("common.noTopic")}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {questionTypeLabel(q.type)} · {t("common.points", { count: q.points })}{!q.sectionId && q.topic ? ` · ${q.topic}` : ""}
+                    </div>
                   </div>
                   <Button size="sm" variant={added ? "outline" : "default"} disabled={added || add.isPending} onClick={() => add.mutate({ id: assessmentId, questionId: q.id })}>
                     {added ? t("common.added") : t("common.add")}
@@ -344,6 +576,7 @@ const AI_TYPES = ["MULTIPLE_CHOICE", "MULTIPLE_SELECT", "TRUE_FALSE", "SHORT_ANS
 function AiDialog({ open, onOpenChange, assessmentId }: { open: boolean; onOpenChange: (v: boolean) => void; assessmentId: string }) {
   const [form, setForm] = useState({ topic: "", grade: "", language: "az" as "az" | "ru" | "en" | "de", difficulty: "MEDIUM" as "EASY" | "MEDIUM" | "HARD", questionType: "MULTIPLE_CHOICE" as (typeof AI_TYPES)[number], count: 5, points: 1 });
   const [picked, setPicked] = useState<string[]>([]);
+  const [sectionId, setSectionId] = useState("");
   const usage = trpc.teacher.ai.usage.useQuery(undefined, { enabled: open });
   const invalidate = useInvalidateDetail(assessmentId);
   const generate = trpc.teacher.ai.generate.useMutation({
@@ -400,10 +633,14 @@ function AiDialog({ open, onOpenChange, assessmentId }: { open: boolean; onOpenC
                   </li>
                 ))}
               </ul>
+              <div className="mt-4 space-y-1">
+                <div className="text-sm font-medium">{t("builder.aiSection")}</div>
+                <SectionPicker value={sectionId} onChange={setSectionId} />
+              </div>
             </DialogBody>
             <div className="flex flex-wrap justify-between gap-2">
               <Button variant="outline" onClick={() => generate.reset()}>{t("common.back")}</Button>
-              <Button disabled={!picked.length || accept.isPending} onClick={() => accept.mutate({ draftId: draft.draftId, tempIds: picked, assessmentId })}>{t("builder.aiAccept", { count: picked.length })}</Button>
+              <Button disabled={!picked.length || !sectionId || accept.isPending} onClick={() => accept.mutate({ draftId: draft.draftId, tempIds: picked, sectionId, assessmentId })}>{t("builder.aiAccept", { count: picked.length })}</Button>
             </div>
           </>
         )}
@@ -546,7 +783,10 @@ function RulesStep({ a, onNext }: { a: Detail; onNext: () => void }) {
     reviewMode: a.settings.reviewMode,
     showCorrectAnswers: a.settings.showCorrectAnswers,
     showExplanations: a.settings.showExplanations,
+    wrongPenalty: a.settings.wrongPenalty ?? DEFAULT_WRONG_PENALTY,
+    emailResults: a.settings.emailResults ?? false,
   });
+  const hasClosed = a.questions.some((q) => CLOSED_QUESTION_TYPES.includes(q.type as QuestionType));
   const schedule = trpc.teacher.assessments.updateSchedule.useMutation();
   const settings = trpc.teacher.assessments.updateSettings.useMutation();
   const [busy, setBusy] = useState(false);
@@ -568,6 +808,8 @@ function RulesStep({ a, onNext }: { a: Detail; onNext: () => void }) {
           reviewMode: f.reviewMode,
           showCorrectAnswers: f.showCorrectAnswers,
           showExplanations: f.showExplanations,
+          wrongPenalty: { enabled: f.wrongPenalty.enabled, ratio: Math.min(10, Math.max(2, Math.round(f.wrongPenalty.ratio) || DEFAULT_WRONG_PENALTY.ratio)) },
+          emailResults: f.emailResults,
         },
       });
       await invalidate();
@@ -615,8 +857,39 @@ function RulesStep({ a, onNext }: { a: Detail; onNext: () => void }) {
         <div className="mt-3 space-y-2 text-sm">
           <label className="flex items-center gap-2"><input type="checkbox" className="accent-link" disabled={f.reviewMode === "SCORE_ONLY"} checked={f.showCorrectAnswers} onChange={(e) => setF({ ...f, showCorrectAnswers: e.target.checked })} /> {t("assessment.showCorrect")}</label>
           <label className="flex items-center gap-2"><input type="checkbox" className="accent-link" disabled={f.reviewMode === "SCORE_ONLY"} checked={f.showExplanations} onChange={(e) => setF({ ...f, showExplanations: e.target.checked })} /> {t("assessment.showExplanations")}</label>
+          <label className="flex items-start gap-2">
+            <input type="checkbox" className="mt-1 accent-link" checked={f.emailResults} onChange={(e) => setF({ ...f, emailResults: e.target.checked })} />
+            <span>
+              {t("builder.emailResults")}
+              <span className="block text-xs text-muted-foreground">{t("builder.emailResultsHelp")}</span>
+            </span>
+          </label>
         </div>
       </Panel>
+      {(hasClosed || f.wrongPenalty.enabled) && (
+        <Panel title={t("builder.penaltyTitle")}>
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" className="accent-link" checked={f.wrongPenalty.enabled} onChange={(e) => setF({ ...f, wrongPenalty: { ...f.wrongPenalty, enabled: e.target.checked } })} />
+              {t("builder.penaltyToggle")}
+            </label>
+            <label className="flex items-center gap-2">
+              <Input
+                type="number"
+                className="w-20"
+                min={2}
+                max={10}
+                disabled={!f.wrongPenalty.enabled}
+                aria-label={t("builder.penaltyRatio")}
+                value={f.wrongPenalty.ratio}
+                onChange={(e) => setF({ ...f, wrongPenalty: { ...f.wrongPenalty, ratio: Number(e.target.value) } })}
+              />
+              <span>{t("builder.penaltyRatioSuffix")}</span>
+            </label>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">{t("builder.penaltyHelp", { ratio: f.wrongPenalty.ratio || DEFAULT_WRONG_PENALTY.ratio })}</p>
+        </Panel>
+      )}
       <div className="flex justify-end"><Button disabled={busy} onClick={() => void save()}>{t("common.saveAndContinue")}</Button></div>
     </div>
   );
@@ -645,7 +918,12 @@ function PublishStep({ a }: { a: Detail }) {
           <dt className="text-muted-foreground">{t("common.duration")}</dt><dd>{fmtDuration(a.settings.durationSeconds)}</dd>
           <dt className="text-muted-foreground">{t("builder.assignedTo")}</dt>
           <dd className="break-words">{a.assignments.length ? a.assignments.map((x) => x.label).join(", ") : <span className="text-warning">{t("builder.nobodyAssigned")}</span>}</dd>
-          <dt className="text-muted-foreground">{t("common.result")}</dt><dd>{releaseLabel(a.settings.releaseMode)} · {reviewLabel(a.settings.reviewMode)}</dd>
+          <dt className="text-muted-foreground">{t("common.result")}</dt>
+          <dd>
+            {releaseLabel(a.settings.releaseMode)} · {reviewLabel(a.settings.reviewMode)}
+            {a.settings.wrongPenalty?.enabled && <span className="block">{t("result.penaltyRule", { ratio: a.settings.wrongPenalty.ratio })}</span>}
+            {a.settings.emailResults && <span className="block">{t("builder.emailResultsOn")}</span>}
+          </dd>
         </dl>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           {canPublish ? (

@@ -211,6 +211,16 @@ describe("dispatcher", () => {
         SYLLABUS_AT_RISK_DIGEST: { syllabusId: "s1", syllabusTitle: "S", count: 7, names: ["A", "B"] },
         TASK_ASSIGNED: { tasks: [{ taskId: "t1", title: "T", excerpt: "", deadline: "2026-10-05T14:00:00Z" }], total: 1, from: "W" },
         TASK_UPDATED: { taskId: "t1", title: "T", deadline: "2026-10-06T14:00:00Z", previousDeadline: "2026-10-05T14:00:00Z" },
+        EXAM_RESULT_READY: {
+          resultId: "r1",
+          title: "T",
+          earnedPoints: 7.5,
+          totalPoints: 10,
+          percentage: 75,
+          correctCount: 8,
+          wrongCount: 2,
+          penalty: { ratio: 4, wrongCount: 2, penaltyPoints: 0.5 },
+        },
       }[event];
       const rendered = renderNotification(event, data, { locale: "az", email: "a@b.c" }, "https://resulio.co");
       expect(rendered.title.length).toBeGreaterThan(0);
