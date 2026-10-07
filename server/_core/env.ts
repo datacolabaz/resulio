@@ -116,4 +116,18 @@ export const ENV = {
     const n = Number.parseInt(envString("AI_REVIEW_DAILY_LIMIT"), 10);
     return Number.isFinite(n) && n >= 0 ? n : 100;
   },
+  /** Question import from PDF/images runs only when the LLM is configured and QUESTION_IMPORT_DISABLED is not "1". */
+  get questionImportEnabled() { return this.llmConfigured && envString("QUESTION_IMPORT_DISABLED") !== "1"; },
+  /** Optional model for question import (must read PDFs/images); empty = AI_MODEL / the provider default. */
+  get questionImportModel() { return envString("QUESTION_IMPORT_MODEL"); },
+  /** "native" sends the PDF itself, "text" only its extracted text; empty = native where the provider supports it. */
+  get questionImportPdfMode(): "native" | "text" | "" {
+    const v = envString("QUESTION_IMPORT_PDF_MODE").toLowerCase();
+    return v === "native" || v === "text" ? v : "";
+  },
+  /** Max model requests (one per chunk of pages or image) per workspace in a rolling 24 hours. */
+  get questionImportDailyLimit() {
+    const n = Number.parseInt(envString("QUESTION_IMPORT_DAILY_LIMIT"), 10);
+    return Number.isFinite(n) && n >= 0 ? n : 60;
+  },
 };

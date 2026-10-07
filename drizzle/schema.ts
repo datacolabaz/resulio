@@ -34,6 +34,7 @@ import {
   type AuditTargetType,
   type SecurityEventType,
 } from "../shared/adminPermissions";
+import { ANSWER_SOURCES, CONFIDENCE_LEVELS, IMPORT_ITEM_STATUSES, IMPORT_JOB_STATUSES, type ImportIssue } from "../shared/questionImport";
 import { REFERRAL_SOURCES } from "../shared/referralSources";
 import type { ClassScheduleEntry } from "../shared/schedule";
 import { SHARE_CHANNELS, SHARE_EVENT_TYPES, SHARE_TARGET_TYPES } from "../shared/shareTracking";
@@ -1401,6 +1402,112 @@ export const syllabusNoticeBatches = mysqlTable(
   (t) => [index("syllabus_notice_batches_due_idx").on(t.dueAt)],
 );
 
+/**
+ * Question bank topics: a per-workspace tree, optionally tied to a syllabus module or lesson.
+ * `parentKey` is `parentId` or '' (MySQL unique indexes treat NULLs as distinct) and `nameKey` the
+ * normalized name, so a sibling name can exist only once.
+ */
+export const questionTopics = mysqlTable(
+  "question_topics",
+  {
+    id: id("id").primaryKey(),
+    providerWorkspaceId: id("providerWorkspaceId").notNull(),
+    parentId: id("parentId"),
+    parentKey: varchar("parentKey", { length: ID }).notNull().default(""),
+    name: varchar("name", { length: 120 }).notNull(),
+    nameKey: varchar("nameKey", { length: 120 }).notNull(),
+    syllabusId: id("syllabusId"),
+    syllabusModuleId: id("syllabusModuleId"),
+    syllabusLessonId: id("syllabusLessonId"),
+    position: int("position").notNull().default(0),
+    createdBy: int("createdBy").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [uniqueIndex("question_topics_name_unique").on(t.providerWorkspaceId, t.parentKey, t.nameKey)],
+);
+
+/**
+ * Side table of `questions` (one row per question that has a topic or came from an import), so the
+ * bank keeps working before this migration runs. `questions.topic` mirrors the topic name.
+ */
+export const questionMeta = mysqlTable(
+  "question_meta",
+  {
+    questionId: id("questionId").primaryKey(),
+    providerWorkspaceId: id("providerWorkspaceId").notNull(),
+    topicId: id("topicId"),
+    importJobId: id("importJobId"),
+    sourceFileName: varchar("sourceFileName", { length: 255 }),
+    sourcePage: int("sourcePage"),
+    sourceNumber: varchar("sourceNumber", { length: 32 }),
+    answerSource: mysqlEnum("answerSource", ANSWER_SOURCES),
+    aiConfidence: mysqlEnum("aiConfidence", CONFIDENCE_LEVELS),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [index("question_meta_topic_idx").on(t.providerWorkspaceId, t.topicId), index("question_meta_job_idx").on(t.importJobId)],
+);
+
+/** One uploaded PDF/image being turned into bank questions (server/questionBank/importJobs.ts). */
+export const questionImportJobs = mysqlTable(
+  "question_import_jobs",
+  {
+    id: id("id").primaryKey(),
+    providerWorkspaceId: id("providerWorkspaceId").notNull(),
+    createdBy: int("createdBy").notNull(),
+    fileId: id("fileId").notNull(),
+    fileName: varchar("fileName", { length: 255 }).notNull(),
+    mimeType: varchar("mimeType", { length: 127 }).notNull(),
+    sizeBytes: int("sizeBytes").notNull(),
+    status: mysqlEnum("status", IMPORT_JOB_STATUSES).notNull().default("QUEUED"),
+    /** An AppErrorCode when FAILED. */
+    errorCode: varchar("errorCode", { length: 64 }),
+    /** Topic new questions fall under when the AI finds no better match. */
+    defaultTopicId: id("defaultTopicId"),
+    pageCount: int("pageCount"),
+    chunkCount: int("chunkCount").notNull().default(0),
+    chunksDone: int("chunksDone").notNull().default(0),
+    /** "native" (file sent to the model) or "text" (extracted PDF text). */
+    inputMode: varchar("inputMode", { length: 16 }),
+    model: varchar("model", { length: 120 }),
+    /** Only the run that set it may write results; a retry starts a new run. */
+    runId: id("runId"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    finishedAt: timestamp("finishedAt"),
+  },
+  (t) => [index("question_import_jobs_workspace_idx").on(t.providerWorkspaceId, t.createdAt)],
+);
+
+/** An extracted question waiting for review; `question` is a QuestionInput-shaped draft. */
+export const questionImportItems = mysqlTable(
+  "question_import_items",
+  {
+    id: id("id").primaryKey(),
+    jobId: id("jobId").notNull(),
+    providerWorkspaceId: id("providerWorkspaceId").notNull(),
+    /** System-assigned order (topic, difficulty, then source order), not the order in the file. */
+    position: int("position").notNull(),
+    status: mysqlEnum("status", IMPORT_ITEM_STATUSES).notNull().default("PENDING"),
+    question: json("question").$type<Record<string, unknown>>().notNull(),
+    issues: json("issues").$type<ImportIssue[]>().notNull(),
+    topicId: id("topicId"),
+    /** Topic name the AI proposed when nothing existing matched; created on accept. */
+    proposedTopic: varchar("proposedTopic", { length: 120 }),
+    answerSource: mysqlEnum("answerSource", ANSWER_SOURCES).notNull(),
+    confidence: mysqlEnum("confidence", CONFIDENCE_LEVELS).notNull(),
+    sourcePage: int("sourcePage"),
+    sourceNumber: varchar("sourceNumber", { length: 32 }),
+    duplicateOfQuestionId: id("duplicateOfQuestionId"),
+    /** Bank question created when accepted. */
+    questionId: id("questionId"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [index("question_import_items_job_idx").on(t.jobId, t.position)],
+);
+
 export type Syllabus = typeof syllabi.$inferSelect;
 export type SyllabusModuleRow = typeof syllabusModules.$inferSelect;
 export type SyllabusLessonRow = typeof syllabusLessons.$inferSelect;
@@ -1420,6 +1527,9 @@ export type Group = typeof groups.$inferSelect;
 export type GroupEmailInvite = typeof groupEmailInvites.$inferSelect;
 export type GroupInviteLink = typeof groupInviteLinks.$inferSelect;
 export type QuestionRow = typeof questions.$inferSelect;
+export type QuestionTopic = typeof questionTopics.$inferSelect;
+export type QuestionImportJob = typeof questionImportJobs.$inferSelect;
+export type QuestionImportItem = typeof questionImportItems.$inferSelect;
 export type Assessment = typeof assessments.$inferSelect;
 export type AssessmentVersion = typeof assessmentVersions.$inferSelect;
 export type VersionQuestion = typeof versionQuestions.$inferSelect;

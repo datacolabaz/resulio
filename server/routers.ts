@@ -63,6 +63,7 @@ import * as workspaces from "./modules/workspaces";
 import { CHANNELS, EVENT_TYPES } from "./notifications/events";
 import * as notificationPreferences from "./notifications/preferences";
 import * as push from "./notifications/push";
+import { bankWithTopics, questionBankFilter, questionImportRouter, questionTopicsRouter } from "./questionBank/router";
 import { store } from "./resulioStore";
 import { studentSyllabusRouter, teacherSyllabusRouter } from "./syllabus/router";
 import { SHARE_CAMPAIGNS, SHARE_CHANNELS, SHARE_TARGET_TYPES, VISITOR_ID_PATTERN } from "../shared/shareTracking";
@@ -407,18 +408,8 @@ const teacherGroupsRouter = router({
   }),
 });
 
-const questionBankFilter = z
-  .object({
-    topic: z.string().max(120).optional(),
-    difficulty: z.enum(DIFFICULTIES).optional(),
-    type: z.enum(QUESTION_TYPES).optional(),
-    source: z.enum(["MANUAL", "AI"]).optional(),
-    search: z.string().max(200).optional(),
-  })
-  .default({});
-
 const teacherQuestionsRouter = router({
-  bank: teacherProcedure.input(questionBankFilter).query(({ ctx, input }) => assessments.questionBank(ctx.scope, input)),
+  bank: teacherProcedure.input(questionBankFilter).query(({ ctx, input }) => bankWithTopics(ctx.scope, input)),
   create: teacherProcedure
     .input(z.object({ question: questionInputSchema }))
     .mutation(({ ctx, input }) => assessments.createQuestion(ctx.scope, input.question)),
@@ -708,6 +699,8 @@ const teacherRouter = router({
   students: teacherProcedure.query(({ ctx }) => groups.teacherStudents(ctx.scope)),
   groups: teacherGroupsRouter,
   questions: teacherQuestionsRouter,
+  questionTopics: questionTopicsRouter,
+  questionImport: questionImportRouter,
   assessments: teacherAssessmentsRouter,
   results: teacherResultsRouter,
   analytics: teacherAnalyticsRouter,

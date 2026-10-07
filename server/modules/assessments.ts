@@ -386,9 +386,10 @@ export async function draftQuestions(assessmentId: string, db: DbOrTx = requireD
 
 export async function questionBank(
   scope: TeacherScope,
-  filter: { topic?: string; difficulty?: string; type?: string; source?: string; search?: string },
+  filter: { topic?: string; difficulty?: string; type?: string; source?: string; search?: string; ids?: string[] },
 ) {
   const conds = [eq(questions.providerWorkspaceId, scope.workspaceId)];
+  if (filter.ids) conds.push(filter.ids.length ? inArray(questions.id, filter.ids) : sql`false`);
   if (filter.topic) conds.push(eq(questions.topic, filter.topic));
   if (filter.difficulty) conds.push(eq(questions.difficulty, filter.difficulty as "EASY"));
   if (filter.type) conds.push(eq(questions.type, filter.type));

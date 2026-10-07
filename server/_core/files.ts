@@ -23,8 +23,11 @@ import { sdk } from "./sdk";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: filesModule.MAX_FILE_BYTES, files: 1 } });
 
-/** "syllabus": cover images, theory images/files and practice attachments; private to the workspace. */
-const UPLOAD_CONTEXTS = ["task-attachment", "material", "submission", "syllabus"] as const;
+/**
+ * "syllabus": cover images, theory images/files and practice attachments; "question-import": a PDF
+ * or image to extract bank questions from. Both private to the workspace.
+ */
+const UPLOAD_CONTEXTS = ["task-attachment", "material", "submission", "syllabus", "question-import"] as const;
 type UploadContext = (typeof UPLOAD_CONTEXTS)[number];
 function isUploadContext(v: unknown): v is UploadContext {
   return typeof v === "string" && (UPLOAD_CONTEXTS as readonly string[]).includes(v);
