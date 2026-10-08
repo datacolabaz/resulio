@@ -181,13 +181,23 @@ export const app = {
 
   "public.join.title": ["Qrupa qoşul", "Join a group", "Вступить в группу"],
   "public.join.notFound": ["Dəvət kodu tapılmadı.", "Invite code not found.", "Код приглашения не найден."],
-  "public.join.sent": [
-    "Sorğu göndərildi. Müəllim təsdiqlədikdən sonra qrupun imtahanlarını görəcəksiniz.",
-    "Request sent. You will see the group's exams once the teacher approves it.",
-    "Запрос отправлен. Экзамены группы появятся после одобрения преподавателем.",
-  ],
-  "public.join.request": ["Qoşulmaq üçün sorğu göndər", "Send a join request", "Отправить запрос на вступление"],
   "public.join.joinNow": ["Qrupa qoşul", "Join group", "Вступить в группу"],
+  "public.join.instantNote": [
+    "Düyməyə basan kimi qrupa əlavə olunacaqsınız — müəllimin təsdiqini gözləmək lazım deyil.",
+    "You'll be added to the group as soon as you press the button — no need to wait for the teacher's approval.",
+    "Вы попадёте в группу сразу после нажатия кнопки — ждать одобрения преподавателя не нужно.",
+  ],
+  "public.join.joinedToast": ["«{group}» qrupuna qoşuldunuz!", "You've joined “{group}”!", "Вы вступили в группу «{group}»!"],
+  "public.join.codeInactive": [
+    "Bu dəvət linki müəllim tərəfindən deaktiv edilib. Qoşulmaq üçün müəllimdən yeni link istəyin.",
+    "This invite link has been turned off by the teacher. Ask your teacher for a new link to join.",
+    "Эта ссылка-приглашение отключена преподавателем. Попросите у преподавателя новую ссылку.",
+  ],
+  "public.join.codeExpired": [
+    "Bu dəvət linkinin vaxtı bitib. Qoşulmaq üçün müəllimdən yeni link istəyin.",
+    "This invite link has expired. Ask your teacher for a new link to join.",
+    "Срок действия этой ссылки-приглашения истёк. Попросите у преподавателя новую ссылку.",
+  ],
   "public.join.notAccepting": ["Bu qrup hazırda yeni tələbə qəbul etmir. Qoşulmaq üçün müəlliminizdən dəvət alın.", "This group isn't accepting new students right now. Ask your teacher to add you directly.", "Эта группа сейчас не принимает новых студентов. Попросите преподавателя добавить вас напрямую."],
   "public.join.alreadyMemberNote": ["Siz artıq bu qrupun üzvüsünüz.", "You're already a member of this group.", "Вы уже состоите в этой группе."],
   "public.myGroups": ["Qruplarım →", "My groups →", "Мои группы →"],
@@ -362,6 +372,7 @@ export const app = {
   "settings.event.ANSWER_KEY_DRAFTED": ["AI cavab açarı layihəsi hazırladı", "AI drafted an answer key", "ИИ подготовил черновик ключа ответов"],
   "settings.event.SYLLABUS_ACCESS_GRANTED": ["Mənə syllabus açıldı", "A syllabus was opened for me", "Мне открыт силлабус"],
   "settings.event.SYLLABUS_UNLOCKED": ["Syllabus-da yeni dərs və ya modul açıldı", "A new lesson or module opened in a syllabus", "В силлабусе открылся новый урок или модуль"],
+  "settings.event.GROUP_MEMBER_JOINED": ["Tələbə dəvət linki ilə qrupa qoşuldu", "A student joined a group via invite link", "Студент вступил в группу по ссылке-приглашению"],
   "settings.event.SYLLABUS_APPROVAL_NEEDED": ["Tələbə syllabus-da təsdiq gözləyir", "A student is waiting for approval in a syllabus", "Студент ждёт подтверждения в силлабусе"],
   "settings.event.SYLLABUS_COMPLETED": ["Syllabus-u tamamladım", "I completed a syllabus", "Я завершил силлабус"],
   "settings.event.SYLLABUS_AT_RISK_DIGEST": ["Gündəlik xülasə: risk altında olan tələbələr", "Daily digest: students at risk", "Ежедневная сводка: студенты в зоне риска"],

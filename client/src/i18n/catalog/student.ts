@@ -59,7 +59,6 @@ export const student = {
   "student.highest": ["Ən yüksək", "Highest", "Максимум"],
   "student.resultCount": ["Nəticə sayı", "Number of results", "Число результатов"],
   "student.trend": ["Nəticələrin dinamikası", "Results over time", "Динамика результатов"],
-  "student.joinRequested": ["{group}: sorğu göndərildi", "{group}: request sent", "{group}: запрос отправлен"],
   "student.joinGroup": ["Qrupa qoşul", "Join a group", "Вступить в группу"],
   "student.joinGroupHint": [
     "Müəlliminizdən aldığınız dəvət kodunu və ya linkini bu sahəyə yapışdırın.",

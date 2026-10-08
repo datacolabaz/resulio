@@ -156,12 +156,13 @@ export const providerWorkspaces = mysqlTable(
 
 export const GROUP_FORMATS = ["ONLINE", "IN_PERSON", "HYBRID"] as const;
 /**
- * AUTO: `joinByInvite` activates membership immediately. APPROVAL: membership starts PENDING,
- * the teacher approves it. MANUAL: self-join is refused outright — the teacher must add every
- * student with `addMemberByEmail`. The invite code/link is the same value for both AUTO and
- * APPROVAL; Resulio does not keep a separate token per channel (see groups.ts).
+ * AUTO: `joinByInvite` (the group's invite code / `/join/<code>` link) activates membership
+ * immediately. MANUAL: self-join is refused outright — the teacher must add every student with
+ * `addMemberByEmail`. The former APPROVAL policy (link joins waited as PENDING) was retired in
+ * migration 0032, which moved those groups to AUTO; see `activatePendingLinkJoins` for the
+ * requests that were still waiting.
  */
-export const GROUP_JOIN_POLICIES = ["AUTO", "APPROVAL", "MANUAL"] as const;
+export const GROUP_JOIN_POLICIES = ["AUTO", "MANUAL"] as const;
 
 export const groups = mysqlTable(
   "study_groups",
@@ -183,7 +184,7 @@ export const groups = mysqlTable(
     /** Whether members see each other's released task scores; their own released scores are always visible. */
     scoresVisibleToGroup: boolean("scoresVisibleToGroup").notNull().default(true),
     inviteCode: varchar("inviteCode", { length: 32 }).notNull().unique(),
-    joinPolicy: mysqlEnum("joinPolicy", GROUP_JOIN_POLICIES).notNull().default("APPROVAL"),
+    joinPolicy: mysqlEnum("joinPolicy", GROUP_JOIN_POLICIES).notNull().default("AUTO"),
     /** Deactivating stops new joins without burning the code value the way regenerating does. */
     codeActive: boolean("codeActive").notNull().default(true),
     codeExpiresAt: timestamp("codeExpiresAt"),

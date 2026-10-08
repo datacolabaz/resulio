@@ -159,13 +159,17 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
  * Scrollable middle section. Place it between DialogHeader and DialogFooter (as direct children
  * of DialogContent, or of a `<form className="contents">`) so tall forms scroll inside the
  * dialog while the title, close button and actions stay visible.
+ *
+ * `auto-rows-max` matters when callers make the body a grid: implicit `auto` rows let items
+ * with `min-height: 0` (every `.flex`, see index.css) shrink to their padding once the body
+ * overflows, instead of the body scrolling.
  */
 function DialogBody({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="dialog-body"
       className={cn(
-        "-mx-6 -my-1 min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-1",
+        "-mx-6 -my-1 min-h-0 flex-1 auto-rows-max overflow-y-auto overscroll-contain px-6 py-1",
         className
       )}
       {...props}

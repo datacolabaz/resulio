@@ -22,6 +22,7 @@ export const EVENT_TYPES = [
   "TASK_ASSIGNED",
   "TASK_UPDATED",
   "EXAM_RESULT_READY",
+  "GROUP_MEMBER_JOINED",
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -49,6 +50,8 @@ export interface EventData {
   TASK_UPDATED: { taskId: string; title: string; deadline: string; previousDeadline: string };
   /** A final, released exam result, for exams whose teacher chose "e-mail results". Never the answers. */
   EXAM_RESULT_READY: ExamResultNotice;
+  /** To the group's teacher: a student joined through an invite link. Informational, nothing to approve. */
+  GROUP_MEMBER_JOINED: { groupId: string; groupName: string; studentName: string | null };
 }
 
 export interface ExamResultNotice {
@@ -100,6 +103,7 @@ export const EVENTS: Record<EventType, EventDefinition> = {
   TASK_UPDATED: { channels: ["IN_APP", "EMAIL", "PUSH"], defaultOff: ["EMAIL"] },
   // Only for exams whose teacher ticked "e-mail results"; the in-app "result ready" notice exists already.
   EXAM_RESULT_READY: { channels: ["EMAIL"] },
+  GROUP_MEMBER_JOINED: { channels: ["IN_APP", "PUSH"] },
 };
 
 export const isEventType = (v: string): v is EventType => (EVENT_TYPES as readonly string[]).includes(v);

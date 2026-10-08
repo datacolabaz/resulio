@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { authAccounts, groupEmailInvites, groupMembers, users } from "../../drizzle/schema";
+import { authAccounts, groupEmailInvites, groupMembers, shareEvents, users } from "../../drizzle/schema";
 import { resetRateLimits } from "../_core/rateLimit";
 import * as db from "../db";
 import { defaultContext, resolveAccess } from "../modules/access";
@@ -56,19 +56,59 @@ describe("Google auth identity dedup", () => {
 // ---------------------------------------------------------------------------
 
 describe("student entry via group code", () => {
-  it("joins PENDING when auto-join is off, ACTIVE when it's on", async () => {
+  it("a valid invite link joins ACTIVE at once, with no approval step", async () => {
     const teacher = await makeTeacher("Kod müəllimi");
-    const off = await groups.createGroup(teacher.scope, { name: "Auto-join off", subject: "", grade: "", description: "" });
-    const on = await groups.createGroup(teacher.scope, { name: "Auto-join on", subject: "", grade: "", description: "" });
-    await groups.setJoinPolicy(teacher.scope, on.id, "AUTO");
+    const group = await groups.createGroup(teacher.scope, { name: "Instant join", subject: "", grade: "", description: "" });
+    expect(group.joinPolicy).toBe("AUTO");
 
-    const s1 = await makeUser("Tələbə off");
-    const joined1 = await groups.joinByInvite(s1.id, off.inviteCode);
-    expect(joined1.status).toBe("PENDING");
+    const student = await makeUser("Linklə gələn");
+    const joined = await groups.joinByInvite(student.id, group.inviteCode);
+    expect(joined.status).toBe("ACTIVE");
+    expect(joined.activatedPending).toBe(false);
+    const [membership] = await testDb().select().from(groupMembers).where(eq(groupMembers.userId, student.id));
+    expect(membership).toMatchObject({ groupId: group.id, status: "ACTIVE", id: joined.membershipId });
+    expect(await groups.activeGroupIdsOfStudent(student.id)).toEqual([group.id]);
+  });
 
-    const s2 = await makeUser("Tələbə on");
-    const joined2 = await groups.joinByInvite(s2.id, on.inviteCode);
-    expect(joined2.status).toBe("ACTIVE");
+  it("a request left PENDING from the approval era is activated when the student opens the valid link again", async () => {
+    const teacher = await makeTeacher("Köhnə sorğu müəllimi");
+    const group = await groups.createGroup(teacher.scope, { name: "Legacy pending", subject: "", grade: "", description: "" });
+    const student = await makeUser("Gözləyən tələbə (link)");
+    await testDb().insert(groupMembers).values({ groupId: group.id, userId: student.id, status: "PENDING" });
+
+    const joined = await groups.joinByInvite(student.id, group.inviteCode);
+    expect(joined.status).toBe("ACTIVE");
+    expect(joined.activatedPending).toBe(true);
+    await expect(groups.joinByInvite(student.id, group.inviteCode)).rejects.toThrow("ALREADY_MEMBER");
+  });
+
+  it("the startup backfill activates only pending requests recorded as coming through the current, valid link", async () => {
+    const teacher = await makeTeacher("Backfill müəllimi");
+    const viaLink = await groups.createGroup(teacher.scope, { name: "Backfill via link", subject: "", grade: "", description: "" });
+    const regenerated = await groups.createGroup(teacher.scope, { name: "Backfill regenerated", subject: "", grade: "", description: "" });
+    const closed = await groups.createGroup(teacher.scope, { name: "Backfill closed", subject: "", grade: "", description: "" });
+    const [proven, unproven, stale, refused] = await Promise.all(["Sübutlu", "Sübutsuz", "Köhnə kod", "Bağlı qrup"].map((n) => makeUser(n)));
+    await testDb().insert(groupMembers).values([
+      { groupId: viaLink.id, userId: proven.id, status: "PENDING" },
+      { groupId: viaLink.id, userId: unproven.id, status: "PENDING" },
+      { groupId: regenerated.id, userId: stale.id, status: "PENDING" },
+      { groupId: closed.id, userId: refused.id, status: "PENDING" },
+    ]);
+    const joinedVia = (code: string, actorUserId: number) => ({ targetType: "GROUP" as const, targetId: code, channel: "DIRECT" as const, eventType: "JOINED" as const, actorUserId });
+    await testDb().insert(shareEvents).values([joinedVia(viaLink.inviteCode, proven.id), joinedVia(regenerated.inviteCode, stale.id), joinedVia(closed.inviteCode, refused.id)]);
+    await groups.regenerateInviteCode(teacher.scope, regenerated.id);
+    await groups.setJoinPolicy(teacher.scope, closed.id, "MANUAL");
+
+    // The backfill is global; other tests' PENDING rows (none with a recorded link join) may share the table.
+    const activated = (await groups.activatePendingLinkJoins()).filter((a) => [proven.id, unproven.id, stale.id, refused.id].includes(a.userId));
+    expect(activated.map((a) => a.userId)).toEqual([proven.id]);
+    expect(activated[0]).toMatchObject({ groupId: viaLink.id, groupName: "Backfill via link", ownerUserId: teacher.user.id });
+    const statusOf = async (userId: number) => (await testDb().select().from(groupMembers).where(eq(groupMembers.userId, userId)))[0].status;
+    expect(await statusOf(proven.id)).toBe("ACTIVE");
+    expect(await statusOf(unproven.id)).toBe("PENDING");
+    expect(await statusOf(stale.id)).toBe("PENDING");
+    expect(await statusOf(refused.id)).toBe("PENDING");
+    expect((await groups.activatePendingLinkJoins()).map((a) => a.userId)).not.toContain(proven.id);
   });
 
   it("regenerating the code invalidates the old one immediately", async () => {
@@ -115,7 +155,7 @@ describe("student entry via group code", () => {
     await expect(groups.joinByInvite(student.id, group.inviteCode)).rejects.toThrow("INVITE_CODE_INACTIVE");
     await groups.setInviteCodeActive(teacher.scope, group.id, true);
     const joined = await groups.joinByInvite(student.id, group.inviteCode);
-    expect(joined.status).toBe("PENDING");
+    expect(joined.status).toBe("ACTIVE");
   });
 
   it("an expired code refuses joins; clearing the expiry lets them through again", async () => {
@@ -126,7 +166,7 @@ describe("student entry via group code", () => {
     await expect(groups.joinByInvite(student.id, group.inviteCode)).rejects.toThrow("INVITE_CODE_EXPIRED");
     await groups.setInviteCodeExpiry(teacher.scope, group.id, null);
     const joined = await groups.joinByInvite(student.id, group.inviteCode);
-    expect(joined.status).toBe("PENDING");
+    expect(joined.status).toBe("ACTIVE");
   });
 
   it("regenerating the code resets it to active with no expiry", async () => {
@@ -146,10 +186,10 @@ describe("student entry via group code", () => {
 // ---------------------------------------------------------------------------
 
 describe("student entry via email invite", () => {
-  it("activates membership immediately even when the group requires approval, because the email already proves the target", async () => {
+  it("activates membership immediately, even while self-join by code is closed, because the email already proves the target", async () => {
     const teacher = await makeTeacher("Email müəllimi");
     const group = await groups.createGroup(teacher.scope, { name: "Email group", subject: "", grade: "", description: "" });
-    expect(group.joinPolicy).toBe("APPROVAL");
+    await groups.setJoinPolicy(teacher.scope, group.id, "MANUAL");
     const { token } = await emailInvites.createEmailInvite(teacher.scope, group.id, "matching@example.test");
     const student = await makeUser("Email uyğun tələbə");
     await testDb().update(users).set({ email: "matching@example.test" }).where(eq(users.id, student.id));
@@ -273,11 +313,11 @@ describe("direct sign-in default context", () => {
     expect(defaultContext(access, null)).toBeNull();
   });
 
-  it("even a PENDING join is enough to leave the onboarding screen (shows the pending-approval state instead)", async () => {
+  it("even a PENDING join (left from the approval era) is enough to leave the onboarding screen", async () => {
     const teacher = await makeTeacher("Pending default-context müəllimi");
     const group = await groups.createGroup(teacher.scope, { name: "Pending group", subject: "", grade: "", description: "" });
     const student = await makeUser("Gözləyən tələbə");
-    await groups.joinByInvite(student.id, group.inviteCode);
+    await testDb().insert(groupMembers).values({ groupId: group.id, userId: student.id, status: "PENDING" });
     const access = await resolveAccess(student.id);
     expect(access.pendingMemberships).toBe(1);
     expect(defaultContext(access, null)).toBe("learning");

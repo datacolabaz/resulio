@@ -18,7 +18,7 @@ Key facts:
 - Azerbaijani school formats: KSQ and BSQ (small and large summative assessment), plus regular exams.
 - Exam sessions: time is tracked on the server, answers are saved automatically, the exam is submitted automatically when time runs out. Closed questions are graded automatically.
 - Results analytics: median score, most-missed questions, results by topic, and the share of correct, wrong and unanswered answers per question.
-- Groups: students join by invite code, invite link, QR code or email; the teacher approves join requests.
+- Groups: students join by invite code, invite link, QR code or email; joining through a valid invite link adds the student instantly, and the teacher is notified.
 - Assignments and learning materials: shared with a group or by a share link; the teacher sees who opened, downloaded and submitted.
 - AI pre-grading of assignments: the AI checks submissions against the teacher's answer key (the AI can draft a missing key, which students never see), suggests a score and feedback; clear cases can be released automatically, doubtful ones wait for the teacher.
 - AI-drafted exam questions (including in Azerbaijani) that the teacher reviews before use.

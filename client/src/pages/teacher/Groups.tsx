@@ -7,7 +7,7 @@ import { GroupSyllabiPanel } from "@/components/syllabus/CrossLinks";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
+import { SettingToggle } from "@/components/ui/setting-toggle";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { t } from "@/i18n/messages";
@@ -22,7 +22,7 @@ import { Link, useLocation, useParams, useSearch } from "wouter";
 
 const fieldLabel = "text-foreground-secondary";
 const GROUP_FORMATS = ["ONLINE", "IN_PERSON", "HYBRID"] as const;
-const JOIN_POLICIES = ["AUTO", "APPROVAL", "MANUAL"] as const;
+const JOIN_POLICIES = ["AUTO", "MANUAL"] as const;
 type JoinPolicy = (typeof JOIN_POLICIES)[number];
 
 const ACTIVITY_RANGES = [7, 14, 30] as const;
@@ -277,21 +277,23 @@ function GroupFormDialog({
                 </div>
               </div>
             </div>
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <label htmlFor="schedule-visible" className="flex-1 text-sm">
-                <span className="block font-medium">{t("groups.scheduleVisibleLabel")}</span>
-                <span className="block text-xs text-muted-foreground">{t("groups.scheduleVisibleHint")}</span>
-              </label>
-              <Switch id="schedule-visible" checked={f.scheduleVisible} onCheckedChange={(v) => setF({ ...f, scheduleVisible: v })} />
-            </div>
+            <SettingToggle
+              variant="plain"
+              className="mt-3"
+              id="schedule-visible"
+              label={t("groups.scheduleVisibleLabel")}
+              hint={t("groups.scheduleVisibleHint")}
+              checked={f.scheduleVisible}
+              onCheckedChange={(v) => setF({ ...f, scheduleVisible: v })}
+            />
           </div>
-          <div className="flex items-center justify-between gap-3 rounded-xl border p-3">
-            <label htmlFor="scores-visible" className="flex-1 text-sm">
-              <span className="block font-medium">{t("groups.scoresVisibleLabel")}</span>
-              <span className="block text-xs text-muted-foreground">{t("groups.scoresVisibleHint")}</span>
-            </label>
-            <Switch id="scores-visible" checked={f.scoresVisibleToGroup} onCheckedChange={(v) => setF({ ...f, scoresVisibleToGroup: v })} />
-          </div>
+          <SettingToggle
+            id="scores-visible"
+            label={t("groups.scoresVisibleLabel")}
+            hint={t("groups.scoresVisibleHint")}
+            checked={f.scoresVisibleToGroup}
+            onCheckedChange={(v) => setF({ ...f, scoresVisibleToGroup: v })}
+          />
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
@@ -603,13 +605,15 @@ function InviteDialog({
               <p className="mt-2 text-xs text-muted-foreground">{t(`groups.joinPolicyHint.${joinPolicy}`)}</p>
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3">
-              <label htmlFor="code-active" className="flex-1 text-sm">
-                <span className="block font-medium">{t("groups.codeActiveLabel")}</span>
-                <span className="block text-xs text-muted-foreground">{t("groups.codeActiveHint")}</span>
-              </label>
-              <Switch id="code-active" checked={codeActive} disabled={setActive.isPending} onCheckedChange={(v) => setActive.mutate({ groupId, active: v })} />
-            </div>
+            <SettingToggle
+              className="mt-3"
+              id="code-active"
+              label={t("groups.codeActiveLabel")}
+              hint={t("groups.codeActiveHint")}
+              checked={codeActive}
+              disabled={setActive.isPending}
+              onCheckedChange={(v) => setActive.mutate({ groupId, active: v })}
+            />
 
             <div className="mt-3 flex flex-wrap items-end gap-2 rounded-xl border p-3">
               <label className="flex-1 text-sm">

@@ -4,7 +4,7 @@ import { CompletionRulesForm } from "@/components/syllabus/CompletionRulesForm";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
+import { SettingToggle } from "@/components/ui/setting-toggle";
 import { Textarea } from "@/components/ui/textarea";
 import { t } from "@/i18n/messages";
 import { fmtDateTime, fromLocalInput, toLocalInput } from "@/lib/format";
@@ -273,10 +273,15 @@ function GroupVisibility({ groupId, label }: { groupId: string; label: string })
   });
   const id = `vis-${groupId}`;
   return (
-    <div className="flex items-center justify-between gap-3 py-2">
-      <label htmlFor={id} className="min-w-0 break-words text-sm">{label}</label>
-      <Switch id={id} disabled={q.isLoading || set.isPending} checked={!!q.data?.progressVisibleToGroup} onCheckedChange={(v) => set.mutate({ groupId, visible: v })} />
-    </div>
+    <SettingToggle
+      variant="plain"
+      className="py-2"
+      id={id}
+      label={label}
+      disabled={q.isLoading || set.isPending}
+      checked={!!q.data?.progressVisibleToGroup}
+      onCheckedChange={(v) => set.mutate({ groupId, visible: v })}
+    />
   );
 }
 

@@ -17,6 +17,7 @@ import { getMigrationStatus, runAutoMigrate } from "./autoMigrate";
 import { serveStatic, setupVite } from "./vite";
 import { getDb, warnIfGoogleAuthSchemaMissing } from "../db";
 import { sweepExpiredAttempts } from "../modules/attempts";
+import { runPendingLinkJoinBackfill } from "../modules/groupJoin";
 import { sweepResultEmails } from "../modules/resultEmail";
 import { startNotificationWorker } from "../notifications/dispatcher";
 import { runDailyDigest, runDailyRetention } from "../syllabus/analytics";
@@ -132,6 +133,9 @@ async function startServer() {
   startAttemptSweeper();
   startNotificationWorker();
   startSyllabusProgression();
+  if (getDb()) {
+    runPendingLinkJoinBackfill().catch((error) => console.error("[Groups] Pending join backfill failed", error instanceof Error ? error.message : error));
+  }
 
   const port = Number(process.env.PORT || "3000");
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid PORT");

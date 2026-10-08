@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { GROUP_FORMATS, GROUP_JOIN_POLICIES, groupMembers, groups, providerWorkspaces, users } from "../../drizzle/schema";
+import { GROUP_FORMATS, GROUP_JOIN_POLICIES, groupMembers, groups, providerWorkspaces, shareEvents, users } from "../../drizzle/schema";
 import type { ClassScheduleEntry } from "../../shared/schedule";
 import { requireDb, type DbOrTx } from "../db";
 import type { TeacherScope } from "./access";
@@ -118,14 +118,40 @@ export async function addMemberByEmail(scope: TeacherScope, groupId: string, ema
   return { studentId: student.id, status: "ACTIVE" as const };
 }
 
-/** Any signed-in user may request to join another provider's group as a student. */
-export async function joinByInvite(userId: number, inviteCode: string) {
+export type InviteCodeRejection = "INVITE_CODE_INACTIVE" | "INVITE_CODE_EXPIRED" | "GROUP_NOT_ACCEPTING";
+
+/** Why the group's invite code / `/join/<code>` link would refuse a new join at `now`, or null if it lets people in. */
+export function inviteCodeRejection(
+  group: { codeActive: boolean; codeExpiresAt: Date | null; joinPolicy: GroupJoinPolicy },
+  now = new Date(),
+): InviteCodeRejection | null {
+  if (!group.codeActive) return "INVITE_CODE_INACTIVE";
+  if (group.codeExpiresAt && group.codeExpiresAt.getTime() <= now.getTime()) return "INVITE_CODE_EXPIRED";
+  if (group.joinPolicy === "MANUAL") return "GROUP_NOT_ACCEPTING";
+  return null;
+}
+
+/** A membership that just became ACTIVE through the group's invite code/link. */
+export interface LinkJoin {
+  membershipId: number;
+  groupId: string;
+  groupName: string;
+  ownerUserId: number;
+  userId: number;
+}
+
+/**
+ * Any signed-in user may join another provider's group as a student with its invite code/link.
+ * A valid link is all it takes: the membership is ACTIVE at once, nobody approves it. A PENDING
+ * row left over from the retired approval policy is activated by the same visit, since the
+ * student has just presented a valid link again.
+ */
+export async function joinByInvite(userId: number, inviteCode: string): Promise<LinkJoin & { status: "ACTIVE"; activatedPending: boolean }> {
   const db = requireDb();
   const [group] = await db.select().from(groups).where(eq(groups.inviteCode, inviteCode)).limit(1);
   if (!group) throw new AppError("INVITE_NOT_FOUND");
-  if (!group.codeActive) throw new AppError("INVITE_CODE_INACTIVE");
-  if (group.codeExpiresAt && group.codeExpiresAt.getTime() <= Date.now()) throw new AppError("INVITE_CODE_EXPIRED");
-  if (group.joinPolicy === "MANUAL") throw new AppError("GROUP_NOT_ACCEPTING");
+  const rejection = inviteCodeRejection(group);
+  if (rejection) throw new AppError(rejection);
   const ws = await workspaceOwnerOf(group.providerWorkspaceId, db);
   if (ws.ownerUserId === userId) throw new AppError("CANNOT_JOIN_OWN_GROUP");
   const [existing] = await db
@@ -133,13 +159,96 @@ export async function joinByInvite(userId: number, inviteCode: string) {
     .from(groupMembers)
     .where(and(eq(groupMembers.groupId, group.id), eq(groupMembers.userId, userId)))
     .limit(1);
-  if (existing) throw new AppError("ALREADY_MEMBER");
-  const status = group.joinPolicy === "AUTO" ? ("ACTIVE" as const) : ("PENDING" as const);
-  await db.insert(groupMembers).values({ groupId: group.id, userId, membershipRole: "STUDENT", status });
-  return { groupId: group.id, groupName: group.name, ownerUserId: ws.ownerUserId, status };
+  if (existing?.status === "ACTIVE") throw new AppError("ALREADY_MEMBER");
+  const base = { groupId: group.id, groupName: group.name, ownerUserId: ws.ownerUserId, userId, status: "ACTIVE" as const };
+  if (existing) {
+    // Conditional, so of two simultaneous visits only one reports the activation (and notifies).
+    const [res] = await db
+      .update(groupMembers)
+      .set({ status: "ACTIVE" })
+      .where(and(eq(groupMembers.id, existing.id), eq(groupMembers.status, "PENDING")));
+    if (res.affectedRows !== 1) throw new AppError("ALREADY_MEMBER");
+    return { ...base, membershipId: existing.id, activatedPending: true };
+  }
+  const [res] = await db.insert(groupMembers).ignore().values({ groupId: group.id, userId, membershipRole: "STUDENT", status: "ACTIVE" });
+  if (res.affectedRows !== 1) throw new AppError("ALREADY_MEMBER");
+  return { ...base, membershipId: Number(res.insertId), activatedPending: false };
 }
 
-/** Teacher sets whether `joinByInvite` activates immediately, needs approval, or is refused outright. */
+export interface PendingJoinCandidate {
+  userId: number;
+  ownerUserId: number;
+  inviteCode: string;
+  codeActive: boolean;
+  codeExpiresAt: Date | null;
+  joinPolicy: GroupJoinPolicy;
+}
+
+/**
+ * Whether a request still PENDING from the retired approval policy may be activated without the
+ * teacher. Only if share tracking recorded this student joining through the group's *current*
+ * code (`linkJoins` holds `${code}:${userId}` of JOINED events) and that link would still let them
+ * in now. A request made with a code that has since been regenerated, deactivated or expired, a
+ * group closed to self-join, or one without that record stays PENDING for the teacher to decide.
+ */
+export function pendingJoinActivatable(c: PendingJoinCandidate, linkJoins: ReadonlySet<string>, now = new Date()): boolean {
+  if (c.userId === c.ownerUserId) return false;
+  if (inviteCodeRejection(c, now)) return false;
+  return linkJoins.has(`${c.inviteCode}:${c.userId}`);
+}
+
+/**
+ * One-off for requests left PENDING when link joins stopped needing approval (migration 0032):
+ * activates those `pendingJoinActivatable` allows, each with a conditional UPDATE so several
+ * starting instances never activate (or notify about) the same row twice. Safe to run on every
+ * start: nothing creates PENDING rows any more, so later runs find nothing to do.
+ */
+export async function activatePendingLinkJoins(now = new Date()): Promise<LinkJoin[]> {
+  const db = requireDb();
+  const pending = await db
+    .select({
+      membershipId: groupMembers.id,
+      groupId: groups.id,
+      groupName: groups.name,
+      userId: groupMembers.userId,
+      ownerUserId: providerWorkspaces.ownerUserId,
+      inviteCode: groups.inviteCode,
+      codeActive: groups.codeActive,
+      codeExpiresAt: groups.codeExpiresAt,
+      joinPolicy: groups.joinPolicy,
+    })
+    .from(groupMembers)
+    .innerJoin(groups, eq(groups.id, groupMembers.groupId))
+    .innerJoin(providerWorkspaces, eq(providerWorkspaces.id, groups.providerWorkspaceId))
+    .where(eq(groupMembers.status, "PENDING"));
+  if (!pending.length) return [];
+  const proofs = await db
+    .select({ code: shareEvents.targetId, userId: shareEvents.actorUserId })
+    .from(shareEvents)
+    .where(
+      and(
+        eq(shareEvents.targetType, "GROUP"),
+        eq(shareEvents.eventType, "JOINED"),
+        inArray(shareEvents.targetId, [...new Set(pending.map((p) => p.inviteCode))]),
+        inArray(shareEvents.actorUserId, [...new Set(pending.map((p) => p.userId))]),
+      ),
+    );
+  const linkJoins = new Set(proofs.map((p) => `${p.code}:${p.userId}`));
+  const activated: LinkJoin[] = [];
+  for (const p of pending) {
+    if (!pendingJoinActivatable(p, linkJoins, now)) continue;
+    const [res] = await db
+      .update(groupMembers)
+      .set({ status: "ACTIVE" })
+      .where(and(eq(groupMembers.id, p.membershipId), eq(groupMembers.status, "PENDING")));
+    if (res.affectedRows === 1) {
+      activated.push({ membershipId: p.membershipId, groupId: p.groupId, groupName: p.groupName, ownerUserId: p.ownerUserId, userId: p.userId });
+    }
+  }
+  return activated;
+}
+
+/** Teacher sets whether `joinByInvite` activates immediately or is refused outright. */
 export async function setJoinPolicy(scope: TeacherScope, groupId: string, joinPolicy: GroupJoinPolicy) {
   await assertGroupOwner(scope, groupId);
   await requireDb().update(groups).set({ joinPolicy }).where(eq(groups.id, groupId));
@@ -175,6 +284,8 @@ export interface PublicGroupPreview {
   language: string;
   format: GroupFormat;
   joinPolicy: GroupJoinPolicy;
+  /** Why the link would refuse a join right now (null: joining adds the student at once), so the page can say so before anyone presses Join. */
+  rejection: InviteCodeRejection | null;
   description: string | null;
   startDate: Date | null;
   classSchedule: ClassScheduleEntry[];
@@ -193,6 +304,8 @@ export async function publicInvite(inviteCode: string): Promise<PublicGroupPrevi
       language: groups.language,
       format: groups.format,
       joinPolicy: groups.joinPolicy,
+      codeActive: groups.codeActive,
+      codeExpiresAt: groups.codeExpiresAt,
       startDate: groups.startDate,
       classSchedule: groups.classSchedule,
       scheduleVisible: groups.scheduleVisible,
@@ -214,6 +327,7 @@ export async function publicInvite(inviteCode: string): Promise<PublicGroupPrevi
     language: group.language,
     format: group.format,
     joinPolicy: group.joinPolicy,
+    rejection: inviteCodeRejection(group),
     description: group.description,
     startDate: group.scheduleVisible ? group.startDate : null,
     classSchedule: group.scheduleVisible ? group.classSchedule : [],
