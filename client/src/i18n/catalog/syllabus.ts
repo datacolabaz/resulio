@@ -92,7 +92,8 @@ export const syllabus = {
   "syllabus.tab.access": ["Giriş", "Access", "Доступ"],
 
   "syllabus.field.title": ["Ad", "Title", "Название"],
-  "syllabus.field.subject": ["Fənn / sahə", "Subject / field", "Предмет / область"],
+  "syllabus.field.subject": ["Fənn / istiqamət", "Subject / track", "Предмет / направление"],
+  "syllabus.field.subjectPlaceholder": ["məs. Riyaziyyat, İnformatika, AI Engineering", "e.g. Mathematics, Computer Science, AI Engineering", "напр. Математика, Информатика, AI Engineering"],
   "syllabus.field.level": ["Səviyyə", "Level", "Уровень"],
   "syllabus.field.language": ["Tədris dili", "Language", "Язык обучения"],
   "syllabus.field.languageNone": ["Seçilməyib", "Not set", "Не выбран"],

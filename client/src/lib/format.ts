@@ -1,5 +1,6 @@
 import { getLocale, isMessageKey, t } from "@/i18n/messages";
 import { formatDateTime, formatDay, formatDayKeyShort, formatDuration, formatRelative, formatTime, type DateInput } from "@/lib/dates";
+import { GROUP_LEVELS, type GroupLevel, type GroupType } from "@shared/groupType";
 import { sortBySchedule, type ClassScheduleEntry } from "@shared/schedule";
 
 export function errorText(error: unknown): string {
@@ -71,6 +72,26 @@ export const shareChannelLabel = (v: string | null | undefined) => label("shareC
 export const teachingSubcategoryLabel = (v: string | null | undefined) => label("teachingSubcategory", v);
 /** Known language codes (az/ru/en) get their catalog label; legacy free-text values are shown as-is. */
 export const groupLanguageLabel = (v: string | null | undefined) => label("groupLanguage", v);
+/** A known level key in the reader's language; a level the teacher typed themselves, as typed. */
+export const groupLevelLabel = (v: string) => ((GROUP_LEVELS as readonly string[]).includes(v) ? t(`groups.level.${v as GroupLevel}`) : v);
+
+/** The group's Fənn + Sinif (school class) or İstiqamət + Səviyyə (course), labelled, skipping empty ones. */
+export function groupFacts(g: { groupType?: GroupType; subject: string; grade: string; level?: string }): { label: string; value: string }[] {
+  const facts =
+    g.groupType === "SCHOOL"
+      ? [
+          { label: t("groups.field.subject"), value: g.subject },
+          { label: t("groups.field.class"), value: g.grade },
+        ]
+      : [
+          { label: t("groups.field.direction"), value: g.subject },
+          { label: t("groups.field.level"), value: groupLevelLabel(g.level ?? "") },
+        ];
+  return facts.filter((f) => f.value.trim());
+}
+
+/** e.g. "Fənn: Riyaziyyat · Sinif: 9A"; "" when neither is set. */
+export const groupFactsLine = (g: Parameters<typeof groupFacts>[0]) => groupFacts(g).map((f) => `${f.label}: ${f.value}`).join(" · ");
 /** e.g. "Çərşənbə 17:00, Şənbə 11:00", sorted Monday-first; "" when the group has no weekly schedule. */
 export function scheduleSummary(entries: readonly ClassScheduleEntry[] | null | undefined): string {
   if (!entries?.length) return "";

@@ -1,5 +1,6 @@
 import { normalizeEmail, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@shared/auth";
 import { COOKIE_NAME } from "@shared/const";
+import { defaultGroupType, GROUP_CLASS_MAX, GROUP_LEVEL_MAX, GROUP_TYPES } from "@shared/groupType";
 import { REFERRAL_SOURCES } from "@shared/referralSources";
 import { CLASS_TIME_PATTERN, GROUP_LANGUAGES, WEEK_DAYS } from "@shared/schedule";
 import { TEACHING_CATEGORIES } from "@shared/teachingCategories";
@@ -50,6 +51,7 @@ import { AppError } from "./modules/errors";
 import * as groupEmailInvites from "./modules/groupEmailInvites";
 import * as groupInviteLinks from "./modules/groupInviteLinks";
 import * as groupJoin from "./modules/groupJoin";
+import * as groupProfiles from "./modules/groupProfiles";
 import * as groups from "./modules/groups";
 import * as motivation from "./modules/motivation";
 import * as notifications from "./modules/notifications";
@@ -290,8 +292,14 @@ const classScheduleEntryInput = z.object({
 
 const groupInput = z.object({
   name: z.string().trim().min(2).max(120),
+  /** Optional so an older client mid-deploy still saves; the server then infers it (groups.typeFieldsOf). */
+  groupType: z.enum(GROUP_TYPES).optional(),
+  /** Fənn (school class) or İstiqamət (course). */
   subject: z.string().trim().max(120).default(""),
-  grade: z.string().trim().max(40).default(""),
+  /** Sinif — kept only for school classes. */
+  grade: z.string().trim().max(GROUP_CLASS_MAX).default(""),
+  /** Səviyyə — kept only for courses; a GROUP_LEVELS key or free text. */
+  level: z.string().trim().max(GROUP_LEVEL_MAX).default(""),
   description: z.string().trim().max(2000).default(""),
   language: z.enum(GROUP_LANGUAGES).or(z.literal("")).default(""),
   format: z.enum(GROUP_FORMATS).default("ONLINE"),
@@ -312,6 +320,14 @@ function groupPatchForDb<T extends { startDate?: string | null }>({ startDate, .
 
 const teacherGroupsRouter = router({
   list: teacherProcedure.query(({ ctx }) => groups.teacherGroups(ctx.scope)),
+  /** The type a new group's form starts on: the latest group's, else the workspace category's. */
+  newGroupDefaults: teacherProcedure.query(async ({ ctx }) => ({
+    groupType: defaultGroupType({
+      latestGroupType: await groupProfiles.latestGroupType(ctx.scope.workspaceId),
+      teachingCategory: ctx.workspace.teachingCategory,
+      providerType: ctx.workspace.providerType,
+    }),
+  })),
   overview: teacherProcedure.query(({ ctx }) => analytics.groupsOverview(ctx.scope)),
   create: teacherProcedure.input(groupInput).mutation(({ ctx, input }) => groups.createGroup(ctx.scope, groupPatchForDb(input))),
   update: teacherProcedure
@@ -319,12 +335,18 @@ const teacherGroupsRouter = router({
       z.object({
         id: entityId,
         // Without these overrides `.partial()` would still fill in defaults and flip settings the patch never mentioned.
-        patch: groupInput.partial().extend({ scheduleVisible: z.boolean().optional(), scoresVisibleToGroup: z.boolean().optional() }),
+        patch: groupInput.partial().extend({
+          subject: groupInput.shape.subject.removeDefault().optional(),
+          grade: groupInput.shape.grade.removeDefault().optional(),
+          level: groupInput.shape.level.removeDefault().optional(),
+          scheduleVisible: z.boolean().optional(),
+          scoresVisibleToGroup: z.boolean().optional(),
+        }),
       }),
     )
     .mutation(({ ctx, input }) => groups.renameGroup(ctx.scope, input.id, groupPatchForDb(input.patch))),
   detail: teacherProcedure.input(z.object({ id: entityId })).query(async ({ ctx, input }) => {
-    const group = await groups.assertGroupOwner(ctx.scope, input.id);
+    const group = await groups.teacherGroup(ctx.scope, input.id);
     const members = await groups.groupMembersList(ctx.scope, input.id);
     return { ...group, members };
   }),

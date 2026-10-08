@@ -1,10 +1,12 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { GROUP_FORMATS, GROUP_JOIN_POLICIES, groupMembers, groups, providerWorkspaces, shareEvents, users } from "../../drizzle/schema";
+import { classifyLegacyGroup, GROUP_CLASS_MAX, groupFieldsForType, type GroupType, type GroupTypeFields } from "../../shared/groupType";
 import type { ClassScheduleEntry } from "../../shared/schedule";
 import { requireDb, type DbOrTx } from "../db";
 import type { TeacherScope } from "./access";
 import { AppError } from "./errors";
+import { groupProfileOf, saveProfile, withProfiles } from "./groupProfiles";
 
 export type GroupFormat = (typeof GROUP_FORMATS)[number];
 export type GroupJoinPolicy = (typeof GROUP_JOIN_POLICIES)[number];
@@ -19,13 +21,22 @@ export async function assertGroupOwner(scope: TeacherScope, groupId: string, db:
   return group;
 }
 
+/** `assertGroupOwner` plus the group's type, Sinif and Səviyyə as the forms and pages show them. */
+export async function teacherGroup(scope: TeacherScope, groupId: string) {
+  const [group] = await withProfiles([await assertGroupOwner(scope, groupId)]);
+  return group;
+}
+
 export async function teacherGroups(scope: TeacherScope) {
   const db = requireDb();
-  const rows = await db
-    .select()
-    .from(groups)
-    .where(eq(groups.providerWorkspaceId, scope.workspaceId))
-    .orderBy(groups.createdAt);
+  const rows = await withProfiles(
+    await db
+      .select()
+      .from(groups)
+      .where(eq(groups.providerWorkspaceId, scope.workspaceId))
+      .orderBy(groups.createdAt),
+    db,
+  );
   if (!rows.length) return [];
   const counts = await db
     .select({
@@ -53,24 +64,50 @@ export interface GroupScheduleInput {
   scoresVisibleToGroup: boolean;
 }
 
-export async function createGroup(
-  scope: TeacherScope,
-  data: { name: string; subject: string; grade: string; description: string } & Partial<GroupScheduleInput>,
-) {
-  const db = requireDb();
-  const id = nanoid();
-  await db.insert(groups).values({ id, providerWorkspaceId: scope.workspaceId, inviteCode: nanoid(10).toUpperCase(), ...data });
-  return assertGroupOwner(scope, id);
+type GroupIdentity = { name: string; subject: string; grade: string; description: string; groupType: GroupType; level: string };
+
+/**
+ * Stores the type's fields: Fənn/İstiqamət in `subject`, Sinif in `grade`, type and Səviyyə in
+ * group_profiles. Before migration 0040 a course level falls back to `grade`, so nothing typed is
+ * lost and the read-time classifier still finds it.
+ */
+async function storeProfile(groupId: string, fields: GroupTypeFields) {
+  const saved = await saveProfile(groupId, { groupType: fields.groupType, level: fields.level });
+  if (!saved && fields.groupType === "COURSE" && fields.level) {
+    await requireDb().update(groups).set({ grade: fields.level.slice(0, GROUP_CLASS_MAX) }).where(eq(groups.id, groupId));
+  }
 }
 
-export async function renameGroup(
-  scope: TeacherScope,
-  groupId: string,
-  patch: Partial<{ name: string; subject: string; grade: string; description: string } & GroupScheduleInput>,
-) {
-  await assertGroupOwner(scope, groupId);
-  await requireDb().update(groups).set(patch).where(eq(groups.id, groupId));
-  return assertGroupOwner(scope, groupId);
+/** A caller that sends no type (seed, an older client mid-deploy) gets the type its values point to. */
+export function typeFieldsOf(input: { groupType?: GroupType; subject?: string; grade?: string; level?: string }): GroupTypeFields {
+  const subject = input.subject ?? "";
+  if (input.groupType) return groupFieldsForType({ groupType: input.groupType, subject, grade: input.grade ?? "", level: input.level ?? "" });
+  const c = classifyLegacyGroup({ subject, grade: input.grade ?? "" });
+  return groupFieldsForType({ groupType: c.groupType, subject, grade: c.grade, level: input.level || c.level });
+}
+
+export async function createGroup(scope: TeacherScope, data: Partial<GroupIdentity> & { name: string } & Partial<GroupScheduleInput>) {
+  const { groupType, level, subject, grade, ...rest } = data;
+  const fields = typeFieldsOf({ groupType, level, subject, grade });
+  const id = nanoid();
+  await requireDb()
+    .insert(groups)
+    .values({ id, providerWorkspaceId: scope.workspaceId, inviteCode: nanoid(10).toUpperCase(), ...rest, subject: fields.subject, grade: fields.grade });
+  await storeProfile(id, fields);
+  return teacherGroup(scope, id);
+}
+
+export async function renameGroup(scope: TeacherScope, groupId: string, patch: Partial<GroupIdentity & GroupScheduleInput>) {
+  const { groupType, level, subject, grade, ...rest } = patch;
+  const current = await teacherGroup(scope, groupId);
+  const touchesType = groupType !== undefined || level !== undefined || subject !== undefined || grade !== undefined;
+  const fields = touchesType
+    ? groupFieldsForType({ groupType: groupType ?? current.groupType, subject: subject ?? current.subject, grade: grade ?? current.grade, level: level ?? current.level })
+    : null;
+  const set = fields ? { ...rest, subject: fields.subject, grade: fields.grade } : rest;
+  if (Object.keys(set).length) await requireDb().update(groups).set(set).where(eq(groups.id, groupId));
+  if (fields) await storeProfile(groupId, fields);
+  return teacherGroup(scope, groupId);
 }
 
 export async function groupMembersList(scope: TeacherScope, groupId: string) {
@@ -300,8 +337,13 @@ export async function setInviteCodeExpiry(scope: TeacherScope, groupId: string, 
 
 export interface PublicGroupPreview {
   name: string;
+  /** Fənn (school class) or İstiqamət (course). */
   subject: string;
+  groupType: GroupType;
+  /** Sinif; empty for courses. */
   grade: string;
+  /** Səviyyə (a GROUP_LEVELS key or free text); empty for school classes. */
+  level: string;
   teacherName: string;
   language: string;
   format: GroupFormat;
@@ -317,8 +359,10 @@ export interface PublicGroupPreview {
 }
 
 export async function publicInvite(inviteCode: string): Promise<PublicGroupPreview | null> {
-  const [group] = await requireDb()
+  const db = requireDb();
+  const [group] = await db
     .select({
+      id: groups.id,
       name: groups.name,
       subject: groups.subject,
       grade: groups.grade,
@@ -335,6 +379,7 @@ export async function publicInvite(inviteCode: string): Promise<PublicGroupPrevi
       providerTitle: providerWorkspaces.title,
       teachingCategory: providerWorkspaces.teachingCategory,
       teachingSubcategory: providerWorkspaces.teachingSubcategory,
+      providerType: providerWorkspaces.providerType,
     })
     .from(groups)
     .innerJoin(providerWorkspaces, eq(providerWorkspaces.id, groups.providerWorkspaceId))
@@ -344,7 +389,7 @@ export async function publicInvite(inviteCode: string): Promise<PublicGroupPrevi
   return {
     name: group.name,
     subject: group.subject,
-    grade: group.grade,
+    ...(await groupProfileOf(group, db)),
     teacherName: group.providerName || group.providerTitle,
     language: group.language,
     format: group.format,
@@ -450,11 +495,14 @@ export async function teacherStudents(scope: TeacherScope) {
 
 /** Groups the user belongs to as a student, with the provider's public name. */
 export async function studentGroups(userId: number) {
-  const rows = await requireDb()
+  const db = requireDb();
+  const rows = await db
     .select({
       id: groups.id,
       name: groups.name,
       subject: groups.subject,
+      grade: groups.grade,
+      providerWorkspaceId: groups.providerWorkspaceId,
       status: groupMembers.status,
       providerName: providerWorkspaces.publicDisplayName,
       providerTitle: providerWorkspaces.title,
@@ -463,5 +511,5 @@ export async function studentGroups(userId: number) {
     .innerJoin(groups, eq(groups.id, groupMembers.groupId))
     .innerJoin(providerWorkspaces, eq(providerWorkspaces.id, groups.providerWorkspaceId))
     .where(and(eq(groupMembers.userId, userId), eq(groupMembers.membershipRole, "STUDENT")));
-  return rows.map(({ providerName, providerTitle, ...g }) => ({ ...g, provider: providerName || providerTitle }));
+  return (await withProfiles(rows, db)).map(({ providerName, providerTitle, providerWorkspaceId: _ws, ...g }) => ({ ...g, provider: providerName || providerTitle }));
 }

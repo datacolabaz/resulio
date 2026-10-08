@@ -2,10 +2,12 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { groupInviteLinks, groupMembers, groups, providerWorkspaces, users, type GroupInviteLink } from "../../drizzle/schema";
+import type { GroupType } from "../../shared/groupType";
 import type { ClassScheduleEntry } from "../../shared/schedule";
 import { requireDb } from "../db";
 import type { TeacherScope } from "./access";
 import { AppError } from "./errors";
+import { groupProfileOf } from "./groupProfiles";
 import { assertGroupOwner, type GroupFormat } from "./groups";
 
 /** 32 random bytes = 256 bits, base64url-encoded to exactly 43 URL-safe characters. */
@@ -147,7 +149,9 @@ export const inviteLinkShareTarget = (linkId: string) => `link:${linkId}`;
 export interface InviteLinkGroupPreview {
   name: string;
   subject: string;
+  groupType: GroupType;
   grade: string;
+  level: string;
   teacherName: string;
   language: string;
   format: GroupFormat;
@@ -184,8 +188,10 @@ export async function publicInviteLinkPreview(token: string, viewerId: number | 
   const state = previewState(link, viewerId);
   if (state !== "ACTIVE" && state !== "REDEEMED_BY_YOU") return { state };
   if (!link) return { state: "NOT_FOUND" };
-  const [g] = await requireDb()
+  const db = requireDb();
+  const [g] = await db
     .select({
+      id: groups.id,
       name: groups.name,
       subject: groups.subject,
       grade: groups.grade,
@@ -199,6 +205,7 @@ export async function publicInviteLinkPreview(token: string, viewerId: number | 
       providerTitle: providerWorkspaces.title,
       teachingCategory: providerWorkspaces.teachingCategory,
       teachingSubcategory: providerWorkspaces.teachingSubcategory,
+      providerType: providerWorkspaces.providerType,
     })
     .from(groups)
     .innerJoin(providerWorkspaces, eq(providerWorkspaces.id, groups.providerWorkspaceId))
@@ -211,7 +218,7 @@ export async function publicInviteLinkPreview(token: string, viewerId: number | 
     group: {
       name: g.name,
       subject: g.subject,
-      grade: g.grade,
+      ...(await groupProfileOf(g, db)),
       teacherName: g.providerName || g.providerTitle,
       language: g.language,
       format: g.format,

@@ -15,6 +15,7 @@ import {
   errorText,
   fmtDateTime,
   fmtDuration,
+  groupFactsLine,
   heldLabel,
   ITEM_STATUS_COLORS,
   itemStatusLabel,
@@ -400,7 +401,7 @@ export function StudentGroups() {
                 {list.data!.map((g) => (
                   <li key={g.id} id={`group-${g.id}`} className="scroll-mt-20 py-2 text-sm">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="min-w-0 break-words">{g.name} <span className="text-xs text-muted-foreground">{g.subject}</span></span>
+                      <span className="min-w-0 break-words">{g.name} <span className="text-xs text-muted-foreground">{groupFactsLine(g)}</span></span>
                       <span className="flex items-center gap-2">
                         {g.status === "ACTIVE" ? (
                           <>

@@ -11,16 +11,20 @@ import { SettingToggle } from "@/components/ui/setting-toggle";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { t } from "@/i18n/messages";
-import { errorText, fmtDateTime, liveLabel } from "@/lib/format";
+import { errorText, fmtDateTime, groupFactsLine, groupLevelLabel, liveLabel } from "@/lib/format";
+import { LEVEL_OPTIONS, typeDraftOf, typeFieldKeys, typePayload, type LevelChoice } from "@/lib/groupForm";
 import { liveStatus } from "@/lib/status";
 import { trpc } from "@/lib/trpc";
+import { GROUP_CLASS_MAX, GROUP_LEVEL_MAX, GROUP_TYPES, type GroupType } from "@shared/groupType";
 import { GROUP_LANGUAGES, WEEK_DAYS, type ClassScheduleEntry, type GroupLanguage, type WeekDay } from "@shared/schedule";
 import { SHARE_SOURCE_PARAM } from "@shared/shareTracking";
-import { useEffect, useState } from "react";
+import { BookOpen, School } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useParams, useSearch } from "wouter";
 
 const fieldLabel = "text-foreground-secondary";
+const selectCls = "mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground";
 const GROUP_FORMATS = ["ONLINE", "IN_PERSON", "HYBRID"] as const;
 const JOIN_POLICIES = ["AUTO", "MANUAL"] as const;
 type JoinPolicy = (typeof JOIN_POLICIES)[number];
@@ -128,7 +132,7 @@ export function GroupsPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="break-words font-semibold">{g.name}</div>
-                      <div className="text-xs text-muted-foreground">{[g.subject, g.grade].filter(Boolean).join(" · ") || "—"}</div>
+                      <div className="text-xs text-muted-foreground">{[t(`groups.type.${g.groupType}`), groupFactsLine(g)].filter(Boolean).join(" · ")}</div>
                     </div>
                     {g.pendingCount > 0 && <StatusBadge tone="warning" className="shrink-0">{t("groups.requestsCount", { count: g.pendingCount })}</StatusBadge>}
                   </div>
@@ -151,8 +155,10 @@ export function GroupsPage() {
 interface GroupFormInitial {
   id: string;
   name: string;
+  groupType: GroupType;
   subject: string;
   grade: string;
+  level: string;
   description: string | null;
   language: string;
   format: (typeof GROUP_FORMATS)[number];
@@ -160,6 +166,51 @@ interface GroupFormInitial {
   classSchedule: ClassScheduleEntry[];
   scheduleVisible: boolean;
   scoresVisibleToGroup: boolean;
+}
+
+const TYPE_ICONS = { SCHOOL: School, COURSE: BookOpen } as const;
+
+/** Two-option segmented control (a radio group: arrow keys move the choice, as with native radios). */
+function GroupTypeSwitch({ value, onChange }: { value: GroupType; onChange: (v: GroupType) => void }) {
+  const labelId = useId();
+  const refs = useRef<Array<HTMLButtonElement | null>>([]);
+  function onKeyDown(e: React.KeyboardEvent, index: number) {
+    const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    const next = (index + step + GROUP_TYPES.length) % GROUP_TYPES.length;
+    onChange(GROUP_TYPES[next]);
+    refs.current[next]?.focus();
+  }
+  return (
+    <div className="text-sm">
+      <span id={labelId} className={fieldLabel}>{t("groups.type.label")}</span>
+      <div role="radiogroup" aria-labelledby={labelId} className="mt-1 grid grid-cols-2 gap-1 rounded-lg border border-input bg-muted p-1">
+        {GROUP_TYPES.map((type, i) => {
+          const selected = value === type;
+          const Icon = TYPE_ICONS[type];
+          return (
+            <button
+              key={type}
+              ref={(el) => { refs.current[i] = el; }}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              tabIndex={selected ? 0 : -1}
+              onClick={() => onChange(type)}
+              onKeyDown={(e) => onKeyDown(e, i)}
+              className={`flex min-h-9 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-center font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                selected ? "bg-card text-foreground shadow-sm ring-1 ring-input" : "text-foreground-secondary hover:text-foreground"
+              }`}
+            >
+              <Icon className={`h-4 w-4 shrink-0 ${selected ? "text-primary" : ""}`} aria-hidden />
+              {t(`groups.type.${type}`)}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 /** `startDate` ↔ a bare YYYY-MM-DD for <input type="date">; the server stores it as a timestamp. */
@@ -181,10 +232,11 @@ function GroupFormDialog({
   onCreated?: (id: string) => void;
 }) {
   const utils = trpc.useUtils();
+  const defaults = trpc.teacher.groups.newGroupDefaults.useQuery(undefined, { enabled: open && !initial });
+  const [typeTouched, setTypeTouched] = useState(false);
   const [f, setF] = useState({
     name: initial?.name ?? "",
-    subject: initial?.subject ?? "",
-    grade: initial?.grade ?? "",
+    ...typeDraftOf(initial, "COURSE"),
     description: initial?.description ?? "",
     // Legacy free-text language values (from before this became a dropdown) don't match a known
     // option, so they fall back to unset rather than silently submitting an invalid value.
@@ -195,13 +247,21 @@ function GroupFormDialog({
     scheduleVisible: initial?.scheduleVisible ?? false,
     scoresVisibleToGroup: initial?.scoresVisibleToGroup ?? true,
   });
+  const defaultType = defaults.data?.groupType;
+  useEffect(() => {
+    if (!initial && !typeTouched && defaultType) setF((prev) => ({ ...prev, groupType: defaultType }));
+  }, [defaultType]);
   const done = () => { void utils.teacher.groups.invalidate(); onOpenChange(false); };
   const create = trpc.teacher.groups.create.useMutation({
     onSuccess: (g) => { onCreated?.(g.id); done(); },
     onError: (e) => toast.error(errorText(e)),
   });
   const update = trpc.teacher.groups.update.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
-  const payload = () => ({ ...f, startDate: f.startDate ? new Date(f.startDate).toISOString() : null });
+  const payload = () => {
+    const { groupType, subject, grade, levelChoice, levelText, ...rest } = f;
+    return { ...rest, ...typePayload({ groupType, subject, grade, levelChoice, levelText }), startDate: f.startDate ? new Date(f.startDate).toISOString() : null };
+  };
+  const keys = typeFieldKeys(f.groupType);
   function toggleDay(day: WeekDay) {
     setF((prev) => ({
       ...prev,
@@ -218,20 +278,57 @@ function GroupFormDialog({
       <DialogContent>
         <DialogHeader><DialogTitle>{initial ? t("groups.editTitle") : t("groups.newTitle")}</DialogTitle></DialogHeader>
         <DialogBody className="grid content-start gap-3">
+          <GroupTypeSwitch
+            value={f.groupType}
+            onChange={(groupType) => {
+              setTypeTouched(true);
+              setF({ ...f, groupType });
+            }}
+          />
           <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("common.name") })}</span><Input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="text-sm"><span className={fieldLabel}>{t("common.subject")}</span><Input value={f.subject} onChange={(e) => setF({ ...f, subject: e.target.value })} /></label>
-            <label className="text-sm"><span className={fieldLabel}>{t("common.gradeLevel")}</span><Input value={f.grade} onChange={(e) => setF({ ...f, grade: e.target.value })} /></label>
+            <label className="text-sm">
+              <span className={fieldLabel}>{t(keys.subject)}</span>
+              <Input maxLength={120} value={f.subject} placeholder={t(keys.subjectPlaceholder)} onChange={(e) => setF({ ...f, subject: e.target.value })} />
+            </label>
+            {f.groupType === "SCHOOL" ? (
+              <label className="text-sm">
+                <span className={fieldLabel}>{t(keys.second)}</span>
+                <Input maxLength={GROUP_CLASS_MAX} value={f.grade} placeholder={t("groups.field.classPlaceholder")} onChange={(e) => setF({ ...f, grade: e.target.value })} />
+              </label>
+            ) : (
+              <div className="grid content-start gap-2 text-sm">
+                <label>
+                  <span className={fieldLabel}>{t(keys.second)}</span>
+                  <select className={selectCls} value={f.levelChoice} onChange={(e) => setF({ ...f, levelChoice: e.target.value as LevelChoice })}>
+                    <option value="">{t("common.selectPlaceholder")}</option>
+                    {LEVEL_OPTIONS.map((level) => (
+                      <option key={level} value={level}>{groupLevelLabel(level)}</option>
+                    ))}
+                    <option value="OTHER">{t("groups.level.other")}</option>
+                  </select>
+                </label>
+                {f.levelChoice === "OTHER" && (
+                  <Input
+                    aria-label={t("groups.level.otherLabel")}
+                    maxLength={GROUP_LEVEL_MAX}
+                    value={f.levelText}
+                    placeholder={t("groups.level.otherPlaceholder")}
+                    onChange={(e) => setF({ ...f, levelText: e.target.value })}
+                  />
+                )}
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <label className="text-sm">
               <span className={fieldLabel}>{t("common.language")}</span>
               <select
-                className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground"
+                className={selectCls}
                 value={f.language}
                 onChange={(e) => setF({ ...f, language: e.target.value as GroupLanguage | "" })}
               >
-                <option value="">{t("common.languageUnset")}</option>
+                <option value="">{t("common.selectPlaceholder")}</option>
                 {GROUP_LANGUAGES.map((code) => (
                   <option key={code} value={code}>{t(`groupLanguage.${code}`)}</option>
                 ))}
@@ -240,7 +337,7 @@ function GroupFormDialog({
             <label className="text-sm">
               <span className={fieldLabel}>{t("common.format")}</span>
               <select
-                className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground"
+                className={selectCls}
                 value={f.format}
                 onChange={(e) => setF({ ...f, format: e.target.value as (typeof GROUP_FORMATS)[number] })}
               >
@@ -694,7 +791,7 @@ export function GroupDetailPage() {
       ) : (
         <div className="space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="text-sm text-muted-foreground">{[g.subject, g.grade].filter(Boolean).join(" · ")}</div>
+            <div className="text-sm text-muted-foreground">{[t(`groups.type.${g.groupType}`), groupFactsLine(g)].filter(Boolean).join(" · ")}</div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setEditOpen(true)}>{t("common.edit")}</Button>
               <Button onClick={() => setInviteOpen(true)}>{t("groups.invite")}</Button>

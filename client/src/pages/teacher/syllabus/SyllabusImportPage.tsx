@@ -78,7 +78,7 @@ function CourseFields({ s, set }: { s: Review; set: (s: Review) => void }) {
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block text-sm">
             <span className={fieldLabel}>{t("syllabus.field.subject")}</span>
-            <Input value={s.subject} maxLength={128} onChange={(e) => set(reviewEdit.syllabus(s, { subject: e.target.value }))} />
+            <Input value={s.subject} maxLength={128} onChange={(e) => set(reviewEdit.syllabus(s, { subject: e.target.value }))} placeholder={t("syllabus.field.subjectPlaceholder")} />
           </label>
           <label className="block text-sm">
             <span className={fieldLabel}>{t("syllabus.field.level")}</span>
