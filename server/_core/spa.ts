@@ -29,7 +29,14 @@ export function mountSpa(app: Express, distPath: string) {
   const indexHtml = path.resolve(distPath, "index.html");
 
   app.use("/assets", express.static(path.join(distPath, "assets"), { immutable: true, maxAge: "1y", fallthrough: false }));
-  app.use(express.static(distPath, { index: false }));
+  app.use(
+    express.static(distPath, {
+      index: false,
+      setHeaders: (res, file) => {
+        if (path.basename(file) === "sw.js") res.setHeader("Cache-Control", "no-cache");
+      },
+    }),
+  );
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "NOT_FOUND" });
   });

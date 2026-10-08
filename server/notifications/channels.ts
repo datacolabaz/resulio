@@ -1,8 +1,9 @@
 import { sendEmail } from "../_core/email";
 import { notify } from "../modules/notifications";
 import type { Channel, EventType } from "./events";
-import { activeTokens, pushProvider, revokeTokens } from "./push";
+import { activeTokens, pushProvider, revokeTokens, type PushProvider, type PushProviderName, type PushTicket } from "./push";
 import type { RenderedNotification } from "./render";
+import { dbStoreOps, deliverWebPush, subscriptionsForUser, webPushSendFromEnv, type WebPushSend, type WebPushStoreOps, type WebPushTarget } from "./webPush";
 
 export type ChannelResult =
   | { status: "SENT" }
@@ -31,23 +32,60 @@ const email: ChannelAdapter = {
   },
 };
 
-const push: ChannelAdapter = {
-  async send(userId, content, event) {
-    const provider = pushProvider();
-    if (!provider) return { status: "SKIPPED", reason: "PUSH_NOT_CONFIGURED" };
-    const tokens = await activeTokens(userId, provider.name);
-    if (!tokens.length) return { status: "SKIPPED", reason: "NO_DEVICE" };
-    let tickets;
+export interface PushAdapterDeps {
+  expo: () => PushProvider | null;
+  expoTokens: (userId: number, provider: PushProviderName) => Promise<string[]>;
+  revokeExpoTokens: (tokens: string[]) => Promise<void>;
+  web: () => WebPushSend | null;
+  webTargets: (userId: number) => Promise<WebPushTarget[]>;
+  webOps: WebPushStoreOps;
+}
+
+type Outcome = { ok: true } | { ok: false; retryable: boolean; error: string };
+
+/** PUSH goes to every device the user has: mobile app tokens (Expo) and browser subscriptions (Web Push). */
+export function createPushAdapter(deps: PushAdapterDeps): ChannelAdapter {
+  async function viaExpo(provider: PushProvider, userId: number, content: RenderedNotification, event: EventType): Promise<Outcome[]> {
+    const tokens = await deps.expoTokens(userId, provider.name);
+    if (!tokens.length) return [];
+    let tickets: PushTicket[];
     try {
       tickets = await provider.send(tokens, { title: content.title, body: content.body, data: { event, path: content.path } });
     } catch (error) {
-      return { status: "FAILED", reason: error instanceof Error ? error.message : "PUSH_ERROR", retryable: true };
+      return [{ ok: false, retryable: true, error: error instanceof Error ? error.message : "PUSH_ERROR" }];
     }
-    await revokeTokens(tokens.filter((_, i) => { const t = tickets[i]; return t && !t.ok && t.invalidToken; }));
-    if (tickets.some((t) => t.ok)) return { status: "SENT" };
-    const first = tickets.find((t): t is Extract<typeof t, { ok: false }> => !t.ok);
-    return { status: "FAILED", reason: first?.error ?? "PUSH_ERROR", retryable: false };
-  },
-};
+    await deps.revokeExpoTokens(tokens.filter((_, i) => { const t = tickets[i]; return t && !t.ok && t.invalidToken; }));
+    return tickets.map((t) => (t.ok ? { ok: true } : { ok: false, retryable: false, error: t.error }));
+  }
+
+  async function viaWeb(send: WebPushSend, userId: number, content: RenderedNotification, event: EventType): Promise<Outcome[]> {
+    const targets = await deps.webTargets(userId);
+    if (!targets.length) return [];
+    const summary = await deliverWebPush(targets, { title: content.title, body: content.body, url: content.path, tag: event.toLowerCase() }, send, deps.webOps);
+    return summary.results.map((r) => (r.ok ? { ok: true } : { ok: false, retryable: r.retryable, error: r.error }));
+  }
+
+  return {
+    async send(userId, content, event) {
+      const expo = deps.expo();
+      const web = deps.web();
+      if (!expo && !web) return { status: "SKIPPED", reason: "PUSH_NOT_CONFIGURED" };
+      const outcomes = [...(expo ? await viaExpo(expo, userId, content, event) : []), ...(web ? await viaWeb(web, userId, content, event) : [])];
+      if (!outcomes.length) return { status: "SKIPPED", reason: "NO_DEVICE" };
+      if (outcomes.some((o) => o.ok)) return { status: "SENT" };
+      const failures = outcomes.filter((o): o is Extract<Outcome, { ok: false }> => !o.ok);
+      return { status: "FAILED", reason: failures[0]?.error ?? "PUSH_ERROR", retryable: failures.some((f) => f.retryable) };
+    },
+  };
+}
+
+const push = createPushAdapter({
+  expo: () => pushProvider(),
+  expoTokens: activeTokens,
+  revokeExpoTokens: revokeTokens,
+  web: () => webPushSendFromEnv(),
+  webTargets: subscriptionsForUser,
+  webOps: dbStoreOps,
+});
 
 export const ADAPTERS: Record<Channel, ChannelAdapter> = { IN_APP: inApp, EMAIL: email, PUSH: push };

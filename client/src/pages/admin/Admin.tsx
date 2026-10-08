@@ -13,6 +13,7 @@ import { ADMIN_REASON_MIN, type AdminPermission } from "@shared/adminPermissions
 import { useState } from "react";
 import { toast } from "sonner";
 import { Link, Redirect, Route, Switch, useLocation } from "wouter";
+import AdminAnnouncementsPage from "./AdminAnnouncements";
 
 /**
  * Minimal, functional admin console — list/suspend/unsuspend/revoke-sessions, an audit log
@@ -27,10 +28,12 @@ function useAdmin() {
 
 function AdminNav() {
   const [location] = useLocation();
+  const { can } = useAdmin();
   const tabs: Array<[string, string]> = [
     ["/admin/users", t("admin.nav.users")],
     ["/admin/audit", t("admin.nav.audit")],
     ["/admin/security", t("admin.nav.security")],
+    ...(can("announcements.view") ? ([["/admin/announcements", t("admin.nav.announcements")]] as Array<[string, string]>) : []),
   ];
   return (
     <nav className="flex flex-wrap gap-1">
@@ -285,6 +288,7 @@ export default function AdminRoutes() {
         <Route path="/admin/users" component={AdminUsersPage} />
         <Route path="/admin/audit" component={AdminAuditPage} />
         <Route path="/admin/security" component={AdminSecurityPage} />
+        <Route path="/admin/announcements" component={AdminAnnouncementsPage} />
       </Switch>
     </AdminShell>
   );
