@@ -14,7 +14,7 @@ import { errorText, fmtDateTime, groupLanguageLabel } from "@/lib/format";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { GroupPreviewDetails } from "@/pages/PublicFlows";
 import { useSharePageMeta } from "@/seo/usePageMeta";
-import { JOIN_MESSAGE_MAX } from "@shared/syllabusJoin";
+import { JOIN_MESSAGE_MAX, syllabusPageTitle } from "@shared/syllabusJoin";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Link, useParams } from "wouter";
@@ -307,7 +307,7 @@ export default function PublicSyllabusPage() {
 
   const s = page?.syllabus;
   const description = (s?.description || (s ? t("sylShare.page.metaDescription", { title: s.title, teacher: s.teacher.name }) : "")).slice(0, 200);
-  useSharePageMeta(s ? `${s.title} · Resulio` : null, description);
+  useSharePageMeta(s ? syllabusPageTitle(s.title) : null, description);
 
   const request = (next: Intent) => {
     if (!user) {

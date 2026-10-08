@@ -23,6 +23,7 @@ import { sweepResultEmails } from "../modules/resultEmail";
 import { resumeAnnouncements } from "../notifications/announcements";
 import { startNotificationWorker } from "../notifications/dispatcher";
 import { logWebPushStatus } from "../notifications/webPush";
+import { syllabusLinkPreview, syllabusPreviewRoute } from "../syllabus/linkPreview";
 import { runModuleDetailsBackfills } from "../syllabus/moduleDetailsBackfill";
 import { runDailyDigest, runDailyRetention } from "../syllabus/analytics";
 import { flushDueNotices } from "../syllabus/notify";
@@ -117,6 +118,7 @@ async function startServer() {
   app.get("/api/platform/config.js", (_req, res) => {
     res.set("Cache-Control", "no-store").type("application/javascript").send(publicPlatformScript());
   });
+  app.get("/api/public/syllabus-preview/:code", syllabusPreviewRoute);
   registerGoogleAuthRoutes(app);
   registerFileRoutes(app);
   app.use(
@@ -127,11 +129,11 @@ async function startServer() {
     }),
   );
   if (process.env.NODE_ENV === "development") {
-    await setupVite(app, server);
+    await setupVite(app, server, { syllabusPreview: syllabusLinkPreview });
   } else if (ENV.frontendUrl) {
     app.use(frontendRedirect(ENV.frontendUrl));
   } else {
-    serveStatic(app);
+    serveStatic(app, { syllabusPreview: syllabusLinkPreview });
   }
 
   startAttemptSweeper();

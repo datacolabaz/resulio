@@ -31,3 +31,6 @@ export function normalizeShareCode(raw: string): string | null {
 }
 
 export const syllabusSharePath = (code: string) => `/syllabus/${encodeURIComponent(code)}`;
+
+/** Document and link-preview title of the public page. */
+export const syllabusPageTitle = (title: string) => (title.trim() ? `${title.trim()} — Syllabus | Resulio` : "Syllabus | Resulio");
