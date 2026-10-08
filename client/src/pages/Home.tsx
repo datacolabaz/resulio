@@ -50,14 +50,14 @@ function PreviewSection({
   children: React.ReactNode;
 }) {
   return (
-    <section id={id} className={`grid items-center gap-10 lg:grid-cols-2 lg:gap-16 ${reverse ? "lg:[&>*:first-child]:order-2" : ""}`}>
-      <div>
+    <section id={id} className={`grid grid-cols-1 items-center gap-10 lg:grid-cols-2 lg:gap-16 ${reverse ? "lg:[&>*:first-child]:order-2" : ""}`}>
+      <div className="min-w-0">
         {eyebrow && <p className="text-sm font-semibold uppercase tracking-[0.2em] text-link">{t(eyebrow)}</p>}
         <h2 className="mt-2 break-words text-2xl font-semibold leading-tight sm:text-3xl">{t(heading)}</h2>
         <p className="mt-4 max-w-xl text-foreground-secondary">{t(body)}</p>
         {detail && <p className="mt-3 text-sm text-muted-foreground">{t(detail)}</p>}
       </div>
-      <div>
+      <div className="min-w-0">
         <BrowserFrame>{children}</BrowserFrame>
         <DemoNote className="mt-3" />
       </div>
@@ -107,7 +107,7 @@ export default function Home() {
       <main className="mx-auto max-w-6xl space-y-24 px-4 pb-24 pt-6 sm:px-6 sm:pt-10">
         {/* Hero */}
         <div className="grid items-center gap-10 lg:grid-cols-[1fr_1.05fr] lg:gap-14">
-          <div className="order-1">
+          <div className="order-1 min-w-0">
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-link">{t("landing.hero.eyebrow")}</p>
             <h1 className="mt-3 break-words text-3xl font-semibold leading-tight sm:text-5xl">{t("landing.hero.headline")}</h1>
             <p className="mt-5 max-w-xl text-lg text-foreground-secondary">{t("landing.hero.body")}</p>
