@@ -7,6 +7,7 @@ import { AppError } from "../modules/errors";
 import { ownedSyllabus } from "./access";
 import { loadDraft } from "./draft";
 import { allItems } from "./engine";
+import { draftModuleDetails, freezeModuleDetails } from "./moduleDetails";
 import { announceFirstPublish } from "./notify";
 import { answerKeyOf, cloneContainer, createContainer } from "./practiceTasks";
 import { buildStructure, contentHash, nextVersionLabel } from "./snapshot";
@@ -29,6 +30,7 @@ export async function publish(scope: TeacherScope, syllabusId: string, opts: { l
   const draftItems = items.filter((it) => included.has(it.id));
   const answerKeys = new Map<string, string | null>();
   for (const it of draftItems) if (it.kind === "STUDENT_PRACTICE" && it.taskId) answerKeys.set(it.id, await answerKeyOf(db, it.taskId));
+  const moduleDetails = await draftModuleDetails(syllabusId, db);
 
   const result = await db.transaction(async (tx) => {
     const [locked] = await tx.select().from(syllabi).where(eq(syllabi.id, syllabusId)).for("update");
@@ -99,6 +101,7 @@ export async function publish(scope: TeacherScope, syllabusId: string, opts: { l
         };
       }),
     );
+    await freezeModuleDetails(tx, versionId, moduleDetails, structure.modules.map((m) => m.id));
     await tx
       .update(syllabi)
       .set({ currentVersionId: versionId, status: "PUBLISHED", hasDraftChanges: false })

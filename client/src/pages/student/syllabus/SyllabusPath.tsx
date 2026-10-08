@@ -1,6 +1,7 @@
 import { AppShell, ErrorNote, Loading, Panel, Pill } from "@/components/AppShell";
 import { StatusBadge, toneSurface } from "@/components/StatusBadge";
 import { ActivityTimeline } from "@/components/syllabus/ActivityTimeline";
+import { ModuleDetailsBlocks } from "@/components/syllabus/ModuleDetailsBlocks";
 import { StudentWorkflow } from "@/components/syllabus/Workflow";
 import { Button } from "@/components/ui/button";
 import { t, type MessageKey } from "@/i18n/messages";
@@ -246,6 +247,7 @@ function ModuleCard({
               </ul>
             </div>
           )}
+          <ModuleDetailsBlocks details={m.details} className="border-t border-border pt-3" />
         </div>
       )}
     </section>

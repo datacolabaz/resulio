@@ -35,6 +35,7 @@ vi.mock("./syllabus/store", () => ({
   syllabusById: vi.fn(),
   versionById: vi.fn(),
   versionItems: vi.fn(),
+  moduleDetailsOfVersion: vi.fn(async () => new Map()),
   grantsForSyllabus: vi.fn(),
   grantsReachingStudent: vi.fn(),
   enrollmentOf: vi.fn(),

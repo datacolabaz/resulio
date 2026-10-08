@@ -179,12 +179,16 @@ export interface StructureDiff {
 
 const sameJson = (a: unknown, b: unknown) => JSON.stringify(stable(a)) === JSON.stringify(stable(b));
 
-/** Short "what changes for new students" summary for the publish dialog. Items compare by content hash. */
+/**
+ * Short "what changes for new students" summary for the publish dialog. Items compare by content hash;
+ * `detailsChanged` lists modules whose end-of-module blocks (kept outside the structure) were edited.
+ */
 export function diffStructures(
   previous: VersionStructure | null,
   next: VersionStructure,
   prevHashes: ReadonlyMap<string, string>,
   nextHashes: ReadonlyMap<string, string>,
+  detailsChanged: ReadonlySet<string> = new Set(),
 ): StructureDiff {
   const count = <T extends { id: string }>(before: T[], after: T[], changed: (a: T, b: T) => boolean) => {
     const prev = new Map(before.map((x) => [x.id, x]));
@@ -199,7 +203,11 @@ export function diffStructures(
   const prevLessons = prevModules.flatMap((m) => m.lessons);
   const nextLessons = next.modules.flatMap((m) => m.lessons);
   const itemIds = (s: VersionStructure | null) => (s ? [...s.modules.flatMap((m) => [...m.lessons.flatMap((l) => l.items), ...m.items]), ...s.finalItems] : []);
-  const modules = count(prevModules, next.modules, (a, b) => a.title !== b.title || a.description !== b.description || !sameJson(a.rules, b.rules) || a.lessons.map((l) => l.id).join() !== b.lessons.map((l) => l.id).join());
+  const modules = count(
+    prevModules,
+    next.modules,
+    (a, b) => a.title !== b.title || a.description !== b.description || !sameJson(a.rules, b.rules) || a.lessons.map((l) => l.id).join() !== b.lessons.map((l) => l.id).join() || detailsChanged.has(b.id),
+  );
   const lessons = count(prevLessons, nextLessons, (a, b) => a.title !== b.title || a.description !== b.description || a.moduleId !== b.moduleId || !sameJson(a.rules, b.rules) || a.items.map((i) => i.id).join() !== b.items.map((i) => i.id).join());
   const items = count(itemIds(previous), itemIds(next), (a, b) => prevHashes.get(a.id) !== nextHashes.get(b.id) || a.required !== b.required);
   const rulesChanged = !!previous && !sameJson(previous.rules, next.rules);
