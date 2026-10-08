@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { t } from "@/i18n/messages";
 import { trpc } from "@/lib/trpc";
 import { checkModuleDurations, lessonMinutes, MAX_LESSONS_PER_WEEK, suggestedLessonCount, type Duration } from "@shared/syllabusTiming";
-import { AlertTriangle, Check } from "lucide-react";
+import { AlertTriangle, Check, Info } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Tree } from "./SyllabusDetail";
 import { fieldLabel, toastError, useSyllabusRefresh } from "./shared";
@@ -79,8 +79,16 @@ export function CourseTimingPanel({ tree }: { tree: Tree }) {
           {all.minutes > 0 ? ` · ${t("timing.minutesTotal", { time: minutesText(all.minutes) })}` : ""}
           {all.missing > 0 && all.minutes > 0 ? ` · ${t("timing.lessonsWithoutMinutes", { count: all.missing })}` : ""}
         </li>
-        {suggested !== null && <li>{t("timing.suggestedCourse", { count: suggested })}</li>}
       </ul>
+      {suggested !== null && saved.duration && (
+        <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span>
+            {t("timing.suggestedCourse", { count: suggested, duration: durationText(saved.duration), perWeek: saved.lessonsPerWeek ?? 0 })}
+            {lessonCount > suggested ? ` ${t("timing.suggestedMore", { lessons: lessonCount })}` : ""}
+          </span>
+        </p>
+      )}
       {check.mismatch && check.sum && saved.duration && (
         <p className="mt-3 flex items-start gap-2 rounded-xl border border-warning/40 bg-warning-surface p-3 text-sm text-warning" role="note">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />

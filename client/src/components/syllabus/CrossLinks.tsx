@@ -5,7 +5,7 @@ import { fmtDay, fmtRelative } from "@/lib/format";
 import { continueCandidates, usageMap } from "@/lib/syllabusWorkflow";
 import { trpc } from "@/lib/trpc";
 import { lessonPath, ProgressBar, syllabusPath } from "@/pages/student/syllabus/common";
-import { GrantStateBadge, SyllabusStatusBadge } from "@/pages/teacher/syllabus/shared";
+import { GrantStateBadge, SyllabusVisibilityBadges } from "@/pages/teacher/syllabus/shared";
 import { BookOpen, Library } from "lucide-react";
 import { Link } from "wouter";
 
@@ -99,7 +99,9 @@ export function TeacherHomeSyllabi() {
                   {s.enrolledCount > 0 ? ` · ${t("syllabus.count.avgProgress", { pct: s.averageProgressPct })}` : ""}
                 </div>
               </Link>
-              <SyllabusStatusBadge status={s.status} />
+              <span className="flex flex-wrap gap-1.5">
+                <SyllabusVisibilityBadges syllabus={s} activeGrants={s.activeGrantCount} />
+              </span>
             </li>
           ))}
         </ul>

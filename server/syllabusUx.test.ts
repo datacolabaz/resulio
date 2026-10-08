@@ -1,6 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { catalog } from "../client/src/i18n/catalog";
-import { continueCandidates, lessonChange, STEP_TAB, STUDENT_STEPS, TEACHER_STEPS, teacherSteps, usageMap } from "../client/src/lib/syllabusWorkflow";
+import {
+  BUILDER_TABS,
+  continueCandidates,
+  gradable,
+  lessonChange,
+  nextStepOtherThan,
+  OPTIONAL_STEPS,
+  STEP_TAB,
+  STUDENT_STEPS,
+  TEACHER_STEPS,
+  teacherSteps,
+  usageMap,
+} from "../client/src/lib/syllabusWorkflow";
 import * as db from "./db";
 import * as groups from "./modules/groups";
 import { AppError } from "./modules/errors";
@@ -263,17 +275,46 @@ describe("workflow steps", () => {
   });
   const states = (steps: ReturnType<typeof teacherSteps>) => Object.fromEntries(steps.map((s) => [s.step, s.state]));
 
-  it("a new syllabus points at Organize", () => {
-    expect(states(teacherSteps(tree(), []))).toEqual({ create: "done", organize: "current", teach: "todo", assign: "todo", assess: "todo", track: "todo" });
+  it("a new syllabus points at Organize; Grade is not needed while nothing can be graded", () => {
+    expect(states(teacherSteps(tree(), []))).toEqual({ create: "done", organize: "current", teach: "todo", assign: "todo", assess: "skipped", track: "todo" });
   });
 
-  it("follows Create → Organize → Teach → Assign → Assess → Track", () => {
+  it("follows Create → Organize → Teach → Assign → (optional Grade) → Track", () => {
     expect(states(teacherSteps(tree({ lessons: [[]] }), [])).teach).toBe("current");
     expect(states(teacherSteps(tree({ lessons: [[{ kind: "THEORY" }]] }), [])).assign).toBe("current");
     expect(states(teacherSteps(tree({ published: true, lessons: [[{ kind: "THEORY" }]] }), ["REVOKED"])).assign).toBe("current");
-    expect(states(teacherSteps(tree({ published: true, lessons: [[{ kind: "THEORY" }]] }), ["PENDING"])).assess).toBe("current");
+    const noAssessment = states(teacherSteps(tree({ published: true, lessons: [[{ kind: "THEORY" }]] }), ["PENDING"]));
+    expect(noAssessment).toMatchObject({ assign: "done", assess: "skipped", track: "current" });
+    expect(OPTIONAL_STEPS.has("assess")).toBe(true);
     const all = states(teacherSteps(tree({ published: true, lessons: [[{ kind: "THEORY" }]], finalItems: [{ kind: "ASSESSMENT" }] }), ["ACTIVE"]));
-    expect(all).toEqual({ create: "done", organize: "done", teach: "done", assign: "done", assess: "done", track: "current" });
+    expect(all).toEqual({ create: "done", organize: "done", teach: "done", assign: "done", assess: "todo", track: "current" });
+  });
+
+  it("Grade becomes the next step with a count when work is waiting, never before the course is open", () => {
+    const withTest = tree({ published: true, lessons: [[{ kind: "THEORY" }, { kind: "STUDENT_PRACTICE" }]] });
+    const waiting = teacherSteps(withTest, ["ACTIVE"], 3);
+    expect(states(waiting)).toMatchObject({ assign: "done", assess: "current", track: "todo" });
+    expect(waiting.find((s) => s.step === "assess")?.count).toBe(3);
+    expect(states(teacherSteps(withTest, ["REVOKED"], 3))).toMatchObject({ assign: "current", assess: "todo" });
+    expect(teacherSteps(withTest, ["ACTIVE"], 0).find((s) => s.step === "assess")).toEqual({ step: "assess", state: "todo" });
+  });
+
+  it("counts tests, student practice and teacher approvals as gradable", () => {
+    expect(gradable(tree({ lessons: [[{ kind: "THEORY" }]] })).any).toBe(false);
+    expect(gradable(tree({ lessons: [[{ kind: "THEORY" }]], finalItems: [{ kind: "ASSESSMENT" }] })).tests).toHaveLength(1);
+    expect(gradable(tree({ lessons: [[{ kind: "STUDENT_PRACTICE" }]] })).practice).toHaveLength(1);
+    const approval = { ...tree({ lessons: [[{ kind: "THEORY" }]] }), syllabus: { currentVersionId: null, effectiveRules: { teacherApproval: true } } };
+    expect(gradable(approval)).toMatchObject({ approvals: true, any: true });
+    expect(states(teacherSteps(approval, [])).assess).toBe("todo");
+  });
+
+  it("empty tabs point to the real next step, never to themselves", () => {
+    const fresh = teacherSteps(tree({ lessons: [[{ kind: "THEORY" }]] }), []);
+    expect(nextStepOtherThan(fresh, "assess")).toBe("assign");
+    expect(nextStepOtherThan(fresh, "track")).toBe("assign");
+    const live = teacherSteps(tree({ published: true, lessons: [[{ kind: "THEORY" }]] }), ["ACTIVE"]);
+    expect(nextStepOtherThan(live, "track")).toBeNull();
+    expect(nextStepOtherThan(live, "assess")).toBe("track");
   });
 
   it("an assessment-only lesson does not count as teaching content", () => {
@@ -281,12 +322,18 @@ describe("workflow steps", () => {
   });
 
   it("every step opens an existing builder tab and has copy in all languages", () => {
-    const tabs = new Set(["structure", "settings", "versions", "access", "students", "analytics"]);
     for (const s of TEACHER_STEPS) {
-      expect(tabs.has(STEP_TAB[s])).toBe(true);
+      expect(BUILDER_TABS).toContain(STEP_TAB[s]);
       expect(catalog).toHaveProperty(`ux.tstep.${s}`);
       expect(catalog).toHaveProperty(`ux.thint.${s}`);
+      expect(catalog).toHaveProperty(`syllabus.tab.${STEP_TAB[s]}`);
     }
+    expect(STEP_TAB.assess).toBe("grading");
+    expect(STEP_TAB.track).toBe("analytics");
+    expect(new Set(TEACHER_STEPS.map((s) => STEP_TAB[s])).size).toBeGreaterThanOrEqual(5);
+    for (const s of ["done", "current", "todo", "skipped", "optional"]) expect(catalog).toHaveProperty(`ux.state.${s}`);
+    expect(catalog).toHaveProperty("ux.thint.assessSkipped");
+    expect(catalog["track.emptyBody"][0]).toBe("Tələbələr syllabus-a başlayanda irəliləyiş burada görünəcək.");
     for (const s of STUDENT_STEPS) {
       expect(catalog).toHaveProperty(`ux.sstep.${s}`);
       expect(catalog).toHaveProperty(`ux.shint.${s}`);

@@ -115,7 +115,7 @@ export const format = {
   "assessmentType.KSQ": ["KSQ", "KSQ", "KSQ"],
   "assessmentType.BSQ": ["BSQ", "BSQ", "BSQ"],
 
-  "live.DRAFT": ["Qaralama", "Draft", "Черновик"],
+  "live.DRAFT": ["Tələbələr hələ görmür", "Not visible to students yet", "Студенты пока не видят"],
   "live.SCHEDULED": ["Planlaşdırılıb", "Scheduled", "Запланирован"],
   "live.ACTIVE": ["Aktiv", "Active", "Активен"],
   "live.COMPLETED": ["Bitib", "Finished", "Завершён"],

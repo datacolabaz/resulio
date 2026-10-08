@@ -252,8 +252,8 @@ export const syllabusLearn = {
 
   "builder.backToSyllabus": ["Syllabus-a qayıt", "Back to the syllabus", "Вернуться к силлабусу"],
   "builder.syllabusPublishHint": [
-    "Syllabus-da istifadə üçün qiymətləndirməni dərc edin. Syllabus öz versiyasında dərc anındakı sual versiyasını saxlayır; sonrakı dəyişikliklər yalnız syllabus yenidən dərc olunanda tətbiq edilir.",
-    "Publish the assessment to use it in the syllabus. Each syllabus version keeps the question version that was live when it was published; later edits apply only after the syllabus is republished.",
-    "Опубликуйте оценивание, чтобы использовать его в силлабусе. Каждая версия силлабуса хранит версию вопросов на момент публикации; последующие правки применяются только после повторной публикации силлабуса.",
+    "Syllabus-da istifadə üçün qiymətləndirməni dərc edin. Syllabus dərc anındakı sualları saxlayır; sonrakı düzəlişlər tələbələrə syllabus-un dəyişikliklərini göndərdikdə çatır.",
+    "Publish the assessment to use it in the syllabus. The syllabus keeps the questions as they were when it was published; later edits reach students when you send the syllabus changes.",
+    "Опубликуйте оценивание, чтобы использовать его в силлабусе. Силлабус хранит вопросы в том виде, в каком они были при публикации; последующие правки дойдут до студентов после отправки изменений силлабуса.",
   ],
 } as const satisfies Record<string, Entry>;

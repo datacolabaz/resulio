@@ -16,6 +16,7 @@ import { dispatch } from "../notifications/dispatcher";
 import { isMissingTable } from "../notifications/preferences";
 import { grantState } from "./accessRules";
 import { syllabusEnabledFor } from "./availability";
+import * as store from "./store";
 import type { EngineOutput, VersionStructure } from "./types";
 
 /**
@@ -113,6 +114,43 @@ export function announceGrants(syllabus: Syllabus, before: readonly SyllabusAcce
           data: { syllabusId: syllabus.id, syllabusTitle: syllabus.title, startsAt },
         });
       }
+    }
+  });
+}
+
+/**
+ * Pure: the syllabi a student who just became an active member of `groupId` should hear about —
+ * published ones with a live grant to that group that the student has not started yet.
+ */
+export function planJoinNotices(
+  groupId: string,
+  grants: ReadonlyArray<Pick<SyllabusAccessGrant, "syllabusId" | "groupId" | "status" | "startsAt" | "endsAt">>,
+  syllabi: ReadonlyArray<Pick<Syllabus, "id" | "currentVersionId" | "archivedAt">>,
+  startedSyllabusIds: ReadonlySet<string>,
+  now = new Date(),
+): string[] {
+  const live = new Set(grants.filter((g) => g.groupId === groupId && (grantState(g, now) === "ACTIVE" || grantState(g, now) === "PENDING")).map((g) => g.syllabusId));
+  return syllabi.filter((s) => live.has(s.id) && s.currentVersionId && !s.archivedAt && !startedSyllabusIds.has(s.id)).map((s) => s.id);
+}
+
+/** Join-key per student and syllabus: a student hears about a syllabus through a group join once. */
+export const joinNoticeKey = (syllabusId: string, studentId: number) => `syl-access:${syllabusId}:${studentId}:group-join`;
+
+/**
+ * A student became an active member of a group (code/link join, e-mail invite, teacher add or
+ * approval): the group's published syllabi reach them now, so they get the access notice.
+ */
+export function announceGroupJoin(groupId: string, studentId: number) {
+  safe("group join", async () => {
+    const grants = await store.grantsReachingStudent(studentId, [groupId]);
+    const syllabi = await store.syllabiByIds([...new Set(grants.filter((g) => g.groupId === groupId).map((g) => g.syllabusId))]);
+    const started = new Set<string>();
+    for (const s of syllabi) if (await store.enrollmentOf(s.id, studentId)) started.add(s.id);
+    for (const id of planJoinNotices(groupId, grants, syllabi, started)) {
+      const s = syllabi.find((x) => x.id === id)!;
+      if (!(await syllabusEnabledFor(s.providerWorkspaceId))) continue;
+      const startsAt = grants.find((g) => g.syllabusId === id && g.groupId === groupId && g.startsAt && g.startsAt.getTime() > Date.now())?.startsAt?.toISOString() ?? null;
+      dispatch({ event: "SYLLABUS_ACCESS_GRANTED", userId: studentId, dedupeKey: joinNoticeKey(id, studentId), data: { syllabusId: id, syllabusTitle: s.title, startsAt } });
     }
   });
 }

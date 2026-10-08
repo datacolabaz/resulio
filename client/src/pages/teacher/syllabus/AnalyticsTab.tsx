@@ -2,12 +2,14 @@ import { AXIS, TOOLTIP } from "@/components/AnalyticsBlocks";
 import { ChoiceChip, EmptyState, ErrorNote, Loading, Panel } from "@/components/AppShell";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActivityTimeline } from "@/components/syllabus/ActivityTimeline";
+import { NextStepButton } from "@/components/syllabus/Workflow";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { SettingToggle } from "@/components/ui/setting-toggle";
 import { t } from "@/i18n/messages";
 import { fmtDateTime, fmtDuration, fmtRelative } from "@/lib/format";
+import type { TeacherStep } from "@/lib/syllabusWorkflow";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { ProgressBar } from "@/pages/student/syllabus/common";
 import {
@@ -31,16 +33,18 @@ const numText = (v: number | null | undefined) => (v === null || v === undefined
 const timeText = (v: number | null | undefined) => (v === null || v === undefined ? "—" : fmtDuration(v));
 
 /** §31–§44: what happens inside the syllabus, kept apart as access / progress / completion / mastery. */
-export function AnalyticsTab({ tree }: { tree: Tree }) {
+export function AnalyticsTab({ tree, next, onStep }: { tree: Tree; next?: TeacherStep | null; onStep?: (step: TeacherStep) => void }) {
   const id = tree.syllabus.id;
   const [groupId, setGroupId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [timelineFor, setTimelineFor] = useState<StudentRow | null>(null);
   const q = trpc.teacher.syllabus.analytics.useQuery({ id, groupId }, { staleTime: 60_000, enabled: !!tree.syllabus.currentVersionId });
-  if (!tree.syllabus.currentVersionId) return <EmptyState title={t("syllabus.students.notPublishedTitle")} body={t("syllabus.students.notPublishedBody")} />;
+  const empty = <EmptyState title={t("track.emptyTitle")} body={t("track.emptyBody")} action={next && onStep ? <NextStepButton step={next} onSelect={onStep} /> : undefined} />;
+  if (!tree.syllabus.currentVersionId) return empty;
   if (q.error) return <ErrorNote error={q.error} />;
   if (!q.data) return <Loading />;
   const d = q.data;
+  if (!groupId && !d.students.length) return empty;
   const groupName = new Map(d.groupOptions.map((g) => [g.id, g.name]));
   return (
     <div className="space-y-4">

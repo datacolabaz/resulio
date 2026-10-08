@@ -2,6 +2,7 @@ import { AppShell, ChoiceChip, EmptyState, ErrorNote, Loading, Panel } from "@/c
 import { StatusBadge } from "@/components/StatusBadge";
 import { Input } from "@/components/ui/input";
 import { t } from "@/i18n/messages";
+import { attemptLabel } from "@/lib/attemptLabel";
 import { errorText, fmtDateTime, fmtDuration, fmtRelative } from "@/lib/format";
 import { PARTICIPANT_STATUS, participantLabel } from "@/lib/status";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
@@ -164,7 +165,7 @@ export function ParticipantsReport({ id }: { id: string }) {
                   {p.startedAt && p.state !== "EXPIRED_NO_ANSWERS" && (
                     <div className="text-muted-foreground">
                       {t("participants.started", { date: fmtDateTime(p.startedAt) })}
-                      {p.attemptsUsed > 1 ? ` · ${t("participants.attemptNo", { n: p.attemptsUsed })}` : ""}
+                      {p.attemptsUsed > 1 ? ` · ${attemptLabel(p.attemptsUsed)}` : ""}
                     </div>
                   )}
                 </div>

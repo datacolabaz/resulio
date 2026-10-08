@@ -261,13 +261,22 @@ function ReviewEditor({ job, initial }: { job: Job; initial: Review }) {
   const [, nav] = useLocation();
   const [s, set] = useState<Review>(initial);
   const [open, setOpen] = useState<Set<number>>(() => new Set([0]));
-  const create = trpc.teacher.syllabus.aiImport.create.useMutation({
-    onSuccess: ({ id }) => {
-      toast.success(t("simport.created"));
+  const create = trpc.teacher.syllabus.aiImport.create.useMutation();
+  const publish = trpc.teacher.syllabus.publish.useMutation();
+  const [busy, setBusy] = useState<"create" | "publish" | null>(null);
+  const run = async (andPublish: boolean) => {
+    setBusy(andPublish ? "publish" : "create");
+    try {
+      const { id } = await create.mutateAsync({ id: job.id, structure: s });
+      const published = andPublish && (await publish.mutateAsync({ id }).catch(() => null))?.published;
+      toast.success(published ? t("import.createdPublished") : t("simport.created"));
       nav(`/teacher/syllabus/${id}`);
-    },
-    onError: toastError,
-  });
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setBusy(null);
+    }
+  };
   const stats = reviewStats(s);
   const problems = reviewProblems(s);
   const toggle = (i: number) => setOpen((prev) => {
@@ -298,12 +307,17 @@ function ReviewEditor({ job, initial }: { job: Job; initial: Review }) {
         </ol>
       </Panel>
       <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-end gap-3 rounded-2xl border border-border bg-card p-3 shadow-sm">
-        {problems.length > 0 && (
+        {problems.length > 0 ? (
           <p className="mr-auto text-sm text-destructive" role="alert">{problems.map((p) => t(`simport.problem.${p}`)).join(" ")}</p>
+        ) : (
+          <p className="mr-auto max-w-md text-xs text-muted-foreground">{t("import.createPublishHelp")}</p>
         )}
         <Button variant="ghost" onClick={() => nav("/teacher/syllabus")}>{t("common.cancel")}</Button>
-        <Button disabled={problems.length > 0 || create.isPending} onClick={() => create.mutate({ id: job.id, structure: s })}>
-          {create.isPending ? t("simport.creating") : t("simport.create")}
+        <Button variant="outline" disabled={problems.length > 0 || busy !== null} onClick={() => void run(true)}>
+          {busy === "publish" ? t("simport.creating") : t("import.createPublish")}
+        </Button>
+        <Button disabled={problems.length > 0 || busy !== null} onClick={() => void run(false)}>
+          {busy === "create" ? t("simport.creating") : t("simport.create")}
         </Button>
       </div>
     </div>

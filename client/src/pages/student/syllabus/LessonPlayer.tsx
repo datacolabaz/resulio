@@ -6,6 +6,7 @@ import type { MaterialRef, VideoSignal } from "@/components/syllabus/TheoryView"
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { t, type MessageKey } from "@/i18n/messages";
+import { attemptLabel } from "@/lib/attemptLabel";
 import { errorText, fmtDateTime } from "@/lib/format";
 import { minutesUntil, nodeVisual, resultPath, type LockReason } from "@/lib/syllabusLearn";
 import type { ActivityEvent } from "@/lib/syllabusTracker";
@@ -431,7 +432,7 @@ function AssessmentPanel({ id, lessonId, item }: { id: string; lessonId: string;
         <ul className="space-y-1 text-sm">
           {a.attempts.map((r) => (
             <li key={r.attemptNo} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-1.5">
-              <span>{t("learn.assessment.attemptN", { n: r.attemptNo })}{r.finishedAt ? ` · ${fmtDateTime(r.finishedAt)}` : ""}</span>
+              <span>{attemptLabel(r.attemptNo)}{r.finishedAt ? ` · ${fmtDateTime(r.finishedAt)}` : ""}</span>
               <span className="flex items-center gap-2">
                 {r.pct !== null ? (
                   <span className={`font-medium tabular-nums ${r.pct >= a.passPct ? "text-success" : "text-foreground"}`}>{r.pct}%</span>

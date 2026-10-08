@@ -80,7 +80,6 @@ function CompletionCard({ completion }: { completion: NonNullable<Path["completi
             {completion.finalAssessmentPct !== null && (
               <div className="flex gap-1"><dt className="text-foreground-secondary">{t("learn.cert.final")}:</dt><dd>{completion.finalAssessmentPct}%</dd></div>
             )}
-            {completion.versionLabel && <div className="flex gap-1"><dt className="text-foreground-secondary">{t("learn.cert.version")}:</dt><dd>{completion.versionLabel}</dd></div>}
             {completion.verificationCode && (
               <div className="flex gap-1 sm:col-span-2"><dt className="text-foreground-secondary">{t("learn.cert.code")}:</dt><dd className="break-all font-mono">{completion.verificationCode}</dd></div>
             )}
@@ -116,7 +115,6 @@ function ActivePath({ id, path, record }: { id: string; path: Path; record: Reco
         extra={
           <>
             <CourseTimingPills timing={path.courseTiming} />
-            {path.version.label && <Pill>{t("learn.version", { label: path.version.label })}</Pill>}
             {path.access.endsAt && <Pill>{t("learn.accessUntil", { at: fmtDateTime(path.access.endsAt) })}</Pill>}
           </>
         }

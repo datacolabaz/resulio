@@ -13,7 +13,7 @@ import { Link, useLocation } from "wouter";
 import { DeleteSyllabusDialog } from "./DeleteSyllabusDialog";
 import { ImportDialog, importPath } from "./ImportDialog";
 import { emptySyllabusFields, fieldsPayload, SyllabusFieldsForm } from "./SyllabusFields";
-import { SyllabusShell, SyllabusStatusBadge, toastError } from "./shared";
+import { SyllabusShell, SyllabusVisibilityBadges, toastError } from "./shared";
 
 type SyllabusRow = RouterOutputs["teacher"]["syllabus"]["list"][number];
 
@@ -204,9 +204,7 @@ function SyllabusListBody() {
                   )}
                   <div className="flex flex-1 flex-col gap-2 p-4">
                     <div className="flex flex-wrap items-center gap-2">
-                      <SyllabusStatusBadge status={s.status} />
-                      {s.currentVersionLabel && <Pill>{s.currentVersionLabel}</Pill>}
-                      {s.currentVersionId && s.hasDraftChanges && !s.archivedAt && <Pill>{t("syllabus.draftChanges")}</Pill>}
+                      <SyllabusVisibilityBadges syllabus={s} activeGrants={s.activeGrantCount} />
                     </div>
                     <div className="break-words font-semibold">{s.title}</div>
                     {(s.subject || s.level) && <div className="text-sm text-muted-foreground">{[s.subject, s.level].filter(Boolean).join(" · ")}</div>}
