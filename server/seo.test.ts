@@ -111,4 +111,20 @@ describe("static hosting", () => {
     for (const page of SITE_PAGES.filter((p) => p.path !== "/")) expect(robots).not.toContain(`Disallow: ${page.path}\n`);
     expect(robots).toContain("Sitemap: https://resulio.co/sitemap.xml");
   });
+
+  it("robots.txt lets link-preview bots read shared syllabus links and nothing else private", () => {
+    const robots = readFileSync(join(PUBLIC, "robots.txt"), "utf8").replace(/\r\n/g, "\n");
+    const groups = robots.split(/\n\s*\n/).filter((g) => g.includes("User-agent:"));
+    const groupOf = (bot: string) => groups.find((g) => g.split("\n").some((l) => l.trim().toLowerCase() === `user-agent: ${bot.toLowerCase()}`))!;
+    const all = groupOf("*");
+    const disallows = (g: string) => g.split("\n").filter((l) => l.startsWith("Disallow:"));
+    for (const bot of ["facebookexternalhit", "Twitterbot", "LinkedInBot", "TelegramBot", "WhatsApp"]) {
+      const group = groupOf(bot);
+      expect(group).not.toBe(all);
+      expect(group).toContain("Allow: /syllabus/\n");
+      expect(group).not.toContain("Disallow: /syllabus/");
+      expect(disallows(group)).toEqual(disallows(all).filter((l) => l !== "Disallow: /syllabus/"));
+    }
+    for (const bot of ["Googlebot", "Bingbot", "GPTBot"]) expect(groupOf(bot)).toContain("Disallow: /syllabus/\n");
+  });
 });

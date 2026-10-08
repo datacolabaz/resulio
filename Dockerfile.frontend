@@ -15,6 +15,9 @@ FROM node:22-bookworm-slim
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
+# The frontend server asks the API for syllabus link previews (server/_core/linkPreview.ts).
+ARG VITE_API_URL=https://api.resulio.co
+ENV VITE_API_URL=$VITE_API_URL
 COPY --from=build /app/dist/public ./dist/public
 COPY --from=build /app/dist/frontend.js ./dist/frontend.js
 USER node

@@ -5,9 +5,10 @@ import { nanoid } from "nanoid";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import viteConfig from "../../vite.config";
+import { previewResolver, syllabusPreviewHtml, type PreviewLookup } from "./linkPreview";
 import { mountSpa } from "./spa";
 
-export async function setupVite(app: Express, server: Server) {
+export async function setupVite(app: Express, server: Server, opts: { syllabusPreview?: PreviewLookup } = {}) {
   const serverOptions = {
     middlewareMode: true,
     hmr: { server },
@@ -20,6 +21,7 @@ export async function setupVite(app: Express, server: Server) {
     server: serverOptions,
     appType: "custom",
   });
+  const resolvePreview = opts.syllabusPreview ? previewResolver(opts.syllabusPreview, { ttlMs: 0 }) : null;
 
   app.use(vite.middlewares);
   app.use("*", async (req, res, next) => {
@@ -39,7 +41,8 @@ export async function setupVite(app: Express, server: Server) {
         `src="/src/main.tsx"`,
         `src="/src/main.tsx?v=${nanoid()}"`
       );
-      const page = await vite.transformIndexHtml(url, template);
+      let page = await vite.transformIndexHtml(url, template);
+      if (resolvePreview) page = (await syllabusPreviewHtml(page, new URL(url, "http://localhost").pathname, resolvePreview)) ?? page;
       res.status(200).set({ "Content-Type": "text/html" }).end(page);
     } catch (e) {
       vite.ssrFixStacktrace(e as Error);
@@ -48,10 +51,10 @@ export async function setupVite(app: Express, server: Server) {
   });
 }
 
-export function serveStatic(app: Express) {
+export function serveStatic(app: Express, opts: { syllabusPreview?: PreviewLookup } = {}) {
   const distPath =
     process.env.NODE_ENV === "development"
       ? path.resolve(import.meta.dirname, "../..", "dist", "public")
       : path.resolve(import.meta.dirname, "public");
-  mountSpa(app, distPath);
+  mountSpa(app, distPath, opts);
 }

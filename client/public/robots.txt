@@ -2,6 +2,39 @@
 # Public pages are open to search engines and AI assistants.
 # Signed-in areas and personal share/invite links are not.
 
+# Link-preview fetchers only read a page's head to draw the card in a chat or post; they do not
+# index. Shared syllabus links are open to them so the card shows the syllabus (the page itself
+# says noindex). A bot uses only its own group, so every other rule is repeated here.
+User-agent: facebookexternalhit
+User-agent: Facebot
+User-agent: Twitterbot
+User-agent: LinkedInBot
+User-agent: TelegramBot
+User-agent: WhatsApp
+User-agent: Slackbot-LinkExpanding
+User-agent: Discordbot
+User-agent: SkypeUriPreview
+Allow: /syllabus/
+Allow: /
+Disallow: /api/
+Disallow: /app
+Disallow: /login
+Disallow: /welcome
+Disallow: /choose-role
+Disallow: /settings
+Disallow: /partner
+Disallow: /admin
+Disallow: /teacher
+Disallow: /student
+Disallow: /join/
+Disallow: /invite/
+Disallow: /g/
+Disallow: /exam/
+Disallow: /task/
+Disallow: /material/
+Disallow: /_pages/
+Disallow: /__manus__/
+
 User-agent: *
 User-agent: Googlebot
 User-agent: Bingbot

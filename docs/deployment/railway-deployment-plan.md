@@ -118,7 +118,11 @@ Implemented:
   1. hashed `assets/*` cached for 1 year, `index.html` `no-cache`, missing assets 404;
   2. SPA fallback (section 6), `/api/*` 404;
   3. host redirects (`server/_core/hostRedirect.ts`): `www.resulio.co`, `mentorix.io`, `www.mentorix.io` →
-     `https://resulio.co{path}{query}` (301, 308 for non-GET).
+     `https://resulio.co{path}{query}` (301, 308 for non-GET);
+  4. link previews for shared syllabi (`/syllabus/<code>`, `server/_core/linkPreview.ts`): the head (title,
+     description, Open Graph, Twitter card, `noindex`) is written per request from the API's
+     `GET /api/public/syllabus-preview/<code>`, at most 1.5 s, cached 60 s; on any failure a neutral card.
+     The API URL comes from `API_URL`, else `VITE_API_URL` (also set in the runtime stage of `Dockerfile.frontend`).
 - Build-time variable: `VITE_API_URL`, default `https://api.resulio.co` in `Dockerfile.frontend`; override it
   per environment (e.g. staging) with a service variable of the same name.
 
