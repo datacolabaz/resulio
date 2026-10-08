@@ -29,6 +29,7 @@ Code: `server/notifications/` — `events.ts` (events and their channels), `temp
 | `SYLLABUS_AT_RISK_DIGEST` | syllabus creator | IN_APP, EMAIL (e-mail off by default) | daily after 08:00 Baku when students are at risk and the syllabus' digest is on (`syllabus/analytics.ts`); key `syl-risk:<syllabusId>:<YYYY-MM-DD>` |
 | `TASK_ASSIGNED` | student | IN_APP, EMAIL, PUSH | a teacher creates a task, or an edit makes it reach new students; or a student joins a group with open tasks (`modules/taskNotify.ts`); key `task-assigned:<taskId>:<userId>` |
 | `TASK_UPDATED` | student | IN_APP, PUSH, EMAIL (e-mail off by default) | an edit moves the deadline by ≥ 1 hour; to students the task already reached; key `task-deadline:<taskId>:<userId>:<deadlineMs>` |
+| `ANNOUNCEMENT` | users in the admin-chosen audience | IN_APP, PUSH | an admin sends an announcement (`notifications/announcements.ts`, see "Admin announcements"); key `announcement:<announcementId>:<userId>` |
 | `GROUP_MEMBER_JOINED` | group's workspace owner | IN_APP, PUSH | a student joined through the group's invite code/link or a single-use invite link (`modules/groupJoin.ts`), or a leftover pending request was activated at startup; informational only, nothing to approve; key `group-join:<membershipId>` / `group-join-link:<linkId>` |
 | `EXAM_RESULT_READY` | student | EMAIL | only for exams with "E-mail results to students" ticked: the 30 s sweeper (`server/modules/resultEmail.ts`) mails each result once it is final (no manual grading pending) and released; score, percentage and the wrong-answer deduction, never the answers. Claimed in `result_email_log` (one row per result; students without an address are logged as `NO_EMAIL` and skipped); key `exam-result:<resultId>` |
 
@@ -111,8 +112,8 @@ dispatcher. API (tRPC, signed in):
 - `inbox.preferences` (query) → `[{ event, channels: [{ channel, enabled }] }]`
 - `inbox.setPreference` (mutation) `{ event, channel, enabled }`
 
-Settings → Notifications shows IN_APP and EMAIL; PUSH choices belong in the mobile app. Students
-see the task and grade rows; teachers see every row.
+Settings → Notifications shows IN_APP, EMAIL and PUSH. One PUSH switch covers the user's browsers
+and mobile app alike. Students see the task, grade and announcement rows; teachers see every row.
 
 ## Adding an event
 
@@ -141,12 +142,78 @@ permission; after a grant it shows one local test notification ("Resulio.co bild
 - It waits while an element marked `data-notify-avoid` (e.g. the landing hero sign-up buttons) is
   where the card would appear, and re-checks on scroll/resize.
 
-**No web push yet.** There is no service worker, VAPID key, `PushSubscription` endpoint or web
-push provider; `push.ts` only sends to mobile Expo tokens. A grant therefore only enables the local
-test notification. To send news/announcements: add a service worker (`push` / `notificationclick`),
-a VAPID key pair, a `web` provider in `push.ts` that stores `PushSubscription`s (signed-in users via
-`devices.register`; anonymous visitors need a separate subscription table keyed by endpoint), an
-`ANNOUNCEMENT` event / admin broadcast, and subscribe right after the grant in `useNotificationPrompt`.
+After a grant the browser is also subscribed to web push (next section). The local test
+notification is shown in every case, so the prompt works even while web push is off.
+
+## Web push (browsers)
+
+Off until the API service has a VAPID key pair. Generate one and set all three variables on
+Railway → **resulio-api** → Variables (not on resulio-frontend):
+
+```bash
+node scripts/generate-vapid-keys.mjs mailto:support@resulio.co
+# WEB_PUSH_VAPID_PUBLIC_KEY=B...   (65-byte key, base64url)
+# WEB_PUSH_VAPID_PRIVATE_KEY=...   (32-byte key, base64url; secret)
+# WEB_PUSH_SUBJECT=mailto:support@resulio.co   (or an https:// URL)
+```
+
+The server logs `[web-push] Enabled.` or one warning at startup. Missing or malformed keys turn web
+push off cleanly: `webPush.config` reports `enabled: false`, nothing is subscribed, and PUSH only
+reaches mobile devices. The public key is served at runtime by `webPush.config`, so rotating keys
+needs no frontend rebuild (but every browser must re-subscribe, which happens on its next visit).
+
+- **Service worker** `client/public/sw.js`, served as `/sw.js` (root scope, `Cache-Control:
+  no-cache`). Push only: no `fetch` handler and no caching, so the SPA, prerendered pages and HTTP
+  caching are unaffected. `push` shows the notification (title, body, tag, brand icon/badge, URL);
+  `notificationclick` focuses an open Resulio tab (navigating it to the URL) or opens a new one.
+  The payload is built by `buildPushPayload` in `server/notifications/webPush.ts`.
+- **Client** `client/src/lib/webPush.ts` + `hooks/useWebPushSync.ts`: registers the worker only in a
+  secure context with `serviceWorker`, `PushManager` and `Notification`; once permission is
+  `granted` it subscribes with the server's public key (re-subscribing if the key changed) and calls
+  `webPush.subscribe`. It re-syncs on each visit at most daily, and immediately when the signed-in
+  account or the language changes.
+- **API** (tRPC, public): `webPush.config` → `{ enabled, publicKey }`; `webPush.subscribe`
+  `{ subscription: { endpoint, keys: { p256dh, auth } }, locale }` (20/min); `webPush.unsubscribe`
+  `{ endpoint }`. Endpoints must be HTTPS URLs of a known push service (FCM, Mozilla, Apple, WNS) so
+  the server can never be made to call other hosts; key sizes are checked.
+- **Table** `web_push_subscriptions` (migration 0037): unique `endpointHash` (sha256 of the
+  endpoint), endpoint, keys, nullable `userId`, `locale`, `userAgent`, `createdAt`, `lastSeenAt`,
+  `failureCount`. The owner follows the session: subscribing while signed in attaches the browser to
+  that user, signing out makes it anonymous again on the next sync.
+- **Sending**: the PUSH channel (`channels.ts`) sends to the user's Expo tokens and browser
+  subscriptions, so every existing PUSH event reaches signed-in users' browsers, respecting their
+  preferences. A push service answering 404/410 removes the subscription; 10 failures in a row also
+  remove it.
+- **Turning it off**: signed-in users untick PUSH per event in Settings → Notifications. Anyone
+  (including anonymous visitors) can stop all of them by blocking notifications for resulio.co in
+  the browser's site settings; the push service then reports the subscription gone and it is
+  deleted on the next send.
+
+Browser support: Chrome, Edge, Firefox and Opera on desktop and Android; Safari 16+ on macOS.
+**iPhone/iPad (iOS/iPadOS 16.4+) only supports web push after "Add to Home Screen"** (installed web
+app); in a normal Safari tab the API is missing, so the prompt is not shown there. Without
+notification permission nothing is subscribed.
+
+## Admin announcements
+
+Admin console → **Announcements** (`/admin/announcements`; permission `announcements.view` to see,
+`announcements.send` to send — SUPER_ADMIN only, high-risk, so a sign-in within the last hour is
+required). The admin picks an audience (everyone / signed-in / anonymous / teachers = workspace
+owners / students = active group members), a language (one of AZ/EN/RU, or "each subscriber's
+language" with AZ required and EN/RU optional, falling back to AZ), a title (≤ 80), a short text
+(≤ 240) and a link (in-site path or https URL), checks the preview and sends. Every send is audited
+(`ANNOUNCEMENT_SENT`).
+
+- Rows in `announcements` keep the texts, audience, status (`QUEUED → SENDING → SENT | FAILED`) and
+  counts: target users/anonymous subscribers, in-app sent, push sent/failed. The page refreshes
+  while a send is running.
+- Sending runs in the background in batches of 500. Signed-in recipients go through the dispatcher
+  (event `ANNOUNCEMENT`: in-app feed + their browsers and mobile app, preferences respected, dedupe
+  key per user). Anonymous subscribers get web push directly, 10 at a time, each claimed first in
+  `announcement_deliveries` (one row per announcement and subscription).
+- Idempotent: a restart resumes `QUEUED`/`SENDING` announcements, and neither path sends twice to
+  the same user or browser (also when two API instances run it at once).
+- Without VAPID keys only signed-in users are reached (in-app feed and mobile push); the page says so.
 
 ## Mobile push
 

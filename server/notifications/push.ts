@@ -9,6 +9,7 @@ import { isMissingTable } from "./preferences";
 /**
  * Mobile push. Provider-agnostic interface; Expo is the built-in provider (fits a React Native /
  * Expo app). Off unless PUSH_PROVIDER is set. Tokens are sensitive: never log or return them.
+ * Browser push (the `web` side of the PUSH channel) lives in webPush.ts; channels.ts sends to both.
  */
 
 export type PushPlatform = (typeof PUSH_PLATFORMS)[number];

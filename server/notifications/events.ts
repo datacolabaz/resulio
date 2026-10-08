@@ -1,3 +1,5 @@
+import type { AnnouncementLanguage, AnnouncementTexts } from "../../shared/announcements";
+
 /**
  * Notification domain events and the channels each may use. Adding an event: declare it here,
  * give it a renderer in render.ts, then call `dispatch` where it happens. See docs/NOTIFICATIONS.md.
@@ -23,6 +25,7 @@ export const EVENT_TYPES = [
   "TASK_UPDATED",
   "EXAM_RESULT_READY",
   "GROUP_MEMBER_JOINED",
+  "ANNOUNCEMENT",
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -52,6 +55,8 @@ export interface EventData {
   EXAM_RESULT_READY: ExamResultNotice;
   /** To the group's teacher: a student joined through an invite link. Informational, nothing to approve. */
   GROUP_MEMBER_JOINED: { groupId: string; groupName: string; studentName: string | null };
+  /** An admin's platform announcement (announcements.ts); the recipient's language is picked at render time. */
+  ANNOUNCEMENT: { announcementId: number; language: AnnouncementLanguage; texts: AnnouncementTexts; url: string };
 }
 
 export interface ExamResultNotice {
@@ -104,6 +109,7 @@ export const EVENTS: Record<EventType, EventDefinition> = {
   // Only for exams whose teacher ticked "e-mail results"; the in-app "result ready" notice exists already.
   EXAM_RESULT_READY: { channels: ["EMAIL"] },
   GROUP_MEMBER_JOINED: { channels: ["IN_APP", "PUSH"] },
+  ANNOUNCEMENT: { channels: ["IN_APP", "PUSH"] },
 };
 
 export const isEventType = (v: string): v is EventType => (EVENT_TYPES as readonly string[]).includes(v);

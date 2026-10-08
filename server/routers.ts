@@ -64,6 +64,7 @@ import * as workspaces from "./modules/workspaces";
 import { CHANNELS, EVENT_TYPES } from "./notifications/events";
 import * as notificationPreferences from "./notifications/preferences";
 import * as push from "./notifications/push";
+import * as webPush from "./notifications/webPush";
 import * as bank from "./questionBank/bank";
 import { questionBankFilter, questionImportRouter, questionTopicsRouter, sectionPicksSchema } from "./questionBank/router";
 import { store } from "./resulioStore";
@@ -1036,6 +1037,32 @@ const devicesRouter = router({
     }),
 });
 
+/**
+ * Browser push for signed-in users and anonymous visitors. The client re-syncs its subscription on
+ * every visit with permission granted, so the owner follows the session (sign-in attaches, sign-out detaches).
+ */
+const webPushRouter = router({
+  /** The VAPID public key is read at request time, so changing it on Railway needs no client rebuild. */
+  config: publicProcedure.query(() => {
+    const config = webPush.webPushConfig();
+    return { enabled: !!config, publicKey: config?.publicKey ?? null };
+  }),
+  subscribe: publicProcedure
+    .use(rateLimit("webPushSubscribe", 20, MINUTE))
+    .input(z.object({ subscription: webPush.webPushSubscriptionInput, locale: z.enum(["az", "en", "ru"]) }))
+    .mutation(async ({ ctx, input }) => {
+      if (!webPush.webPushEnabled()) return { ok: false, enabled: false };
+      const userId = ctx.user && ctx.user.accountStatus !== "SUSPENDED" ? ctx.user.id : null;
+      const userAgent = typeof ctx.req.headers?.["user-agent"] === "string" ? ctx.req.headers["user-agent"] : null;
+      await webPush.saveSubscription({ ...input.subscription, userId, locale: input.locale, userAgent });
+      return { ok: true, enabled: true };
+    }),
+  unsubscribe: publicProcedure
+    .use(rateLimit("webPushUnsubscribe", 20, MINUTE))
+    .input(z.object({ endpoint: z.string().max(2048).refine(webPush.isPushServiceEndpoint, "INVALID_ENDPOINT") }))
+    .mutation(async ({ input }) => webPush.deleteSubscription(input.endpoint)),
+});
+
 // ---------------------------------------------------------------------------
 // Contexts: workspaces, partner, admin
 // ---------------------------------------------------------------------------
@@ -1103,6 +1130,7 @@ export const appRouter = router({
   public: publicRouter,
   inbox: inboxRouter,
   devices: devicesRouter,
+  webPush: webPushRouter,
 });
 
 export type AppRouter = typeof appRouter;
