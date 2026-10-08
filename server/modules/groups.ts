@@ -118,6 +118,28 @@ export async function addMemberByEmail(scope: TeacherScope, groupId: string, ema
   return { studentId: student.id, status: "ACTIVE" as const };
 }
 
+/** Same as addMemberByEmail for a known user id (an accepted syllabus join request). */
+export async function addMemberById(scope: TeacherScope, groupId: string, studentId: number) {
+  const db = requireDb();
+  await assertGroupOwner(scope, groupId);
+  const [student] = await db.select({ id: users.id }).from(users).where(eq(users.id, studentId)).limit(1);
+  if (!student) throw new AppError("STUDENT_NOT_FOUND");
+  const ws = await workspaceOwnerOf(scope.workspaceId, db);
+  if (ws.ownerUserId === student.id) throw new AppError("CANNOT_JOIN_OWN_GROUP");
+  const [existing] = await db
+    .select()
+    .from(groupMembers)
+    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, student.id)))
+    .limit(1);
+  if (existing?.status === "ACTIVE") throw new AppError("ALREADY_MEMBER");
+  if (existing) {
+    await db.update(groupMembers).set({ status: "ACTIVE" }).where(eq(groupMembers.id, existing.id));
+  } else {
+    await db.insert(groupMembers).values({ groupId, userId: student.id, membershipRole: "STUDENT", status: "ACTIVE" });
+  }
+  return { studentId: student.id, status: "ACTIVE" as const };
+}
+
 export type InviteCodeRejection = "INVITE_CODE_INACTIVE" | "INVITE_CODE_EXPIRED" | "GROUP_NOT_ACCEPTING";
 
 /** Why the group's invite code / `/join/<code>` link would refuse a new join at `now`, or null if it lets people in. */

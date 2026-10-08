@@ -99,7 +99,7 @@ function AiUsagePanel() {
   );
 }
 
-const STUDENT_EVENTS = ["TASK_ASSIGNED", "TASK_UPDATED", "AI_GRADE_READY", "GRADE_RELEASED", "GRADE_UPDATED", "EXAM_RESULT_READY", "ANNOUNCEMENT"];
+const STUDENT_EVENTS = ["TASK_ASSIGNED", "TASK_UPDATED", "AI_GRADE_READY", "GRADE_RELEASED", "GRADE_UPDATED", "EXAM_RESULT_READY", "SYLLABUS_JOIN_DECIDED", "ANNOUNCEMENT"];
 const SHOWN_CHANNELS = ["IN_APP", "EMAIL", "PUSH"] as const;
 
 /** Which notifications reach this user in the app, by e-mail and as push (browser and mobile app alike). */

@@ -62,7 +62,7 @@ function useShareAttribution(targetType: ShareTargetType, targetId: string, read
 }
 
 /** Extra group facts shown on a join-preview screen, only for the fields the teacher chose to share. */
-function GroupPreviewDetails({ g }: { g: { language?: string; format?: string; startDate?: string | Date | null; classSchedule?: ClassScheduleEntry[] } }) {
+export function GroupPreviewDetails({ g }: { g: { language?: string; format?: string; startDate?: string | Date | null; classSchedule?: ClassScheduleEntry[] } }) {
   const schedule = scheduleSummary(g.classSchedule);
   return (
     <dl className="mt-3 space-y-1 text-xs text-muted-foreground">

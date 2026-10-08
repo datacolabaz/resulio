@@ -52,6 +52,7 @@ const SyllabusPreviewPage = lazy(() => import("@/pages/teacher/syllabus/PresentA
 const SyllabusDetailPage = lazy(() => import("@/pages/teacher/syllabus/SyllabusDetail").then((m) => ({ default: m.SyllabusDetailPage })));
 const SyllabusListPage = lazy(() => import("@/pages/teacher/syllabus/SyllabusList").then((m) => ({ default: m.SyllabusListPage })));
 const SyllabusImportPage = lazy(() => import("@/pages/teacher/syllabus/SyllabusImportPage"));
+const PublicSyllabusPage = lazy(() => import("@/pages/PublicSyllabusPage"));
 const QuestionImportPage = lazy(() => import("@/pages/teacher/QuestionImport").then((m) => ({ default: m.QuestionImportPage })));
 const QuestionImportReviewPage = lazy(() => import("@/pages/teacher/QuestionImport").then((m) => ({ default: m.QuestionImportReviewPage })));
 
@@ -151,6 +152,7 @@ function Router() {
       <Route path="/exam/:shareCode" component={PublicExamPage} />
       <Route path="/task/:shareCode" component={PublicTaskPage} />
       <Route path="/material/:shareCode" component={PublicMaterialPage} />
+      <Route path="/syllabus/:code">{() => <Suspense fallback={<PageLoading />}><PublicSyllabusPage /></Suspense>}</Route>
       <Route path="/app">{() => <AppRedirect />}</Route>
       <Route path="/settings" component={SettingsPage} />
       <Route path="/partner">{partner(<PartnerPage />)}</Route>

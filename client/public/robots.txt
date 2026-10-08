@@ -33,6 +33,7 @@ Disallow: /g/
 Disallow: /exam/
 Disallow: /task/
 Disallow: /material/
+Disallow: /syllabus/
 Disallow: /_pages/
 Disallow: /__manus__/
 

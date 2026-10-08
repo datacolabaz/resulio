@@ -14,6 +14,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { DeleteSyllabusDialog } from "./DeleteSyllabusDialog";
+import { GroupListingsPanel, ShareLinkPanel } from "./ShareAndRequests";
 import type { Tree } from "./SyllabusDetail";
 import { fieldsFromSyllabus, fieldsPayload, SyllabusFieldsForm } from "./SyllabusFields";
 import { fieldLabel, GrantStateBadge, toastError, useSyllabusRefresh } from "./shared";
@@ -375,6 +376,8 @@ export function AccessTab({ tree }: { tree: Tree }) {
           </div>
         </Panel>
       )}
+      <ShareLinkPanel tree={tree} />
+      <GroupListingsPanel syllabusId={s.id} />
       <GrantDialog syllabusId={s.id} open={grantOpen} onOpenChange={setGrantOpen} preset={preset} />
       <DatesDialog syllabusId={s.id} grant={datesFor} onClose={() => setDatesFor(null)} />
     </div>

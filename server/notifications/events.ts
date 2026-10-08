@@ -25,6 +25,8 @@ export const EVENT_TYPES = [
   "TASK_UPDATED",
   "EXAM_RESULT_READY",
   "GROUP_MEMBER_JOINED",
+  "SYLLABUS_JOIN_REQUESTED",
+  "SYLLABUS_JOIN_DECIDED",
   "ANNOUNCEMENT",
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -55,6 +57,10 @@ export interface EventData {
   EXAM_RESULT_READY: ExamResultNotice;
   /** To the group's teacher: a student joined through an invite link. Informational, nothing to approve. */
   GROUP_MEMBER_JOINED: { groupId: string; groupName: string; studentName: string | null };
+  /** To the teacher: a student asked, from the syllabus share page, to join a group (`groupName`) or to take part individually (null). */
+  SYLLABUS_JOIN_REQUESTED: { requestId: string; syllabusId: string; syllabusTitle: string; studentName: string | null; groupName: string | null };
+  /** To the student: the teacher answered their request. `path` is where the notice leads. */
+  SYLLABUS_JOIN_DECIDED: { requestId: string; syllabusTitle: string; decision: "ACCEPTED" | "REJECTED"; groupName: string | null; note: string | null; path: string };
   /** An admin's platform announcement (announcements.ts); the recipient's language is picked at render time. */
   ANNOUNCEMENT: { announcementId: number; language: AnnouncementLanguage; texts: AnnouncementTexts; url: string };
 }
@@ -109,6 +115,8 @@ export const EVENTS: Record<EventType, EventDefinition> = {
   // Only for exams whose teacher ticked "e-mail results"; the in-app "result ready" notice exists already.
   EXAM_RESULT_READY: { channels: ["EMAIL"] },
   GROUP_MEMBER_JOINED: { channels: ["IN_APP", "PUSH"] },
+  SYLLABUS_JOIN_REQUESTED: { channels: ["IN_APP", "PUSH"] },
+  SYLLABUS_JOIN_DECIDED: { channels: ["IN_APP", "PUSH"] },
   ANNOUNCEMENT: { channels: ["IN_APP", "PUSH"] },
 };
 
