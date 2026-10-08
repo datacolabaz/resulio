@@ -71,6 +71,16 @@ describe("after the publish request", () => {
   });
 });
 
+describe("no version jargon in the app texts", () => {
+  it("no Azerbaijani text says 'versiya' or a bare 'v2', except the landing page's marketing copy", () => {
+    const allowed = new Set(["landing.section.builder.body"]);
+    const offenders = Object.entries(catalog as Record<string, readonly string[]>)
+      .filter(([k, v]) => !allowed.has(k) && /versiya|\bv\d/i.test(v[0]))
+      .map(([k]) => k);
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe("publish dialog wording", () => {
   const none = { added: 0, removed: 0, changed: 0 };
   const diff = { modules: { ...none, added: 1 }, lessons: { ...none, changed: 2 }, items: none, reordered: false, rulesChanged: true };

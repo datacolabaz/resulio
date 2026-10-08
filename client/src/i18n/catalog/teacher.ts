@@ -124,7 +124,6 @@ export const teacher = {
   "assessment.afterPublish": ["dərcdən sonra", "after publishing", "после публикации"],
   "assessment.default": ["ümumi", "default", "по умолчанию"],
   "assessment.notPublishedYet": ["Hələ dərc olunmayıb.", "Not published yet.", "Ещё не опубликован."],
-  "assessment.versionN": ["Versiya {n}", "Version {n}", "Версия {n}"],
   "assessment.versionCurrent": ["Ən son — tələbələr bunu görür", "Latest — students get this", "Последний — его получают студенты"],
   "assessment.versionArchived": ["Əvvəlki", "Earlier", "Прежний"],
   "assessment.versionsImmutable": [
@@ -136,11 +135,6 @@ export const teacher = {
   "assessment.showCorrect": ["Düzgün cavabları göstər", "Show correct answers", "Показывать правильные ответы"],
   "assessment.showExplanations": ["İzahları göstər", "Show explanations", "Показывать объяснения"],
   "assessment.timezone": ["Saat qurşağı", "Time zone", "Часовой пояс"],
-  "assessment.publishDialogBody": [
-    "Suallar və qaydalar dəyişməz versiya kimi saxlanılacaq. Sonrakı redaktələr yeni qaralama yaradır.",
-    "Questions and rules will be saved as an immutable version. Later edits create a new draft.",
-    "Вопросы и правила сохранятся как неизменяемая версия. Дальнейшие правки создают новый черновик.",
-  ],
   "assessment.moveAssignments": ["Təyin olunmuş tələbələr yeni variantı görsün", "Assigned students get the new variant", "Назначенные студенты получат новый вариант"],
   "assessment.moveAssignmentsNote": [
     "Seçilməsə, onlar indiki variantı görməyə davam edəcək. Başlanmış cəhdlər hər halda dəyişmir.",

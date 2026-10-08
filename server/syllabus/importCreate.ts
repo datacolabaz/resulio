@@ -66,11 +66,11 @@ export async function createFromStructure(scope: TeacherScope, structure: Syllab
   try {
     if (hasCourseTiming(plan.course)) await authoring.updateCourseTiming(scope, syllabus.id, plan.course);
     for (const m of plan.modules) {
-      const mod = await authoring.createModule(scope, syllabus.id, { title: m.title, description: m.description });
+      const mod = await authoring.createModule(scope, syllabus.id, { title: m.title, description: m.description, status: "READY" });
       if (hasModuleDetails(m.details)) await authoring.updateModuleDetails(scope, mod.id, m.details);
       if (m.duration) await authoring.updateModuleDuration(scope, mod.id, m.duration);
       for (const l of m.lessons) {
-        const lesson = await authoring.createLesson(scope, mod.id, { title: l.title, estimatedMinutes: l.estimatedMinutes });
+        const lesson = await authoring.createLesson(scope, mod.id, { title: l.title, estimatedMinutes: l.estimatedMinutes, status: "READY" });
         for (const it of l.items) await authoring.createItem(scope, syllabus.id, { scope: "LESSON", lessonId: lesson.id }, it);
       }
     }

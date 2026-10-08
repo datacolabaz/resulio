@@ -34,7 +34,6 @@ export const syllabusLearn = {
     "Your progress is kept, but the content is closed.",
     "Ваш прогресс сохранён, но материалы закрыты.",
   ],
-  "learn.version": ["Versiya {label}", "Version {label}", "Версия {label}"],
   "learn.accessUntil": ["Giriş: {at} tarixinədək", "Access until {at}", "Доступ до {at}"],
   "learn.moduleN": ["Modul {n}", "Module {n}", "Модуль {n}"],
   "learn.lessonN": ["Dərs {n}", "Lesson {n}", "Урок {n}"],
@@ -110,7 +109,6 @@ export const syllabusLearn = {
   "learn.cert.date": ["Tarix", "Date", "Дата"],
   "learn.cert.overall": ["Ümumi nəticə", "Overall", "Общий результат"],
   "learn.cert.final": ["Yekun qiymətləndirmə", "Final assessment", "Итоговое оценивание"],
-  "learn.cert.version": ["Versiya", "Version", "Версия"],
   "learn.cert.code": ["Yoxlama kodu", "Verification code", "Код проверки"],
   "learn.cert.note": [
     "Bu qeyd sertifikat üçün əsas kimi saxlanılır.",
