@@ -250,7 +250,7 @@ describe("GET /syllabus/:code HTML", () => {
 
   it("leaves other pages alone", async () => {
     expect(await (await get("/about")).text()).toContain("<title>About</title>");
-    for (const path of [`/join/${CODE}`, `/teacher/syllabus/${CODE}`, "/syllabus/"]) {
+    for (const path of [`/exam/${CODE}`, `/teacher/syllabus/${CODE}`, "/syllabus/"]) {
       const res = await get(path);
       expect(res.headers.get("x-robots-tag")).toBeNull();
       expect(await res.text()).toContain("<title>Resulio — müəllimlər üçün onlayn imtahan və qiymətləndirmə platforması</title>");
