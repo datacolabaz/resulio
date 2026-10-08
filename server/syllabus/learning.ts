@@ -120,12 +120,12 @@ export async function learningPath(userId: number, syllabusId: string) {
   const groupRows = ((await store.groupsByIds(grantedGroups)) ?? []).filter((g) => g.workspaceId === o.syllabus.providerWorkspaceId);
   const completion = o.enrollment.status === "COMPLETED" ? await store.completionOf(o.enrollment.id) : null;
   const lessonChanges = await lessonChangesFor(o.enrollment);
-  const details = await store.moduleDetailsOfVersion(o.enrollment.versionId);
+  const [details, timing] = await Promise.all([store.moduleDetailsOfVersion(o.enrollment.versionId), store.timingOfVersion(o.enrollment.versionId)]);
   return {
     syllabus: { id: o.syllabus.id, title: o.syllabus.title, description: o.syllabus.description ?? "", subject: o.syllabus.subject, level: o.syllabus.level },
     version: { id: o.enrollment.versionId, label: version?.version.label ?? "" },
     access: { endsAt: o.grant.endsAt },
-    ...studentPathView(o.structure, o.output, details),
+    ...studentPathView(o.structure, o.output, details, timing),
     awaitingApproval: o.output.syllabusAwaitingApproval,
     summary: {
       practice: summary.practice,

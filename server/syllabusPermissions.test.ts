@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Syllabus, SyllabusAccessGrant, SyllabusEnrollment, User } from "../drizzle/schema";
 import { resolveRules } from "../shared/syllabus";
+import { emptyTiming } from "../shared/syllabusTiming";
 import type { TrpcContext } from "./_core/context";
 import { resetRateLimits } from "./_core/rateLimit";
 import * as accessMod from "./modules/access";
@@ -36,6 +37,7 @@ vi.mock("./syllabus/store", () => ({
   versionById: vi.fn(),
   versionItems: vi.fn(),
   moduleDetailsOfVersion: vi.fn(async () => new Map()),
+  timingOfVersion: vi.fn(async () => emptyTiming()),
   grantsForSyllabus: vi.fn(),
   grantsReachingStudent: vi.fn(),
   enrollmentOf: vi.fn(),
@@ -226,6 +228,37 @@ describe("teacher isolation", () => {
     expect(await codeOf(caller(user(99)).teacher.syllabus.createSample({ locale: "az" }))).toBe("FORBIDDEN:SYLLABUS_NOT_AVAILABLE");
     expect(await codeOf(caller(user(99)).teacher.syllabus.preview({ id: "syl1" }))).toBe("FORBIDDEN:SYLLABUS_NOT_AVAILABLE");
     expect(await codeOf(caller(user(99)).teacher.syllabus.publishPreview({ id: "syl1" }))).toBe("FORBIDDEN:SYLLABUS_NOT_AVAILABLE");
+  });
+
+  it("AI import and timing endpoints sit behind the teacher workspace and the feature flag", async () => {
+    const structure = {
+      title: "Course",
+      description: "",
+      subject: "",
+      level: "",
+      language: "",
+      durationLabel: "",
+      timing: { duration: null, lessonsPerWeek: null, lessonMinutes: null },
+      modules: [{ title: "M1", description: "", duration: null, lessons: [], projectsHeading: "", projects: [], details: { objectives: [], prerequisites: [] } }],
+    };
+    const calls = (c: ReturnType<typeof caller>) => [
+      c.teacher.syllabus.aiImport.availability(),
+      c.teacher.syllabus.aiImport.open(),
+      c.teacher.syllabus.aiImport.get({ id: "job1" }),
+      c.teacher.syllabus.aiImport.start({ text: "x".repeat(100) }),
+      c.teacher.syllabus.aiImport.retry({ id: "job1" }),
+      c.teacher.syllabus.aiImport.create({ id: "job1", structure }),
+      c.teacher.syllabus.aiImport.remove({ id: "job1" }),
+      c.teacher.syllabus.updateCourseTiming({ id: "syl1", course: { duration: { value: 9, unit: "MONTHS" }, lessonsPerWeek: 2 } }),
+      c.teacher.syllabus.updateModuleDuration({ moduleId: "mod1", duration: { value: 1, unit: "MONTHS" } }),
+    ];
+
+    m.access.resolveWorkspace.mockResolvedValue(null);
+    for (const call of calls(caller(user(STUDENT)))) expect(await codeOf(call)).toBe("FORBIDDEN:NO_WORKSPACE");
+
+    m.access.resolveWorkspace.mockResolvedValue({ id: "ws_other", ownerUserId: 99 } as never);
+    m.availability.assertSyllabusEnabled.mockRejectedValue(new AppError("SYLLABUS_NOT_AVAILABLE"));
+    for (const call of calls(caller(user(99)))) expect(await codeOf(call)).toBe("FORBIDDEN:SYLLABUS_NOT_AVAILABLE");
   });
 
   it("another teacher cannot read a syllabus through the router", async () => {

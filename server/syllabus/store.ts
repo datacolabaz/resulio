@@ -15,6 +15,7 @@ import {
 import { requireDb, type DbOrTx } from "../db";
 import { isMissingTable } from "../notifications/preferences";
 import { versionModuleDetails } from "./moduleDetails";
+import { versionTiming } from "./timing";
 import { DEFAULT_PROGRESS_VISIBLE_TO_GROUP } from "./visibility";
 import type { VersionStructure } from "./types";
 
@@ -43,6 +44,11 @@ export async function versionById(id: string, db: DbOrTx = requireDb()) {
 /** End-of-module blocks frozen into a version (moduleId → details). */
 export async function moduleDetailsOfVersion(versionId: string, db: DbOrTx = requireDb()) {
   return versionModuleDetails(versionId, db);
+}
+
+/** Course pacing frozen into a version. */
+export async function timingOfVersion(versionId: string, db: DbOrTx = requireDb()) {
+  return versionTiming(versionId, db);
 }
 
 export async function versionItems(versionId: string, itemIds: readonly string[], db: DbOrTx = requireDb()) {

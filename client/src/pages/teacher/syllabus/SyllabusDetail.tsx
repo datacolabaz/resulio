@@ -17,7 +17,9 @@ import { useState } from "react";
 import { Link, useParams } from "wouter";
 import { AnalyticsTab } from "./AnalyticsTab";
 import { ItemCard, useCreateItem } from "./ItemCard";
+import { durationText } from "@/components/syllabus/Timing";
 import { ModuleBlocksEditor } from "./ModuleBlocksEditor";
+import { CourseTimingPanel, LessonMinutes, ModuleTiming } from "./TimingEditors";
 import { StudentsTab } from "./StudentsTab";
 import { AccessTab, PublishDialog, SettingsTab, VersionsTab } from "./SyllabusTabs";
 import { fieldLabel, KIND_ICON, kindLabel, NodeStatusBadge, SyllabusShell, SyllabusStatusBadge, toastError, useSyllabusRefresh } from "./shared";
@@ -127,9 +129,9 @@ function LessonRow({ tree, module, lesson, handle }: { tree: Tree; module: Modul
               </span>
             );
           })}
-          {lesson.estimatedMinutes ? <span>{t("syllabus.minutes", { count: lesson.estimatedMinutes })}</span> : null}
         </span>
       </Link>
+      <LessonMinutes tree={tree} lesson={lesson} />
       <NodeStatusBadge status={lesson.status} />
       <div className="flex items-center gap-1">
         {tree.modules.length > 1 && (
@@ -241,6 +243,7 @@ function ModuleCard({ tree, module, handle, onEdit }: { tree: Tree; module: Modu
             <span className="block break-words font-semibold">{module.title}</span>
             <span className="text-xs text-muted-foreground">
               {t("syllabus.count.lessons", { count: module.lessons.length })}
+              {tree.timing.modules[module.id] ? ` · ${durationText(tree.timing.modules[module.id])}` : ""}
               {module.estimatedMinutes ? ` · ${t("syllabus.minutes", { count: module.estimatedMinutes })}` : ""}
             </span>
           </span>
@@ -266,6 +269,7 @@ function ModuleCard({ tree, module, handle, onEdit }: { tree: Tree; module: Modu
       </div>
       {open && (
         <div className="space-y-3 border-t border-border p-3">
+          <ModuleTiming tree={tree} module={module} />
           {module.lessons.length === 0 && <p className="text-sm text-muted-foreground">{t("syllabus.module.noLessons")}</p>}
           <SortableList
             items={module.lessons}
@@ -295,6 +299,7 @@ function StructureTab({ tree }: { tree: Tree }) {
   const reorder = trpc.teacher.syllabus.reorderModules.useMutation({ onSuccess: refresh, onError: toastError });
   return (
     <div className="space-y-4">
+      {tree.modules.length > 0 && <CourseTimingPanel tree={tree} />}
       {tree.modules.length === 0 ? (
         <EmptyState
           title={t("syllabus.structure.emptyTitle")}

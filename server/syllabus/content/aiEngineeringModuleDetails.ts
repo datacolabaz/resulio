@@ -14,7 +14,23 @@ export interface AiEngineeringModuleContent {
 
 const assessment = (items: string[]): ModuleDetails["assessment"] => ({ heading: "", intro: "", pipeline: "", listIntro: "", items });
 
-export const AI_ENGINEERING_SYLLABUS_TITLE = /\bai[\s-]*engineer/i;
+/** Lower case with Azerbaijani letters and other diacritics folded: "Süni İntellekt Mühəndisi" → "suni intellekt muhendisi". */
+export function foldTitle(title: string): string {
+  return title
+    .replace(/[əƏ]/g, "e")
+    .replace(/[ıIİ]/g, "i")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+}
+
+/** Matched against foldTitle(title): AI Engineer(ing), AI Mühəndis(i/liyi), Süni intellekt mühəndisi, Artificial Intelligence Engineer. */
+export const AI_ENGINEERING_SYLLABUS_TITLES: readonly RegExp[] = [/\bai[\s-]*(engineer|muhendis)/, /\bsuni[\s-]+intellekt[\s-]+muhendis/, /\bartificial[\s-]+intelligence[\s-]+engineer/];
+
+export function isAiEngineeringTitle(title: string): boolean {
+  const folded = foldTitle(title);
+  return AI_ENGINEERING_SYLLABUS_TITLES.some((re) => re.test(folded));
+}
 
 export const AI_ENGINEERING_MODULE_DETAILS: readonly AiEngineeringModuleContent[] = [
   {

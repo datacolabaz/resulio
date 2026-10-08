@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { assessments, syllabusItems, syllabusLessons, syllabusModules, syllabusVersionItems, syllabusVersions } from "../../drizzle/schema";
 import { parseItemContent } from "../../shared/syllabus";
+import { emptyTiming } from "../../shared/syllabusTiming";
 import { requireDb } from "../db";
 import type { TeacherScope } from "../modules/access";
 import { ownedSyllabus } from "./access";
@@ -10,6 +11,7 @@ import { changedDetailModules, draftModuleDetails, versionModuleDetails } from "
 import { answerKeyOf } from "./practiceTasks";
 import { studentLessonView, studentPathView } from "./serialize";
 import { buildStructure, contentHash, diffStructures, nextVersionLabel, type DraftItem, type PublishProblem } from "./snapshot";
+import { draftTiming, versionTiming } from "./timing";
 import type { VersionStructure } from "./types";
 
 /** The current draft, parsed and checked the way publish sees it (publish, preview and the publish dialog share this). */
@@ -85,12 +87,16 @@ export async function publishPreview(scope: TeacherScope, syllabusId: string) {
     .select({ maxNo: sql<number>`coalesce(max(${syllabusVersions.versionNo}), 0)` })
     .from(syllabusVersions)
     .where(eq(syllabusVersions.syllabusId, syllabusId));
-  const [draftDetails, publishedRows] = await Promise.all([
+  const [draftDetails, publishedRows, draftPacing, publishedPacing] = await Promise.all([
     draftModuleDetails(syllabusId, db),
     d.syllabus.currentVersionId ? versionModuleDetails(d.syllabus.currentVersionId, db) : Promise.resolve(new Map()),
+    draftTiming(syllabusId, db),
+    d.syllabus.currentVersionId ? versionTiming(d.syllabus.currentVersionId, db) : Promise.resolve(emptyTiming()),
   ]);
   const publishedDetails = withLegacyFallback(publishedRows, previous?.modules ?? []);
-  const detailsChanged = changedDetailModules(draftDetails, publishedDetails, structure.modules.map((m) => m.id));
+  const moduleIds = structure.modules.map((m) => m.id);
+  const detailsChanged = changedDetailModules(draftDetails, publishedDetails, moduleIds);
+  for (const id of moduleIds) if (JSON.stringify(draftPacing.modules[id] ?? null) !== JSON.stringify(publishedPacing.modules[id] ?? null)) detailsChanged.add(id);
   return {
     problems: [...d.problems, ...problems],
     excluded: excludedCounts(d, structure),
@@ -143,7 +149,7 @@ export async function preview(scope: TeacherScope, syllabusId: string) {
       level: d.syllabus.level,
       coverFileId: d.syllabus.coverFileId,
     },
-    path: studentPathView(structure, output, await draftModuleDetails(syllabusId)),
+    path: studentPathView(structure, output, await draftModuleDetails(syllabusId), await draftTiming(syllabusId)),
     lessons: lessons.filter((l): l is NonNullable<typeof l> & { locked: false } => !!l && !l.locked),
     problems: [...d.problems, ...problems],
     excluded: excludedCounts(d, structure),

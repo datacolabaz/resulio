@@ -36,6 +36,7 @@ import {
 } from "../shared/adminPermissions";
 import { ANSWER_SOURCES, CONFIDENCE_LEVELS, IMPORT_ITEM_STATUSES, IMPORT_JOB_STATUSES, type ImportIssue } from "../shared/questionImport";
 import { REFERRAL_SOURCES } from "../shared/referralSources";
+import { SYLLABUS_IMPORT_STATUSES } from "../shared/syllabusImport";
 import type { ClassScheduleEntry } from "../shared/schedule";
 import { SHARE_CHANNELS, SHARE_EVENT_TYPES, SHARE_TARGET_TYPES } from "../shared/shareTracking";
 import {
@@ -1462,6 +1463,54 @@ export const syllabusDataBackfills = mysqlTable("syllabus_data_backfills", {
   summary: text("summary"),
   ranAt: timestamp("ranAt").defaultNow().notNull(),
 });
+
+/** Draft pacing of a syllabus (shared/syllabusTiming.ts): course duration/cadence and module durations. */
+export const syllabusTiming = mysqlTable("syllabus_timing", {
+  syllabusId: id("syllabusId").primaryKey(),
+  timing: json("timing").$type<Record<string, unknown>>().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+/** Pacing as frozen into a published version. */
+export const syllabusVersionTiming = mysqlTable("syllabus_version_timing", {
+  versionId: id("versionId").primaryKey(),
+  timing: json("timing").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+/**
+ * "Create a syllabus from a file or text (AI)": the source (an uploaded file or pasted text), the
+ * background run (same run-id discipline as question_import_jobs) and the extracted structure the
+ * teacher reviews (shared/syllabusImport.ts). `syllabusId` is set once the draft was created.
+ */
+export const syllabusImportJobs = mysqlTable(
+  "syllabus_import_jobs",
+  {
+    id: id("id").primaryKey(),
+    providerWorkspaceId: id("providerWorkspaceId").notNull(),
+    createdBy: int("createdBy").notNull(),
+    fileId: id("fileId"),
+    fileName: varchar("fileName", { length: 255 }).notNull().default(""),
+    mimeType: varchar("mimeType", { length: 127 }).notNull().default(""),
+    sizeBytes: int("sizeBytes").notNull().default(0),
+    sourceText: longtext("sourceText"),
+    status: mysqlEnum("status", SYLLABUS_IMPORT_STATUSES).notNull().default("QUEUED"),
+    errorCode: varchar("errorCode", { length: 64 }),
+    pageCount: int("pageCount"),
+    chunkCount: int("chunkCount").notNull().default(0),
+    chunksDone: int("chunksDone").notNull().default(0),
+    inputMode: varchar("inputMode", { length: 16 }),
+    model: varchar("model", { length: 120 }),
+    runId: id("runId"),
+    result: json("result").$type<Record<string, unknown>>(),
+    syllabusId: id("syllabusId"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    finishedAt: timestamp("finishedAt"),
+  },
+  (t) => [index("syllabus_import_jobs_workspace_idx").on(t.providerWorkspaceId, t.createdAt)],
+);
+export type SyllabusImportJob = typeof syllabusImportJobs.$inferSelect;
 
 /**
  * Question bank structure, two levels per workspace: a subject (`parentId` null) and its sections

@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ModuleDetailsBlocks } from "../client/src/components/syllabus/ModuleDetailsBlocks";
 import { emptyModuleDetails, hasModuleDetails, moduleDetailsSchema, parseModuleDetails, type ModuleDetails } from "../shared/syllabusModuleDetails";
 import { backfillRows, mapModules, planBackfill, type BackfillSources, type CandidateSyllabus } from "./syllabus/aiEngineeringBackfill";
-import { AI_ENGINEERING_MODULE_DETAILS, AI_ENGINEERING_SYLLABUS_TITLE } from "./syllabus/content/aiEngineeringModuleDetails";
+import { AI_ENGINEERING_MODULE_DETAILS, foldTitle, isAiEngineeringTitle } from "./syllabus/content/aiEngineeringModuleDetails";
 import { changedDetailModules, freezeModuleDetails } from "./syllabus/moduleDetails";
 import { studentPathView } from "./syllabus/serialize";
 import { diffStructures } from "./syllabus/snapshot";
@@ -60,8 +60,20 @@ describe("AI Engineering module details content", () => {
   });
 
   it("recognises the syllabus title", () => {
-    for (const title of ["AI ENGINEER – 9 AYLIQ PRAKTİK PROQRAM", "AI Engineering", "ai-engineer bootcamp"]) expect(AI_ENGINEERING_SYLLABUS_TITLE.test(title)).toBe(true);
-    for (const title of ["Java əsasları", "Data Engineering", "AI for teachers"]) expect(AI_ENGINEERING_SYLLABUS_TITLE.test(title)).toBe(false);
+    const yes = [
+      "AI ENGINEER – 9 AYLIQ PRAKTİK PROQRAM",
+      "AI Engineering",
+      "ai-engineer bootcamp",
+      "AI Mühəndis — 9 ay",
+      "AI MÜHƏNDİSLİYİ",
+      "Süni intellekt mühəndisi",
+      "SÜNİ İNTELLEKT MÜHƏNDİSLİYİ kursu",
+      "suni intellekt muhendisi",
+      "Artificial Intelligence Engineering",
+    ];
+    for (const title of yes) expect(isAiEngineeringTitle(title), title).toBe(true);
+    for (const title of ["Java əsasları", "Data Engineering", "AI for teachers", "Süni intellektə giriş", "Mühəndislik riyaziyyatı"]) expect(isAiEngineeringTitle(title), title).toBe(false);
+    expect(foldTitle("Süni İntellekt Mühəndisi ŞÇĞÖ")).toBe("suni intellekt muhendisi scgo");
   });
 });
 

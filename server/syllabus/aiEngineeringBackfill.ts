@@ -1,15 +1,17 @@
-import { and, eq, inArray, isNull, like, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { syllabi, syllabusModuleDetails, syllabusModules, syllabusVersionModuleDetails, syllabusVersions } from "../../drizzle/schema";
 import { parseModuleDetails, type ModuleDetails } from "../../shared/syllabusModuleDetails";
 import { requireDb, type DbOrTx } from "../db";
-import { AI_ENGINEERING_MODULE_DETAILS, AI_ENGINEERING_SYLLABUS_TITLE, type AiEngineeringModuleContent } from "./content/aiEngineeringModuleDetails";
+import { AI_ENGINEERING_MODULE_DETAILS, foldTitle, isAiEngineeringTitle, type AiEngineeringModuleContent } from "./content/aiEngineeringModuleDetails";
 import { isLegacyCopy, legacyModuleDetails, type LegacyModuleFields } from "./legacyModuleDetails";
 import type { VersionStructure } from "./types";
 
 /**
  * Startup data backfill: puts the end-of-module blocks of content/aiEngineeringModuleDetails.ts on
  * the AI Engineering syllabus that already lives in the database. Idempotent and conservative:
- *   - exactly one syllabus titled "AI Engineer…" whose modules map 1:1 onto the 9 months, else nothing;
+ *   - exactly one syllabus titled like "AI Engineer…" (isAiEngineeringTitle: case and diacritics
+ *     ignored, also "AI Mühəndis…", "Süni intellekt mühəndisi") whose modules map 1:1 onto the
+ *     9 months, else nothing;
  *   - a module whose details row was set by a teacher (even to empty) is never touched; a row that is
  *     only a copy of the old objectives/prerequisites fields is replaced by the user's content;
  *   - published versions get the same rows, so pinned students see them without a republish.
@@ -36,14 +38,15 @@ export type ModuleMapping = { ok: true; modules: Array<{ moduleId: string; month
  */
 export function mapModules(modules: readonly CandidateModule[], content: readonly AiEngineeringModuleContent[] = AI_ENGINEERING_MODULE_DETAILS): ModuleMapping {
   const sorted = [...modules].sort((a, b) => a.position - b.position);
+  const hit = (c: AiEngineeringModuleContent, m: CandidateModule) => c.match.test(m.title) || c.match.test(foldTitle(m.title));
   if (sorted.length === content.length) {
-    const misses = content.filter((c, i) => !c.match.test(sorted[i].title));
+    const misses = content.filter((c, i) => !hit(c, sorted[i]));
     if (misses.length) return { ok: false, reason: `module titles do not match months ${misses.map((c) => c.month).join(", ")}: ${sorted.map((m) => JSON.stringify(m.title)).join(", ")}` };
     return { ok: true, modules: content.map((c, i) => ({ moduleId: sorted[i].id, month: c.month, title: sorted[i].title })) };
   }
   const picked: CandidateModule[] = [];
   for (const c of content) {
-    const hits = sorted.filter((m) => c.match.test(m.title));
+    const hits = sorted.filter((m) => hit(c, m));
     if (hits.length !== 1) return { ok: false, reason: `${hits.length} modules match month ${c.month} (${c.title}) among ${sorted.length} modules` };
     picked.push(hits[0]);
   }
@@ -53,17 +56,18 @@ export function mapModules(modules: readonly CandidateModule[], content: readonl
 }
 
 export type BackfillPlan =
-  | { action: "none"; reason: string }
+  | { action: "none"; found: number; reason: string }
   | { action: "fill"; syllabusId: string; title: string; modules: Array<{ moduleId: string; month: number; title: string }> };
 
 export function planBackfill(candidates: readonly CandidateSyllabus[]): BackfillPlan {
-  const titled = candidates.filter((s) => AI_ENGINEERING_SYLLABUS_TITLE.test(s.title));
-  if (!titled.length) return { action: "none", reason: "no syllabus titled 'AI Engineer…' found" };
+  const titled = candidates.filter((s) => isAiEngineeringTitle(s.title));
+  if (!titled.length) return { action: "none", found: 0, reason: `no syllabus title like "AI Engineer", "AI Mühəndis" or "Süni intellekt mühəndisi" among ${candidates.length} syllabi` };
+  const found = titled.length;
   const mapped = titled.map((s) => ({ s, mapping: mapModules(s.modules) }));
   let ok = mapped.filter((x) => x.mapping.ok);
-  if (!ok.length) return { action: "none", reason: mapped.map((x) => `"${x.s.title}" (${x.s.id}): ${(x.mapping as { reason: string }).reason}`).join("; ") };
+  if (!ok.length) return { action: "none", found, reason: mapped.map((x) => `"${x.s.title}" (${x.s.id}): ${(x.mapping as { reason: string }).reason}`).join("; ") };
   if (ok.length > 1) ok = ok.filter((x) => !x.s.archived);
-  if (ok.length !== 1) return { action: "none", reason: `ambiguous: ${mapped.filter((x) => x.mapping.ok).map((x) => `"${x.s.title}" (${x.s.id})`).join(", ")} all match` };
+  if (ok.length !== 1) return { action: "none", found, reason: `ambiguous: ${mapped.filter((x) => x.mapping.ok).map((x) => `"${x.s.title}" (${x.s.id})`).join(", ")} all match` };
   const { s, mapping } = ok[0];
   return { action: "fill", syllabusId: s.id, title: s.title, modules: (mapping as Extract<ModuleMapping, { ok: true }>).modules };
 }
@@ -121,10 +125,9 @@ const json = (d: ModuleDetails) => d as unknown as Record<string, unknown>;
 
 export async function runAiEngineeringBackfill(db: DbOrTx = requireDb()) {
   const tag = "[Syllabus] AI Engineering module details";
-  const rows = await db
-    .select({ id: syllabi.id, title: syllabi.title, archivedAt: syllabi.archivedAt })
-    .from(syllabi)
-    .where(like(sql`lower(${syllabi.title})`, "%engineer%"));
+  // Titles are matched in JS (diacritics folding); only id/title of every syllabus is read here.
+  const all = await db.select({ id: syllabi.id, title: syllabi.title, archivedAt: syllabi.archivedAt }).from(syllabi);
+  const rows = all.filter((r) => isAiEngineeringTitle(r.title));
   const ids = rows.map((r) => r.id);
   const modules = ids.length
     ? await db
@@ -141,9 +144,11 @@ export async function runAiEngineeringBackfill(db: DbOrTx = requireDb()) {
     : [];
   const plan = planBackfill(rows.map((r) => ({ id: r.id, title: r.title, archived: !!r.archivedAt, modules: modules.filter((m) => m.syllabusId === r.id) })));
   if (plan.action === "none") {
-    console.log(`${tag}: nothing written (${plan.reason})`);
+    const reason = plan.found ? plan.reason : `no syllabus title like "AI Engineer", "AI Mühəndis" or "Süni intellekt mühəndisi" among ${all.length} syllabi`;
+    console.log(`${tag}: ${plan.found ? `FOUND ${plan.found} syllabus(es) by title, but` : "NOT FOUND —"} nothing written (${reason})`);
     return { written: 0, plan };
   }
+  console.log(`${tag}: FOUND "${plan.title}" (${plan.syllabusId}), ${plan.modules.length} modules mapped`);
 
   const [draftRows, versionRows] = await Promise.all([
     db.select({ moduleId: syllabusModuleDetails.moduleId, details: syllabusModuleDetails.details }).from(syllabusModuleDetails).where(eq(syllabusModuleDetails.syllabusId, plan.syllabusId)),
