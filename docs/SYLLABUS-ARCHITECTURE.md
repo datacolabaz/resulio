@@ -322,6 +322,12 @@ Effective access for student S at time t = any grant with `status = ACTIVE`, `st
 - **`syllabus_practice_tasks`** — `taskId PK`, `syllabusId`, `itemId`, `versionId NULL` (NULL = draft working copy), `createdAt`. Lets `tasks.listForWorkspace` hide syllabus tasks from `/teacher/assignments`, and lets grading hooks find the syllabus in O(1).
 - **`syllabus_assessment_assignments`** — `assignmentId int PK` (→ `assessment_assignments.id`), `syllabusId`, `enrollmentId`, `itemId`, `createdAt`. Marks the per-student assignments created just-in-time on unlock (§9.2), so the generic student exam list can hide them and `assessments.publish({moveAssignments})` skips them.
 
+#### End-of-module blocks (migration 0033)
+
+- **`syllabus_module_details`** — `moduleId PK`, `syllabusId`, `details json`, `updatedAt`. Draft "🎯 Objectives / 📋 Prerequisites / 📝 Module assessment" blocks (`ModuleDetails` in `shared/syllabusModuleDetails.ts`; the assessment may carry a heading, intro, pipeline line and criteria list for a final project). Edited in the builder's module card; a row, even an empty one, means the teacher has set them.
+- **`syllabus_version_module_details`** — `(versionId, moduleId) PK`, `details json`. Written by publish for the version's modules with non-empty details; the student path reads the row of the pinned version (`store.moduleDetailsOfVersion`). `syllabus_versions` rows stay immutable. Blocks of a locked module are not sent, like its description and objectives. Both tables are read tolerantly (missing table = no details).
+- **AI Engineering content** — `server/syllabus/content/aiEngineeringModuleDetails.ts`, applied at startup by `runAiEngineeringBackfill` (`server/syllabus/aiEngineeringBackfill.ts`): exactly one live syllabus titled "AI Engineer…" whose modules map onto the 9 months (by position when there are 9, else by title keywords), only modules without a details row, mirrored into every version that contains the module. Not found / ambiguous → logs and writes nothing.
+
 #### Activity
 
 **`learning_activity`** (§29, §30, §42)

@@ -17,6 +17,7 @@ import { useState } from "react";
 import { Link, useParams } from "wouter";
 import { AnalyticsTab } from "./AnalyticsTab";
 import { ItemCard, useCreateItem } from "./ItemCard";
+import { ModuleDetailsPanel } from "./ModuleDetailsEditor";
 import { StudentsTab } from "./StudentsTab";
 import { AccessTab, PublishDialog, SettingsTab, VersionsTab } from "./SyllabusTabs";
 import { fieldLabel, KIND_ICON, kindLabel, linesToList, NodeStatusBadge, SyllabusShell, SyllabusStatusBadge, toastError, useSyllabusRefresh } from "./shared";
@@ -272,6 +273,7 @@ function ModuleCard({ tree, module, handle, onEdit }: { tree: Tree; module: Modu
             <h4 className="mb-2 text-sm font-medium">{t("syllabus.module.assessments")}</h4>
             <AssessmentList tree={tree} items={module.items} placement={{ scope: "MODULE", moduleId: module.id }} emptyText={t("syllabus.module.noAssessments")} />
           </div>
+          <ModuleDetailsPanel syllabusId={syllabusId} moduleId={module.id} title={module.title} details={module.details} />
         </div>
       )}
     </section>

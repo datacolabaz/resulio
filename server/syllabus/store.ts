@@ -14,6 +14,7 @@ import {
 } from "../../drizzle/schema";
 import { requireDb, type DbOrTx } from "../db";
 import { isMissingTable } from "../notifications/preferences";
+import { versionModuleDetails } from "./moduleDetails";
 import { DEFAULT_PROGRESS_VISIBLE_TO_GROUP } from "./visibility";
 import type { VersionStructure } from "./types";
 
@@ -37,6 +38,11 @@ export async function versionById(id: string, db: DbOrTx = requireDb()) {
   if (versionCache.size >= VERSION_CACHE_MAX) versionCache.delete(versionCache.keys().next().value!);
   versionCache.set(id, entry);
   return entry;
+}
+
+/** End-of-module blocks frozen into a version (moduleId → details). */
+export async function moduleDetailsOfVersion(versionId: string, db: DbOrTx = requireDb()) {
+  return versionModuleDetails(versionId, db);
 }
 
 export async function versionItems(versionId: string, itemIds: readonly string[], db: DbOrTx = requireDb()) {

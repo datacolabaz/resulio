@@ -9,6 +9,7 @@ import {
   UNLOCK_TARGET_TYPES,
 } from "../../shared/syllabus";
 import { analyticsSettingsSchema } from "../../shared/syllabusAnalytics";
+import { moduleDetailsSchema } from "../../shared/syllabusModuleDetails";
 import { timestampDate } from "../../shared/timestamp";
 import { rateLimit, router, studentProcedure, teacherProcedure } from "../_core/trpc";
 import * as access from "./access";
@@ -112,6 +113,9 @@ export const teacherSyllabusRouter = router({
   updateModule: syllabusTeacherProcedure
     .input(z.object({ moduleId: entityId, patch: moduleFields.partial(), expectedRevision: revision }))
     .mutation(({ ctx, input }) => authoring.updateModule(ctx.scope, input.moduleId, input.patch, input.expectedRevision)),
+  updateModuleDetails: syllabusTeacherProcedure
+    .input(z.object({ moduleId: entityId, details: moduleDetailsSchema, expectedRevision: revision }))
+    .mutation(({ ctx, input }) => authoring.updateModuleDetails(ctx.scope, input.moduleId, input.details, input.expectedRevision)),
   deleteModule: syllabusTeacherProcedure
     .input(z.object({ moduleId: entityId, expectedRevision: revision }))
     .mutation(({ ctx, input }) => authoring.deleteModule(ctx.scope, input.moduleId, input.expectedRevision)),

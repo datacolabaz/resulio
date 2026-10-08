@@ -1,4 +1,5 @@
 import { EmptyState, ErrorNote, Loading, Pill } from "@/components/AppShell";
+import { ModuleDetailsBlocks } from "@/components/syllabus/ModuleDetailsBlocks";
 import { Hints, StudentItemView } from "@/components/syllabus/StudentItemView";
 import { Markdown } from "@/components/syllabus/TheoryView";
 import { Button } from "@/components/ui/button";
@@ -128,6 +129,7 @@ function PreviewBody({ id }: { id: string }) {
   if (preview.error || !preview.data) return <ErrorNote error={preview.error} />;
   const { syllabus, path, lessons, problems, excluded } = preview.data;
   const current = lessons.find((l) => l.lesson.id === lessonId) ?? lessons[0] ?? null;
+  const endingModule = current ? path.modules.find((m) => m.lessons[m.lessons.length - 1]?.id === current.lesson.id && m.details) : undefined;
   return (
     <div className="space-y-4">
       <Link href={`/teacher/syllabus/${id}`} className="inline-flex items-center gap-1 text-sm text-link hover:underline">
@@ -228,6 +230,12 @@ function PreviewBody({ id }: { id: string }) {
                   </section>
                 );
               })}
+              {endingModule && (
+                <section className="space-y-3 rounded-2xl border border-border bg-card p-4" aria-label={t("moduleDetails.region", { title: endingModule.title })}>
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">{t("moduleDetails.moduleEnd", { title: endingModule.title })}</p>
+                  <ModuleDetailsBlocks details={endingModule.details} as="h4" />
+                </section>
+              )}
             </article>
           ) : (
             <EmptyState title={t("syllabus.preview.noLessonsTitle")} body={t("syllabus.preview.noLessonsBody")} />

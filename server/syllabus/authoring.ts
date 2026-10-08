@@ -32,10 +32,12 @@ import {
   type SyllabusItemScope,
   type SyllabusNodeStatus,
 } from "../../shared/syllabus";
+import { emptyModuleDetails, type ModuleDetails } from "../../shared/syllabusModuleDetails";
 import { requireDb, type DbOrTx } from "../db";
 import type { TeacherScope } from "../modules/access";
 import { AppError, type AppErrorCode } from "../modules/errors";
 import { ownedSyllabus } from "./access";
+import { draftModuleDetails, purgeModuleDetails, saveDraftModuleDetails } from "./moduleDetails";
 import { cloneContainer, createContainer, deleteContainers, syncContainer } from "./practiceTasks";
 
 /**
@@ -253,6 +255,7 @@ async function purgeSyllabus(tx: DbOrTx, workspaceId: string, id: string) {
   await deleteContainers(tx, workspaceId, id);
   const versionIds = (await tx.select({ id: syllabusVersions.id }).from(syllabusVersions).where(eq(syllabusVersions.syllabusId, id))).map((v) => v.id);
   if (versionIds.length) await tx.delete(syllabusVersionItems).where(inArray(syllabusVersionItems.versionId, versionIds));
+  await purgeModuleDetails(tx, id, versionIds);
   await tx.delete(syllabusVersions).where(eq(syllabusVersions.syllabusId, id));
   await tx.delete(syllabusItems).where(eq(syllabusItems.syllabusId, id));
   await tx.delete(syllabusLessons).where(eq(syllabusLessons.syllabusId, id));
@@ -307,15 +310,17 @@ export async function setArchived(scope: TeacherScope, id: string, archived: boo
 export async function draftTree(scope: TeacherScope, id: string) {
   const syllabus = await ownedSyllabus(scope, id);
   const db = requireDb();
-  const [modules, lessons, items] = await Promise.all([
+  const [modules, lessons, items, details] = await Promise.all([
     db.select().from(syllabusModules).where(and(eq(syllabusModules.syllabusId, id), isNull(syllabusModules.deletedAt))).orderBy(asc(syllabusModules.position)),
     db.select().from(syllabusLessons).where(and(eq(syllabusLessons.syllabusId, id), isNull(syllabusLessons.deletedAt))).orderBy(asc(syllabusLessons.position)),
     db.select().from(syllabusItems).where(and(eq(syllabusItems.syllabusId, id), isNull(syllabusItems.deletedAt))).orderBy(asc(syllabusItems.position)),
+    draftModuleDetails(id, db),
   ]);
   return {
     syllabus: { ...syllabus, effectiveRules: resolveRules(syllabus.completionRules) },
     modules: modules.map((m) => ({
       ...m,
+      details: details.get(m.id) ?? emptyModuleDetails(),
       effectiveRules: resolveRules(syllabus.completionRules, m.completionRules),
       items: items.filter((it) => it.scope === "MODULE" && it.moduleId === m.id),
       lessons: lessons
@@ -362,6 +367,14 @@ export async function updateModule(scope: TeacherScope, moduleId: string, patch:
   const values = defined(patch);
   if (Object.keys(values).length) await requireDb().update(syllabusModules).set(values).where(eq(syllabusModules.id, moduleId));
   return (await ownedModule(scope, moduleId)).module;
+}
+
+/** Objectives, prerequisites and module assessment shown at the end of the module (draft until published). */
+export async function updateModuleDetails(scope: TeacherScope, moduleId: string, details: ModuleDetails, expectedRevision?: number) {
+  const { module, syllabus } = await ownedModule(scope, moduleId);
+  await touchDraft(syllabus, expectedRevision);
+  await saveDraftModuleDetails(module.syllabusId, moduleId, details);
+  return { moduleId, details };
 }
 
 export async function deleteModule(scope: TeacherScope, moduleId: string, expectedRevision?: number) {
@@ -648,8 +661,10 @@ export async function duplicateModule(scope: TeacherScope, moduleId: string, exp
   const db = requireDb();
   const lessons = await db.select().from(syllabusLessons).where(and(eq(syllabusLessons.moduleId, moduleId), isNull(syllabusLessons.deletedAt)));
   const items = await liveItems(eq(syllabusItems.moduleId, moduleId));
+  const details = (await draftModuleDetails(module.syllabusId, db)).get(moduleId);
   const id = nanoid();
   await db.transaction(async (tx) => {
+    if (details) await saveDraftModuleDetails(module.syllabusId, id, details, tx);
     await tx
       .update(syllabusModules)
       .set({ position: sql`${syllabusModules.position} + 1` })

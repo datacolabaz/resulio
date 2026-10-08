@@ -1429,6 +1429,34 @@ export const syllabusNoticeBatches = mysqlTable(
 );
 
 /**
+ * Draft "end of module" blocks (objectives, prerequisites, module assessment; ModuleDetails in
+ * shared/syllabusModuleDetails.ts). A side table so syllabus_modules keeps working before this
+ * migration runs. A row, even an empty one, means the teacher has set the blocks.
+ */
+export const syllabusModuleDetails = mysqlTable(
+  "syllabus_module_details",
+  {
+    moduleId: id("moduleId").primaryKey(),
+    syllabusId: id("syllabusId").notNull(),
+    details: json("details").$type<Record<string, unknown>>().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [index("syllabus_module_details_syllabus_idx").on(t.syllabusId)],
+);
+
+/** The blocks as frozen into a published version (written by publish; versions themselves stay immutable). */
+export const syllabusVersionModuleDetails = mysqlTable(
+  "syllabus_version_module_details",
+  {
+    versionId: id("versionId").notNull(),
+    moduleId: id("moduleId").notNull(),
+    details: json("details").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.versionId, t.moduleId] })],
+);
+
+/**
  * Question bank structure, two levels per workspace: a subject (`parentId` null) and its sections
  * (`parentId` = the subject). Questions live in sections. `parentKey` is `parentId` or '' (MySQL
  * unique indexes treat NULLs as distinct) and `nameKey` the normalized name, so a sibling name

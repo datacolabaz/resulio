@@ -232,6 +232,13 @@
       "when": 1791443385879,
       "tag": "0032_group_join_instant",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "5",
+      "when": 1791469193816,
+      "tag": "0033_syllabus_module_details",
+      "breakpoints": true
     }
   ]
 }
