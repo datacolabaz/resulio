@@ -1,8 +1,8 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "d7e45268-5b94-409e-a3a3-fa280a4e1c84",
-  "prevId": "a640f2f4-4757-403c-bd4e-fa3e3a2b79b3",
+  "id": "a640f2f4-4757-403c-bd4e-fa3e3a2b79b3",
+  "prevId": "200dbcb3-0b56-4400-bb58-430a7fbc5444",
   "tables": {
     "ai_usage_events": {
       "name": "ai_usage_events",
@@ -5534,53 +5534,6 @@
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "syllabus_group_listings": {
-      "name": "syllabus_group_listings",
-      "columns": {
-        "syllabusId": {
-          "name": "syllabusId",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "groupId": {
-          "name": "groupId",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "createdBy": {
-          "name": "createdBy",
-          "type": "int",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "createdAt": {
-          "name": "createdAt",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(now())"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "syllabus_group_listings_syllabusId_groupId_pk": {
-          "name": "syllabus_group_listings_syllabusId_groupId_pk",
-          "columns": [
-            "syllabusId",
-            "groupId"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraint": {}
-    },
     "syllabus_import_jobs": {
       "name": "syllabus_import_jobs",
       "columns": {
@@ -6026,148 +5979,6 @@
         }
       },
       "uniqueConstraints": {},
-      "checkConstraint": {}
-    },
-    "syllabus_join_requests": {
-      "name": "syllabus_join_requests",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "syllabusId": {
-          "name": "syllabusId",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "workspaceId": {
-          "name": "workspaceId",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "studentId": {
-          "name": "studentId",
-          "type": "int",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "type": {
-          "name": "type",
-          "type": "enum('GROUP','INDIVIDUAL')",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "groupId": {
-          "name": "groupId",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "message": {
-          "name": "message",
-          "type": "varchar(1000)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "''"
-        },
-        "status": {
-          "name": "status",
-          "type": "enum('PENDING','ACCEPTED','REJECTED','CANCELLED')",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'PENDING'"
-        },
-        "openKey": {
-          "name": "openKey",
-          "type": "varchar(128)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "decisionNote": {
-          "name": "decisionNote",
-          "type": "varchar(500)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "decidedBy": {
-          "name": "decidedBy",
-          "type": "int",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "decidedAt": {
-          "name": "decidedAt",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "createdAt": {
-          "name": "createdAt",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(now())"
-        }
-      },
-      "indexes": {
-        "syllabus_join_requests_syllabus_idx": {
-          "name": "syllabus_join_requests_syllabus_idx",
-          "columns": [
-            "syllabusId",
-            "status"
-          ],
-          "isUnique": false
-        },
-        "syllabus_join_requests_workspace_idx": {
-          "name": "syllabus_join_requests_workspace_idx",
-          "columns": [
-            "workspaceId",
-            "status"
-          ],
-          "isUnique": false
-        },
-        "syllabus_join_requests_student_idx": {
-          "name": "syllabus_join_requests_student_idx",
-          "columns": [
-            "studentId"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "syllabus_join_requests_id": {
-          "name": "syllabus_join_requests_id",
-          "columns": [
-            "id"
-          ]
-        }
-      },
-      "uniqueConstraints": {
-        "syllabus_join_requests_openKey_unique": {
-          "name": "syllabus_join_requests_openKey_unique",
-          "columns": [
-            "openKey"
-          ]
-        }
-      },
       "checkConstraint": {}
     },
     "syllabus_lesson_progress": {
@@ -6968,76 +6779,6 @@
         }
       },
       "uniqueConstraints": {},
-      "checkConstraint": {}
-    },
-    "syllabus_share_links": {
-      "name": "syllabus_share_links",
-      "columns": {
-        "syllabusId": {
-          "name": "syllabusId",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "code": {
-          "name": "code",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "active": {
-          "name": "active",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": true
-        },
-        "createdBy": {
-          "name": "createdBy",
-          "type": "int",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "createdAt": {
-          "name": "createdAt",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(now())"
-        },
-        "updatedAt": {
-          "name": "updatedAt",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "onUpdate": true,
-          "default": "(now())"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "syllabus_share_links_syllabusId": {
-          "name": "syllabus_share_links_syllabusId",
-          "columns": [
-            "syllabusId"
-          ]
-        }
-      },
-      "uniqueConstraints": {
-        "syllabus_share_links_code_unique": {
-          "name": "syllabus_share_links_code_unique",
-          "columns": [
-            "code"
-          ]
-        }
-      },
       "checkConstraint": {}
     },
     "syllabus_timing": {

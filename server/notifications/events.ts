@@ -1,3 +1,5 @@
+import type { AnnouncementLanguage, AnnouncementTexts } from "../../shared/announcements";
+
 /**
  * Notification domain events and the channels each may use. Adding an event: declare it here,
  * give it a renderer in render.ts, then call `dispatch` where it happens. See docs/NOTIFICATIONS.md.
@@ -25,6 +27,7 @@ export const EVENT_TYPES = [
   "GROUP_MEMBER_JOINED",
   "SYLLABUS_JOIN_REQUESTED",
   "SYLLABUS_JOIN_DECIDED",
+  "ANNOUNCEMENT",
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -58,6 +61,8 @@ export interface EventData {
   SYLLABUS_JOIN_REQUESTED: { requestId: string; syllabusId: string; syllabusTitle: string; studentName: string | null; groupName: string | null };
   /** To the student: the teacher answered their request. `path` is where the notice leads. */
   SYLLABUS_JOIN_DECIDED: { requestId: string; syllabusTitle: string; decision: "ACCEPTED" | "REJECTED"; groupName: string | null; note: string | null; path: string };
+  /** An admin's platform announcement (announcements.ts); the recipient's language is picked at render time. */
+  ANNOUNCEMENT: { announcementId: number; language: AnnouncementLanguage; texts: AnnouncementTexts; url: string };
 }
 
 export interface ExamResultNotice {
@@ -112,6 +117,7 @@ export const EVENTS: Record<EventType, EventDefinition> = {
   GROUP_MEMBER_JOINED: { channels: ["IN_APP", "PUSH"] },
   SYLLABUS_JOIN_REQUESTED: { channels: ["IN_APP", "PUSH"] },
   SYLLABUS_JOIN_DECIDED: { channels: ["IN_APP", "PUSH"] },
+  ANNOUNCEMENT: { channels: ["IN_APP", "PUSH"] },
 };
 
 export const isEventType = (v: string): v is EventType => (EVENT_TYPES as readonly string[]).includes(v);

@@ -1,3 +1,4 @@
+import { pickAnnouncementText } from "../../shared/announcements";
 import type { EmailMessage } from "../_core/email";
 import type { ServerLocale } from "../_core/locale";
 import type { EventData, EventType } from "./events";
@@ -126,6 +127,12 @@ export function renderNotification<E extends EventType>(event: E, data: EventDat
     case "SYLLABUS_JOIN_DECIDED": {
       const d = data as EventData["SYLLABUS_JOIN_DECIDED"];
       return { ...syllabusJoinDecidedInApp(locale, d), path: d.path, email: null };
+    }
+    case "ANNOUNCEMENT": {
+      const d = data as EventData["ANNOUNCEMENT"];
+      const text = pickAnnouncementText(d.texts, d.language, locale);
+      if (!text) throw new Error("ANNOUNCEMENT_WITHOUT_TEXT");
+      return { title: text.title, body: text.body, path: d.url, email: null };
     }
     default:
       throw new Error(`No renderer for ${String(event)}`);

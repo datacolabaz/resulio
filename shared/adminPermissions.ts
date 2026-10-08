@@ -26,6 +26,8 @@ export const ADMIN_PERMISSIONS = [
   "system.notify",
   "syllabus.view",
   "syllabus.override",
+  "announcements.view",
+  "announcements.send",
 ] as const;
 export type AdminPermission = (typeof ADMIN_PERMISSIONS)[number];
 
@@ -59,6 +61,7 @@ export const HIGH_RISK_PERMISSIONS: readonly AdminPermission[] = [
   "roles.manage",
   "security.review",
   "syllabus.override",
+  "announcements.send",
 ];
 
 export const REAUTH_WINDOW_MS = 60 * 60 * 1000;
@@ -105,10 +108,11 @@ export const AUDIT_ACTIONS = [
   "SECURITY_EVENT_REVIEWED",
   "SYLLABUS_MANUAL_UNLOCK",
   "SYLLABUS_UNLOCK_REVOKED",
+  "ANNOUNCEMENT_SENT",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
-export const AUDIT_TARGET_TYPES = ["USER", "WORKSPACE", "PARTNER_PROFILE", "FEATURE_FLAG", "PLATFORM_ROLE", "SECURITY_EVENT", "SYLLABUS_ENROLLMENT"] as const;
+export const AUDIT_TARGET_TYPES = ["USER", "WORKSPACE", "PARTNER_PROFILE", "FEATURE_FLAG", "PLATFORM_ROLE", "SECURITY_EVENT", "SYLLABUS_ENROLLMENT", "ANNOUNCEMENT"] as const;
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 
 export const SECURITY_EVENT_TYPES = [

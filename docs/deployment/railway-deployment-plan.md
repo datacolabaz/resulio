@@ -70,6 +70,8 @@ Environment variables read by the code: `DATABASE_URL`, `SESSION_SECRET`, `GOOGL
 `AUDIT_HASH_SECRET`, `DISABLE_DEMO_LOGIN`, `ALLOW_SEED`, `AI_API_URL`, `AI_API_KEY`, `AI_MODEL`,
 `AI_REVIEW_*`, `RESEND_API_KEY`, `EMAIL_FROM`, `APP_PUBLIC_URL` (e-mail, optional; set on resulio-api),
 `PUSH_PROVIDER`, `EXPO_ACCESS_TOKEN` (mobile push, optional, only once a mobile app exists; see `docs/NOTIFICATIONS.md`),
+`WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY`, `WEB_PUSH_SUBJECT` (browser push and admin announcements,
+optional; generate with `node scripts/generate-vapid-keys.mjs`; see `docs/NOTIFICATIONS.md`),
 `MANUS_API_URL`, `MANUS_API_KEY` (+ public
 `MANUS_PROJECT_ID`, `MANUS_OAUTH_PORTAL_URL`, `MANUS_API_BROWSER_KEY`), `PORT`, `NODE_ENV`.
 

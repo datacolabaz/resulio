@@ -17,6 +17,8 @@ import {
   writeState,
   type PromptState,
 } from "@/lib/notificationPrompt";
+import { registerServiceWorker } from "@/lib/webPush";
+import { useWebPushSync } from "./useWebPushSync";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -41,6 +43,7 @@ function update(change: (s: PromptState, now: number) => PromptState) {
 
 export function useNotificationPrompt() {
   const [pathname] = useLocation();
+  const syncPush = useWebPushSync();
   const routeAllowed = isPromptRoute(pathname);
   // Decided once per page load: unsupported, insecure, already decided or cooling down → no timers at all.
   const [eligibleAtLoad] = useState(() => isEligible({ state: readState(), now: Date.now(), ...readEnvironment() }));
@@ -124,6 +127,9 @@ export function useNotificationPrompt() {
     if (outcome === "granted") {
       update(recordGranted);
       close();
+      void syncPush(true);
+      // With the worker registered, the test notification goes through it like real pushes do.
+      await registerServiceWorker();
       const text = t("notifyPrompt.enabled");
       if (!(await showLocalNotification(text))) toast.success(text);
     } else if (outcome === "blocked") {
@@ -132,7 +138,7 @@ export function useNotificationPrompt() {
     } else {
       notNow();
     }
-  }, [close, notNow]);
+  }, [close, notNow, syncPush]);
 
   return {
     /** Rendered (including the exit animation); hidden while the user is on an excluded route. */

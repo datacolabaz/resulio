@@ -381,6 +381,13 @@ export const app = {
   "settings.notifications": ["Bildirişlər", "Notifications", "Уведомления"],
   "settings.channel.IN_APP": ["Saytda", "In app", "На сайте"],
   "settings.channel.EMAIL": ["E-poçt", "E-mail", "Почта"],
+  "settings.channel.PUSH": ["Push", "Push", "Push"],
+  "settings.pushNote": [
+    "Push bildirişləri brauzerdə və mobil tətbiqdə göstərilir. Bu brauzerdə hamısını dayandırmaq üçün brauzerin sayt ayarlarından Resulio.co bildirişlərini bloklayın.",
+    "Push notifications appear in your browser and in the mobile app. To stop all of them in this browser, block notifications for Resulio.co in the browser's site settings.",
+    "Push-уведомления приходят в браузер и в мобильное приложение. Чтобы отключить их все в этом браузере, заблокируйте уведомления Resulio.co в настройках сайта в браузере.",
+  ],
+  "settings.event.ANNOUNCEMENT": ["Resulio.co elanları", "Announcements from Resulio.co", "Объявления Resulio.co"],
   "settings.event.AI_GRADE_READY": ["AI işimi qiymətləndirdi", "AI graded my work", "ИИ оценил мою работу"],
   "settings.event.GRADE_RELEASED": ["Tapşırığım qiymətləndirildi", "My task was graded", "Моё задание оценено"],
   "settings.event.GRADE_UPDATED": ["Qiymətim yeniləndi", "My grade was updated", "Моя оценка обновлена"],
