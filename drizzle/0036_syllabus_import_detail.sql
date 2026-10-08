@@ -1,0 +1,1 @@
+ALTER TABLE `syllabus_import_jobs` ADD `detail` json;

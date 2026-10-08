@@ -36,7 +36,7 @@ import {
 } from "../shared/adminPermissions";
 import { ANSWER_SOURCES, CONFIDENCE_LEVELS, IMPORT_ITEM_STATUSES, IMPORT_JOB_STATUSES, type ImportIssue } from "../shared/questionImport";
 import { REFERRAL_SOURCES } from "../shared/referralSources";
-import { SYLLABUS_IMPORT_STATUSES } from "../shared/syllabusImport";
+import { SYLLABUS_IMPORT_STATUSES, type SyllabusImportDetail } from "../shared/syllabusImport";
 import type { ClassScheduleEntry } from "../shared/schedule";
 import { SHARE_CHANNELS, SHARE_EVENT_TYPES, SHARE_TARGET_TYPES } from "../shared/shareTracking";
 import {
@@ -1496,6 +1496,8 @@ export const syllabusImportJobs = mysqlTable(
     sourceText: longtext("sourceText"),
     status: mysqlEnum("status", SYLLABUS_IMPORT_STATUSES).notNull().default("QUEUED"),
     errorCode: varchar("errorCode", { length: 64 }),
+    /** Technical reason of a failure, or the modules read without the model (`SyllabusImportDetail`). */
+    detail: json("detail").$type<SyllabusImportDetail>(),
     pageCount: int("pageCount"),
     chunkCount: int("chunkCount").notNull().default(0),
     chunksDone: int("chunksDone").notNull().default(0),

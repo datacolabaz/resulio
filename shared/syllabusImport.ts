@@ -22,6 +22,7 @@ export const SYLLABUS_IMPORT_ERRORS = [
   "AI_NOT_FOUND",
   "AI_QUOTA",
   "AI_REQUEST_FAILED",
+  "AI_TIMEOUT",
   "AI_UNAVAILABLE",
   "DAILY_LIMIT",
   "FILE_MISSING",
@@ -40,8 +41,15 @@ export const SYLLABUS_IMPORT_MAX_TEXT = 200_000;
 export const SYLLABUS_IMPORT_MAX_PAGES = 60;
 /** PDF pages per model request. */
 export const SYLLABUS_IMPORT_CHUNK_PAGES = 6;
-/** Characters of text per model request; split at headings/blank lines. */
-export const SYLLABUS_IMPORT_CHUNK_CHARS = 18_000;
+/** Characters of text per model request when the text has no module headings; split at headings/blank lines. */
+export const SYLLABUS_IMPORT_CHUNK_CHARS = 8_000;
+
+/** Extra facts about a job: why it failed (technical), or which modules were read without the model. */
+export interface SyllabusImportDetail {
+  message?: string;
+  /** Titles of modules the model could not read; they were read from the text's own structure. */
+  localModules?: string[];
+}
 
 const title = z.string().trim().min(1).max(255);
 const line = z.string().trim().min(1).max(500);

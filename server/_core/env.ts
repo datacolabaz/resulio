@@ -134,7 +134,7 @@ export const ENV = {
   get syllabusImportEnabled() { return this.llmConfigured && envString("SYLLABUS_IMPORT_DISABLED") !== "1"; },
   /** Optional model for syllabus import; empty = QUESTION_IMPORT_MODEL, then AI_MODEL / the provider default. */
   get syllabusImportModel() { return envString("SYLLABUS_IMPORT_MODEL") || envString("QUESTION_IMPORT_MODEL"); },
-  /** Max model requests (one per part of a document) per workspace in a rolling 24 hours. */
+  /** Max syllabus imports (runs, whatever number of model requests each needs) per workspace in a rolling 24 hours. */
   get syllabusImportDailyLimit() {
     const n = Number.parseInt(envString("SYLLABUS_IMPORT_DAILY_LIMIT"), 10);
     return Number.isFinite(n) && n >= 0 ? n : 30;
