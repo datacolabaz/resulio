@@ -8,11 +8,15 @@ import {
   syllabusItemProgress,
   syllabusLessonProgress,
   syllabusModuleProgress,
+  syllabusPracticeTasks,
+  taskSubmissions,
+  tasks,
   users,
 } from "../../drizzle/schema";
 import type { ApprovalTargetType, UnlockTargetType } from "../../shared/syllabus";
 import { requireDb } from "../db";
 import type { TeacherScope } from "../modules/access";
+import { reviewsForTask } from "../modules/aiReview";
 import { AppError } from "../modules/errors";
 import { activeStudentIdsOfGroups, assertGroupOwner } from "../modules/groups";
 import { isMissingTable } from "../notifications/preferences";
@@ -199,6 +203,49 @@ export async function pendingApprovals(scope: TeacherScope, syllabusId: string) 
   return rows
     .map((r) => ({ ...r, studentName: names.find((n) => n.id === r.studentId)?.name ?? "—" }))
     .sort((a, b) => (a.since?.getTime() ?? 0) - (b.since?.getTime() ?? 0));
+}
+
+/**
+ * Submitted student practice of this syllabus, grouped by item (one item may have a container per
+ * version), waiting ones first. Grading reuses the task paths: `teacher.tasks.grade` and AI reviews.
+ */
+export async function practiceSubmissions(scope: TeacherScope, syllabusId: string) {
+  await ownedSyllabus(scope, syllabusId);
+  const db = requireDb();
+  const links = await db.select().from(syllabusPracticeTasks).where(eq(syllabusPracticeTasks.syllabusId, syllabusId));
+  if (!links.length) return { ai: null, waiting: 0, items: [] };
+  const taskIds = links.map((l) => l.taskId);
+  const [taskRows, subs] = await Promise.all([
+    db.select({ id: tasks.id, title: tasks.title }).from(tasks).where(and(inArray(tasks.id, taskIds), eq(tasks.providerWorkspaceId, scope.workspaceId))),
+    db.select().from(taskSubmissions).where(inArray(taskSubmissions.taskId, taskIds)),
+  ]);
+  const owned = new Set(taskRows.map((r) => r.id));
+  const submitted = subs.filter((s) => s.submittedAt && owned.has(s.taskId));
+  if (!submitted.length) return { ai: null, waiting: 0, items: [] };
+  const withSubs = [...new Set(submitted.map((s) => s.taskId))];
+  const reviews = await Promise.all(withSubs.map((id) => reviewsForTask(scope, id)));
+  const reviewOf = new Map(reviews.flatMap((r) => r.reviews.map((x) => [x.submissionId, x] as const)));
+  const autoGradeOf = new Map(withSubs.map((id, i) => [id, reviews[i].autoGrade.enabled]));
+  const ids = [...new Set(submitted.map((s) => s.studentId))];
+  const names = await db.select({ id: users.id, name: users.name, email: users.email }).from(users).where(inArray(users.id, ids));
+  const nameOf = new Map(names.map((n) => [n.id, n.name || n.email || "—"]));
+  const itemOf = new Map(links.map((l) => [l.taskId, l.itemId]));
+  const titleOf = new Map(taskRows.map((r) => [r.id, r.title]));
+  const isWaiting = (s: (typeof submitted)[number]) => !s.feedbackReleasedAt;
+  const byItem = new Map<string, { itemId: string; title: string; submissions: Array<(typeof submitted)[number] & { studentName: string; autoGrade: boolean; review: (typeof reviews)[number]["reviews"][number] | null }> }>();
+  for (const s of submitted) {
+    const itemId = itemOf.get(s.taskId)!;
+    const entry = byItem.get(itemId) ?? { itemId, title: titleOf.get(s.taskId) ?? "", submissions: [] };
+    entry.submissions.push({ ...s, studentName: nameOf.get(s.studentId) ?? "—", autoGrade: autoGradeOf.get(s.taskId) ?? false, review: reviewOf.get(s.id) ?? null });
+    byItem.set(itemId, entry);
+  }
+  const time = (d: Date | null) => d?.getTime() ?? 0;
+  const items = [...byItem.values()].map((it) => {
+    const sorted = it.submissions.sort((a, b) => Number(isWaiting(b)) - Number(isWaiting(a)) || time(b.submittedAt) - time(a.submittedAt));
+    return { ...it, submissions: sorted, waiting: sorted.filter(isWaiting).length };
+  });
+  items.sort((a, b) => b.waiting - a.waiting || a.title.localeCompare(b.title));
+  return { ai: reviews[0].ai, waiting: items.reduce((n, it) => n + it.waiting, 0), items };
 }
 
 /** Name and size of the teacher's own uploaded files (the builder shows them for saved blocks). */

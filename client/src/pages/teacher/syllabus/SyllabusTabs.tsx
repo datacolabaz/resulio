@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { SettingToggle } from "@/components/ui/setting-toggle";
-import { Textarea } from "@/components/ui/textarea";
 import { t } from "@/i18n/messages";
 import { fmtDateTime, fromLocalInput, toLocalInput } from "@/lib/format";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
@@ -17,7 +16,7 @@ import { useLocation } from "wouter";
 import { DeleteSyllabusDialog } from "./DeleteSyllabusDialog";
 import type { Tree } from "./SyllabusDetail";
 import { fieldsFromSyllabus, fieldsPayload, SyllabusFieldsForm } from "./SyllabusFields";
-import { fieldLabel, GrantStateBadge, problemText, toastError, useSyllabusRefresh } from "./shared";
+import { fieldLabel, GrantStateBadge, toastError, useSyllabusRefresh } from "./shared";
 
 // ---------------------------------------------------------------------------
 // Settings
@@ -138,7 +137,7 @@ export function VersionsTab({ tree }: { tree: Tree }) {
 
 type Grant = RouterOutputs["teacher"]["syllabus"]["grants"][number];
 
-function GrantDialog({
+export function GrantDialog({
   syllabusId,
   open,
   onOpenChange,
@@ -291,6 +290,7 @@ export function AccessTab({ tree }: { tree: Tree }) {
   const s = tree.syllabus;
   const utils = trpc.useUtils();
   const grants = trpc.teacher.syllabus.grants.useQuery({ id: s.id });
+  const flag = trpc.teacher.syllabus.enabled.useQuery(undefined, { staleTime: 5 * 60_000 });
   const [grantOpen, setGrantOpen] = useState(false);
   const [preset, setPreset] = useState<{ groupIds: string[]; studentIds: number[] } | null>(null);
   const [datesFor, setDatesFor] = useState<Grant | null>(null);
@@ -306,7 +306,8 @@ export function AccessTab({ tree }: { tree: Tree }) {
   const liveGroups = [...new Map(rows.filter((g) => g.groupId && g.state !== "REVOKED").map((g) => [g.groupId!, g.label])).entries()];
   return (
     <div className="space-y-4">
-      {!s.currentVersionId && <p className="rounded-xl border border-warning/40 bg-warning-surface p-3 text-sm text-warning">{t("syllabus.access.notPublished")}</p>}
+      {flag.data?.enabled === false && <p role="alert" className="rounded-xl border border-warning/40 bg-warning-surface p-3 text-sm text-warning">{t("pub.flagOff")}</p>}
+      {!s.currentVersionId && <p className="rounded-xl border border-border bg-muted p-3 text-sm">{t("syllabus.access.notPublished")}</p>}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">{t("syllabus.access.help")}</p>
         <Button disabled={archived} onClick={() => { setPreset(null); setGrantOpen(true); }}>
@@ -377,107 +378,5 @@ export function AccessTab({ tree }: { tree: Tree }) {
       <GrantDialog syllabusId={s.id} open={grantOpen} onOpenChange={setGrantOpen} preset={preset} />
       <DatesDialog syllabusId={s.id} grant={datesFor} onClose={() => setDatesFor(null)} />
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Publish
-// ---------------------------------------------------------------------------
-
-function DiffLine({ label, c }: { label: string; c: { added: number; removed: number; changed: number } }) {
-  if (!c.added && !c.removed && !c.changed) return null;
-  return (
-    <li className="flex flex-wrap gap-x-3 text-sm">
-      <span className="font-medium">{label}</span>
-      {c.added > 0 && <span className="text-success">{t("syllabus.publish.added", { count: c.added })}</span>}
-      {c.removed > 0 && <span className="text-destructive">{t("syllabus.publish.removed", { count: c.removed })}</span>}
-      {c.changed > 0 && <span className="text-warning">{t("syllabus.publish.changed", { count: c.changed })}</span>}
-    </li>
-  );
-}
-
-export function PublishDialog({ syllabusId, open, onOpenChange }: { syllabusId: string; open: boolean; onOpenChange: (v: boolean) => void }) {
-  const refresh = useSyllabusRefresh(syllabusId);
-  const utils = trpc.useUtils();
-  const preview = trpc.teacher.syllabus.publishPreview.useQuery({ id: syllabusId }, { enabled: open, refetchOnWindowFocus: false });
-  const [label, setLabel] = useState("");
-  const [note, setNote] = useState("");
-  const [problems, setProblems] = useState<{ code: string; title?: string }[] | null>(null);
-  const publish = trpc.teacher.syllabus.publish.useMutation({
-    onSuccess: (r) => {
-      if (!r.published) {
-        setProblems(r.problems);
-        return;
-      }
-      toast.success(t("syllabus.publish.done", { label: label.trim() || preview.data?.nextLabel || "" }));
-      setLabel("");
-      setNote("");
-      setProblems(null);
-      refresh();
-      void utils.teacher.syllabus.versions.invalidate({ id: syllabusId });
-      onOpenChange(false);
-    },
-    onError: toastError,
-  });
-  const p = preview.data;
-  const shownProblems = problems ?? p?.problems ?? [];
-  const d = p?.diff;
-  return (
-    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) setProblems(null); }}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader><DialogTitle>{t("syllabus.publish.title")}</DialogTitle></DialogHeader>
-        <DialogBody>
-          {preview.isLoading ? (
-            <Loading />
-          ) : preview.error ? (
-            <ErrorNote error={preview.error} />
-          ) : p && d ? (
-            <div className="grid gap-4">
-              <p className="text-sm text-muted-foreground">{t("syllabus.publish.help")}</p>
-              {shownProblems.length > 0 && (
-                <div role="alert" className="rounded-xl border border-destructive/40 bg-danger-surface p-3 text-sm text-destructive">
-                  <p className="mb-1 font-medium">{t("syllabus.publish.problems")}</p>
-                  <ul className="list-disc space-y-0.5 pl-5">{shownProblems.map((pr, i) => <li key={i}>{problemText(pr)}</li>)}</ul>
-                </div>
-              )}
-              <div className="rounded-xl border border-border p-3">
-                <p className="mb-2 text-sm font-medium">{t("syllabus.publish.changes")}</p>
-                {d.firstVersion ? (
-                  <p className="text-sm">{t("syllabus.publish.first")}</p>
-                ) : !d.changed ? (
-                  <p className="text-sm text-muted-foreground">{t("syllabus.publish.noChanges")}</p>
-                ) : (
-                  <ul className="space-y-1">
-                    <DiffLine label={t("syllabus.publish.modules")} c={d.modules} />
-                    <DiffLine label={t("syllabus.publish.lessons")} c={d.lessons} />
-                    <DiffLine label={t("syllabus.publish.items")} c={d.items} />
-                    {d.reordered && <li className="text-sm">{t("syllabus.publish.reordered")}</li>}
-                    {d.rulesChanged && <li className="text-sm">{t("syllabus.publish.rulesChanged")}</li>}
-                  </ul>
-                )}
-                {(p.excluded.modules > 0 || p.excluded.lessons > 0) && (
-                  <p className="mt-2 text-xs text-warning">{t("syllabus.publish.excluded", { modules: p.excluded.modules, lessons: p.excluded.lessons })}</p>
-                )}
-              </div>
-              <label className="text-sm">
-                <span className={fieldLabel}>{t("syllabus.publish.label")}</span>
-                <Input maxLength={16} value={label} onChange={(e) => setLabel(e.target.value)} placeholder={p.nextLabel} />
-              </label>
-              <label className="text-sm">
-                <span className={fieldLabel}>{t("syllabus.publish.note")}</span>
-                <Textarea rows={3} maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("syllabus.publish.notePlaceholder")} />
-              </label>
-              <p className="text-xs text-muted-foreground">{t("syllabus.publish.studentsNote")}</p>
-            </div>
-          ) : null}
-        </DialogBody>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
-          <Button disabled={!p || shownProblems.length > 0 || publish.isPending} onClick={() => publish.mutate({ id: syllabusId, label: label.trim() || undefined, changeNote: note.trim() || undefined })}>
-            {publish.isPending ? t("syllabus.publish.publishing") : t("syllabus.publish.confirm")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }

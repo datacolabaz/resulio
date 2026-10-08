@@ -2,6 +2,7 @@ import { AppShell, EmptyState, ErrorNote, Loading } from "@/components/AppShell"
 import { StatusBadge, type Tone } from "@/components/StatusBadge";
 import { t, type MessageKey } from "@/i18n/messages";
 import { errorText } from "@/lib/format";
+import { publishState, type PublishShape, type SyllabusVisibility } from "@/lib/syllabusPublishState";
 import { trpc } from "@/lib/trpc";
 import type { SyllabusGrantState, SyllabusItemKind } from "@shared/syllabus";
 import { BookOpen, ClipboardCheck, FolderOpen, Presentation, SquarePen } from "lucide-react";
@@ -19,9 +20,21 @@ export const KIND_ICON: Record<SyllabusItemKind, typeof BookOpen> = {
   ASSESSMENT: ClipboardCheck,
   RESOURCE: FolderOpen,
 };
-const SYLLABUS_TONE: Record<string, Tone> = { DRAFT: "warning", PUBLISHED: "success", ARCHIVED: "neutral" };
+const SYLLABUS_TONE: Record<string, Tone> = { DRAFT: "neutral", PUBLISHED: "success", ARCHIVED: "neutral" };
 export function SyllabusStatusBadge({ status }: { status: string }) {
   return <StatusBadge tone={SYLLABUS_TONE[status] ?? "neutral"}>{t(`syllabus.status.${status}` as MessageKey)}</StatusBadge>;
+}
+
+const VISIBILITY_TONE: Record<SyllabusVisibility, Tone> = { HIDDEN: "neutral", READY: "info", LIVE: "success", ARCHIVED: "neutral" };
+/** "Not visible to students yet" / "Visible to students" (+ "changes not sent yet"), instead of draft/version jargon. */
+export function SyllabusVisibilityBadges({ syllabus, activeGrants }: { syllabus: PublishShape; activeGrants: number | null }) {
+  const { visibility, unsentChanges } = publishState(syllabus, activeGrants);
+  return (
+    <>
+      <StatusBadge tone={VISIBILITY_TONE[visibility]}>{t(`syllabus.visibility.${visibility}` as MessageKey)}</StatusBadge>
+      {unsentChanges && <StatusBadge tone="info">{t("syllabus.draftChanges")}</StatusBadge>}
+    </>
+  );
 }
 
 export function NodeStatusBadge({ status }: { status: string }) {

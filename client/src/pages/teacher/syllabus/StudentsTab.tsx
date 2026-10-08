@@ -53,7 +53,9 @@ export function StudentsTab({ tree }: { tree: Tree }) {
                     <span className="break-words font-medium">{s.name}</span>
                     {s.access !== "NONE" && <GrantStateBadge state={s.access as SyllabusGrantState} />}
                     {s.enrollment?.status === "COMPLETED" && <StatusBadge tone="success">{t("learn.completed")}</StatusBadge>}
-                    {s.enrollment?.versionLabel && <Pill>{s.enrollment.versionLabel}</Pill>}
+                    {s.enrollment && s.enrollment.versionId !== tree.syllabus.currentVersionId && (
+                      <span title={t("syllabus.students.earlierHelp")}><Pill>{t("syllabus.students.earlier")}</Pill></span>
+                    )}
                   </div>
                   {s.enrollment ? (
                     <>
@@ -91,7 +93,7 @@ function approvalTarget(a: Approval) {
   return t(a.targetType === "LESSON" ? "syllabus.students.approval.lesson" : "syllabus.students.approval.module", { title: a.title });
 }
 
-function ApprovalQueue({ id }: { id: string }) {
+export function ApprovalQueue({ id }: { id: string }) {
   const q = trpc.teacher.syllabus.approvals.useQuery({ id });
   const refresh = useStudentsRefresh(id);
   const [returning, setReturning] = useState<Approval | null>(null);

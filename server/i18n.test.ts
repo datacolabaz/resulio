@@ -29,6 +29,8 @@ const ALLOWED_LITERALS: { file: string; text: string; reason: string }[] = [
   { file: "components/landing/BrowserFrame.tsx", text: "resulio.co/app", reason: "decorative fake address bar in a product-preview mockup, identical in every language" },
   { file: "pages/teacher/TeacherModules.tsx", text: "AI", reason: "product term, identical in every language" },
   { file: "pages/teacher/ExamBuilder.tsx", text: "AI", reason: "product term, identical in every language" },
+  { file: "lib/attemptLabel.ts", text: "const AZ_UNITS = [", reason: "Azerbaijani ordinal suffixes (vowel-harmony grammar data, not UI text)" },
+  { file: "lib/attemptLabel.ts", text: "const AZ_TENS = [", reason: "Azerbaijani ordinal suffixes (vowel-harmony grammar data, not UI text)" },
 ];
 
 function sourceFiles(dir: string): string[] {

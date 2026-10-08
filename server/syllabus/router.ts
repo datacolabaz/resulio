@@ -199,6 +199,9 @@ export const teacherSyllabusRouter = router({
   }),
   preview: syllabusTeacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => draft.preview(ctx.scope, input.id)),
   publishPreview: syllabusTeacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => draft.publishPreview(ctx.scope, input.id)),
+  markAllReady: syllabusTeacherProcedure
+    .input(z.object({ id: entityId, expectedRevision: revision }))
+    .mutation(({ ctx, input }) => authoring.markAllReady(ctx.scope, input.id, input.expectedRevision)),
   publish: syllabusTeacherProcedure
     .use(rateLimit("syllabusPublish", 10, MINUTE))
     .input(z.object({ id: entityId, label: shortText(16).optional(), changeNote: shortText(2_000).optional() }))
@@ -268,6 +271,8 @@ export const teacherSyllabusRouter = router({
       teacherViews.decideApproval(ctx.scope, input.id, input.studentId, { type: input.targetType, id: input.targetId }, input.decision, input.note),
     ),
   approvals: syllabusTeacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => teacherViews.pendingApprovals(ctx.scope, input.id)),
+  /** Submitted student practice to grade (graded with `teacher.tasks.grade`). */
+  practiceSubmissions: syllabusTeacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => teacherViews.practiceSubmissions(ctx.scope, input.id)),
   fileInfo: syllabusTeacherProcedure
     .input(z.object({ ids: z.array(entityId).max(100) }))
     .query(({ ctx, input }) => teacherViews.fileInfo(ctx.scope, input.ids)),

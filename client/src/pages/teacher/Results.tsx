@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { t } from "@/i18n/messages";
 import { answerText, errorText, fmtDateTime, fmtDuration, ITEM_STATUS_COLORS, itemStatusLabel, questionTypeLabel } from "@/lib/format";
+import { attemptLabel } from "@/lib/attemptLabel";
 import { itemStatus } from "@/lib/status";
 import { trpc } from "@/lib/trpc";
-import { History } from "lucide-react";
+import { History, Info } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Link, useParams } from "wouter";
@@ -62,9 +63,15 @@ export function ResultDetailPage() {
         <div className="space-y-5">
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <Link href={`/teacher/assessments/${d.assessmentId}`} className="break-words text-link underline-offset-4 hover:underline">{d.title}</Link>
-            <span>· {t("results.meta", { version: d.versionNo, attempt: d.attemptNo })}</span>
+            <span>· {attemptLabel(d.attemptNo)}</span>
             {d.attemptStatus === "AUTO_SUBMITTED" && <StatusBadge tone="neutral" icon={History}>{t("results.autoSubmitted")}</StatusBadge>}
           </div>
+          {!d.latestVariant && (
+            <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+              {t("attempt.earlierVariant")}
+            </p>
+          )}
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard label={t("common.result")} value={`${d.percentage}%`} hint={t("common.pointsOf", { earned: d.earnedPoints, total: d.totalPoints })} />
             <StatCard label={t("results.correctWrong")} value={`${d.correctCount} / ${d.wrongCount}`} hint={t("results.unansweredHint", { count: d.unansweredCount })} />

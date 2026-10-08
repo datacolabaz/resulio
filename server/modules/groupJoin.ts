@@ -2,6 +2,7 @@ import { inArray } from "drizzle-orm";
 import { users } from "../../drizzle/schema";
 import { requireDb } from "../db";
 import { dispatch } from "../notifications/dispatcher";
+import { announceGroupJoin } from "../syllabus/notify";
 import { activatePendingLinkJoins, type LinkJoin } from "./groups";
 import { notifyOpenTasksOnJoin } from "./taskNotify";
 
@@ -18,6 +19,7 @@ export const singleUseLinkJoinKey = (linkId: string) => `group-join-link:${linkI
  */
 export function afterLinkJoin(join: Pick<LinkJoin, "groupId" | "groupName" | "ownerUserId" | "userId">, studentName: string | null, dedupeKey: string) {
   notifyOpenTasksOnJoin(join.groupId, join.userId);
+  announceGroupJoin(join.groupId, join.userId);
   dispatch({
     event: "GROUP_MEMBER_JOINED",
     userId: join.ownerUserId,

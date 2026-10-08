@@ -29,9 +29,9 @@ export const syllabusImport = {
   "timing.minutesTotal": ["dərslərin cəmi {time}", "lessons add up to {time}", "уроки в сумме {time}"],
   "timing.lessonsWithoutMinutes": ["{count} dərsin dəqiqəsi yoxdur", "{count} {count|lesson has|lessons have} no minutes", "у {count} {count|урока|уроков|уроков} нет минут"],
   "timing.suggestedCourse": [
-    "Tempo və müddətə görə təxminən {count} dərs düşür",
-    "Pace × duration suggests about {count} {count|lesson|lessons}",
-    "По темпу и длительности выходит около {count} {count|урока|уроков|уроков}",
+    "{duration} × həftədə {perWeek} dərs ≈ {count} dərs saatı.",
+    "{duration} × {perWeek} a week ≈ {count} class {count|session|sessions}.",
+    "{duration} × {perWeek} в неделю ≈ {count} {count|занятие|занятия|занятий}.",
   ],
   "timing.mismatch": [
     "Modulların cəmi ({sum}) kursun ümumi müddəti ilə ({total}) üst-üstə düşmür. Bu yalnız xəbərdarlıqdır — saxlamağa mane olmur.",
@@ -42,9 +42,9 @@ export const syllabusImport = {
   "timing.moduleDurationOf": ["“{title}” modulunun müddəti", "Duration of module “{title}”", "Длительность модуля «{title}»"],
   "timing.noMinutes": ["dərslərə dəqiqə yazılmayıb", "no lesson minutes yet", "у уроков пока нет минут"],
   "timing.suggestedModule": [
-    "həftədə {perWeek} dərslə təxminən {count} dərs",
-    "about {count} {count|lesson|lessons} at {perWeek} a week",
-    "около {count} {count|урока|уроков|уроков} при {perWeek} в неделю",
+    "həftədə {perWeek} dərslə ≈ {count} dərs saatı",
+    "≈ {count} class {count|session|sessions} at {perWeek} a week",
+    "≈ {count} {count|занятие|занятия|занятий} при {perWeek} в неделю",
   ],
   "timing.lessonMinutesOf": ["“{title}” dərsinin dəqiqəsi", "Minutes for lesson “{title}”", "Минуты урока «{title}»"],
   "timing.min": ["dəq", "min", "мин"],
@@ -165,9 +165,9 @@ export const syllabusImport = {
 
   // Import: review
   "simport.reviewIntro": [
-    "AI sənədinizdən bu strukturu çıxardı. Adları düzəldin, artıq olanı silin, sıranı dəyişin və müddətləri yoxlayın. “Syllabus yarat” düyməsi qaralama yaradır — sonra onu adi redaktorda tam dəyişə bilərsiniz.",
-    "AI extracted this structure from your document. Fix names, delete what you don't need, reorder, and check the durations. “Create syllabus” makes a draft you can then fully edit in the usual builder.",
-    "AI извлёк эту структуру из вашего документа. Исправьте названия, удалите лишнее, измените порядок и проверьте сроки. «Создать силлабус» создаёт черновик, который потом можно полностью редактировать в обычном редакторе.",
+    "AI sənədinizdən bu strukturu çıxardı. Adları düzəldin, artıq olanı silin, sıranı dəyişin və müddətləri yoxlayın. “Syllabus yarat” onu tələbələrə göstərmədən yaradır — sonra adi redaktorda tam dəyişə və hazır olanda dərc edə bilərsiniz.",
+    "AI extracted this structure from your document. Fix names, delete what you don't need, reorder, and check the durations. “Create syllabus” creates it without showing it to students — you can then fully edit it in the usual builder and publish when ready.",
+    "AI извлёк эту структуру из вашего документа. Исправьте названия, удалите лишнее, измените порядок и проверьте сроки. «Создать силлабус» создаёт его, не показывая студентам, — затем его можно полностью отредактировать в обычном редакторе и опубликовать, когда будет готов.",
   ],
   "simport.course": ["Kurs", "Course", "Курс"],
   "simport.description": ["Təsvir", "Description", "Описание"],
@@ -207,7 +207,7 @@ export const syllabusImport = {
   "simport.problem.EMPTY_PROJECT_TITLE": ["Adsız layihə var.", "A project has no title.", "У проекта нет названия."],
   "simport.create": ["Syllabus yarat", "Create syllabus", "Создать силлабус"],
   "simport.creating": ["Yaradılır…", "Creating…", "Создание…"],
-  "simport.created": ["Syllabus qaralama kimi yaradıldı.", "The syllabus was created as a draft.", "Силлабус создан как черновик."],
+  "simport.created": ["Syllabus yaradıldı. Tələbələr onu siz dərc edənə qədər görmür.", "The syllabus was created. Students won't see it until you publish.", "Силлабус создан. Студенты не увидят его, пока вы не опубликуете."],
 
   "error.SYLLABUS_IMPORT_FILE_TYPE": [
     "Bu fayl növü dəstəklənmir. PDF, Word (.docx), şəkil və ya mətn faylı seçin.",

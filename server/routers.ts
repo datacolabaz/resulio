@@ -67,6 +67,7 @@ import * as push from "./notifications/push";
 import * as bank from "./questionBank/bank";
 import { questionBankFilter, questionImportRouter, questionTopicsRouter, sectionPicksSchema } from "./questionBank/router";
 import { store } from "./resulioStore";
+import { announceGroupJoin } from "./syllabus/notify";
 import { studentSyllabusRouter, teacherSyllabusRouter } from "./syllabus/router";
 import { SHARE_CAMPAIGNS, SHARE_CHANNELS, SHARE_TARGET_TYPES, VISITOR_ID_PATTERN } from "../shared/shareTracking";
 
@@ -332,6 +333,7 @@ const teacherGroupsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const added = await groups.addMemberByEmail(ctx.scope, input.groupId, input.email);
       taskNotify.notifyOpenTasksOnJoin(input.groupId, added.studentId);
+      announceGroupJoin(input.groupId, added.studentId);
       return added;
     }),
   approveMember: teacherProcedure
@@ -339,6 +341,7 @@ const teacherGroupsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const result = await groups.approveMember(ctx.scope, input.groupId, input.studentId);
       taskNotify.notifyOpenTasksOnJoin(input.groupId, input.studentId);
+      announceGroupJoin(input.groupId, input.studentId);
       return result;
     }),
   removeMember: teacherProcedure
@@ -840,6 +843,7 @@ const studentRouter = router({
     .mutation(async ({ ctx, input }) => {
       const result = await groupEmailInvites.acceptEmailInvite(ctx.user.id, ctx.user.email ?? "", input.token);
       taskNotify.notifyOpenTasksOnJoin(result.groupId, ctx.user.id);
+      announceGroupJoin(result.groupId, ctx.user.id);
       return result;
     }),
   tasks: studentProcedure.query(async ({ ctx }) => {

@@ -888,7 +888,11 @@ function PublishStep({ a }: { a: Detail }) {
   const [open, setOpen] = useState(false);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const publish = trpc.teacher.assessments.publish.useMutation({
-    onSuccess: (v) => { toast.success(v.created ? t("assessment.publishedToast", { n: v.versionNo }) : t("assessment.noChanges")); setOpen(false); void invalidate(); },
+    onSuccess: (v) => {
+      toast.success(!v.created ? t("assessment.noChanges") : v.versionNo === 1 ? t("assessment.publishedFirstToast") : t("assessment.changesSentToast"));
+      setOpen(false);
+      void invalidate();
+    },
     onError: (e) => toast.error(errorText(e)),
   });
   useEffect(() => setAnswers({}), [preview.data]);

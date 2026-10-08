@@ -5,6 +5,7 @@ import { emptyTiming } from "../../shared/syllabusTiming";
 import { requireDb } from "../db";
 import type { TeacherScope } from "../modules/access";
 import { ownedSyllabus } from "./access";
+import { syllabusEnabledFor } from "./availability";
 import { allItems, computeProgress } from "./engine";
 import { withLegacyFallback } from "./legacyModuleDetails";
 import { changedDetailModules, draftModuleDetails, versionModuleDetails } from "./moduleDetails";
@@ -100,9 +101,12 @@ export async function publishPreview(scope: TeacherScope, syllabusId: string) {
   return {
     problems: [...d.problems, ...problems],
     excluded: excludedCounts(d, structure),
+    included: { modules: structure.modules.length, lessons: structure.modules.reduce((n, m) => n + m.lessons.length, 0) },
+    notReady: { modules: d.modules.filter((m) => m.status !== "READY").length, lessons: d.lessons.filter((l) => l.status !== "READY").length },
     diff: diffStructures(previous, structure, prevHashes, nextHashes, detailsChanged),
     nextLabel: nextVersionLabel(Number(maxNo) + 1),
     hasDraftChanges: d.syllabus.hasDraftChanges,
+    studentsEnabled: await syllabusEnabledFor(d.syllabus.providerWorkspaceId).catch(() => false),
   };
 }
 

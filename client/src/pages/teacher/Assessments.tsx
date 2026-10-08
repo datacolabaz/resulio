@@ -21,7 +21,8 @@ import {
 import { trpc } from "@/lib/trpc";
 import { liveStatus, VERSION_STATUS } from "@/lib/status";
 import { ParticipantsReport } from "@/pages/teacher/Participants";
-import { PencilLine, X } from "lucide-react";
+import { attemptLabel, earlierVariantRows, variantLabel } from "@/lib/attemptLabel";
+import { Info, PencilLine, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useParams, useSearch } from "wouter";
@@ -119,7 +120,7 @@ export function AssessmentDetailPage() {
   const [publishOpen, setPublishOpen] = useState(false);
   const publish = trpc.teacher.assessments.publish.useMutation({
     onSuccess: (v) => {
-      toast.success(v.created ? t("assessment.publishedToast", { n: v.versionNo }) : t("assessment.noChangesKept"));
+      toast.success(!v.created ? t("assessment.noChangesKept") : v.versionNo === 1 ? t("assessment.publishedFirstToast") : t("assessment.changesSentToast"));
       setPublishOpen(false);
       void utils.teacher.assessments.detail.invalidate({ id });
     },
@@ -145,8 +146,7 @@ export function AssessmentDetailPage() {
             <div className="flex flex-wrap items-center gap-2">
               <Pill>{typeLabel(a.type)}</Pill>
               <StatusBadge {...liveStatus(a.liveStatus)}>{liveLabel(a.liveStatus)}</StatusBadge>
-              {a.versions[0] && <Pill>v{a.versions[0].versionNo}</Pill>}
-              {a.hasDraftChanges && a.currentVersionId && <StatusBadge tone="warning" icon={PencilLine}>{t("assessment.unpublishedPill")}</StatusBadge>}
+              {a.hasDraftChanges && a.currentVersionId && <StatusBadge tone="info" icon={PencilLine}>{t("assessment.unpublishedPill")}</StatusBadge>}
             </div>
             <div className="flex flex-wrap gap-2">
               <Button asChild variant="outline">
@@ -258,7 +258,7 @@ export function AssessmentDetailPage() {
                         {a.assignments.map((r) => (
                           <tr key={r.id}>
                             <td className="py-2">{r.groupId ? t("assessment.toGroup", { name: r.label }) : t("assessment.toStudent", { name: r.label })}</td>
-                            <td>{r.versionNo ? `v${r.versionNo}` : t("assessment.afterPublish")}</td>
+                            <td>{!r.versionNo ? t("assessment.afterPublish") : r.versionNo === a.versions[0]?.versionNo ? t("assessment.variantLatest") : t("attempt.earlierVariantShort")}</td>
                             <td className="text-muted-foreground">{r.availableFrom || r.availableUntil ? fmtWindow(r.availableFrom, r.availableUntil) : t("assessment.default")}</td>
                             <td className="text-muted-foreground">{r.durationOverrideSeconds ? fmtDuration(r.durationOverrideSeconds) : t("assessment.default")}</td>
                             <td className="text-muted-foreground">{r.attemptLimitOverride ?? t("assessment.default")}</td>
@@ -287,7 +287,7 @@ export function AssessmentDetailPage() {
                   <ul className="divide-y text-sm">
                     {a.versions.map((v) => (
                       <li key={v.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
-                        <span className="font-medium">{t("assessment.versionN", { n: v.versionNo })}</span>
+                        <span className="font-medium">{variantLabel(v.versionNo)}</span>
                         <span className="text-muted-foreground">{fmtDateTime(v.publishedAt)}</span>
                         <StatusBadge {...(VERSION_STATUS[v.status] ?? VERSION_STATUS.ARCHIVED)}>
                           {v.status === "PUBLISHED" ? t("assessment.versionCurrent") : t("assessment.versionArchived")}
@@ -352,7 +352,7 @@ export function PublishDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{republish ? t("assessment.publishNew") : t("assessment.publish")}</DialogTitle>
-          <DialogDescription>{t("assessment.publishDialogBody")}</DialogDescription>
+          <DialogDescription>{republish ? t("assessment.publishChangesBody") : t("assessment.publishFirstBody")}</DialogDescription>
         </DialogHeader>
         {republish && (
           <label className="flex items-start gap-2 rounded-xl border p-3 text-sm text-foreground-secondary">
@@ -440,9 +440,24 @@ export function ResultsTable({
   rows,
   showAssessment = false,
 }: {
-  rows: { id: string; assessmentTitle: string; studentName: string | null; attemptNo: number; autoSubmitted: boolean; percentage: number; pendingReviewCount: number; durationSeconds: number; completedAt: Date }[];
+  rows: {
+    id: string;
+    assessmentId: string;
+    assessmentTitle: string;
+    studentId: number;
+    studentName: string | null;
+    attemptNo: number;
+    versionId: string;
+    latestVariant: boolean;
+    autoSubmitted: boolean;
+    percentage: number;
+    pendingReviewCount: number;
+    durationSeconds: number;
+    completedAt: Date;
+  }[];
   showAssessment?: boolean;
 }) {
+  const earlier = earlierVariantRows(rows);
   return (
     <div className="relative overflow-x-auto">
       <table className="w-full text-sm">
@@ -462,7 +477,17 @@ export function ResultsTable({
             <tr key={r.id}>
               <td className="py-2">{r.studentName ?? "—"}</td>
               {showAssessment && <td className="max-w-xs break-words">{r.assessmentTitle}</td>}
-              <td>#{r.attemptNo}{r.autoSubmitted && <span className="ml-1 text-xs text-muted-foreground">{t("assessment.auto")}</span>}</td>
+              <td>
+                {attemptLabel(r.attemptNo)}
+                {r.autoSubmitted && <span className="ml-1 text-xs text-muted-foreground">{t("assessment.auto")}</span>}
+                {earlier.has(r.id) && (
+                  <span className="ml-1 inline-flex items-center gap-1 text-xs text-muted-foreground" title={t("attempt.earlierVariant")}>
+                    <Info className="h-3.5 w-3.5" aria-hidden />
+                    {t("attempt.earlierVariantShort")}
+                    <span className="sr-only">{t("attempt.earlierVariant")}</span>
+                  </span>
+                )}
+              </td>
               <td className="font-semibold">
                 {r.percentage}%
                 {r.pendingReviewCount > 0 && <span className="ml-2 text-xs font-normal text-warning">{t("common.pendingReviewCount", { count: r.pendingReviewCount })}</span>}

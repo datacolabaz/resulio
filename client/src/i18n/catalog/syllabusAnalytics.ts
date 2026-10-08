@@ -216,7 +216,7 @@ export const syllabusAnalytics = {
   "sa.ev.MANUAL_UNLOCK": ["Müəllim əl ilə açdı", "Unlocked manually by the teacher", "Открыто преподавателем вручную"],
   "sa.ev.ACCESS_GRANTED": ["Giriş verildi", "Access granted", "Доступ выдан"],
   "sa.ev.ACCESS_REVOKED": ["Giriş ləğv edildi", "Access revoked", "Доступ отозван"],
-  "sa.ev.VERSION_UPGRADED": ["Yeni versiyaya keçirildi", "Moved to a new version", "Переведён(а) на новую версию"],
+  "sa.ev.VERSION_UPGRADED": ["Kursun yenilənmiş halına keçirildi", "Moved to the updated course", "Переведён(а) на обновлённый курс"],
   "sa.ev.OTHER": ["Fəaliyyət", "Activity", "Активность"],
 
   "sa.settings": ["Risk qaydaları", "Risk rules", "Правила риска"],

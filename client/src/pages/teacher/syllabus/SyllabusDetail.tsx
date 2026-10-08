@@ -9,20 +9,23 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { t } from "@/i18n/messages";
 import { overrideCount } from "@/lib/syllabus";
-import { STEP_TAB, teacherSteps } from "@/lib/syllabusWorkflow";
+import { liveGrants, publishState } from "@/lib/syllabusPublishState";
+import { BUILDER_TABS, gradable, nextStepOtherThan, STEP_TAB, teacherSteps, type BuilderTab, type TeacherStep } from "@/lib/syllabusWorkflow";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import type { CompletionRulesPatch, SyllabusItemKind } from "@shared/syllabus";
-import { ArrowLeft, ChevronDown, ChevronRight, Copy, Eye, Pencil, Plus, Rocket, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { ArrowLeft, ChevronDown, ChevronRight, Copy, Eye, Pencil, Plus, Rocket, Send, Trash2, Users } from "lucide-react";
+import { useRef, useState } from "react";
 import { Link, useParams } from "wouter";
 import { AnalyticsTab } from "./AnalyticsTab";
+import { GradingTab } from "./GradingTab";
 import { ItemCard, useCreateItem } from "./ItemCard";
 import { durationText } from "@/components/syllabus/Timing";
 import { ModuleBlocksEditor } from "./ModuleBlocksEditor";
 import { CourseTimingPanel, LessonMinutes, ModuleTiming } from "./TimingEditors";
 import { StudentsTab } from "./StudentsTab";
-import { AccessTab, PublishDialog, SettingsTab, VersionsTab } from "./SyllabusTabs";
-import { fieldLabel, KIND_ICON, kindLabel, NodeStatusBadge, SyllabusShell, SyllabusStatusBadge, toastError, useSyllabusRefresh } from "./shared";
+import { PublishDialog } from "./PublishDialog";
+import { AccessTab, GrantDialog, SettingsTab, VersionsTab } from "./SyllabusTabs";
+import { fieldLabel, KIND_ICON, kindLabel, NodeStatusBadge, SyllabusShell, SyllabusVisibilityBadges, toastError, useSyllabusRefresh } from "./shared";
 
 export type Tree = RouterOutputs["teacher"]["syllabus"]["get"];
 type ModuleNode = Tree["modules"][number];
@@ -335,20 +338,42 @@ function StructureTab({ tree }: { tree: Tree }) {
 // Page
 // ---------------------------------------------------------------------------
 
-const TABS = ["structure", "settings", "versions", "access", "students", "analytics"] as const;
-type Tab = (typeof TABS)[number];
+const TABS = BUILDER_TABS;
+type Tab = BuilderTab;
 
 function DetailBody({ id }: { id: string }) {
   const tree = trpc.teacher.syllabus.get.useQuery({ id });
   const grants = trpc.teacher.syllabus.grants.useQuery({ id });
+  const canGrade = !!tree.data?.syllabus.currentVersionId && gradable(tree.data).any;
+  const practice = trpc.teacher.syllabus.practiceSubmissions.useQuery({ id }, { enabled: canGrade });
+  const approvals = trpc.teacher.syllabus.approvals.useQuery({ id }, { enabled: canGrade });
   const initialTab = new URLSearchParams(window.location.search).get("tab");
-  const [tab, setTab] = useState<Tab>(TABS.includes(initialTab as Tab) ? (initialTab as Tab) : "structure");
+  const [tab, setTabState] = useState<Tab>(TABS.includes(initialTab as Tab) ? (initialTab as Tab) : "structure");
   const [publishOpen, setPublishOpen] = useState(false);
+  const [grantOpen, setGrantOpen] = useState(false);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const setTab = (next: Tab) => {
+    setTabState(next);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", next);
+    window.history.replaceState(window.history.state, "", url);
+  };
+  const openStep = (step: TeacherStep) => {
+    setTab(STEP_TAB[step]);
+    requestAnimationFrame(() => {
+      const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      tabsRef.current?.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
+      tabsRef.current?.querySelector<HTMLElement>('[role="tab"][data-state="active"]')?.focus({ preventScroll: true });
+    });
+  };
   if (tree.isLoading) return <Loading />;
   if (tree.error || !tree.data) return <ErrorNote error={tree.error} />;
   const s = tree.data.syllabus;
   const archived = !!s.archivedAt;
-  const steps = teacherSteps(tree.data, (grants.data ?? []).map((g) => g.state));
+  const waiting = canGrade ? (practice.data?.waiting ?? 0) + (approvals.data?.length ?? 0) : 0;
+  const steps = teacherSteps(tree.data, (grants.data ?? []).map((g) => g.state), waiting);
+  const activeGrants = liveGrants(grants.data)?.length ?? null;
+  const { action } = publishState(s, activeGrants);
   return (
     <div className="space-y-5">
       <Link href="/teacher/syllabus" className="inline-flex items-center gap-1 text-sm text-link hover:underline">
@@ -359,8 +384,7 @@ function DetailBody({ id }: { id: string }) {
         <div className="min-w-0">
           <h2 className="break-words text-2xl font-semibold">{s.title}</h2>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            <SyllabusStatusBadge status={s.status} />
-            {s.currentVersionId && s.hasDraftChanges && !archived && <Pill>{t("syllabus.draftChanges")}</Pill>}
+            <SyllabusVisibilityBadges syllabus={s} activeGrants={activeGrants} />
             {(s.subject || s.level) && <span className="text-sm text-muted-foreground">{[s.subject, s.level].filter(Boolean).join(" · ")}</span>}
           </div>
         </div>
@@ -369,26 +393,49 @@ function DetailBody({ id }: { id: string }) {
             <Eye className="h-4 w-4" aria-hidden />
             {t("syllabus.preview.open")}
           </Link>
-          <Button disabled={archived} onClick={() => setPublishOpen(true)}>
-            <Rocket className="mr-1 h-4 w-4" aria-hidden />
-            {t("syllabus.publish.open")}
-          </Button>
+          {action === "PUBLISH" && (
+            <Button onClick={() => setPublishOpen(true)}>
+              <Rocket className="mr-1 h-4 w-4" aria-hidden />
+              {t("syllabus.publish.open")}
+            </Button>
+          )}
+          {action === "SEND_CHANGES" && (
+            <Button onClick={() => setPublishOpen(true)}>
+              <Send className="mr-1 h-4 w-4" aria-hidden />
+              {t("syllabus.action.sendChanges")}
+            </Button>
+          )}
+          {action === "GRANT" && (
+            <Button onClick={() => setGrantOpen(true)}>
+              <Users className="mr-1 h-4 w-4" aria-hidden />
+              {t("syllabus.action.openToGroup")}
+            </Button>
+          )}
         </div>
       </div>
       {archived && <p className="rounded-xl border border-border bg-muted p-3 text-sm">{t("syllabus.archivedNote")}</p>}
-      {!archived && <TeacherWorkflow steps={steps} onSelect={(step) => setTab(STEP_TAB[step])} />}
+      {!archived && <TeacherWorkflow steps={steps} onSelect={openStep} collapsible />}
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
-        <TabsList className="h-auto w-full flex-wrap justify-start sm:w-fit">
-          {TABS.map((k) => <TabsTrigger key={k} value={k}>{t(`syllabus.tab.${k}`)}</TabsTrigger>)}
-        </TabsList>
+        <div ref={tabsRef} className="scroll-mt-4">
+          <TabsList className="h-auto w-full flex-wrap justify-start sm:w-fit">
+            {TABS.map((k) => (
+              <TabsTrigger key={k} value={k}>
+                {t(`syllabus.tab.${k}`)}
+                {k === "grading" && waiting > 0 && <span className="ml-1.5 rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground">{waiting}</span>}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
         <TabsContent value="structure"><StructureTab tree={tree.data} /></TabsContent>
         <TabsContent value="settings"><SettingsTab tree={tree.data} /></TabsContent>
         <TabsContent value="versions"><VersionsTab tree={tree.data} /></TabsContent>
         <TabsContent value="access"><AccessTab tree={tree.data} /></TabsContent>
         <TabsContent value="students"><StudentsTab tree={tree.data} /></TabsContent>
-        <TabsContent value="analytics"><AnalyticsTab tree={tree.data} /></TabsContent>
+        <TabsContent value="grading"><GradingTab tree={tree.data} next={nextStepOtherThan(steps, "assess")} onStep={openStep} /></TabsContent>
+        <TabsContent value="analytics"><AnalyticsTab tree={tree.data} next={nextStepOtherThan(steps, "track")} onStep={openStep} /></TabsContent>
       </Tabs>
-      <PublishDialog syllabusId={id} open={publishOpen} onOpenChange={setPublishOpen} />
+      <PublishDialog tree={tree.data} open={publishOpen} onOpenChange={setPublishOpen} />
+      <GrantDialog syllabusId={id} open={grantOpen} onOpenChange={setGrantOpen} preset={null} />
     </div>
   );
 }

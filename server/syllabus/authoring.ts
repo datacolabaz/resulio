@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
   assessments,
@@ -454,6 +454,18 @@ export async function updateLesson(scope: TeacherScope, lessonId: string, patch:
   const values = defined(patch);
   if (Object.keys(values).length) await requireDb().update(syllabusLessons).set(values).where(eq(syllabusLessons.id, lessonId));
   return (await ownedLesson(scope, lessonId)).lesson;
+}
+
+/** Marks every module and lesson of the draft ready, so the next publish includes all of them. */
+export async function markAllReady(scope: TeacherScope, syllabusId: string, expectedRevision?: number) {
+  const syllabus = await ownedSyllabus(scope, syllabusId);
+  await touchDraft(syllabus, expectedRevision);
+  const db = requireDb();
+  await db.transaction(async (tx) => {
+    await tx.update(syllabusModules).set({ status: "READY" }).where(and(eq(syllabusModules.syllabusId, syllabusId), isNull(syllabusModules.deletedAt), ne(syllabusModules.status, "READY")));
+    await tx.update(syllabusLessons).set({ status: "READY" }).where(and(eq(syllabusLessons.syllabusId, syllabusId), isNull(syllabusLessons.deletedAt), ne(syllabusLessons.status, "READY")));
+  });
+  return { ok: true };
 }
 
 /** Moves a lesson to the end of another module of the same syllabus. */
