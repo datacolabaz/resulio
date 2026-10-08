@@ -30,6 +30,8 @@ Code: `server/notifications/` — `events.ts` (events and their channels), `temp
 | `TASK_ASSIGNED` | student | IN_APP, EMAIL, PUSH | a teacher creates a task, or an edit makes it reach new students; or a student joins a group with open tasks (`modules/taskNotify.ts`); key `task-assigned:<taskId>:<userId>` |
 | `TASK_UPDATED` | student | IN_APP, PUSH, EMAIL (e-mail off by default) | an edit moves the deadline by ≥ 1 hour; to students the task already reached; key `task-deadline:<taskId>:<userId>:<deadlineMs>` |
 | `GROUP_MEMBER_JOINED` | group's workspace owner | IN_APP, PUSH | a student joined through the group's invite code/link or a single-use invite link (`modules/groupJoin.ts`), or a leftover pending request was activated at startup; informational only, nothing to approve; key `group-join:<membershipId>` / `group-join-link:<linkId>` |
+| `SYLLABUS_JOIN_REQUESTED` | syllabus' workspace owner | IN_APP, PUSH | a student sent a group or individual request from the public syllabus page (`syllabus/joinRequests.ts`); once per request, key `syl-join-req:<requestId>` |
+| `SYLLABUS_JOIN_DECIDED` | the requesting student | IN_APP, PUSH | the teacher accepted or rejected that request; key `syl-join-decided:<requestId>` |
 | `EXAM_RESULT_READY` | student | EMAIL | only for exams with "E-mail results to students" ticked: the 30 s sweeper (`server/modules/resultEmail.ts`) mails each result once it is final (no manual grading pending) and released; score, percentage and the wrong-answer deduction, never the answers. Claimed in `result_email_log` (one row per result; students without an address are logged as `NO_EMAIL` and skipped); key `exam-result:<resultId>` |
 
 ### Tasks

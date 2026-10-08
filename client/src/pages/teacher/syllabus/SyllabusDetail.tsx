@@ -25,6 +25,7 @@ import { CourseTimingPanel, LessonMinutes, ModuleTiming } from "./TimingEditors"
 import { StudentsTab } from "./StudentsTab";
 import { PublishDialog } from "./PublishDialog";
 import { AccessTab, GrantDialog, SettingsTab, VersionsTab } from "./SyllabusTabs";
+import { CopyShareLinkButton, RequestsTab, usePendingJoinRequests } from "./ShareAndRequests";
 import { fieldLabel, KIND_ICON, kindLabel, NodeStatusBadge, SyllabusShell, SyllabusVisibilityBadges, toastError, useSyllabusRefresh } from "./shared";
 
 export type Tree = RouterOutputs["teacher"]["syllabus"]["get"];
@@ -347,6 +348,7 @@ function DetailBody({ id }: { id: string }) {
   const canGrade = !!tree.data?.syllabus.currentVersionId && gradable(tree.data).any;
   const practice = trpc.teacher.syllabus.practiceSubmissions.useQuery({ id }, { enabled: canGrade });
   const approvals = trpc.teacher.syllabus.approvals.useQuery({ id }, { enabled: canGrade });
+  const openRequests = usePendingJoinRequests()(id);
   const initialTab = new URLSearchParams(window.location.search).get("tab");
   const [tab, setTabState] = useState<Tab>(TABS.includes(initialTab as Tab) ? (initialTab as Tab) : "structure");
   const [publishOpen, setPublishOpen] = useState(false);
@@ -393,6 +395,7 @@ function DetailBody({ id }: { id: string }) {
             <Eye className="h-4 w-4" aria-hidden />
             {t("syllabus.preview.open")}
           </Link>
+          <CopyShareLinkButton syllabus={s} />
           {action === "PUBLISH" && (
             <Button onClick={() => setPublishOpen(true)}>
               <Rocket className="mr-1 h-4 w-4" aria-hidden />
@@ -422,6 +425,7 @@ function DetailBody({ id }: { id: string }) {
               <TabsTrigger key={k} value={k}>
                 {t(`syllabus.tab.${k}`)}
                 {k === "grading" && waiting > 0 && <span className="ml-1.5 rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground">{waiting}</span>}
+                {k === "requests" && openRequests > 0 && <span className="ml-1.5 rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground">{openRequests}</span>}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -431,6 +435,7 @@ function DetailBody({ id }: { id: string }) {
         <TabsContent value="versions"><VersionsTab tree={tree.data} /></TabsContent>
         <TabsContent value="access"><AccessTab tree={tree.data} /></TabsContent>
         <TabsContent value="students"><StudentsTab tree={tree.data} /></TabsContent>
+        <TabsContent value="requests"><RequestsTab tree={tree.data} /></TabsContent>
         <TabsContent value="grading"><GradingTab tree={tree.data} next={nextStepOtherThan(steps, "assess")} onStep={openStep} /></TabsContent>
         <TabsContent value="analytics"><AnalyticsTab tree={tree.data} next={nextStepOtherThan(steps, "track")} onStep={openStep} /></TabsContent>
       </Tabs>

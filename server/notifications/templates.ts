@@ -486,6 +486,87 @@ export function groupMemberJoinedInApp(locale: ServerLocale, d: { groupName: str
   return { title: tx.title, body: tx.body(name, cleanTitle(d.groupName, 80)) };
 }
 
+export const teacherJoinRequestsPath = (syllabusId: string) => `/teacher/syllabus/${encodeURIComponent(syllabusId)}?tab=requests`;
+
+const SYL_JOIN_REQUESTED: Record<ServerLocale, {
+  title: string;
+  group: (name: string, group: string, s: string) => string;
+  individual: (name: string, s: string) => string;
+  someone: string;
+}> = {
+  az: {
+    title: "Yeni kurs müraciəti",
+    group: (n, g, s) => `${n} «${s}» proqramı üzrə «${g}» qrupuna qoşulmaq istəyir.`,
+    individual: (n, s) => `${n} «${s}» proqramı üzrə fərdi iştirak üçün müraciət etdi.`,
+    someone: "Bir tələbə",
+  },
+  en: {
+    title: "New course request",
+    group: (n, g, s) => `${n} wants to join the group “${g}” for “${s}”.`,
+    individual: (n, s) => `${n} asked to take part in “${s}” individually.`,
+    someone: "A student",
+  },
+  ru: {
+    title: "Новая заявка на курс",
+    group: (n, g, s) => `${n} хочет вступить в группу «${g}» по программе «${s}».`,
+    individual: (n, s) => `${n} подал(а) заявку на индивидуальное участие в программе «${s}».`,
+    someone: "Студент",
+  },
+};
+
+export function syllabusJoinRequestedInApp(locale: ServerLocale, d: { syllabusTitle: string; studentName: string | null; groupName: string | null }) {
+  const tx = SYL_JOIN_REQUESTED[locale];
+  const name = d.studentName?.trim() ? cleanTitle(d.studentName, 60) : tx.someone;
+  const s = cleanTitle(d.syllabusTitle, 80);
+  return { title: tx.title, body: d.groupName ? tx.group(name, cleanTitle(d.groupName, 80), s) : tx.individual(name, s) };
+}
+
+const SYL_JOIN_DECIDED: Record<ServerLocale, {
+  accepted: string;
+  rejected: string;
+  acceptedGroup: (g: string, s: string) => string;
+  acceptedIndividual: (s: string) => string;
+  rejectedBody: (s: string) => string;
+  note: (n: string) => string;
+}> = {
+  az: {
+    accepted: "Müraciətiniz qəbul edildi",
+    rejected: "Müraciətiniz qəbul edilmədi",
+    acceptedGroup: (g, s) => `«${s}» proqramı üzrə «${g}» qrupuna əlavə olundunuz.`,
+    acceptedIndividual: (s) => `Müəllim «${s}» proqramı üzrə fərdi iştirak müraciətinizi qəbul etdi. Müəllim sizinlə əlaqə saxlayacaq.`,
+    rejectedBody: (s) => `Müəllim «${s}» proqramı üzrə müraciətinizi qəbul etmədi.`,
+    note: (n) => `Müəllimin qeydi: ${n}`,
+  },
+  en: {
+    accepted: "Your request was accepted",
+    rejected: "Your request was declined",
+    acceptedGroup: (g, s) => `You were added to the group “${g}” for “${s}”.`,
+    acceptedIndividual: (s) => `The teacher accepted your request to take part in “${s}” individually and will get in touch.`,
+    rejectedBody: (s) => `The teacher declined your request for “${s}”.`,
+    note: (n) => `Teacher's note: ${n}`,
+  },
+  ru: {
+    accepted: "Ваша заявка принята",
+    rejected: "Ваша заявка отклонена",
+    acceptedGroup: (g, s) => `Вы добавлены в группу «${g}» по программе «${s}».`,
+    acceptedIndividual: (s) => `Преподаватель принял вашу заявку на индивидуальное участие в программе «${s}» и свяжется с вами.`,
+    rejectedBody: (s) => `Преподаватель отклонил вашу заявку по программе «${s}».`,
+    note: (n) => `Комментарий преподавателя: ${n}`,
+  },
+};
+
+export function syllabusJoinDecidedInApp(
+  locale: ServerLocale,
+  d: { syllabusTitle: string; decision: "ACCEPTED" | "REJECTED"; groupName: string | null; note: string | null },
+) {
+  const tx = SYL_JOIN_DECIDED[locale];
+  const s = cleanTitle(d.syllabusTitle, 80);
+  const main =
+    d.decision === "REJECTED" ? tx.rejectedBody(s) : d.groupName ? tx.acceptedGroup(cleanTitle(d.groupName, 80), s) : tx.acceptedIndividual(s);
+  const note = d.note?.trim() ? ` ${tx.note(cleanTitle(d.note, 300))}` : "";
+  return { title: d.decision === "ACCEPTED" ? tx.accepted : tx.rejected, body: main + note };
+}
+
 const SYL_DONE: Record<ServerLocale, {
   title: (s: string) => string;
   body: string;

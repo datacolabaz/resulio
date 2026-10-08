@@ -68,7 +68,7 @@ import * as bank from "./questionBank/bank";
 import { questionBankFilter, questionImportRouter, questionTopicsRouter, sectionPicksSchema } from "./questionBank/router";
 import { store } from "./resulioStore";
 import { announceGroupJoin } from "./syllabus/notify";
-import { studentSyllabusRouter, teacherSyllabusRouter } from "./syllabus/router";
+import { publicSyllabusProcedure, studentSyllabusRouter, teacherSyllabusRouter } from "./syllabus/router";
 import { SHARE_CAMPAIGNS, SHARE_CHANNELS, SHARE_TARGET_TYPES, VISITOR_ID_PATTERN } from "../shared/shareTracking";
 
 const MINUTE = 60_000;
@@ -966,6 +966,8 @@ const publicRouter = router({
       if (preview.state === "NOT_FOUND") limitInviteLinkMisses(ctx);
       return preview;
     }),
+  /** Shared syllabus page (`/syllabus/<code>`); separate from group invites, grants no access. */
+  syllabus: publicSyllabusProcedure,
   /**
    * Fire-and-forget click/open/download logging for a share link, callable anonymously (pre-login)
    * and without a `targetId` existence check — it only ever feeds a teacher/partner-facing count,

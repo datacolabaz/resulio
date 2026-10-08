@@ -5,6 +5,7 @@ import { SingleFileUpload } from "@/components/FileUpload";
 import { ResultPenalty } from "@/components/ResultPenalty";
 import { StatusBadge, toneSurface } from "@/components/StatusBadge";
 import { ContinueLearning } from "@/components/syllabus/CrossLinks";
+import { MyJoinRequests } from "@/components/syllabus/MyJoinRequests";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -49,6 +50,7 @@ export function StudentHome() {
       {!d.data ? <Loading /> : (
         <div className="space-y-5">
           <ContinueLearning />
+          <MyJoinRequests />
           <div className="grid gap-4 sm:grid-cols-3">
             <StatCard label={t("student.activeExams")} value={d.data.active.length} />
             <StatCard label={t("student.upcoming")} value={d.data.upcoming.length} />

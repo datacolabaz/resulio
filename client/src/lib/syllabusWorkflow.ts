@@ -10,7 +10,7 @@ export type StudentStep = (typeof STUDENT_STEPS)[number];
 export type StepState = "done" | "current" | "todo" | "skipped";
 
 /** Tabs of the syllabus builder, in display order. */
-export const BUILDER_TABS = ["structure", "settings", "versions", "access", "students", "grading", "analytics"] as const;
+export const BUILDER_TABS = ["structure", "settings", "versions", "access", "students", "requests", "grading", "analytics"] as const;
 export type BuilderTab = (typeof BUILDER_TABS)[number];
 
 /** Builder tab each step leads to; every step lands somewhere, whatever its state. */

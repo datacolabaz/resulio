@@ -13,7 +13,9 @@ import { moduleDetailsSchema } from "../../shared/syllabusModuleDetails";
 import { SYLLABUS_IMPORT_MAX_TEXT, syllabusImportStructureSchema } from "../../shared/syllabusImport";
 import { courseTimingSchema, durationSchema } from "../../shared/syllabusTiming";
 import { timestampDate } from "../../shared/timestamp";
-import { rateLimit, router, studentProcedure, teacherProcedure } from "../_core/trpc";
+import { JOIN_DECISION_NOTE_MAX, JOIN_DECISIONS, JOIN_MESSAGE_MAX, JOIN_REQUEST_TYPES } from "../../shared/syllabusJoin";
+import { limited, publicProcedure, rateLimit, router, studentProcedure, teacherProcedure } from "../_core/trpc";
+import { AppError } from "../modules/errors";
 import * as access from "./access";
 import * as analytics from "./analytics";
 import { clientActivityBatchSchema } from "./activityRules";
@@ -21,10 +23,12 @@ import * as authoring from "./authoring";
 import { assertSyllabusEnabled, isSchemaBehind, syllabusEnabledFor } from "./availability";
 import * as draft from "./draft";
 import * as imports from "./importJobs";
+import * as joinRequests from "./joinRequests";
 import * as learning from "./learning";
 import * as links from "./links";
 import * as publishing from "./publishing";
 import * as sample from "./sample";
+import * as shareLinks from "./shareLinks";
 import * as teacherViews from "./teacherViews";
 
 const MINUTE = 60_000;
@@ -32,6 +36,7 @@ const entityId = z.string().trim().min(1).max(32);
 const studentId = z.number().int().positive();
 const revision = z.number().int().min(0).optional();
 const shortText = (max: number) => z.string().trim().max(max);
+const shareCode = z.string().trim().min(1).max(64);
 const objectives = z.array(z.string().trim().min(1).max(300)).max(30);
 
 /**
@@ -298,6 +303,29 @@ export const teacherSyllabusRouter = router({
   saveAnalyticsSettings: syllabusTeacherProcedure
     .input(z.object({ id: entityId, settings: analyticsSettingsSchema }))
     .mutation(({ ctx, input }) => analytics.saveSettings(ctx.scope, input.id, input.settings)),
+
+  // Public share link (`/syllabus/<code>`) and the join requests sent from it.
+  shareLink: syllabusTeacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => shareLinks.shareLinkState(ctx.scope, input.id)),
+  ensureShareLink: syllabusTeacherProcedure
+    .input(z.object({ id: entityId }))
+    .mutation(({ ctx, input }) => shareLinks.ensureShareLink(ctx.scope, input.id)),
+  regenerateShareLink: syllabusTeacherProcedure
+    .use(rateLimit("syllabusShareRegenerate", 10, MINUTE))
+    .input(z.object({ id: entityId }))
+    .mutation(({ ctx, input }) => shareLinks.regenerateShareLink(ctx.scope, input.id)),
+  setShareLinkActive: syllabusTeacherProcedure
+    .input(z.object({ id: entityId, active: z.boolean() }))
+    .mutation(({ ctx, input }) => shareLinks.setShareLinkActive(ctx.scope, input.id, input.active)),
+  groupListings: syllabusTeacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => shareLinks.groupListings(ctx.scope, input.id)),
+  setGroupListed: syllabusTeacherProcedure
+    .input(z.object({ id: entityId, groupId: entityId, listed: z.boolean() }))
+    .mutation(({ ctx, input }) => shareLinks.setGroupListed(ctx.scope, input.id, input.groupId, input.listed)),
+  joinRequests: syllabusTeacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => joinRequests.syllabusJoinRequests(ctx.scope, input.id)),
+  joinRequestCounts: syllabusTeacherProcedure.query(({ ctx }) => joinRequests.joinRequestCounts(ctx.scope)),
+  decideJoinRequest: syllabusTeacherProcedure
+    .use(rateLimit("syllabusDecideJoinRequest", 60, MINUTE))
+    .input(z.object({ requestId: entityId, decision: z.enum(JOIN_DECISIONS), note: shortText(JOIN_DECISION_NOTE_MAX).nullish() }))
+    .mutation(({ ctx, input }) => joinRequests.decideJoinRequest(ctx.scope, input.requestId, input.decision, input.note ?? null)),
 });
 
 export const studentSyllabusRouter = router({
@@ -340,4 +368,39 @@ export const studentSyllabusRouter = router({
     .use(rateLimit("syllabusMyActivity", 30, MINUTE))
     .input(z.object({ id: entityId }))
     .query(({ ctx, input }) => analytics.myTimeline(ctx.user.id, input.id)),
+
+  joinRequest: syllabusStudentProcedure
+    .use(rateLimit("syllabusJoinRequest", 10, MINUTE))
+    .input(
+      z.object({
+        code: shareCode,
+        type: z.enum(JOIN_REQUEST_TYPES),
+        groupId: entityId.nullish(),
+        message: shortText(JOIN_MESSAGE_MAX).default(""),
+      }),
+    )
+    .mutation(({ ctx, input }) => joinRequests.createJoinRequest(ctx.user, { ...input, groupId: input.groupId ?? null })),
+  cancelJoinRequest: syllabusStudentProcedure
+    .use(rateLimit("syllabusCancelJoinRequest", 20, MINUTE))
+    .input(z.object({ requestId: entityId }))
+    .mutation(({ ctx, input }) => joinRequests.cancelJoinRequest(ctx.user.id, input.requestId)),
+  myJoinRequests: syllabusStudentProcedure.query(({ ctx }) => joinRequests.myJoinRequests(ctx.user.id)),
 });
+
+/**
+ * The public page of a shared syllabus; a signed-in visitor also gets their own request state.
+ * Unknown codes count against a tighter per-visitor budget, like invite-link misses.
+ */
+export const publicSyllabusProcedure = publicProcedure
+  .use(rateLimit("publicSyllabus", 60, MINUTE))
+  .input(z.object({ code: shareCode }))
+  .query(async ({ ctx, input }) => {
+    try {
+      return await joinRequests.publicSyllabus(input.code, ctx.user?.id ?? null);
+    } catch (error) {
+      if (error instanceof AppError && error.code === "NOT_FOUND") {
+        limited(ctx, `syllabusShareMiss:${ctx.user ? `u:${ctx.user.id}` : `ip:${ctx.req.ip ?? "unknown"}`}`, 30, 15 * MINUTE, "syllabusShareMiss");
+      }
+      throw error;
+    }
+  });

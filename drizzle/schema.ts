@@ -37,6 +37,7 @@ import {
 import { ANSWER_SOURCES, CONFIDENCE_LEVELS, IMPORT_ITEM_STATUSES, IMPORT_JOB_STATUSES, type ImportIssue } from "../shared/questionImport";
 import { REFERRAL_SOURCES } from "../shared/referralSources";
 import { SYLLABUS_IMPORT_STATUSES, type SyllabusImportDetail } from "../shared/syllabusImport";
+import { JOIN_REQUEST_STATUSES, JOIN_REQUEST_TYPES } from "../shared/syllabusJoin";
 import type { ClassScheduleEntry } from "../shared/schedule";
 import { SHARE_CHANNELS, SHARE_EVENT_TYPES, SHARE_TARGET_TYPES } from "../shared/shareTracking";
 import {
@@ -1513,6 +1514,61 @@ export const syllabusImportJobs = mysqlTable(
   (t) => [index("syllabus_import_jobs_workspace_idx").on(t.providerWorkspaceId, t.createdAt)],
 );
 export type SyllabusImportJob = typeof syllabusImportJobs.$inferSelect;
+
+/**
+ * The public share link of a syllabus (`/syllabus/<code>`, shared/syllabusJoin.ts), created on first
+ * use. Separate from group invite codes. Regenerating replaces `code`; turning it off keeps it.
+ */
+export const syllabusShareLinks = mysqlTable("syllabus_share_links", {
+  syllabusId: id("syllabusId").primaryKey(),
+  code: varchar("code", { length: 32 }).notNull().unique(),
+  active: boolean("active").notNull().default(true),
+  createdBy: int("createdBy").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+/** Teacher opt-in: this group (which must also hold a live grant for the syllabus) is offered on its share page. */
+export const syllabusGroupListings = mysqlTable(
+  "syllabus_group_listings",
+  {
+    syllabusId: id("syllabusId").notNull(),
+    groupId: id("groupId").notNull(),
+    createdBy: int("createdBy").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.syllabusId, t.groupId] })],
+);
+
+/**
+ * A student's request, sent from the share page, to join an upcoming group (GROUP, `groupId` set) or
+ * for individual participation (INDIVIDUAL). `openKey` is set only while PENDING, so the unique index
+ * allows one open request per student, syllabus, type and group, and a new one after a decision.
+ */
+export const syllabusJoinRequests = mysqlTable(
+  "syllabus_join_requests",
+  {
+    id: id("id").primaryKey(),
+    syllabusId: id("syllabusId").notNull(),
+    workspaceId: id("workspaceId").notNull(),
+    studentId: int("studentId").notNull(),
+    type: mysqlEnum("type", JOIN_REQUEST_TYPES).notNull(),
+    groupId: id("groupId"),
+    message: varchar("message", { length: 1000 }).notNull().default(""),
+    status: mysqlEnum("status", JOIN_REQUEST_STATUSES).notNull().default("PENDING"),
+    openKey: varchar("openKey", { length: 128 }).unique(),
+    decisionNote: varchar("decisionNote", { length: 500 }),
+    decidedBy: int("decidedBy"),
+    decidedAt: timestamp("decidedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [
+    index("syllabus_join_requests_syllabus_idx").on(t.syllabusId, t.status),
+    index("syllabus_join_requests_workspace_idx").on(t.workspaceId, t.status),
+    index("syllabus_join_requests_student_idx").on(t.studentId),
+  ],
+);
+export type SyllabusJoinRequest = typeof syllabusJoinRequests.$inferSelect;
 
 /**
  * Question bank structure, two levels per workspace: a subject (`parentId` null) and its sections

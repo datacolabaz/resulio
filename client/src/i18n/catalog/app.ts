@@ -391,6 +391,8 @@ export const app = {
   "settings.event.SYLLABUS_ACCESS_GRANTED": ["Mənə syllabus açıldı", "A syllabus was opened for me", "Мне открыт силлабус"],
   "settings.event.SYLLABUS_UNLOCKED": ["Syllabus-da yeni dərs və ya modul açıldı", "A new lesson or module opened in a syllabus", "В силлабусе открылся новый урок или модуль"],
   "settings.event.GROUP_MEMBER_JOINED": ["Tələbə dəvət linki ilə qrupa qoşuldu", "A student joined a group via invite link", "Студент вступил в группу по ссылке-приглашению"],
+  "settings.event.SYLLABUS_JOIN_REQUESTED": ["Tələbə kursa / syllabus-a qoşulmaq üçün müraciət etdi", "A student sent a course / syllabus request", "Студент подал заявку на курс / силлабус"],
+  "settings.event.SYLLABUS_JOIN_DECIDED": ["Kurs müraciətimə cavab verildi", "My course request was answered", "На мою заявку на курс ответили"],
   "settings.event.SYLLABUS_APPROVAL_NEEDED": ["Tələbə syllabus-da təsdiq gözləyir", "A student is waiting for approval in a syllabus", "Студент ждёт подтверждения в силлабусе"],
   "settings.event.SYLLABUS_COMPLETED": ["Syllabus-u tamamladım", "I completed a syllabus", "Я завершил силлабус"],
   "settings.event.SYLLABUS_AT_RISK_DIGEST": ["Gündəlik xülasə: risk altında olan tələbələr", "Daily digest: students at risk", "Ежедневная сводка: студенты в зоне риска"],

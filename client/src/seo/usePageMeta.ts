@@ -41,3 +41,25 @@ export function usePageMeta(page: SitePage) {
     };
   }, [page.path, title, description]);
 }
+
+/**
+ * Title, description and `robots: noindex` of a private share page (e.g. a shared syllabus), built
+ * from loaded data; restored on leave. Nothing is set until `title` is known.
+ */
+export function useSharePageMeta(title: string | null, description: string) {
+  useEffect(() => {
+    if (!title) return;
+    const previousTitle = document.title;
+    document.title = title;
+    const restore = [
+      setTag('meta[name="robots"]', meta("name", "robots"), "content", "noindex, nofollow"),
+      setTag('meta[name="description"]', meta("name", "description"), "content", description),
+      setTag('meta[property="og:title"]', meta("property", "og:title"), "content", title),
+      setTag('meta[property="og:description"]', meta("property", "og:description"), "content", description),
+    ];
+    return () => {
+      document.title = previousTitle;
+      restore.forEach((undo) => undo());
+    };
+  }, [title, description]);
+}
