@@ -5,6 +5,7 @@ import { requireDb } from "../db";
 import type { TeacherScope } from "../modules/access";
 import { ownedSyllabus } from "./access";
 import { allItems, computeProgress } from "./engine";
+import { withLegacyFallback } from "./legacyModuleDetails";
 import { changedDetailModules, draftModuleDetails, versionModuleDetails } from "./moduleDetails";
 import { answerKeyOf } from "./practiceTasks";
 import { studentLessonView, studentPathView } from "./serialize";
@@ -84,10 +85,11 @@ export async function publishPreview(scope: TeacherScope, syllabusId: string) {
     .select({ maxNo: sql<number>`coalesce(max(${syllabusVersions.versionNo}), 0)` })
     .from(syllabusVersions)
     .where(eq(syllabusVersions.syllabusId, syllabusId));
-  const [draftDetails, publishedDetails] = await Promise.all([
+  const [draftDetails, publishedRows] = await Promise.all([
     draftModuleDetails(syllabusId, db),
     d.syllabus.currentVersionId ? versionModuleDetails(d.syllabus.currentVersionId, db) : Promise.resolve(new Map()),
   ]);
+  const publishedDetails = withLegacyFallback(publishedRows, previous?.modules ?? []);
   const detailsChanged = changedDetailModules(draftDetails, publishedDetails, structure.modules.map((m) => m.id));
   return {
     problems: [...d.problems, ...problems],

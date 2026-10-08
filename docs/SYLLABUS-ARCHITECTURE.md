@@ -178,7 +178,7 @@ Types follow `schema.ts` conventions: `id` = `varchar(32)` nanoid, user referenc
 | title, description | varchar(255), text | |
 | estimatedMinutes | int NULL | |
 | objectives | json (string[]) | learning objectives |
-| prerequisitesText | text NULL | free text shown to students (§3) |
+| prerequisitesText | text NULL | legacy: superseded by the module details (migration 0033/0034), kept unread |
 | status | enum('DRAFT','READY') default 'DRAFT' | a DRAFT module is excluded from the next publish (§3 "Published / Draft") |
 | completionRules | json NULL | partial override |
 | deletedAt | timestamp NULL | soft delete — older versions/progress may still reference the id |
@@ -325,8 +325,10 @@ Effective access for student S at time t = any grant with `status = ACTIVE`, `st
 #### End-of-module blocks (migration 0033)
 
 - **`syllabus_module_details`** — `moduleId PK`, `syllabusId`, `details json`, `updatedAt`. Draft "🎯 Objectives / 📋 Prerequisites / 📝 Module assessment" blocks (`ModuleDetails` in `shared/syllabusModuleDetails.ts`; the assessment may carry a heading, intro, pipeline line and criteria list for a final project). Edited in the builder's module card; a row, even an empty one, means the teacher has set them.
-- **`syllabus_version_module_details`** — `(versionId, moduleId) PK`, `details json`. Written by publish for the version's modules with non-empty details; the student path reads the row of the pinned version (`store.moduleDetailsOfVersion`). `syllabus_versions` rows stay immutable. Blocks of a locked module are not sent, like its description and objectives. Both tables are read tolerantly (missing table = no details).
-- **AI Engineering content** — `server/syllabus/content/aiEngineeringModuleDetails.ts`, applied at startup by `runAiEngineeringBackfill` (`server/syllabus/aiEngineeringBackfill.ts`): exactly one live syllabus titled "AI Engineer…" whose modules map onto the 9 months (by position when there are 9, else by title keywords), only modules without a details row, mirrored into every version that contains the module. Not found / ambiguous → logs and writes nothing.
+- **`syllabus_version_module_details`** — `(versionId, moduleId) PK`, `details json`. Written by publish for the version's modules with non-empty details; the student path reads the row of the pinned version (`store.moduleDetailsOfVersion`). `syllabus_versions` rows stay immutable. The blocks are sent for every module, locked ones included (a syllabus overview); a locked module otherwise carries only its title, lock state and lesson/assessment stubs, never a description or content. Both tables are read tolerantly (missing table = no details).
+- **Single source for objectives / prerequisites** — the old `syllabus_modules.objectives` / `prerequisitesText` columns (and the same keys in version structures) are kept but no longer written or shown; new snapshots store them empty. They are read only by `server/syllabus/legacyModuleDetails.ts`: the read-time fallback for a module without a details row, the one-time merge, and old clients that still send the fields (mapped into the details). Lesson objectives are unchanged.
+- **AI Engineering content** — `server/syllabus/content/aiEngineeringModuleDetails.ts`, applied at startup by `runAiEngineeringBackfill` (`server/syllabus/aiEngineeringBackfill.ts`): exactly one live syllabus titled "AI Engineer…" whose modules map onto the 9 months (by position when there are 9, else by title keywords), mirrored into every version that contains the module. It writes modules without a details row and replaces rows that are untouched copies of the old fields; rows a teacher edited or cleared are kept. Not found / ambiguous → logs and writes nothing.
+- **Startup order** (`runModuleDetailsBackfills`, `server/syllabus/moduleDetailsBackfill.ts`): 1) the AI Engineering backfill; 2) the legacy merge, once (`syllabus_data_backfills`, migration 0034): copies the old fields of every syllabus into empty details fields, drafts and published versions, skipping the modules mapped in step 1. If step 1 fails, step 2 waits for the next start.
 
 #### Activity
 

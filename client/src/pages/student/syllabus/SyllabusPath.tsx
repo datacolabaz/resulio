@@ -225,13 +225,6 @@ function ModuleCard({
       {expanded && (
         <div id={panelId} className="space-y-3 border-t border-border p-4">
           {m.description && <p className="whitespace-pre-wrap break-words text-sm text-foreground-secondary">{m.description}</p>}
-          {m.objectives.length > 0 && (
-            <ul className="ml-5 list-disc text-sm text-foreground-secondary">
-              {m.objectives.map((o, i) => (
-                <li key={i} className="break-words">{o}</li>
-              ))}
-            </ul>
-          )}
           <ol className="space-y-1.5">
             {m.lessons.map((l, li) => (
               <LessonRow key={l.id} id={id} lesson={l} n={li + 1} isCurrent={l.id === path.currentLessonId} path={path} />

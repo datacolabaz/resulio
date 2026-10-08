@@ -1,5 +1,5 @@
 import { t } from "@/i18n/messages";
-import { hasAssessmentDetails, hasModuleDetails, type ModuleDetails } from "@shared/syllabusModuleDetails";
+import { hasAssessmentDetails, hasModuleDetails, type ModuleAssessmentDetails, type ModuleDetails } from "@shared/syllabusModuleDetails";
 
 type Heading = "h3" | "h4";
 
@@ -15,13 +15,25 @@ function Block({ emoji, title, as: H, wide, children }: { emoji: string; title: 
   );
 }
 
-function Bullets({ items }: { items: readonly string[] }) {
+export function Bullets({ items }: { items: readonly string[] }) {
   return (
     <ul className="ml-5 list-disc space-y-1 text-sm text-foreground-secondary marker:text-muted-foreground">
       {items.map((item, i) => (
         <li key={i} className="break-words">{item}</li>
       ))}
     </ul>
+  );
+}
+
+export function AssessmentBody({ a }: { a: ModuleAssessmentDetails }) {
+  return (
+    <div className="space-y-2">
+      {a.heading && <p className="break-words text-sm font-semibold text-foreground">{a.heading}</p>}
+      {a.intro && <p className="break-words text-sm text-foreground-secondary">{a.intro}</p>}
+      {a.pipeline && <p className="break-words rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium leading-relaxed text-foreground">{a.pipeline}</p>}
+      {a.listIntro && <p className="break-words text-sm text-foreground-secondary">{a.listIntro}</p>}
+      {a.items.length > 0 && <Bullets items={a.items} />}
+    </div>
   );
 }
 
@@ -44,13 +56,7 @@ export function ModuleDetailsBlocks({ details, as = "h3", className = "" }: { de
       )}
       {hasAssessmentDetails(a) && (
         <Block emoji="📝" title={t("moduleDetails.assessment")} as={as} wide>
-          <div className="space-y-2">
-            {a.heading && <p className="break-words text-sm font-semibold text-foreground">{a.heading}</p>}
-            {a.intro && <p className="break-words text-sm text-foreground-secondary">{a.intro}</p>}
-            {a.pipeline && <p className="break-words rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium leading-relaxed text-foreground">{a.pipeline}</p>}
-            {a.listIntro && <p className="break-words text-sm text-foreground-secondary">{a.listIntro}</p>}
-            {a.items.length > 0 && <Bullets items={a.items} />}
-          </div>
+          <AssessmentBody a={a} />
         </Block>
       )}
     </div>

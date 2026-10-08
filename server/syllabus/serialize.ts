@@ -1,5 +1,6 @@
 import type { SyllabusItemKind } from "../../shared/syllabus";
 import { hasModuleDetails, type ModuleDetails } from "../../shared/syllabusModuleDetails";
+import { withLegacyFallback } from "./legacyModuleDetails";
 import type { EngineOutput, ItemEval, LessonResult, ModuleResult, VersionStructure } from "./types";
 
 /**
@@ -17,11 +18,17 @@ export function studentItemContent(kind: SyllabusItemKind, content: Record<strin
 
 const itemState = (e: ItemEval | undefined) => (e ? { state: e.state, available: e.available } : { state: "UNMET" as const, available: false });
 
-/** `details`: moduleId → end-of-module blocks of this version (or of the draft, for the preview). */
+/**
+ * `details`: moduleId → end-of-module blocks of this version (or of the draft, for the preview).
+ * The blocks are a syllabus overview, so they are sent for locked modules too; a locked module
+ * otherwise carries only its title, lock state and lesson/assessment stubs (no description, no content).
+ * Its legacy `objectives` / `prerequisitesText` are never sent: they reach students only as details.
+ */
 export function studentPathView(structure: VersionStructure, out: EngineOutput, details: ReadonlyMap<string, ModuleDetails> = new Map()) {
   const lessons = new Map<string, LessonResult>(out.lessons.map((l) => [l.id, l]));
   const modules = new Map<string, ModuleResult>(out.modules.map((m) => [m.id, m]));
   const finalEvals = new Map(out.finalItems.map((e) => [e.itemId, e]));
+  const blocks = withLegacyFallback(details, structure.modules);
   return {
     progressPct: out.progressPct,
     completedLessons: out.completedLessons,
@@ -33,7 +40,7 @@ export function studentPathView(structure: VersionStructure, out: EngineOutput, 
       const mr = modules.get(m.id)!;
       const mEvals = new Map(mr.items.map((e) => [e.itemId, e]));
       const locked = mr.status === "LOCKED";
-      const moduleDetails = details.get(m.id);
+      const moduleDetails = blocks.get(m.id);
       return {
         id: m.id,
         title: m.title,
@@ -44,8 +51,7 @@ export function studentPathView(structure: VersionStructure, out: EngineOutput, 
         totalLessons: mr.totalLessons,
         description: locked ? null : m.description,
         estimatedMinutes: m.estimatedMinutes,
-        objectives: locked ? [] : m.objectives,
-        details: !locked && hasModuleDetails(moduleDetails) ? moduleDetails : null,
+        details: hasModuleDetails(moduleDetails) ? moduleDetails : null,
         lessons: m.lessons.map((l) => {
           const lr = lessons.get(l.id)!;
           return lr.status === "LOCKED"

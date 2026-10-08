@@ -138,8 +138,9 @@ export function buildStructure(input: SnapshotInput): { structure: VersionStruct
         description: m.description ?? "",
         position: m.position,
         estimatedMinutes: m.estimatedMinutes,
-        objectives: m.objectives,
-        prerequisitesText: m.prerequisitesText ?? "",
+        // Legacy fields: module objectives/prerequisites now live in the version's module details.
+        objectives: [],
+        prerequisitesText: "",
         rules: moduleRules,
         lessons,
         items: input.items.filter((it) => it.scope === "MODULE" && it.moduleId === m.id).sort(byPosition).map((it) => stub(it, moduleRules)),

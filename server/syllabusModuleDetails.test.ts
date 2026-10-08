@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { ModuleDetailsBlocks } from "../client/src/components/syllabus/ModuleDetailsBlocks";
 import { emptyModuleDetails, hasModuleDetails, moduleDetailsSchema, parseModuleDetails, type ModuleDetails } from "../shared/syllabusModuleDetails";
-import { backfillRows, mapModules, planBackfill, type CandidateSyllabus } from "./syllabus/aiEngineeringBackfill";
+import { backfillRows, mapModules, planBackfill, type BackfillSources, type CandidateSyllabus } from "./syllabus/aiEngineeringBackfill";
 import { AI_ENGINEERING_MODULE_DETAILS, AI_ENGINEERING_SYLLABUS_TITLE } from "./syllabus/content/aiEngineeringModuleDetails";
 import { changedDetailModules, freezeModuleDetails } from "./syllabus/moduleDetails";
 import { studentPathView } from "./syllabus/serialize";
@@ -141,8 +141,12 @@ describe("AI Engineering backfill rows", () => {
   const plan = planBackfill([ai()]) as Extract<ReturnType<typeof planBackfill>, { action: "fill" }>;
   const allModules = MONTH_TITLES.map((_, i) => `m${i + 1}`);
 
+  const edited: ModuleDetails = { ...emptyModuleDetails(), objectives: ["Teacher wrote this"] };
+  const version = (id: string, ids: string[]) => ({ id, modules: ids.map((m) => ({ id: m, objectives: [], prerequisitesText: "" })) });
+  const sources = (over: Partial<BackfillSources> = {}): BackfillSources => ({ draftRows: new Map(), draftModules: [], versions: [], versionRows: new Map(), ...over });
+
   it("fills every empty module in the draft and in each version that contains it", () => {
-    const rows = backfillRows(plan, new Set(), [{ id: "v1", moduleIds: allModules.slice(0, 8) }, { id: "v2", moduleIds: allModules }], new Set());
+    const rows = backfillRows(plan, sources({ versions: [version("v1", allModules.slice(0, 8)), version("v2", allModules)] }));
     expect(rows.draft).toHaveLength(9);
     expect(rows.draft[8]).toEqual({ moduleId: "m9", syllabusId: "syl_ai", details: AI_ENGINEERING_MODULE_DETAILS[8].details });
     expect(rows.version.filter((r) => r.versionId === "v1")).toHaveLength(8);
@@ -151,7 +155,7 @@ describe("AI Engineering backfill rows", () => {
   });
 
   it("leaves modules that already have details untouched, in the draft and in versions", () => {
-    const rows = backfillRows(plan, new Set(["m2"]), [{ id: "v1", moduleIds: allModules }], new Set(["v1:m3"]));
+    const rows = backfillRows(plan, sources({ draftRows: new Map([["m2", edited]]), versions: [version("v1", allModules)], versionRows: new Map([["v1:m3", edited]]) }));
     expect(rows.draft.map((r) => r.moduleId)).not.toContain("m2");
     expect(rows.version.map((r) => r.moduleId)).not.toContain("m2");
     expect(rows.version.map((r) => r.moduleId)).not.toContain("m3");
@@ -159,8 +163,14 @@ describe("AI Engineering backfill rows", () => {
     expect(rows.skippedModules).toEqual(["m2"]);
   });
 
+  it("never refills blocks a teacher cleared (empty row)", () => {
+    const rows = backfillRows(plan, sources({ draftRows: new Map([["m1", emptyModuleDetails()]]), draftModules: [{ id: "m1", objectives: ["Old"], prerequisitesText: "" }] }));
+    expect(rows.skippedModules).toEqual(["m1"]);
+  });
+
   it("writes nothing on a second run", () => {
-    const rows = backfillRows(plan, new Set(allModules), [{ id: "v1", moduleIds: allModules }], new Set());
+    const filled = new Map(allModules.map((id, i) => [id, AI_ENGINEERING_MODULE_DETAILS[i].details]));
+    const rows = backfillRows(plan, sources({ draftRows: filled, versions: [version("v1", allModules)] }));
     expect(rows).toEqual({ draft: [], version: [], skippedModules: allModules });
   });
 });
@@ -188,9 +198,9 @@ const OUTPUT = {
 } as unknown as EngineOutput;
 
 describe("studentPathView details", () => {
-  it("shows details on unlocked modules only, and null where there are none", () => {
+  it("shows details on every module, locked ones included, and null where there are none", () => {
     const path = studentPathView(STRUCTURE, OUTPUT, new Map([["open", DETAILS], ["locked", DETAILS], ["bare", emptyModuleDetails()]]));
-    expect(path.modules.map((m) => m.details)).toEqual([DETAILS, null, null]);
+    expect(path.modules.map((m) => m.details)).toEqual([DETAILS, DETAILS, null]);
   });
 
   it("leaves syllabi without details exactly as before (details null)", () => {

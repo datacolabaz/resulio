@@ -20,7 +20,7 @@ import { sweepExpiredAttempts } from "../modules/attempts";
 import { runPendingLinkJoinBackfill } from "../modules/groupJoin";
 import { sweepResultEmails } from "../modules/resultEmail";
 import { startNotificationWorker } from "../notifications/dispatcher";
-import { runAiEngineeringBackfill } from "../syllabus/aiEngineeringBackfill";
+import { runModuleDetailsBackfills } from "../syllabus/moduleDetailsBackfill";
 import { runDailyDigest, runDailyRetention } from "../syllabus/analytics";
 import { flushDueNotices } from "../syllabus/notify";
 import { installSyllabusHooks, reconcileDirty } from "../syllabus/progression";
@@ -136,7 +136,7 @@ async function startServer() {
   startSyllabusProgression();
   if (getDb()) {
     runPendingLinkJoinBackfill().catch((error) => console.error("[Groups] Pending join backfill failed", error instanceof Error ? error.message : error));
-    runAiEngineeringBackfill().catch((error) => console.error("[Syllabus] AI Engineering module details backfill failed", error instanceof Error ? error.message : error));
+    runModuleDetailsBackfills().catch((error) => console.error("[Syllabus] module details backfill failed", error instanceof Error ? error.message : error));
   }
 
   const port = Number(process.env.PORT || "3000");

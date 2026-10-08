@@ -1,16 +1,19 @@
 import { and, eq, inArray, isNull, like, sql } from "drizzle-orm";
 import { syllabi, syllabusModuleDetails, syllabusModules, syllabusVersionModuleDetails, syllabusVersions } from "../../drizzle/schema";
-import type { ModuleDetails } from "../../shared/syllabusModuleDetails";
+import { parseModuleDetails, type ModuleDetails } from "../../shared/syllabusModuleDetails";
 import { requireDb, type DbOrTx } from "../db";
 import { AI_ENGINEERING_MODULE_DETAILS, AI_ENGINEERING_SYLLABUS_TITLE, type AiEngineeringModuleContent } from "./content/aiEngineeringModuleDetails";
+import { isLegacyCopy, legacyModuleDetails, type LegacyModuleFields } from "./legacyModuleDetails";
 import type { VersionStructure } from "./types";
 
 /**
  * Startup data backfill: puts the end-of-module blocks of content/aiEngineeringModuleDetails.ts on
  * the AI Engineering syllabus that already lives in the database. Idempotent and conservative:
  *   - exactly one syllabus titled "AI Engineer…" whose modules map 1:1 onto the 9 months, else nothing;
- *   - a module that already has a details row (set by a teacher, even to empty) is never touched;
+ *   - a module whose details row was set by a teacher (even to empty) is never touched; a row that is
+ *     only a copy of the old objectives/prerequisites fields is replaced by the user's content;
  *   - published versions get the same rows, so pinned students see them without a republish.
+ * Runs before the legacy merge (moduleDetailsBackfill.ts), which then leaves the mapped modules alone.
  */
 
 export interface CandidateModule {
@@ -71,25 +74,44 @@ export interface BackfillRows {
   skippedModules: string[];
 }
 
-/** Rows to insert: only modules without a draft details row, and only versions that contain the module. */
+/** Old module fields of a draft module or of a module inside a version structure. */
+export interface BackfillSources {
+  /** moduleId → stored draft details row. */
+  draftRows: ReadonlyMap<string, ModuleDetails>;
+  /** Draft modules' legacy objectives / prerequisitesText. */
+  draftModules: readonly LegacyModuleFields[];
+  /** Each version with the legacy fields of its modules (from its structure). */
+  versions: ReadonlyArray<{ id: string; modules: readonly LegacyModuleFields[] }>;
+  /** `${versionId}:${moduleId}` → stored version details row. */
+  versionRows: ReadonlyMap<string, ModuleDetails>;
+}
+
+/**
+ * The user's content wins over values merely copied from the old module fields: a row is written
+ * when it is missing or is an untouched legacy copy (legacyModuleDetails.isLegacyCopy). A row a
+ * teacher edited, or cleared to empty, is kept. Versions are only written for modules whose draft
+ * is written, and only versions that contain the module.
+ */
 export function backfillRows(
   plan: Extract<BackfillPlan, { action: "fill" }>,
-  existingDraft: ReadonlySet<string>,
-  versions: ReadonlyArray<{ id: string; moduleIds: readonly string[] }>,
-  existingVersionRows: ReadonlySet<string>,
+  sources: BackfillSources,
   content: readonly AiEngineeringModuleContent[] = AI_ENGINEERING_MODULE_DETAILS,
 ): BackfillRows {
   const byMonth = new Map(content.map((c) => [c.month, c.details]));
+  const draftLegacy = new Map(sources.draftModules.map((m) => [m.id, legacyModuleDetails(m)]));
+  const replaceable = (row: ModuleDetails | undefined, legacy: ModuleDetails | undefined) => !row || (!!legacy && isLegacyCopy(row, legacy));
   const out: BackfillRows = { draft: [], version: [], skippedModules: [] };
   for (const m of plan.modules) {
     const details = byMonth.get(m.month)!;
-    if (existingDraft.has(m.moduleId)) {
+    if (!replaceable(sources.draftRows.get(m.moduleId), draftLegacy.get(m.moduleId))) {
       out.skippedModules.push(m.moduleId);
       continue;
     }
     out.draft.push({ moduleId: m.moduleId, syllabusId: plan.syllabusId, details });
-    for (const v of versions) {
-      if (v.moduleIds.includes(m.moduleId) && !existingVersionRows.has(`${v.id}:${m.moduleId}`)) out.version.push({ versionId: v.id, moduleId: m.moduleId, details });
+    for (const v of sources.versions) {
+      const vm = v.modules.find((x) => x.id === m.moduleId);
+      if (!vm) continue;
+      if (replaceable(sources.versionRows.get(`${v.id}:${m.moduleId}`), legacyModuleDetails(vm))) out.version.push({ versionId: v.id, moduleId: m.moduleId, details });
     }
   }
   return out;
@@ -106,7 +128,14 @@ export async function runAiEngineeringBackfill(db: DbOrTx = requireDb()) {
   const ids = rows.map((r) => r.id);
   const modules = ids.length
     ? await db
-        .select({ id: syllabusModules.id, syllabusId: syllabusModules.syllabusId, title: syllabusModules.title, position: syllabusModules.position })
+        .select({
+          id: syllabusModules.id,
+          syllabusId: syllabusModules.syllabusId,
+          title: syllabusModules.title,
+          position: syllabusModules.position,
+          objectives: syllabusModules.objectives,
+          prerequisitesText: syllabusModules.prerequisitesText,
+        })
         .from(syllabusModules)
         .where(and(inArray(syllabusModules.syllabusId, ids), isNull(syllabusModules.deletedAt)))
     : [];
@@ -116,32 +145,35 @@ export async function runAiEngineeringBackfill(db: DbOrTx = requireDb()) {
     return { written: 0, plan };
   }
 
-  const existingDraft = await db.select({ moduleId: syllabusModuleDetails.moduleId }).from(syllabusModuleDetails).where(eq(syllabusModuleDetails.syllabusId, plan.syllabusId));
-  const versionRows = await db.select({ id: syllabusVersions.id, structure: syllabusVersions.structure }).from(syllabusVersions).where(eq(syllabusVersions.syllabusId, plan.syllabusId));
-  const versions = versionRows.map((v) => ({ id: v.id, moduleIds: ((v.structure as unknown as VersionStructure).modules ?? []).map((m) => m.id) }));
+  const [draftRows, versionRows] = await Promise.all([
+    db.select({ moduleId: syllabusModuleDetails.moduleId, details: syllabusModuleDetails.details }).from(syllabusModuleDetails).where(eq(syllabusModuleDetails.syllabusId, plan.syllabusId)),
+    db.select({ id: syllabusVersions.id, structure: syllabusVersions.structure }).from(syllabusVersions).where(eq(syllabusVersions.syllabusId, plan.syllabusId)),
+  ]);
+  const versions = versionRows.map((v) => ({ id: v.id, modules: (v.structure as unknown as VersionStructure).modules ?? [] }));
   const existingVersion = versions.length
     ? await db
-        .select({ versionId: syllabusVersionModuleDetails.versionId, moduleId: syllabusVersionModuleDetails.moduleId })
+        .select({ versionId: syllabusVersionModuleDetails.versionId, moduleId: syllabusVersionModuleDetails.moduleId, details: syllabusVersionModuleDetails.details })
         .from(syllabusVersionModuleDetails)
         .where(inArray(syllabusVersionModuleDetails.versionId, versions.map((v) => v.id)))
     : [];
-  const todo = backfillRows(plan, new Set(existingDraft.map((r) => r.moduleId)), versions, new Set(existingVersion.map((r) => `${r.versionId}:${r.moduleId}`)));
+  const todo = backfillRows(plan, {
+    draftRows: new Map(draftRows.map((r) => [r.moduleId, parseModuleDetails(r.details)])),
+    draftModules: modules.filter((m) => m.syllabusId === plan.syllabusId),
+    versions,
+    versionRows: new Map(existingVersion.map((r) => [`${r.versionId}:${r.moduleId}`, parseModuleDetails(r.details)])),
+  });
   if (!todo.draft.length) {
     console.log(`${tag}: "${plan.title}" (${plan.syllabusId}) already has details on all ${plan.modules.length} modules; nothing written`);
     return { written: 0, plan };
   }
 
+  // Rows written here are missing or untouched legacy copies (backfillRows), so they are replaced.
   await db.transaction(async (tx) => {
-    // A concurrent instance may have written the same rows: duplicates are no-ops.
-    await tx
-      .insert(syllabusModuleDetails)
-      .values(todo.draft.map((r) => ({ ...r, details: json(r.details) })))
-      .onDuplicateKeyUpdate({ set: { moduleId: sql`${syllabusModuleDetails.moduleId}` } });
-    if (todo.version.length) {
-      await tx
-        .insert(syllabusVersionModuleDetails)
-        .values(todo.version.map((r) => ({ ...r, details: json(r.details) })))
-        .onDuplicateKeyUpdate({ set: { moduleId: sql`${syllabusVersionModuleDetails.moduleId}` } });
+    for (const r of todo.draft) {
+      await tx.insert(syllabusModuleDetails).values({ ...r, details: json(r.details) }).onDuplicateKeyUpdate({ set: { details: json(r.details) } });
+    }
+    for (const r of todo.version) {
+      await tx.insert(syllabusVersionModuleDetails).values({ ...r, details: json(r.details) }).onDuplicateKeyUpdate({ set: { details: json(r.details) } });
     }
   });
   const months = plan.modules.filter((m) => todo.draft.some((d) => d.moduleId === m.moduleId)).map((m) => `${m.month}="${m.title}"`);
