@@ -143,7 +143,7 @@ export default function WelcomePage() {
   if (returnTo.startsWith("/join/") || returnTo.startsWith("/g/") || returnTo.startsWith("/exam/") || returnTo.startsWith("/syllabus/")) return <Redirect to={returnTo} />;
 
   const contexts = availableContexts(user);
-  const onlyPending = user.pendingMemberships > 0 && user.activeMemberships === 0 && !user.contexts.teaching;
+  const onlyPending = user.pendingMemberships > 0 && !user.contexts.learning && !user.contexts.teaching;
 
   return (
     <main className="min-h-screen bg-background p-4 text-foreground sm:p-6">

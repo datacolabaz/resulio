@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, or } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
 import type { PartnerStatus } from "../../shared/adminPermissions";
 import {
@@ -6,6 +6,7 @@ import {
   partnerProfiles,
   platformRoles,
   providerWorkspaces,
+  syllabusAccessGrants,
   type PartnerProfile,
   type PlatformRole,
   type ProviderWorkspace,
@@ -67,6 +68,26 @@ export async function membershipCounts(userId: number, db: DbOrTx = requireDb())
     active: rows.filter((r) => r.status === "ACTIVE").length,
     pending: rows.filter((r) => r.status === "PENDING").length,
   };
+}
+
+/**
+ * Whether the user holds an individual syllabus grant that hasn't expired or been revoked. Such
+ * a student (e.g. accepted from a public syllabus link) may belong to no group at all, but still
+ * needs the learning area to open the programme.
+ */
+export async function hasIndividualSyllabusGrant(userId: number, db: DbOrTx = requireDb()) {
+  const [row] = await db
+    .select({ id: syllabusAccessGrants.id })
+    .from(syllabusAccessGrants)
+    .where(
+      and(
+        eq(syllabusAccessGrants.studentId, userId),
+        eq(syllabusAccessGrants.status, "ACTIVE"),
+        or(isNull(syllabusAccessGrants.endsAt), gt(syllabusAccessGrants.endsAt, new Date())),
+      ),
+    )
+    .limit(1);
+  return !!row;
 }
 
 export async function partnerProfileOf(userId: number, db: DbOrTx = requireDb()): Promise<PartnerProfile | null> {
@@ -155,9 +176,10 @@ export async function resolveAccess(userId: number): Promise<UserAccess> {
     ensurePartnerProfile(userId),
     platformRolesOf(userId),
   ]);
+  const learning = memberships.active > 0 || (await hasIndividualSyllabusGrant(userId));
   return {
     contexts: {
-      learning: memberships.active > 0,
+      learning,
       teaching: workspaces.length > 0,
       partner: partner?.status === "APPROVED",
     },
@@ -177,7 +199,7 @@ export async function resolveAccess(userId: number): Promise<UserAccess> {
 
 /** Whether the user may open a context's UI. A pending join request is enough to see the learning area. */
 export function canEnterContext(access: UserAccess, context: UiContext): boolean {
-  if (context === "learning") return access.activeMemberships + access.pendingMemberships > 0;
+  if (context === "learning") return access.contexts.learning || access.pendingMemberships > 0;
   return access.contexts[context];
 }
 

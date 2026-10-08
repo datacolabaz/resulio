@@ -14,8 +14,8 @@ import { BUILDER_TABS, gradable, nextStepOtherThan, STEP_TAB, teacherSteps, type
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import type { CompletionRulesPatch, SyllabusItemKind } from "@shared/syllabus";
 import { ArrowLeft, ChevronDown, ChevronRight, Copy, Eye, Pencil, Plus, Rocket, Send, Trash2, Users } from "lucide-react";
-import { useRef, useState } from "react";
-import { Link, useParams } from "wouter";
+import { useEffect, useRef, useState } from "react";
+import { Link, useParams, useSearch } from "wouter";
 import { AnalyticsTab } from "./AnalyticsTab";
 import { GradingTab } from "./GradingTab";
 import { ItemCard, useCreateItem } from "./ItemCard";
@@ -349,11 +349,23 @@ function DetailBody({ id }: { id: string }) {
   const practice = trpc.teacher.syllabus.practiceSubmissions.useQuery({ id }, { enabled: canGrade });
   const approvals = trpc.teacher.syllabus.approvals.useQuery({ id }, { enabled: canGrade });
   const openRequests = usePendingJoinRequests()(id);
-  const initialTab = new URLSearchParams(window.location.search).get("tab");
-  const [tab, setTabState] = useState<Tab>(TABS.includes(initialTab as Tab) ? (initialTab as Tab) : "structure");
+  const urlTab = new URLSearchParams(useSearch()).get("tab");
+  const [tab, setTabState] = useState<Tab>(TABS.includes(urlTab as Tab) ? (urlTab as Tab) : "structure");
+  const [lastUrlTab, setLastUrlTab] = useState(urlTab);
+  // A link to this page with another ?tab= (e.g. a notification) switches the tab without a remount.
+  if (urlTab !== lastUrlTab) {
+    setLastUrlTab(urlTab);
+    if (TABS.includes(urlTab as Tab)) setTabState(urlTab as Tab);
+  }
   const [publishOpen, setPublishOpen] = useState(false);
   const [grantOpen, setGrantOpen] = useState(false);
   const tabsRef = useRef<HTMLDivElement>(null);
+  const loaded = !!tree.data;
+  useEffect(() => {
+    if (!loaded || urlTab !== "requests") return;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    tabsRef.current?.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" });
+  }, [loaded, urlTab]);
   const setTab = (next: Tab) => {
     setTabState(next);
     const url = new URL(window.location.href);

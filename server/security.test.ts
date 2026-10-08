@@ -268,7 +268,9 @@ describe("context resolution", () => {
   it("allows the learning area with active or pending memberships", () => {
     expect(access.canEnterContext(accessOf(), "learning")).toBe(false);
     expect(access.canEnterContext(accessOf({ pendingMemberships: 1 }), "learning")).toBe(true);
-    expect(access.canEnterContext(accessOf({ activeMemberships: 2 }), "learning")).toBe(true);
+    expect(access.canEnterContext(accessOf({ contexts: { learning: true, teaching: false, partner: false }, activeMemberships: 2 }), "learning")).toBe(true);
+    // A student with only an individual syllabus grant (no group) still gets the learning area.
+    expect(access.canEnterContext(accessOf({ contexts: { learning: true, teaching: false, partner: false } }), "learning")).toBe(true);
     expect(access.canEnterContext(accessOf({ partnerStatus: "PENDING" }), "partner")).toBe(false);
   });
 

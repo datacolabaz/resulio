@@ -4,7 +4,7 @@ import { DurationFields, durationText, parseCount } from "@/components/syllabus/
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { isMessageKey, t } from "@/i18n/messages";
+import { t } from "@/i18n/messages";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { reviewEdit, reviewProblems, reviewStats, reviewTimingCheck, type Review } from "@/lib/syllabusImportReview";
 import type { ImportModule } from "@shared/syllabusImport";
@@ -14,15 +14,12 @@ import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, ChevronDown, ChevronRight
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useParams } from "wouter";
+import { importFailureText } from "./ImportDialog";
 import { fieldLabel, SyllabusShell, toastError } from "./shared";
 
 type Job = RouterOutputs["teacher"]["syllabus"]["aiImport"]["get"];
 
 const running = (status: string) => status === "QUEUED" || status === "PROCESSING";
-const failureText = (code: string | null) => {
-  const key = `simport.failed.${code ?? ""}`;
-  return isMessageKey(key) ? t(key) : t("simport.failed.INTERNAL");
-};
 
 function Progress({ job }: { job: Job }) {
   const total = Math.max(1, job.chunkCount);
@@ -367,7 +364,7 @@ function JobState({ job }: { job: Job }) {
         </div>
       ) : (
         <div className="space-y-3">
-          <p className="text-sm text-destructive" role="alert">{failureText(job.errorCode)}</p>
+          <p className="text-sm text-destructive" role="alert">{importFailureText(job.errorCode)}</p>
           {job.detail?.message && (
             <details className="rounded-xl border border-border bg-muted p-3 text-xs">
               <summary className="cursor-pointer font-medium text-foreground-secondary">{t("simport.technicalDetails")}</summary>

@@ -15,6 +15,7 @@ import { useI18n } from "@/i18n/locale";
 import { LOCALE_NAMES, supportedLocales, t, type MessageKey } from "@/i18n/messages";
 import { availableContexts, CONTEXT_HOME, contextLabel, getActiveWorkspaceId, setActiveWorkspaceId, type UiContext } from "@/lib/contexts";
 import { errorText, fmtDateTime } from "@/lib/format";
+import { notificationTarget } from "@/lib/notificationLink";
 import { trpc } from "@/lib/trpc";
 import {
   Bell,
@@ -170,6 +171,25 @@ export function AppShell({
   const notes = trpc.inbox.list.useQuery(undefined, { refetchInterval: 60_000 });
   const markRead = trpc.inbox.read.useMutation({ onSuccess: () => utils.inbox.list.invalidate() });
   const unread = notes.data?.filter((n) => !n.read).length ?? 0;
+  const openNote = (n: { id: string; read: boolean; path: string | null }) => {
+    if (!n.read) markRead.mutate({ id: n.id });
+    const target = notificationTarget(n.path);
+    if (!target) return;
+    setInboxOpen(false);
+    if (target.external) window.open(target.href, "_blank", "noopener,noreferrer");
+    else nav(target.href);
+  };
+  // A new notice (e.g. a course request) may change the counts on the page behind it.
+  const newestNote = notes.data?.[0]?.id;
+  const seenNewest = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!newestNote) return;
+    if (seenNewest.current && seenNewest.current !== newestNote && area === "teaching") {
+      void utils.teacher.syllabus.joinRequestCounts.invalidate();
+      void utils.teacher.syllabus.pendingJoinRequests.invalidate();
+    }
+    seenNewest.current = newestNote;
+  }, [newestNote, area, utils]);
   const syllabusFlag = trpc.teacher.syllabus.enabled.useQuery(undefined, { enabled: area === "teaching", staleTime: 5 * 60_000 });
   const teacherNav = syllabusFlag.data?.enabled ? TEACHER_NAV : TEACHER_NAV.filter((i) => i.href !== "/teacher/syllabus");
   const studentSyllabus = trpc.student.syllabus.enabled.useQuery(undefined, { enabled: area === "learning", staleTime: 5 * 60_000 });
@@ -313,7 +333,7 @@ export function AppShell({
                         <button
                           key={n.id}
                           type="button"
-                          onClick={() => !n.read && markRead.mutate({ id: n.id })}
+                          onClick={() => openNote(n)}
                           className={`block w-full rounded-xl px-3 py-2 text-left text-sm hover:bg-muted ${n.read ? "text-muted-foreground" : ""}`}
                         >
                           <div className="font-medium">{n.title}</div>

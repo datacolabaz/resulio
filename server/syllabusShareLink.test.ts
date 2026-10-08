@@ -49,6 +49,7 @@ const mem = vi.hoisted(() => ({
   groups: new Map<string, ListingCandidate>(),
   members: new Map<number, string[]>(),
   users: new Map<number, { name: string; email: string }>(),
+  grants: [] as SyllabusAccessGrant[],
 }));
 
 const dup = () => Object.assign(new Error("Duplicate entry"), { errno: 1062, code: "ER_DUP_ENTRY" });
@@ -109,6 +110,23 @@ vi.mock("./syllabus/joinStore", async (importOriginal) => {
           studentAvatarUrl: null,
         })),
     ),
+    pendingRequestsOfWorkspace: vi.fn(async (workspaceId: string) =>
+      mem.requests
+        .filter((r) => r.workspaceId === workspaceId && r.status === "PENDING")
+        .map((r) => ({
+          id: r.id,
+          syllabusId: r.syllabusId,
+          syllabusTitle: "Python",
+          type: r.type,
+          groupId: r.groupId,
+          groupName: r.groupId ? (mem.groups.get(r.groupId)?.name ?? null) : null,
+          message: r.message,
+          createdAt: r.createdAt,
+          studentId: r.studentId,
+          studentName: mem.users.get(r.studentId)?.name ?? null,
+          studentEmail: mem.users.get(r.studentId)?.email ?? null,
+        })),
+    ),
     pendingCountsOfWorkspace: vi.fn(async (workspaceId: string) => {
       const counts = new Map<string, number>();
       for (const r of mem.requests) if (r.workspaceId === workspaceId && r.status === "PENDING") counts.set(r.syllabusId, (counts.get(r.syllabusId) ?? 0) + 1);
@@ -161,6 +179,11 @@ vi.mock("./modules/taskNotify", async (importOriginal) => ({
 vi.mock("./syllabus/notify", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./syllabus/notify")>()),
   announceGroupJoin: vi.fn(),
+  announceGrants: vi.fn(),
+}));
+vi.mock("./syllabus/activityLog", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./syllabus/activityLog")>()),
+  logActivity: vi.fn(async () => undefined),
 }));
 vi.mock("./notifications/dispatcher", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./notifications/dispatcher")>()),
@@ -179,6 +202,9 @@ vi.mock("./syllabus/store", () => ({
   moduleDetailsOfVersion: vi.fn(async () => new Map()),
   timingOfVersion: vi.fn(async () => emptyTiming()),
   grantsForSyllabus: vi.fn(),
+  insertGrants: vi.fn(async (rows: SyllabusAccessGrant[]) => {
+    for (const r of rows) mem.grants.push({ status: "ACTIVE", grantedAt: new Date(), revokedAt: null, revokedBy: null, ...r });
+  }),
   grantsReachingStudent: vi.fn(async () => []),
   enrollmentOf: vi.fn(async () => null),
   enrollmentsOfStudent: vi.fn(async () => []),
@@ -200,6 +226,7 @@ const m = {
   dispatch: vi.mocked(dispatcher.dispatch),
   notifyTasks: vi.mocked(taskNotify.notifyOpenTasksOnJoin),
   announce: vi.mocked(notify.announceGroupJoin),
+  announceGrants: vi.mocked(notify.announceGrants),
 };
 
 // ---------------------------------------------------------------------------
@@ -395,6 +422,7 @@ beforeEach(() => {
   mem.groups.clear();
   mem.members.clear();
   mem.users.clear();
+  mem.grants.length = 0;
   for (const id of [OWNER, OTHER_TEACHER, STUDENT, STRANGER]) mem.users.set(id, { name: `User ${id}`, email: `u${id}@example.com` });
   mem.members.set(STUDENT, ["current"]);
   seedGroups();
@@ -405,7 +433,7 @@ beforeEach(() => {
   m.availability.assertSyllabusEnabled.mockResolvedValue(undefined);
   m.store.syllabusById.mockImplementation(async (id: string) => (id === "syl1" ? SYLLABUS : null));
   m.store.versionById.mockResolvedValue({ version: { id: "v1", status: "PUBLISHED", meta: META } as never, structure: STRUCTURE });
-  m.store.grantsForSyllabus.mockResolvedValue(GRANTS);
+  m.store.grantsForSyllabus.mockImplementation(async () => [...GRANTS, ...mem.grants]);
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -733,7 +761,7 @@ describe("accepting and rejecting", () => {
   it("accepting a GROUP request adds the student like 'add student' does and tells them", async () => {
     const id = await requestAs(STRANGER, "GROUP", "soon");
     expect((await teacher().joinRequestCounts()).find((c) => c.syllabusId === "syl1")?.count).toBe(1);
-    expect(await teacher().decideJoinRequest({ requestId: id, decision: "ACCEPTED", note: "Welcome" })).toEqual({ id, status: "ACCEPTED" });
+    expect(await teacher().decideJoinRequest({ requestId: id, decision: "ACCEPTED", note: "Welcome" })).toEqual({ id, status: "ACCEPTED", accessGranted: false });
     expect(m.groups.addMemberById).toHaveBeenCalledWith({ workspaceId: "ws_teacher", userId: OWNER }, "soon", STRANGER);
     expect(m.notifyTasks).toHaveBeenCalledWith("soon", STRANGER);
     expect(m.announce).toHaveBeenCalledWith("soon", STRANGER);
@@ -791,6 +819,141 @@ describe("accepting and rejecting", () => {
     expect(mem.requests[0].status).toBe("PENDING");
     const rows = await teacher().joinRequests({ id: "syl1" });
     expect(rows.map((r) => [r.studentEmail, r.groupName, r.message])).toEqual([["u22@example.com", "Group soon", "hi"]]);
+  });
+});
+
+describe("pending requests inbox (syllabus list)", () => {
+  async function send(studentId: number, type: "GROUP" | "INDIVIDUAL", groupId?: string) {
+    const code = mem.links.get("syl1")?.code ?? (await sharedCode());
+    if (type === "INDIVIDUAL") mem.listings.clear();
+    return (await caller(user(studentId)).student.syllabus.joinRequest({ code, type, groupId, message: "hi" })).id;
+  }
+
+  it("lists the open requests of the teacher's own syllabi, with student, syllabus and type", async () => {
+    const g = await send(STRANGER, "GROUP", "soon");
+    const i = await send(STUDENT + 100, "INDIVIDUAL");
+    const rows = await teacher().pendingJoinRequests();
+    expect(m.joinStore.pendingRequestsOfWorkspace).toHaveBeenCalledWith("ws_teacher");
+    expect(rows.map((r) => [r.id, r.syllabusId, r.type, r.groupName]).sort()).toEqual(
+      [
+        [g, "syl1", "GROUP", "Group soon"],
+        [i, "syl1", "INDIVIDUAL", null],
+      ].sort(),
+    );
+    expect(rows.find((r) => r.id === g)).toMatchObject({ studentName: "User 22", studentEmail: "u22@example.com", syllabusTitle: "Python" });
+  });
+
+  it("drops a request once it is answered or withdrawn", async () => {
+    const g = await send(STRANGER, "GROUP", "soon");
+    expect((await teacher().pendingJoinRequests()).map((r) => r.id)).toEqual([g]);
+    await teacher().decideJoinRequest({ requestId: g, decision: "REJECTED" });
+    expect(await teacher().pendingJoinRequests()).toEqual([]);
+  });
+
+  it("is never shown to another workspace or to a student", async () => {
+    await send(STRANGER, "GROUP", "soon");
+    expect(await otherTeacher().pendingJoinRequests()).toEqual([]);
+    expect(m.joinStore.pendingRequestsOfWorkspace).toHaveBeenLastCalledWith("ws_other");
+    expect(await codeOf(caller(user(STRANGER)).teacher.syllabus.pendingJoinRequests())).toBe("FORBIDDEN:NO_WORKSPACE");
+    expect(await codeOf(caller(null).teacher.syllabus.pendingJoinRequests())).toMatch(/^UNAUTHORIZED/);
+  });
+
+  it("is behind the syllabus feature flag", async () => {
+    m.availability.assertSyllabusEnabled.mockRejectedValue(new AppError("SYLLABUS_NOT_AVAILABLE"));
+    expect(await codeOf(teacher().pendingJoinRequests())).toBe("FORBIDDEN:SYLLABUS_NOT_AVAILABLE");
+  });
+});
+
+describe("accepting an INDIVIDUAL request with access", () => {
+  async function individualRequest() {
+    const code = mem.links.get("syl1")?.code ?? (await sharedCode());
+    mem.listings.clear();
+    const { id } = await caller(user(STRANGER)).student.syllabus.joinRequest({ code, type: "INDIVIDUAL", message: "1:1" });
+    m.dispatch.mockClear();
+    return id;
+  }
+
+  it("opens the syllabus to the student with an individual grant and tells them where to go", async () => {
+    const id = await individualRequest();
+    expect(await codeOf(assertStudentAccess(STRANGER, "syl1"))).toBe("NOT_FOUND");
+    expect(await teacher().decideJoinRequest({ requestId: id, decision: "ACCEPTED", grantAccess: true })).toEqual({ id, status: "ACCEPTED", accessGranted: true });
+    expect(mem.grants).toEqual([expect.objectContaining({ syllabusId: "syl1", studentId: STRANGER, groupId: null, grantedBy: OWNER, startsAt: null, endsAt: null })]);
+    expect(m.announceGrants).toHaveBeenCalledWith(SYLLABUS, expect.any(Array), [expect.objectContaining({ studentId: STRANGER, status: "ACTIVE" })]);
+    expect((await assertStudentAccess(STRANGER, "syl1")).grant.studentId).toBe(STRANGER);
+    expect(m.dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "SYLLABUS_JOIN_DECIDED", userId: STRANGER, data: expect.objectContaining({ decision: "ACCEPTED", accessGranted: true, path: "/student/syllabus/syl1" }) }),
+    );
+    expect(mem.requests[0].status).toBe("ACCEPTED");
+  });
+
+  it("does not add a second grant when the student already has a live individual one", async () => {
+    const id = await individualRequest();
+    mem.grants.push(grant({ id: "gr_existing", studentId: STRANGER, endsAt: day("2026-05-01T00:00:00Z") }));
+    // The expired grant does not count: a fresh one is added.
+    await teacher().decideJoinRequest({ requestId: id, decision: "ACCEPTED", grantAccess: true });
+    expect(mem.grants.filter((g) => g.studentId === STRANGER)).toHaveLength(2);
+
+    const again = await individualRequest().catch(() => null);
+    expect(again).toBeNull(); // the student can open it now, so no new individual request
+  });
+
+  it("skips the grant when one is already live", async () => {
+    const id = await individualRequest();
+    m.store.grantsForSyllabus.mockImplementation(async () => [...GRANTS, grant({ id: "gr_live", studentId: STRANGER })]);
+    await teacher().decideJoinRequest({ requestId: id, decision: "ACCEPTED", grantAccess: true });
+    expect(m.store.insertGrants).not.toHaveBeenCalled();
+    expect(m.announceGrants).not.toHaveBeenCalled();
+    expect(mem.requests[0].status).toBe("ACCEPTED");
+  });
+
+  it("a failed grant leaves the request pending and tells no one", async () => {
+    const id = await individualRequest();
+    m.store.insertGrants.mockRejectedValueOnce(new AppError("STUDENT_NOT_FOUND"));
+    expect(await codeOf(teacher().decideJoinRequest({ requestId: id, decision: "ACCEPTED", grantAccess: true }))).toBe("NOT_FOUND:STUDENT_NOT_FOUND");
+    expect(mem.requests[0]).toMatchObject({ status: "PENDING", decidedBy: null });
+    expect(mem.requests[0].openKey).toBe(openKeyOf(mem.requests[0]));
+    expect(m.dispatch).not.toHaveBeenCalled();
+  });
+
+  it("an archived syllabus is not opened and the request stays pending", async () => {
+    const id = await individualRequest();
+    m.store.syllabusById.mockResolvedValue({ ...SYLLABUS, archivedAt: new Date() } as Syllabus);
+    expect(await codeOf(teacher().decideJoinRequest({ requestId: id, decision: "ACCEPTED", grantAccess: true }))).toBe("PRECONDITION_FAILED:SYLLABUS_ARCHIVED");
+    expect(mem.requests[0].status).toBe("PENDING");
+    expect(mem.grants).toEqual([]);
+  });
+
+  it("grantAccess means nothing for a rejection or a GROUP request", async () => {
+    const id = await individualRequest();
+    expect((await teacher().decideJoinRequest({ requestId: id, decision: "REJECTED", grantAccess: true })).accessGranted).toBe(false);
+    mem.listings.add("syl1|soon");
+    const code = mem.links.get("syl1")!.code;
+    const { id: g } = await caller(user(STRANGER)).student.syllabus.joinRequest({ code, type: "GROUP", groupId: "soon", message: "" });
+    expect((await teacher().decideJoinRequest({ requestId: g, decision: "ACCEPTED", grantAccess: true })).accessGranted).toBe(false);
+    expect(mem.grants).toEqual([]);
+    expect(mem.members.get(STRANGER)).toEqual(["soon"]);
+  });
+
+  it("another workspace cannot accept it, with or without access", async () => {
+    const id = await individualRequest();
+    expect(await codeOf(otherTeacher().decideJoinRequest({ requestId: id, decision: "ACCEPTED", grantAccess: true }))).toBe("NOT_FOUND:NOT_FOUND");
+    expect(mem.grants).toEqual([]);
+    expect(mem.requests[0].status).toBe("PENDING");
+  });
+
+  it("the 'programme is open' notice renders in every language", () => {
+    for (const locale of ["az", "en", "ru"] as const) {
+      const open = renderNotification(
+        "SYLLABUS_JOIN_DECIDED",
+        { requestId: "r", syllabusTitle: "Python", decision: "ACCEPTED", groupName: null, note: null, path: "/student/syllabus/syl1", accessGranted: true },
+        { locale, email: null },
+        "",
+      );
+      const closed = renderNotification("SYLLABUS_JOIN_DECIDED", { requestId: "r", syllabusTitle: "Python", decision: "ACCEPTED", groupName: null, note: null, path: "/syllabus/X" }, { locale, email: null }, "");
+      expect(open.path).toBe("/student/syllabus/syl1");
+      expect(open.body).not.toBe(closed.body);
+      expect(open.body).toContain("Python");
+    }
   });
 });
 

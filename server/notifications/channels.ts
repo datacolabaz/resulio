@@ -11,12 +11,13 @@ export type ChannelResult =
   | { status: "FAILED"; reason: string; retryable: boolean };
 
 export interface ChannelAdapter {
-  send(userId: number, content: RenderedNotification, event: EventType): Promise<ChannelResult>;
+  /** `deliveryId`: the outbox row being sent (absent when delivering without the outbox). */
+  send(userId: number, content: RenderedNotification, event: EventType, deliveryId?: number): Promise<ChannelResult>;
 }
 
 const inApp: ChannelAdapter = {
-  async send(userId, content) {
-    await notify(userId, content.title.slice(0, 255), content.body);
+  async send(userId, content, _event, deliveryId) {
+    await notify(userId, content.title.slice(0, 255), content.body, deliveryId);
     return { status: "SENT" };
   },
 };

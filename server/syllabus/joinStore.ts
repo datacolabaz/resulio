@@ -173,6 +173,37 @@ export async function requestsOfSyllabus(syllabusId: string, db: DbOrTx = requir
     .limit(500);
 }
 
+/** Open requests across the workspace's own syllabi, newest first, for the inbox on the syllabus list. */
+export async function pendingRequestsOfWorkspace(workspaceId: string, db: DbOrTx = requireDb()) {
+  return db
+    .select({
+      id: syllabusJoinRequests.id,
+      syllabusId: syllabusJoinRequests.syllabusId,
+      syllabusTitle: syllabi.title,
+      type: syllabusJoinRequests.type,
+      groupId: syllabusJoinRequests.groupId,
+      groupName: groups.name,
+      message: syllabusJoinRequests.message,
+      createdAt: syllabusJoinRequests.createdAt,
+      studentId: syllabusJoinRequests.studentId,
+      studentName: users.name,
+      studentEmail: users.email,
+    })
+    .from(syllabusJoinRequests)
+    .innerJoin(syllabi, eq(syllabi.id, syllabusJoinRequests.syllabusId))
+    .innerJoin(users, eq(users.id, syllabusJoinRequests.studentId))
+    .leftJoin(groups, eq(groups.id, syllabusJoinRequests.groupId))
+    .where(
+      and(
+        eq(syllabusJoinRequests.workspaceId, workspaceId),
+        eq(syllabi.providerWorkspaceId, workspaceId),
+        eq(syllabusJoinRequests.status, "PENDING"),
+      ),
+    )
+    .orderBy(desc(syllabusJoinRequests.createdAt))
+    .limit(100);
+}
+
 export async function pendingCountsOfWorkspace(workspaceId: string, db: DbOrTx = requireDb()) {
   const rows = await db
     .select({ syllabusId: syllabusJoinRequests.syllabusId, n: sql<number>`count(*)` })

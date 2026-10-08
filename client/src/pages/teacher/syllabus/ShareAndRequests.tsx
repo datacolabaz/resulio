@@ -1,4 +1,4 @@
-import { EmptyState, ErrorNote, Loading, Panel } from "@/components/AppShell";
+import { EmptyState, ErrorNote, Loading, Panel, Pill } from "@/components/AppShell";
 import { ShareBox } from "@/components/ShareBox";
 import { JoinRequestStatusBadge } from "@/components/syllabus/JoinRequestStatus";
 import { Button } from "@/components/ui/button";
@@ -9,9 +9,10 @@ import { t } from "@/i18n/messages";
 import { errorText, fmtDateTime, fmtDay } from "@/lib/format";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { JOIN_DECISION_NOTE_MAX, syllabusSharePath, UPCOMING_GROUP_WINDOW_DAYS, type JoinDecision } from "@shared/syllabusJoin";
-import { ExternalLink, Link2, RefreshCw } from "lucide-react";
+import { ExternalLink, Inbox, Link2, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { Link } from "wouter";
 import type { Tree } from "./SyllabusDetail";
 import { toastError } from "./shared";
 
@@ -143,23 +144,36 @@ export function GroupListingsPanel({ syllabusId }: { syllabusId: string }) {
 }
 
 type JoinRequestRow = RouterOutputs["teacher"]["syllabus"]["joinRequests"][number];
+type PendingInboxRow = RouterOutputs["teacher"]["syllabus"]["pendingJoinRequests"][number];
+type DecidableRow = Pick<JoinRequestRow, "id" | "type" | "groupName" | "studentName" | "studentEmail">;
+type PendingDecision = { syllabusId: string; row: DecidableRow; decision: JoinDecision };
 
-function DecideDialog({ syllabusId, pending, onClose }: { syllabusId: string; pending: { row: JoinRequestRow; decision: JoinDecision } | null; onClose: () => void }) {
+/** Accept / decline one request, from the syllabus' requests tab or the inbox on the syllabus list. */
+function DecideDialog({ pending, onClose }: { pending: PendingDecision | null; onClose: () => void }) {
   const utils = trpc.useUtils();
   const [note, setNote] = useState("");
+  const [grantAccess, setGrantAccess] = useState(true);
   const decide = trpc.teacher.syllabus.decideJoinRequest.useMutation({
-    onSuccess: (res) => {
-      toast.success(t(res.status === "ACCEPTED" ? "sylShare.requests.acceptedToast" : "sylShare.requests.rejectedToast"));
-      void utils.teacher.syllabus.joinRequests.invalidate({ id: syllabusId });
+    onSuccess: (res, input) => {
+      toast.success(t(res.status !== "ACCEPTED" ? "sylShare.requests.rejectedToast" : res.accessGranted ? "sylShare.requests.acceptedOpenToast" : "sylShare.requests.acceptedToast"));
+      const syllabusId = pending?.syllabusId;
       void utils.teacher.syllabus.joinRequestCounts.invalidate();
-      void utils.teacher.syllabus.students.invalidate({ id: syllabusId });
+      void utils.teacher.syllabus.pendingJoinRequests.invalidate();
+      if (syllabusId) {
+        void utils.teacher.syllabus.joinRequests.invalidate({ id: syllabusId });
+        void utils.teacher.syllabus.students.invalidate({ id: syllabusId });
+        if (input.grantAccess) void utils.teacher.syllabus.grants.invalidate({ id: syllabusId });
+      }
+      if (input.grantAccess) void utils.teacher.syllabus.list.invalidate();
       setNote("");
+      setGrantAccess(true);
       onClose();
     },
     onError: toastError,
   });
   const row = pending?.row;
   const accepting = pending?.decision === "ACCEPTED";
+  const individual = row?.type === "INDIVIDUAL";
   const student = row?.studentName || row?.studentEmail || "—";
   return (
     <Dialog open={!!pending} onOpenChange={(v) => !v && onClose()}>
@@ -168,13 +182,19 @@ function DecideDialog({ syllabusId, pending, onClose }: { syllabusId: string; pe
           <DialogTitle>{t(accepting ? "sylShare.requests.acceptTitle" : "sylShare.requests.rejectTitle")}</DialogTitle>
           {accepting && row && (
             <DialogDescription>
-              {row.type === "GROUP"
+              {!individual
                 ? t("sylShare.requests.acceptGroupNote", { student, group: row.groupName ?? "—" })
-                : t("sylShare.requests.acceptIndividualNote")}
+                : t(grantAccess ? "sylShare.requests.acceptIndividualOpenNote" : "sylShare.requests.acceptIndividualNote", { student })}
             </DialogDescription>
           )}
         </DialogHeader>
-        <DialogBody>
+        <DialogBody className="grid content-start gap-3">
+          {accepting && individual && (
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" className="mt-0.5 accent-link" checked={grantAccess} onChange={(e) => setGrantAccess(e.target.checked)} />
+              <span>{t("sylShare.requests.grantAccess")}</span>
+            </label>
+          )}
           <label className="block text-sm">
             <span className="mb-1 block font-medium">{t(accepting ? "sylShare.requests.note" : "sylShare.requests.reason")}</span>
             <Textarea value={note} maxLength={JOIN_DECISION_NOTE_MAX} rows={3} onChange={(e) => setNote(e.target.value)} />
@@ -185,7 +205,15 @@ function DecideDialog({ syllabusId, pending, onClose }: { syllabusId: string; pe
           <Button
             variant={accepting ? "default" : "destructive"}
             disabled={decide.isPending || !pending}
-            onClick={() => pending && decide.mutate({ requestId: pending.row.id, decision: pending.decision, note: note.trim() || null })}
+            onClick={() =>
+              pending &&
+              decide.mutate({
+                requestId: pending.row.id,
+                decision: pending.decision,
+                note: note.trim() || null,
+                grantAccess: accepting && individual ? grantAccess : undefined,
+              })
+            }
           >
             {t(accepting ? "sylShare.requests.accept" : "sylShare.requests.reject")}
           </Button>
@@ -243,9 +271,10 @@ function RequestList({ rows, onDecide }: { rows: JoinRequestRow[]; onDecide: (ro
 /** "Kurs / syllabus müraciətləri": requests from the public page, group and individual apart. */
 export function RequestsTab({ tree }: { tree: Tree }) {
   const syllabusId = tree.syllabus.id;
-  const requests = trpc.teacher.syllabus.joinRequests.useQuery({ id: syllabusId });
-  const [pending, setPending] = useState<{ row: JoinRequestRow; decision: JoinDecision } | null>(null);
+  const requests = trpc.teacher.syllabus.joinRequests.useQuery({ id: syllabusId }, { refetchInterval: 60_000 });
+  const [pending, setPending] = useState<PendingDecision | null>(null);
   const rows = requests.data ?? [];
+  const decideRow = (row: JoinRequestRow, decision: JoinDecision) => setPending({ syllabusId, row, decision });
   return (
     <div className="space-y-4">
       <div>
@@ -261,20 +290,93 @@ export function RequestsTab({ tree }: { tree: Tree }) {
       ) : (
         <>
           <Panel title={t("sylShare.requests.group")}>
-            <RequestList rows={rows.filter((r) => r.type === "GROUP")} onDecide={(row, decision) => setPending({ row, decision })} />
+            <RequestList rows={rows.filter((r) => r.type === "GROUP")} onDecide={decideRow} />
           </Panel>
           <Panel title={t("sylShare.requests.individual")}>
-            <RequestList rows={rows.filter((r) => r.type === "INDIVIDUAL")} onDecide={(row, decision) => setPending({ row, decision })} />
+            <RequestList rows={rows.filter((r) => r.type === "INDIVIDUAL")} onDecide={decideRow} />
           </Panel>
         </>
       )}
-      <DecideDialog syllabusId={syllabusId} pending={pending} onClose={() => setPending(null)} />
+      <DecideDialog pending={pending} onClose={() => setPending(null)} />
     </div>
   );
 }
 
+const POLL_MS = 60_000;
+
 /** Open requests of one syllabus, from the workspace-wide counts (tab badge, syllabus cards). */
 export function usePendingJoinRequests() {
-  const counts = trpc.teacher.syllabus.joinRequestCounts.useQuery(undefined, { staleTime: 60_000, retry: false });
+  const counts = trpc.teacher.syllabus.joinRequestCounts.useQuery(undefined, { staleTime: POLL_MS, refetchInterval: POLL_MS, refetchOnWindowFocus: true, retry: false });
   return (syllabusId: string) => counts.data?.find((c) => c.syllabusId === syllabusId)?.count ?? 0;
+}
+
+export const joinRequestsPath = (syllabusId: string) => `/teacher/syllabus/${encodeURIComponent(syllabusId)}?tab=requests`;
+
+const INBOX_VISIBLE = 5;
+
+/** "Gözləyən müraciətlər" on the syllabus list: open requests across the teacher's syllabi; nothing when there are none. */
+export function PendingRequestsInbox() {
+  const requests = trpc.teacher.syllabus.pendingJoinRequests.useQuery(undefined, { staleTime: POLL_MS, refetchInterval: POLL_MS, refetchOnWindowFocus: true, retry: false });
+  const [pending, setPending] = useState<PendingDecision | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const rows = requests.data ?? [];
+  if (!rows.length) return null;
+  const shown = showAll ? rows : rows.slice(0, INBOX_VISIBLE);
+  const decide = (row: PendingInboxRow, decision: JoinDecision) => setPending({ syllabusId: row.syllabusId, row, decision });
+  return (
+    <section className="rounded-2xl border border-link/40 bg-card p-4" aria-labelledby="pending-requests-title">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <Inbox className="h-4 w-4 text-link" aria-hidden />
+        <h2 id="pending-requests-title" className="text-sm font-semibold">{t("sylShare.inbox.title")}</h2>
+        <span className="rounded-full bg-primary px-2 text-xs font-semibold text-primary-foreground">{rows.length}</span>
+      </div>
+      <p className="mb-2 text-xs text-muted-foreground">{t("sylShare.inbox.help")}</p>
+      <ul className="divide-y divide-border">
+        {shown.map((r) => (
+          <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="break-words font-medium">{r.studentName || r.studentEmail}</span>
+                <Pill>{r.type === "GROUP" ? t("sylShare.join.requestGroup", { group: r.groupName ?? "—" }) : t("sylShare.join.requestIndividual")}</Pill>
+              </div>
+              <div className="mt-0.5 break-words text-xs text-muted-foreground">
+                <Link href={joinRequestsPath(r.syllabusId)} className="font-medium text-link hover:underline">{r.syllabusTitle}</Link>
+                {" · "}
+                {fmtDateTime(r.createdAt)}
+                {r.studentName && r.studentEmail ? ` · ${r.studentEmail}` : ""}
+              </div>
+              {r.message && <p className="mt-1 line-clamp-2 whitespace-pre-line break-words text-sm text-foreground-secondary">{r.message}</p>}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" onClick={() => decide(r, "ACCEPTED")}>{t("sylShare.requests.accept")}</Button>
+              <Button size="sm" variant="outline" className="text-destructive" onClick={() => decide(r, "REJECTED")}>{t("sylShare.requests.reject")}</Button>
+              <Button asChild size="sm" variant="ghost">
+                <Link href={joinRequestsPath(r.syllabusId)}>{t("sylShare.inbox.view")}</Link>
+              </Button>
+            </div>
+          </li>
+        ))}
+      </ul>
+      {rows.length > INBOX_VISIBLE && (
+        <Button size="sm" variant="ghost" className="mt-1" onClick={() => setShowAll((v) => !v)}>
+          {showAll ? t("sylShare.inbox.showLess") : t("sylShare.inbox.showAll", { count: rows.length })}
+        </Button>
+      )}
+      <DecideDialog pending={pending} onClose={() => setPending(null)} />
+    </section>
+  );
+}
+
+/** "N yeni müraciət" on a syllabus card: opens that syllabus on its requests tab. */
+export function NewRequestsBadge({ syllabusId, count, className = "" }: { syllabusId: string; count: number; className?: string }) {
+  if (count <= 0) return null;
+  return (
+    <Link
+      href={joinRequestsPath(syllabusId)}
+      className={`inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground shadow-sm hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-link ${className}`}
+    >
+      <Inbox className="h-3 w-3" aria-hidden />
+      {t("sylShare.requests.newCount", { count })}
+    </Link>
+  );
 }

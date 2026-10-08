@@ -16,7 +16,9 @@ import {
 import { EVENTS, type Channel } from "./notifications/events";
 import { channelEnabled, isMissingTable, type PreferenceMap } from "./notifications/preferences";
 import { EXPO_PUSH_ENDPOINT, expoProvider, pushEnabled, pushProvider } from "./notifications/push";
-import { renderNotification } from "./notifications/render";
+import { notificationPath, renderNotification } from "./notifications/render";
+import { notificationTarget } from "../client/src/lib/notificationLink";
+import { inAppNotificationId } from "./modules/notifications";
 import { AI_FEEDBACK_MAX_CHARS, AI_FEEDBACK_MAX_ITEMS, buildAiGradeEmail, cleanModelText } from "./notifications/templates";
 
 const noPrefs: PreferenceMap = new Map();
@@ -112,11 +114,11 @@ function memoryStore(opts: { missingTable?: boolean } = {}) {
 
 function harness(results: Partial<Record<Channel, ChannelResult[]>> = {}, opts: { missingTable?: boolean; prefs?: PreferenceMap; guards?: SendGuards } = {}) {
   const { store, rows } = memoryStore(opts);
-  const sent: Array<{ channel: Channel; title: string; html?: string }> = [];
+  const sent: Array<{ channel: Channel; title: string; html?: string; path: string; deliveryId?: number }> = [];
   const adapter = (channel: Channel): ChannelAdapter => ({
-    async send(_userId, content) {
+    async send(_userId, content, _event, deliveryId) {
       const result = results[channel]?.shift() ?? { status: "SENT" };
-      if (result.status === "SENT") sent.push({ channel, title: content.title, html: content.email?.html });
+      if (result.status === "SENT") sent.push({ channel, title: content.title, html: content.email?.html, path: content.path, deliveryId });
       return result;
     },
   });
@@ -192,6 +194,30 @@ describe("dispatcher", () => {
     await h.dispatchNow({ event: "GRADE_RELEASED", userId: 7, dedupeKey: "g:1", channels: ["IN_APP"], data: { taskTitle: "T", score: 1 } });
     await h.dispatchNow({ event: "AI_GRADE_READY", userId: 7, dedupeKey: "ai-grade:s1", channels: ["EMAIL"], data: gradeData });
     expect(h.sent.map((s) => s.channel)).toEqual(["IN_APP", "EMAIL"]);
+    expect(h.sent.map((s) => s.deliveryId)).toEqual([undefined, undefined]);
+  });
+
+  it("hands each adapter its outbox row, so the in-app notice can be linked to the event", async () => {
+    const h = harness();
+    const data = { requestId: "r1", syllabusId: "syl 1", syllabusTitle: "S", studentName: "A", groupName: null };
+    await h.dispatchNow({ event: "SYLLABUS_JOIN_REQUESTED", userId: 7, dedupeKey: "syl-join-req:r1", data });
+    const inApp = h.sent.find((s) => s.channel === "IN_APP")!;
+    expect(inApp.deliveryId).toBe(h.rows.find((r) => r.channel === "IN_APP")!.id);
+    expect(inApp.path).toBe("/teacher/syllabus/syl%201?tab=requests");
+    expect(inAppNotificationId(inApp.deliveryId!)).toBe(`d${inApp.deliveryId}`);
+    expect(notificationPath("SYLLABUS_JOIN_REQUESTED", h.rows[0].payload)).toBe("/teacher/syllabus/syl%201?tab=requests");
+  });
+
+  it("the inbox follows app paths in place, opens http(s) links in a new tab and ignores the rest", () => {
+    expect(notificationTarget("/teacher/syllabus/s1?tab=requests")).toEqual({ href: "/teacher/syllabus/s1?tab=requests", external: false });
+    expect(notificationTarget("https://resulio.co/blog")).toEqual({ href: "https://resulio.co/blog", external: true });
+    for (const bad of [null, "", "  ", "//evil.example", "/\\evil.example", "javascript:alert(1)", "mailto:a@b.c"]) expect(notificationTarget(bad), String(bad)).toBeNull();
+  });
+
+  it("renders a stored notice's link, and nothing for unknown or broken rows", () => {
+    expect(notificationPath("SYLLABUS_ACCESS_GRANTED", { syllabusId: "s1", syllabusTitle: "S", startsAt: null })).toBe("/student/syllabus/s1");
+    expect(notificationPath("NOT_AN_EVENT", {})).toBeNull();
+    expect(notificationPath("ANNOUNCEMENT", { announcementId: 1, language: "AUTO", texts: {}, url: "/x" })).toBeNull();
   });
 
   it("covers every declared event with a renderer", () => {

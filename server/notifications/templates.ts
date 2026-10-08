@@ -526,6 +526,7 @@ const SYL_JOIN_DECIDED: Record<ServerLocale, {
   rejected: string;
   acceptedGroup: (g: string, s: string) => string;
   acceptedIndividual: (s: string) => string;
+  acceptedIndividualOpen: (s: string) => string;
   rejectedBody: (s: string) => string;
   note: (n: string) => string;
 }> = {
@@ -534,6 +535,7 @@ const SYL_JOIN_DECIDED: Record<ServerLocale, {
     rejected: "Müraciətiniz qəbul edilmədi",
     acceptedGroup: (g, s) => `«${s}» proqramı üzrə «${g}» qrupuna əlavə olundunuz.`,
     acceptedIndividual: (s) => `Müəllim «${s}» proqramı üzrə fərdi iştirak müraciətinizi qəbul etdi. Müəllim sizinlə əlaqə saxlayacaq.`,
+    acceptedIndividualOpen: (s) => `Müəllim «${s}» proqramı üzrə fərdi iştirak müraciətinizi qəbul etdi. Proqram artıq sizə açıqdır.`,
     rejectedBody: (s) => `Müəllim «${s}» proqramı üzrə müraciətinizi qəbul etmədi.`,
     note: (n) => `Müəllimin qeydi: ${n}`,
   },
@@ -542,6 +544,7 @@ const SYL_JOIN_DECIDED: Record<ServerLocale, {
     rejected: "Your request was declined",
     acceptedGroup: (g, s) => `You were added to the group “${g}” for “${s}”.`,
     acceptedIndividual: (s) => `The teacher accepted your request to take part in “${s}” individually and will get in touch.`,
+    acceptedIndividualOpen: (s) => `The teacher accepted your request to take part in “${s}” individually. The programme is now open to you.`,
     rejectedBody: (s) => `The teacher declined your request for “${s}”.`,
     note: (n) => `Teacher's note: ${n}`,
   },
@@ -550,6 +553,7 @@ const SYL_JOIN_DECIDED: Record<ServerLocale, {
     rejected: "Ваша заявка отклонена",
     acceptedGroup: (g, s) => `Вы добавлены в группу «${g}» по программе «${s}».`,
     acceptedIndividual: (s) => `Преподаватель принял вашу заявку на индивидуальное участие в программе «${s}» и свяжется с вами.`,
+    acceptedIndividualOpen: (s) => `Преподаватель принял вашу заявку на индивидуальное участие в программе «${s}». Программа уже открыта для вас.`,
     rejectedBody: (s) => `Преподаватель отклонил вашу заявку по программе «${s}».`,
     note: (n) => `Комментарий преподавателя: ${n}`,
   },
@@ -557,12 +561,18 @@ const SYL_JOIN_DECIDED: Record<ServerLocale, {
 
 export function syllabusJoinDecidedInApp(
   locale: ServerLocale,
-  d: { syllabusTitle: string; decision: "ACCEPTED" | "REJECTED"; groupName: string | null; note: string | null },
+  d: { syllabusTitle: string; decision: "ACCEPTED" | "REJECTED"; groupName: string | null; note: string | null; accessGranted?: boolean },
 ) {
   const tx = SYL_JOIN_DECIDED[locale];
   const s = cleanTitle(d.syllabusTitle, 80);
   const main =
-    d.decision === "REJECTED" ? tx.rejectedBody(s) : d.groupName ? tx.acceptedGroup(cleanTitle(d.groupName, 80), s) : tx.acceptedIndividual(s);
+    d.decision === "REJECTED"
+      ? tx.rejectedBody(s)
+      : d.groupName
+        ? tx.acceptedGroup(cleanTitle(d.groupName, 80), s)
+        : d.accessGranted
+          ? tx.acceptedIndividualOpen(s)
+          : tx.acceptedIndividual(s);
   const note = d.note?.trim() ? ` ${tx.note(cleanTitle(d.note, 300))}` : "";
   return { title: d.decision === "ACCEPTED" ? tx.accepted : tx.rejected, body: main + note };
 }

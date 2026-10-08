@@ -90,12 +90,20 @@ export const syllabusImport = {
   ],
   "simport.start": ["Təhlil et", "Analyse", "Разобрать"],
   "simport.starting": ["Başlayır…", "Starting…", "Запуск…"],
-  "simport.openTitle": ["Davam etdirilməmiş idxallar", "Imports in progress", "Незавершённые импорты"],
+  "simport.openTitle": ["Tamamlanmamış idxallar", "Unfinished imports", "Незавершённые импорты"],
+  "simport.openHelp": [
+    "Fayldan və ya mətndən AI ilə başladığınız, hələ syllabus-a çevrilməmiş idxallar. Alınmayanları yenidən cəhd edin və ya silin.",
+    "Imports from a file or text (AI) that have not become a syllabus yet. Try failed ones again or delete them.",
+    "Импорты из файла или текста (AI), из которых ещё не создан силлабус. Повторите неудачные или удалите их.",
+  ],
+  "simport.hideList": ["Gizlət", "Hide", "Скрыть"],
+  "simport.review": ["Yoxla", "Review", "Проверить"],
+  "simport.removeNamed": ["“{name}” idxalını sil", "Delete the import “{name}”", "Удалить импорт «{name}»"],
   "simport.pastedText": ["Yapışdırılmış mətn", "Pasted text", "Вставленный текст"],
   "simport.status.QUEUED": ["Növbədə", "Queued", "В очереди"],
   "simport.status.PROCESSING": ["Oxunur", "Reading", "Обработка"],
   "simport.status.READY": ["Yoxlamağa hazırdır", "Ready to review", "Готово к проверке"],
-  "simport.status.FAILED": ["Alınmadı", "Failed", "Ошибка"],
+  "simport.status.FAILED": ["Uğursuz oldu", "Failed", "Ошибка"],
   "simport.status.COMPLETED": ["Yaradıldı", "Created", "Создан"],
 
   // Import: progress and failures
