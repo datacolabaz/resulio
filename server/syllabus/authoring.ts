@@ -37,6 +37,7 @@ import { requireDb, type DbOrTx } from "../db";
 import type { TeacherScope } from "../modules/access";
 import { AppError, type AppErrorCode } from "../modules/errors";
 import { ownedSyllabus } from "./access";
+import { applyLegacyPatch } from "./legacyModuleDetails";
 import { draftModuleDetails, purgeModuleDetails, saveDraftModuleDetails } from "./moduleDetails";
 import { cloneContainer, createContainer, deleteContainers, syncContainer } from "./practiceTasks";
 
@@ -61,7 +62,9 @@ export interface ModuleFields {
   title: string;
   description: string;
   estimatedMinutes: number | null;
+  /** Legacy input (old clients): mapped into the module details, never stored on the module row. */
   objectives: string[];
+  /** Legacy input, like `objectives`; split into prerequisite lines. */
   prerequisitesText: string;
   status: SyllabusNodeStatus;
   completionRules: CompletionRulesPatch | null;
@@ -318,19 +321,25 @@ export async function draftTree(scope: TeacherScope, id: string) {
   ]);
   return {
     syllabus: { ...syllabus, effectiveRules: resolveRules(syllabus.completionRules) },
-    modules: modules.map((m) => ({
-      ...m,
-      details: details.get(m.id) ?? emptyModuleDetails(),
-      effectiveRules: resolveRules(syllabus.completionRules, m.completionRules),
-      items: items.filter((it) => it.scope === "MODULE" && it.moduleId === m.id),
-      lessons: lessons
-        .filter((l) => l.moduleId === m.id)
-        .map((l) => ({
-          ...l,
-          effectiveRules: resolveRules(syllabus.completionRules, m.completionRules, l.completionRules),
-          items: items.filter((it) => it.scope === "LESSON" && it.lessonId === l.id),
-        })),
-    })),
+    modules: modules.map((m) => {
+      const d = details.get(m.id) ?? emptyModuleDetails();
+      return {
+        ...m,
+        // Legacy fields mirrored from the details, so an old client that round-trips them changes nothing.
+        objectives: d.objectives,
+        prerequisitesText: d.prerequisites.join("\n"),
+        details: d,
+        effectiveRules: resolveRules(syllabus.completionRules, m.completionRules),
+        items: items.filter((it) => it.scope === "MODULE" && it.moduleId === m.id),
+        lessons: lessons
+          .filter((l) => l.moduleId === m.id)
+          .map((l) => ({
+            ...l,
+            effectiveRules: resolveRules(syllabus.completionRules, m.completionRules, l.completionRules),
+            items: items.filter((it) => it.scope === "LESSON" && it.lessonId === l.id),
+          })),
+      };
+    }),
     finalItems: items.filter((it) => it.scope === "SYLLABUS"),
   };
 }
@@ -353,19 +362,26 @@ export async function createModule(scope: TeacherScope, syllabusId: string, inpu
       title: input.title,
       description: input.description ?? null,
       estimatedMinutes: input.estimatedMinutes ?? null,
-      objectives: input.objectives ?? [],
-      prerequisitesText: input.prerequisitesText ?? null,
+      objectives: [],
+      prerequisitesText: null,
       status: input.status ?? "READY",
       completionRules: input.completionRules ?? null,
     });
+  const details = applyLegacyPatch(undefined, input);
+  if (details) await saveDraftModuleDetails(syllabusId, id, details);
   return (await ownedModule(scope, id)).module;
 }
 
 export async function updateModule(scope: TeacherScope, moduleId: string, patch: Partial<ModuleFields>, expectedRevision?: number) {
-  const { syllabus } = await ownedModule(scope, moduleId);
+  const { module, syllabus } = await ownedModule(scope, moduleId);
   await touchDraft(syllabus, expectedRevision);
-  const values = defined(patch);
+  const { objectives, prerequisitesText, ...fields } = patch;
+  const values = defined(fields);
   if (Object.keys(values).length) await requireDb().update(syllabusModules).set(values).where(eq(syllabusModules.id, moduleId));
+  if (objectives !== undefined || prerequisitesText !== undefined) {
+    const details = applyLegacyPatch((await draftModuleDetails(module.syllabusId)).get(moduleId), { objectives, prerequisitesText });
+    if (details) await saveDraftModuleDetails(module.syllabusId, moduleId, details);
+  }
   return (await ownedModule(scope, moduleId)).module;
 }
 
@@ -676,8 +692,8 @@ export async function duplicateModule(scope: TeacherScope, moduleId: string, exp
       title: `${module.title} (copy)`.slice(0, 255),
       description: module.description,
       estimatedMinutes: module.estimatedMinutes,
-      objectives: module.objectives,
-      prerequisitesText: module.prerequisitesText,
+      objectives: [],
+      prerequisitesText: null,
       status: module.status,
       completionRules: module.completionRules,
     });

@@ -17,10 +17,10 @@ import { useState } from "react";
 import { Link, useParams } from "wouter";
 import { AnalyticsTab } from "./AnalyticsTab";
 import { ItemCard, useCreateItem } from "./ItemCard";
-import { ModuleDetailsPanel } from "./ModuleDetailsEditor";
+import { ModuleBlocksEditor } from "./ModuleBlocksEditor";
 import { StudentsTab } from "./StudentsTab";
 import { AccessTab, PublishDialog, SettingsTab, VersionsTab } from "./SyllabusTabs";
-import { fieldLabel, KIND_ICON, kindLabel, linesToList, NodeStatusBadge, SyllabusShell, SyllabusStatusBadge, toastError, useSyllabusRefresh } from "./shared";
+import { fieldLabel, KIND_ICON, kindLabel, NodeStatusBadge, SyllabusShell, SyllabusStatusBadge, toastError, useSyllabusRefresh } from "./shared";
 
 export type Tree = RouterOutputs["teacher"]["syllabus"]["get"];
 type ModuleNode = Tree["modules"][number];
@@ -37,8 +37,6 @@ function ModuleDialog({ tree, module, open, onOpenChange }: { tree: Tree; module
     title: module?.title ?? "",
     description: module?.description ?? "",
     estimatedMinutes: module?.estimatedMinutes == null ? "" : String(module.estimatedMinutes),
-    objectives: (module?.objectives ?? []).join("\n"),
-    prerequisitesText: module?.prerequisitesText ?? "",
     ready: (module?.status ?? "READY") === "READY",
     rules: (module?.completionRules ?? null) as CompletionRulesPatch | null,
   });
@@ -60,8 +58,6 @@ function ModuleDialog({ tree, module, open, onOpenChange }: { tree: Tree; module
     title: f.title.trim(),
     description: f.description,
     estimatedMinutes: minutes,
-    objectives: linesToList(f.objectives).map((o) => o.slice(0, 300)),
-    prerequisitesText: f.prerequisitesText,
     status: f.ready ? ("READY" as const) : ("DRAFT" as const),
     completionRules: f.rules && Object.keys(f.rules).length ? f.rules : null,
   };
@@ -79,8 +75,7 @@ function ModuleDialog({ tree, module, open, onOpenChange }: { tree: Tree; module
               {t("syllabus.node.readyLabel")}
             </label>
           </div>
-          <label className="text-sm"><span className={fieldLabel}>{t("syllabus.objectives")}</span><Textarea rows={3} value={f.objectives} onChange={(e) => setF({ ...f, objectives: e.target.value })} placeholder={t("syllabus.objectivesPlaceholder")} /></label>
-          <label className="text-sm"><span className={fieldLabel}>{t("syllabus.module.prerequisites")}</span><Textarea rows={2} maxLength={5_000} value={f.prerequisitesText} onChange={(e) => setF({ ...f, prerequisitesText: e.target.value })} /></label>
+          <p className="text-sm text-muted-foreground">{t("syllabus.module.detailsMoved")}</p>
           <details className="rounded-xl border border-border p-3">
             <summary className="cursor-pointer text-sm font-medium">{t("syllabus.rules.title")} {overrideCount(f.rules) > 0 && <Pill>{t("syllabus.rules.overrides", { count: overrideCount(f.rules) })}</Pill>}</summary>
             <div className="mt-3">
@@ -190,7 +185,19 @@ function AddInline({ label, placeholder, onAdd, pending }: { label: string; plac
   );
 }
 
-function AssessmentList({ tree, items, placement, emptyText }: { tree: Tree; items: Tree["finalItems"]; placement: { scope: "MODULE" | "SYLLABUS"; moduleId?: string }; emptyText: string }) {
+function AssessmentList({
+  tree,
+  items,
+  placement,
+  emptyText,
+  addLabel = t("syllabus.as.add"),
+}: {
+  tree: Tree;
+  items: Tree["finalItems"];
+  placement: { scope: "MODULE" | "SYLLABUS"; moduleId?: string };
+  emptyText: string;
+  addLabel?: string;
+}) {
   const syllabusId = tree.syllabus.id;
   const refresh = useSyllabusRefresh(syllabusId);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -210,7 +217,7 @@ function AssessmentList({ tree, items, placement, emptyText }: { tree: Tree; ite
         onClick={() => create.mutate({ syllabusId, placement, data: { kind: "ASSESSMENT", title: placement.scope === "MODULE" ? t("syllabus.module.assessmentDefault") : t("syllabus.final.default") } })}
       >
         <Plus className="mr-1 h-4 w-4" aria-hidden />
-        {t("syllabus.as.add")}
+        {addLabel}
       </Button>
     </div>
   );
@@ -269,11 +276,11 @@ function ModuleCard({ tree, module, handle, onEdit }: { tree: Tree; module: Modu
             {(lesson, { handle: lessonHandle }) => <LessonRow tree={tree} module={module} lesson={lesson} handle={lessonHandle} />}
           </SortableList>
           <AddInline label={t("syllabus.lesson.add")} placeholder={t("syllabus.lesson.newPlaceholder")} pending={createLesson.isPending} onAdd={(title) => createLesson.mutate({ moduleId: module.id, data: { title } })} />
+          <ModuleBlocksEditor syllabusId={syllabusId} moduleId={module.id} title={module.title} details={module.details} />
           <div className="rounded-xl bg-muted/50 p-3">
             <h4 className="mb-2 text-sm font-medium">{t("syllabus.module.assessments")}</h4>
-            <AssessmentList tree={tree} items={module.items} placement={{ scope: "MODULE", moduleId: module.id }} emptyText={t("syllabus.module.noAssessments")} />
+            <AssessmentList tree={tree} items={module.items} placement={{ scope: "MODULE", moduleId: module.id }} emptyText={t("syllabus.module.noAssessments")} addLabel={t("syllabus.module.addTest")} />
           </div>
-          <ModuleDetailsPanel syllabusId={syllabusId} moduleId={module.id} title={module.title} details={module.details} />
         </div>
       )}
     </section>

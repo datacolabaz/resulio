@@ -69,6 +69,7 @@ const moduleFields = z.object({
   description: shortText(20_000),
   estimatedMinutes: z.number().int().min(0).max(100_000).nullable(),
   objectives,
+  /** Accepted from old clients for modules only and mapped into the module details (authoring.ts). */
   prerequisitesText: shortText(5_000),
   status: z.enum(SYLLABUS_NODE_STATUSES),
   completionRules: completionRulesPatchSchema.nullable(),

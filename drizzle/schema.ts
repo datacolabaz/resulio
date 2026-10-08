@@ -1456,6 +1456,13 @@ export const syllabusVersionModuleDetails = mysqlTable(
   (t) => [primaryKey({ columns: [t.versionId, t.moduleId] })],
 );
 
+/** One row per one-time syllabus data backfill that has run (server/syllabus/moduleDetailsBackfill.ts). */
+export const syllabusDataBackfills = mysqlTable("syllabus_data_backfills", {
+  name: varchar("name", { length: 64 }).primaryKey(),
+  summary: text("summary"),
+  ranAt: timestamp("ranAt").defaultNow().notNull(),
+});
+
 /**
  * Question bank structure, two levels per workspace: a subject (`parentId` null) and its sections
  * (`parentId` = the subject). Questions live in sections. `parentKey` is `parentId` or '' (MySQL

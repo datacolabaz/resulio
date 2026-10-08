@@ -1,8 +1,9 @@
-import { eq, inArray } from "drizzle-orm";
-import { syllabusModuleDetails, syllabusVersionModuleDetails } from "../../drizzle/schema";
+import { and, eq, inArray, isNull } from "drizzle-orm";
+import { syllabusModuleDetails, syllabusModules, syllabusVersionModuleDetails } from "../../drizzle/schema";
 import { hasModuleDetails, parseModuleDetails, type ModuleDetails } from "../../shared/syllabusModuleDetails";
 import { requireDb, type DbOrTx } from "../db";
 import { isMissingTable } from "../notifications/preferences";
+import { withLegacyFallback } from "./legacyModuleDetails";
 
 /**
  * "End of module" blocks (shared/syllabusModuleDetails.ts). Draft rows are edited in the builder and
@@ -21,14 +22,26 @@ async function tolerant<T>(fallback: T, fn: () => Promise<T>): Promise<T> {
 
 const toMap = (rows: Array<{ moduleId: string; details: unknown }>) => new Map(rows.map((r) => [r.moduleId, parseModuleDetails(r.details)]));
 
-/** moduleId → draft details. A module with a row has been set by the teacher (possibly to empty). */
-export async function draftModuleDetails(syllabusId: string, db: DbOrTx = requireDb()): Promise<Map<string, ModuleDetails>> {
+/** moduleId → stored draft row. A module with a row has been set (possibly to empty). */
+export async function draftModuleDetailRows(syllabusId: string, db: DbOrTx = requireDb()): Promise<Map<string, ModuleDetails>> {
   return tolerant(new Map(), async () =>
     toMap(await db.select({ moduleId: syllabusModuleDetails.moduleId, details: syllabusModuleDetails.details }).from(syllabusModuleDetails).where(eq(syllabusModuleDetails.syllabusId, syllabusId))),
   );
 }
 
-/** moduleId → details frozen into this version. */
+/** moduleId → draft details as the builder, preview and publish see them (legacy fallback for modules without a row). */
+export async function draftModuleDetails(syllabusId: string, db: DbOrTx = requireDb()): Promise<Map<string, ModuleDetails>> {
+  const [rows, modules] = await Promise.all([
+    draftModuleDetailRows(syllabusId, db),
+    db
+      .select({ id: syllabusModules.id, objectives: syllabusModules.objectives, prerequisitesText: syllabusModules.prerequisitesText })
+      .from(syllabusModules)
+      .where(and(eq(syllabusModules.syllabusId, syllabusId), isNull(syllabusModules.deletedAt))),
+  ]);
+  return withLegacyFallback(rows, modules);
+}
+
+/** moduleId → details frozen into this version (raw rows; studentPathView adds the legacy fallback from the structure). */
 export async function versionModuleDetails(versionId: string, db: DbOrTx = requireDb()): Promise<Map<string, ModuleDetails>> {
   return tolerant(new Map(), async () =>
     toMap(
