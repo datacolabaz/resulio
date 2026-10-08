@@ -58,7 +58,6 @@ export const builder = {
   ],
   "builder.aiAccept": ["{count} sualı qəbul et", "Accept {count} {count|question|questions}", "Принять вопросы: {count}"],
   "builder.aiAdded": ["{count} sual əlavə olundu", "{count} {count|question|questions} added", "Добавлено вопросов: {count}"],
-  "builder.answerValue": ["Cavab: {value}", "Answer: {value}", "Ответ: {value}"],
   "builder.explanationValue": ["İzah: {value}", "Explanation: {value}", "Объяснение: {value}"],
   "builder.targetsSaved": ["Təyinatlar yadda saxlandı", "Assignments saved", "Назначения сохранены"],
   "builder.noGroups": ["Qrup yoxdur.", "No groups.", "Групп нет."],

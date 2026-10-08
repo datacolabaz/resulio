@@ -277,6 +277,7 @@ describe("import endpoints", () => {
     expect(await codeOf(caller(9).teacher.questionTopics.move({ questionIds: ["q1"], sectionId: "s1" }))).toBe("FORBIDDEN:NO_WORKSPACE");
     expect(await codeOf(caller(9).teacher.assessments.addFromBank({ id: "a1", picks: [{ sectionId: "s1", count: 3 }] }))).toBe("FORBIDDEN:NO_WORKSPACE");
     expect(await codeOf(caller(9).teacher.assessments.replaceQuestion({ id: "a1", questionId: "q1", withQuestionId: "q2" }))).toBe("FORBIDDEN:NO_WORKSPACE");
+    expect(await codeOf(caller(9).teacher.questions.confirmAnswers({ ids: ["q1"] }))).toBe("FORBIDDEN:NO_WORKSPACE");
   });
 
   it("refuse to start when the feature is switched off", async () => {

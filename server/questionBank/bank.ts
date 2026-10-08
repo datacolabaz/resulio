@@ -6,7 +6,7 @@ import { requireDb, type DbOrTx } from "../db";
 import type { TeacherScope } from "../modules/access";
 import * as assessments from "../modules/assessments";
 import { AppError } from "../modules/errors";
-import { fileInSection, guardBankTables, ownedSection, placementsOf, questionIdsUnder, topicPaths, topicsOf, type ImportProvenance } from "./topics";
+import { confirmAnswers, fileInSection, guardBankTables, ownedSection, placementsOf, questionIdsUnder, topicPaths, topicsOf, type ImportProvenance } from "./topics";
 
 /** Creates a question filed in a section, numbered there; `questions.topic` mirrors the section name. */
 export async function createBankQuestion(
@@ -23,12 +23,18 @@ export async function createBankQuestion(
   });
 }
 
-/** Edits keep the question's section: its topic text stays the section name. */
+/** Edits keep the question's section: its topic text stays the section name. Saving the editor also confirms the answer. */
 export async function updateBankQuestion(scope: TeacherScope, id: string, input: QuestionInput) {
   const placement = (await placementsOf(scope.workspaceId, [id])).get(id);
-  if (!placement?.sectionId) return assessments.updateQuestion(scope, id, input);
-  const section = await ownedSection(scope, placement.sectionId).catch(() => null);
-  return assessments.updateQuestion(scope, id, section ? { ...input, topic: section.name } : input);
+  const section = placement?.sectionId ? await ownedSection(scope, placement.sectionId).catch(() => null) : null;
+  const row = await assessments.updateQuestion(scope, id, section ? { ...input, topic: section.name } : input);
+  if (placement?.answerCheck) await confirmAnswers(scope.workspaceId, [id]);
+  return row;
+}
+
+/** The teacher checked the stored answers (an AI-chosen or disputed import answer) and keeps them. */
+export async function confirmBankAnswers(scope: TeacherScope, ids: string[]) {
+  return { confirmed: await confirmAnswers(scope.workspaceId, ids) };
 }
 
 export async function createInAssessment(scope: TeacherScope, assessmentId: string, input: QuestionInput, sectionId: string) {
@@ -121,5 +127,8 @@ async function bankSection(workspaceId: string, sectionId: string) {
 
 export async function withPlacements<T extends { id: string }>(scope: TeacherScope, rows: T[]) {
   const placed = await placementsOf(scope.workspaceId, rows.map((r) => r.id));
-  return rows.map((r) => ({ ...r, sectionId: placed.get(r.id)?.sectionId ?? null, bankNumber: placed.get(r.id)?.bankNumber ?? null }));
+  return rows.map((r) => {
+    const p = placed.get(r.id);
+    return { ...r, sectionId: p?.sectionId ?? null, bankNumber: p?.bankNumber ?? null, answerCheck: p?.answerCheck ?? false };
+  });
 }

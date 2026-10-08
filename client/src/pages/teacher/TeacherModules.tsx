@@ -12,6 +12,7 @@ import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTi
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { QuestionPreview } from "@/components/questionBank/QuestionPreview";
 import { bankLabel, SectionPicker, SectionSelect, TopicManagerDialog, TopicSelect, useTopics } from "@/components/questionBank/Topics";
 import { t } from "@/i18n/messages";
 import { errorText, fmtDateTime, fromLocalInput, questionTypeLabel, subscriptionLabel, toLocalInput } from "@/lib/format";
@@ -590,7 +591,7 @@ function QuestionBankTab() {
                     <input type="checkbox" className="mt-1 accent-link" aria-label={t("qbank.selectQuestion")} checked={selected.has(q.id)} onChange={(e) => toggle(q.id, e.target.checked)} />
                     <div className="min-w-0 flex-1">
                       <div className="text-xs font-medium text-link">{bankLabel(topicList, q) ?? t("qbank.unsorted")}</div>
-                      <div className="whitespace-pre-wrap break-words text-sm">{q.text}</div>
+                      <QuestionPreview q={q} onChangeAnswer={() => setEditing(q.id)} />
                       <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
                         <span>{questionTypeLabel(q.type)}</span><span>· {t("common.points", { count: q.points })}</span>
                         {!q.sectionId && q.topic && <span>· {q.topic}</span>}{q.skill && <span>· {q.skill}</span>}

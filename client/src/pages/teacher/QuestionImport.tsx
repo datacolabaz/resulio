@@ -1,5 +1,6 @@
 import { AppShell, ErrorNote, Loading, Panel } from "@/components/AppShell";
 import { draftFromQuestion, QuestionEditor } from "@/components/QuestionEditor";
+import { QuestionPreview } from "@/components/questionBank/QuestionPreview";
 import { SectionPicker, SectionSelect, topicSelectClass, useTopics, type TopicRow } from "@/components/questionBank/Topics";
 import { StatusBadge, type Tone } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,7 @@ import { errorText, fmtDateTime, questionTypeLabel } from "@/lib/format";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { formatFileSize, uploadFile, UploadError, type UploadedFile } from "@/lib/uploadFile";
 import { BLOCKING_ISSUES, IMPORT_EXTENSIONS, type ImportIssue } from "@shared/questionImport";
-import { ArrowLeft, CheckCircle2, FileUp, RotateCcw, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeft, FileUp, RotateCcw, Sparkles, Trash2 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useParams } from "wouter";
@@ -213,42 +214,6 @@ type Q = {
   answerKey: { correct?: string | string[] | boolean; accepted?: string[]; blanks?: string[][]; value?: number; rubric?: string };
 };
 
-function AnswerPreview({ q }: { q: Q }) {
-  const k = q.answerKey ?? {};
-  if (q.type === "MULTIPLE_CHOICE" || q.type === "MULTIPLE_SELECT") {
-    const correct = new Set(Array.isArray(k.correct) ? k.correct : typeof k.correct === "string" ? [k.correct] : []);
-    return (
-      <ol className="mt-2 space-y-1 text-sm">
-        {(q.content.options ?? []).map((o) => (
-          <li key={o.key} className={`flex gap-2 rounded-md px-2 py-1 ${correct.has(o.key) ? "bg-success-surface text-success" : ""}`}>
-            <span className="w-5 shrink-0 font-semibold">{o.key}</span>
-            <span className="min-w-0 flex-1 break-words">{o.text}</span>
-            {correct.has(o.key) && (
-              <>
-                <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
-                <span className="sr-only">{t("qimport.correct")}</span>
-              </>
-            )}
-          </li>
-        ))}
-      </ol>
-    );
-  }
-  let answer = "";
-  if (q.type === "TRUE_FALSE") answer = k.correct ? t("common.true") : t("common.false");
-  else if (q.type === "SHORT_ANSWER") answer = (k.accepted ?? []).join(" / ");
-  else if (q.type === "FILL_BLANK") answer = (k.blanks ?? []).map((b) => b.join(" / ")).join("; ");
-  else if (q.type === "NUMERIC") answer = `${k.value ?? ""}${q.content.unit ? ` ${q.content.unit}` : ""}`;
-  else if (q.type === "LONG_ANSWER") answer = k.rubric ?? "";
-  if (!answer) return null;
-  return (
-    <p className="mt-2 rounded-md bg-success-surface px-2 py-1 text-sm text-success">
-      <span className="font-medium">{t("qimport.correct")}: </span>
-      <span className="whitespace-pre-wrap break-words">{answer}</span>
-    </p>
-  );
-}
-
 const ISSUE_TONE = (issue: ImportIssue): Tone => (BLOCKING_ISSUES.includes(issue) ? "danger" : issue === "AI_ANSWER" ? "info" : "warning");
 
 /** The item's section (the upload's by default) and the AI's hint, applied only when the teacher says so. */
@@ -337,11 +302,7 @@ function ReviewItem({
               onSubmit={(question) => update.mutate({ id: item.id, question })}
             />
           ) : (
-            <>
-              <div className="whitespace-pre-wrap break-words text-sm">{q.text}</div>
-              <AnswerPreview q={q} />
-              {q.explanation && <p className="text-xs text-muted-foreground">{q.explanation}</p>}
-            </>
+            <QuestionPreview q={q} explanation />
           )}
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span>{questionTypeLabel(q.type)}</span>
