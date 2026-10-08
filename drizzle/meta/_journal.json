@@ -253,6 +253,13 @@
       "when": 1791472354161,
       "tag": "0035_syllabus_timing_and_import",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "5",
+      "when": 1791474210326,
+      "tag": "0036_syllabus_import_detail",
+      "breakpoints": true
     }
   ]
 }

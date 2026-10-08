@@ -1,0 +1,300 @@
+import { randomBytes } from "node:crypto";
+import type { SyllabusImportError } from "../../shared/syllabusImport";
+import { LlmHttpError, llmFailureReason, type Message } from "../_core/llm";
+import {
+  buildHeaderMessages,
+  buildImportMessages,
+  buildModuleMessages,
+  describeUnreadableReply,
+  EMPTY_SYLLABUS,
+  fillSyllabus,
+  jsonErrorOf,
+  mergeParts,
+  moduleFromJson,
+  parseJsonLoose,
+  shapeOf,
+  splitTextChunks,
+  structureFromJson,
+  syllabusFromJson,
+  type RawModule,
+  type RawPart,
+  type RawSyllabus,
+} from "./importExtraction";
+import { findModuleSections, isProjectSectionTitle, parseHeaderLocally, parseSectionLocally, type LocalModule, type ModuleSection } from "./importText";
+
+/**
+ * Reading a syllabus text with the model in small requests. When the text has module headings each
+ * module is read by its own request (a reply stays far below any output limit, and nothing can move
+ * between modules); a module the model cannot read is read from the text's own structure instead.
+ * Text without module headings is read in parts that are halved when a reply is cut off or
+ * unreadable. The model is injected (`Ask`), so the whole flow is unit-tested with canned replies.
+ */
+
+export type AskKind = "header" | "module" | "document";
+export interface AskRequest {
+  kind: AskKind;
+  messages: Message[];
+  /** "module 3", "part 2/4", … for logs and the job's technical detail. */
+  label: string;
+}
+export interface AskReply {
+  content: string;
+  finishReason: string | null;
+}
+export type Ask = (req: AskRequest) => Promise<AskReply>;
+
+/** A failure that ends the job; `detail` is the technical reason kept on the job and logged. */
+export class ImportFailure extends Error {
+  constructor(public readonly code: SyllabusImportError, public readonly detail: string, public readonly cause?: unknown) {
+    super(`${code}: ${detail}`);
+    this.name = "ImportFailure";
+  }
+}
+
+export interface AiErrorInfo {
+  code: SyllabusImportError;
+  /** No later request can succeed either (bad key, unknown model): the job fails. */
+  fatal: boolean;
+  /** Later requests would most likely fail the same way (quota): stop asking, read the rest locally. */
+  stopAsking: boolean;
+  detail: string;
+}
+
+/** A provider / network error → what it means for the run. */
+export function classifyAiError(error: unknown): AiErrorInfo {
+  const message = (error instanceof Error ? error.message : String(error)).replace(/\s+/g, " ").slice(0, 300);
+  if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+    return { code: "AI_TIMEOUT", fatal: false, stopAsking: false, detail: `timeout: ${message}` };
+  }
+  const code = llmFailureReason(error);
+  const status = error instanceof LlmHttpError ? `HTTP ${error.status}: ` : "";
+  return { code, fatal: code === "AI_KEY_INVALID" || code === "AI_NOT_FOUND", stopAsking: code === "AI_QUOTA", detail: `${status}${message}` };
+}
+
+/** A request that did not give a usable reply. */
+class StepError extends Error {
+  constructor(public readonly info: AiErrorInfo, public readonly cause?: unknown) {
+    super(info.detail);
+  }
+}
+
+const TRUNCATED = new Set(["length", "max_tokens", "MAX_TOKENS"]);
+
+export interface RunnerOptions {
+  ask: Ask;
+  classify?: (error: unknown) => AiErrorInfo;
+  /** Absolute time (ms) after which no new request starts; the rest is read locally or fails. */
+  deadline?: number;
+  /** True once the run no longer owns the job (retried or deleted): no new request starts. */
+  shouldStop?: () => boolean;
+  now?: () => number;
+  log?: (line: string) => void;
+}
+
+/**
+ * Asking with retries for unreadable or cut-off replies. A reply cut off twice is used as far as it
+ * goes (`partial`). Errors from the provider are not retried here (the HTTP layer already retried
+ * 5xx/429, and a timed-out request would most likely time out again).
+ */
+export function createRunner(opts: RunnerOptions) {
+  const classify = opts.classify ?? classifyAiError;
+  const now = opts.now ?? Date.now;
+  const log = opts.log ?? (() => undefined);
+  const state = { stopped: null as AiErrorInfo | null, lastProblem: null as AiErrorInfo | null };
+
+  async function askJson<T>(req: AskRequest, read: (value: unknown) => T | null, attempts = 2): Promise<{ value: T; partial: boolean }> {
+    let partialValue: T | null = null;
+    let problem: AiErrorInfo | null = null;
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      if (state.stopped) throw new StepError(state.stopped);
+      if (opts.shouldStop?.()) throw new StepError({ code: "INTERRUPTED", fatal: false, stopAsking: true, detail: `${req.label}: the run was replaced` });
+      if (opts.deadline !== undefined && now() > opts.deadline) {
+        throw new StepError({ code: "AI_TIMEOUT", fatal: false, stopAsking: true, detail: `${req.label}: the import ran out of time before this request` });
+      }
+      let reply: AskReply;
+      try {
+        reply = await opts.ask(req);
+      } catch (error) {
+        const info = classify(error);
+        const labelled = { ...info, detail: `${req.label}: ${info.detail}` };
+        state.lastProblem = labelled;
+        if (info.fatal || info.stopAsking) state.stopped = labelled;
+        if (info.fatal) throw new ImportFailure(info.code, labelled.detail, error);
+        throw new StepError(labelled, error);
+      }
+      const parsed = parseJsonLoose(reply.content);
+      const value = parsed ? read(parsed.value) : null;
+      const cutOff = TRUNCATED.has(reply.finishReason ?? "") || !!parsed?.repaired;
+      if (value !== null && !cutOff) return { value, partial: false };
+      const why = value !== null ? "reply cut off (repaired)" : parsed ? `unexpected JSON shape (${shapeOf(parsed.value)})` : jsonErrorOf(reply.content);
+      problem = { code: "AI_OUTPUT", fatal: false, stopAsking: false, detail: `${req.label}, attempt ${attempt}: ${describeUnreadableReply(reply.content, reply.finishReason, why)}` };
+      state.lastProblem = problem;
+      log(problem.detail);
+      if (value !== null) partialValue = value;
+    }
+    if (partialValue !== null) return { value: partialValue, partial: true };
+    throw new StepError(problem!);
+  }
+
+  return { askJson, state };
+}
+
+export type Runner = ReturnType<typeof createRunner>;
+export const isStepError = (e: unknown): e is StepError => e instanceof StepError;
+export const stepErrorInfo = (e: unknown): AiErrorInfo | null => (e instanceof StepError ? e.info : null);
+
+// ---------------------------------------------------------------------------
+// Merging the model's reading with the text's own structure
+// ---------------------------------------------------------------------------
+
+function localToRaw(title: string, local: LocalModule): RawModule {
+  return { title, continuesPrevious: false, isModule: true, ...local, duration: null };
+}
+
+const isEmptyAssessment = (a: RawModule["assessment"]) => !a.heading && !a.intro && !a.pipeline && !a.listIntro && !a.items.length;
+const isEmptyModule = (m: RawModule) => !m.lessons.length && !m.projects.length && !m.objectives.length && !m.prerequisites.length && isEmptyAssessment(m.assessment);
+
+/** Fields the model left empty taken from the text's own structure (for a reply cut off mid-way). */
+function fillModule(ai: RawModule, local: LocalModule): RawModule {
+  return {
+    ...ai,
+    description: ai.description || local.description,
+    lessons: ai.lessons.length ? ai.lessons : local.lessons,
+    projectsHeading: ai.projectsHeading || local.projectsHeading,
+    projects: ai.projects.length ? ai.projects : local.projects,
+    objectives: ai.objectives.length ? ai.objectives : local.objectives,
+    prerequisites: ai.prerequisites.length ? ai.prerequisites : local.prerequisites,
+    assessment: isEmptyAssessment(ai.assessment) ? local.assessment : ai.assessment,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The text flow
+// ---------------------------------------------------------------------------
+
+export interface ExtractResult {
+  raw: RawPart;
+  /** Titles of modules read from the text's structure because the model could not read them. */
+  localModules: string[];
+  /** The last problem met on the way (kept as the job's technical detail even when it succeeded). */
+  problem: AiErrorInfo | null;
+}
+
+export interface ExtractOptions extends RunnerOptions {
+  /** Called once the number of requests is known, then after each finished request. */
+  onPlan?: (total: number) => unknown;
+  onStep?: (done: number) => unknown;
+  concurrency?: number;
+  nonce?: () => string;
+}
+
+async function pool<T, R>(items: readonly T[], limit: number, run: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await run(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
+const newNonce = () => randomBytes(6).toString("hex");
+
+/** A syllabus text → the merged reading. Throws `ImportFailure` when nothing usable can be read. */
+export async function extractFromText(text: string, opts: ExtractOptions): Promise<ExtractResult> {
+  const plan = findModuleSections(text);
+  return plan ? extractBySections(plan.preamble, plan.sections, opts) : extractByParts(text, opts);
+}
+
+async function extractBySections(preamble: string, sections: ModuleSection[], opts: ExtractOptions): Promise<ExtractResult> {
+  const runner = createRunner(opts);
+  const nonce = opts.nonce ?? newNonce;
+  const total = sections.length + 1;
+  let done = 0;
+  const step = async () => opts.onStep?.(++done);
+  await opts.onPlan?.(total);
+  const localModules: string[] = [];
+  const titles = sections.filter((s) => s.numbered).map((s) => s.title);
+
+  const readHeader = async (): Promise<RawSyllabus> => {
+    const local = parseHeaderLocally(preamble);
+    const localRaw = fillSyllabus(EMPTY_SYLLABUS, local);
+    if (!preamble.trim()) return localRaw;
+    try {
+      const { value } = await runner.askJson({ kind: "header", messages: buildHeaderMessages({ text: preamble, moduleTitles: titles, nonce: nonce() }), label: "course header" }, syllabusFromJson);
+      return fillSyllabus(value, local);
+    } catch (error) {
+      if (error instanceof ImportFailure) throw error;
+      return localRaw;
+    }
+  };
+
+  const readSection = async (section: ModuleSection, index: number): Promise<RawModule | null> => {
+    const local = parseSectionLocally(section.text);
+    try {
+      const { value, partial } = await runner.askJson(
+        { kind: "module", messages: buildModuleMessages({ title: section.title, text: section.text, index, total: sections.length, nonce: nonce() }), label: `module ${index + 1} "${section.title.slice(0, 60)}"` },
+        moduleFromJson,
+      );
+      if (!section.numbered && !value.isModule) return null;
+      const ai: RawModule = { ...value, title: section.title, isModule: true, continuesPrevious: false };
+      return partial || isEmptyModule(ai) ? fillModule(ai, local) : ai;
+    } catch (error) {
+      if (error instanceof ImportFailure) throw error;
+      if (!section.numbered && !isProjectSectionTitle(section.title)) return null;
+      localModules.push(section.title);
+      return localToRaw(section.title, local);
+    }
+  };
+
+  const [syllabus, ...modules] = await pool<null | ModuleSection, RawSyllabus | RawModule | null>([null, ...sections], opts.concurrency ?? 3, async (item, i) => {
+    const out = item === null ? await readHeader() : await readSection(item, i - 1);
+    await step();
+    return out;
+  });
+  const kept = (modules as Array<RawModule | null>).filter((m): m is RawModule => !!m);
+  // Keep the document order of the module list for the local-reading notice.
+  localModules.sort((a, b) => titles.indexOf(a) - titles.indexOf(b));
+  return { raw: { syllabus: syllabus as RawSyllabus, modules: kept }, localModules, problem: runner.state.lastProblem };
+}
+
+const MIN_SPLIT_CHARS = 1_500;
+
+async function extractByParts(text: string, opts: ExtractOptions): Promise<ExtractResult> {
+  const runner = createRunner(opts);
+  const nonce = opts.nonce ?? newNonce;
+  const chunks = splitTextChunks(text);
+  if (!chunks.length) throw new ImportFailure("NO_TEXT", "the text is empty");
+  await opts.onPlan?.(chunks.length);
+  const outs: RawPart[] = [];
+
+  const readChunk = async (chunk: string, index: number, depth: number): Promise<void> => {
+    const label = `part ${index + 1}/${chunks.length}${depth ? ` (split ${depth})` : ""}`;
+    const previousModules = mergeParts(outs).modules.map((m) => m.title);
+    const canSplit = depth < 2 && chunk.length > MIN_SPLIT_CHARS;
+    try {
+      const { value, partial } = await runner.askJson(
+        { kind: "document", messages: buildImportMessages({ parts: null, documentText: chunk, part: { index, total: chunks.length }, previousModules, nonce: nonce() }), label },
+        structureFromJson,
+        canSplit ? 1 : 2,
+      );
+      if (!partial || !canSplit) return void outs.push(value);
+    } catch (error) {
+      if (error instanceof ImportFailure) throw error;
+      const info = stepErrorInfo(error);
+      const splittable = info && (info.code === "AI_OUTPUT" || info.code === "AI_TIMEOUT") && !info.stopAsking;
+      if (!canSplit || !splittable) throw new ImportFailure(info?.code ?? "AI_OUTPUT", info?.detail ?? String(error), (error as { cause?: unknown }).cause);
+    }
+    const halves = splitTextChunks(chunk, Math.ceil(chunk.length / 2) + 200);
+    for (const half of halves) await readChunk(half, index, depth + 1);
+  };
+
+  for (const [i, chunk] of chunks.entries()) {
+    await readChunk(chunk, i, 0);
+    await opts.onStep?.(i + 1);
+  }
+  return { raw: mergeParts(outs), localModules: [], problem: runner.state.lastProblem };
+}
