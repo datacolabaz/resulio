@@ -61,7 +61,9 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 
   const a = availability.data;
   const trimmed = text.trim().length;
-  const canStart = !!a?.enabled && a.remainingToday > 0 && !start.isPending && (tab === "text" ? trimmed >= SYLLABUS_IMPORT_MIN_TEXT : !!file);
+  // The server checks the limit again; an availability that is loading or failed must not block the start.
+  const limitReached = !!a?.enabled && a.remainingToday <= 0;
+  const canStart = !(a && !a.enabled) && !limitReached && !start.isPending && (tab === "text" ? trimmed >= SYLLABUS_IMPORT_MIN_TEXT : !!file);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
@@ -106,6 +108,8 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
             </Tabs>
           )}
           {a?.enabled && <p className="text-xs text-muted-foreground">{t("simport.limits", { size: formatFileSize(a.maxBytes), pages: a.maxPages, left: a.remainingToday })}</p>}
+          {limitReached && <p role="status" className="text-sm text-destructive">{t("simport.limitReached", { limit: a.dailyLimit })}</p>}
+          {availability.isError && <p role="status" className="text-xs text-muted-foreground">{t("simport.availabilityError")}</p>}
           <p className="text-xs text-muted-foreground">{t("simport.reviewNote")}</p>
         </DialogBody>
         <DialogFooter>

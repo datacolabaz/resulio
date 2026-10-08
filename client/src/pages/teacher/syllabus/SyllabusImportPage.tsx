@@ -291,6 +291,12 @@ function ReviewEditor({ job, initial }: { job: Job; initial: Review }) {
         <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-link" aria-hidden />
         {t("simport.reviewIntro")}
       </p>
+      {!!job.detail?.localModules?.length && (
+        <p className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning-surface p-3 text-sm text-warning" role="note">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          {t("simport.localModules", { count: job.detail.localModules.length, titles: job.detail.localModules.join("; ") })}
+        </p>
+      )}
       <CourseFields s={s} set={set} />
       <Panel title={t("simport.modules")}>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -361,7 +367,14 @@ function JobState({ job }: { job: Job }) {
         </div>
       ) : (
         <div className="space-y-3">
-          <p className="text-sm text-destructive" role="alert">{failureText(job.status === "READY" ? "AI_OUTPUT" : job.errorCode)}</p>
+          <p className="text-sm text-destructive" role="alert">{failureText(job.errorCode)}</p>
+          {job.detail?.message && (
+            <details className="rounded-xl border border-border bg-muted p-3 text-xs">
+              <summary className="cursor-pointer font-medium text-foreground-secondary">{t("simport.technicalDetails")}</summary>
+              <p className="mt-2 text-muted-foreground">{t("simport.technicalHint")}</p>
+              <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-foreground-secondary">{job.detail.message}</pre>
+            </details>
+          )}
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" disabled={retry.isPending} onClick={() => retry.mutate({ id: job.id })}>
               <RotateCcw className="mr-1 h-4 w-4" aria-hidden />

@@ -105,7 +105,7 @@ export const syllabusImport = {
     "Large documents are read in parts and can take a few minutes. The work continues if you leave — come back from the Syllabus page.",
     "Большие документы читаются частями и могут занять несколько минут. Работа продолжится, даже если вы уйдёте — вернитесь со страницы «Силлабус».",
   ],
-  "simport.progress": ["{done} / {total} hissə oxundu", "{done} of {total} parts read", "Прочитано частей: {done} из {total}"],
+  "simport.progress": ["{done} / {total} addım hazırdır", "{done} of {total} steps done", "Готово шагов: {done} из {total}"],
   "simport.retry": ["Yenidən cəhd et", "Try again", "Повторить"],
   "simport.removeConfirm": ["Bu idxal silinsin?", "Delete this import?", "Удалить этот импорт?"],
   "simport.alreadyCreated": ["Bu idxaldan syllabus artıq yaradılıb.", "A syllabus has already been created from this import.", "Силлабус из этого импорта уже создан."],
@@ -118,16 +118,50 @@ export const syllabusImport = {
     "No modules were found in the document. Paste text where the module headings are clear.",
     "В документе не найдено модулей. Вставьте текст с чёткими заголовками модулей.",
   ],
-  "simport.failed.AI_OUTPUT": ["AI-nin cavabı başa düşülmədi. Yenidən cəhd edin.", "The AI's answer could not be understood. Please try again.", "Ответ AI не удалось разобрать. Попробуйте ещё раз."],
+  "simport.failed.AI_OUTPUT": [
+    "AI cavab verdi, amma cavab natamam və ya səhv formatda gəldi. “Yenidən cəhd et” mətni modul-modul yenidən oxuyacaq. Yenə alınmasa, hər modulun başlığı ayrıca sətirdə olsun (məsələn, “1-ci AY — …”) və mətni yenidən yapışdırın.",
+    "The AI replied, but the reply was incomplete or in the wrong format. “Try again” reads the text again module by module. If it still fails, make sure each module heading is on its own line (e.g. “Month 1 — …”) and paste the text again.",
+    "AI ответил, но ответ был неполным или в неверном формате. «Повторить» прочитает текст заново по модулям. Если не получится, проверьте, что заголовок каждого модуля стоит на отдельной строке (например, «1-й месяц — …»), и вставьте текст снова.",
+  ],
+  "simport.failed.AI_TIMEOUT": [
+    "AI vaxtında cavab vermədi. Bir az sonra yenidən cəhd edin; mətn çox uzundursa, lazım olmayan hissələri silin.",
+    "The AI did not answer in time. Try again in a little while; if the text is very long, remove the parts you don't need.",
+    "AI не ответил вовремя. Попробуйте чуть позже; если текст очень длинный, удалите ненужные части.",
+  ],
   "simport.failed.AI_KEY_INVALID": ["AI açarı etibarsızdır. Administratora müraciət edin.", "The AI key is invalid. Contact the administrator.", "Ключ AI недействителен. Обратитесь к администратору."],
   "simport.failed.AI_NOT_FOUND": ["AI modeli tapılmadı. Administratora müraciət edin.", "The AI model was not found. Contact the administrator.", "Модель AI не найдена. Обратитесь к администратору."],
   "simport.failed.AI_QUOTA": ["AI limiti bitib. Bir az sonra yenidən cəhd edin.", "The AI quota is used up. Try again later.", "Лимит AI исчерпан. Попробуйте позже."],
-  "simport.failed.AI_REQUEST_FAILED": ["AI sorğusu alınmadı. Yenidən cəhd edin.", "The AI request failed. Please try again.", "Запрос к AI не удался. Попробуйте ещё раз."],
+  "simport.failed.AI_REQUEST_FAILED": [
+    "AI xidmətinə sorğu alınmadı (şəbəkə və ya xidmət xətası). Bir az sonra yenidən cəhd edin.",
+    "The request to the AI service failed (network or service error). Try again in a little while.",
+    "Запрос к сервису AI не удался (ошибка сети или сервиса). Попробуйте чуть позже.",
+  ],
   "simport.failed.AI_UNAVAILABLE": ["AI hazırda əlçatan deyil. Bir az sonra yenidən cəhd edin.", "The AI is unavailable right now. Try again later.", "AI сейчас недоступен. Попробуйте позже."],
   "simport.failed.DAILY_LIMIT": ["Bugünkü idxal limiti bitib. Sabah yenidən cəhd edin.", "Today's import limit is used up. Try again tomorrow.", "Дневной лимит импорта исчерпан. Попробуйте завтра."],
   "simport.failed.FILE_MISSING": ["Yüklənmiş fayl tapılmadı. Faylı yenidən yükləyin.", "The uploaded file is missing. Upload it again.", "Загруженный файл не найден. Загрузите его снова."],
   "simport.failed.INTERRUPTED": ["İş yarımçıq qaldı (server yenidən başladı). Yenidən cəhd edin.", "The work was interrupted (the server restarted). Please try again.", "Работа прервалась (сервер перезапустился). Попробуйте ещё раз."],
   "simport.failed.INTERNAL": ["Gözlənilməz xəta baş verdi. Yenidən cəhd edin.", "Something went wrong. Please try again.", "Произошла непредвиденная ошибка. Попробуйте ещё раз."],
+  "simport.technicalDetails": ["Texniki detallar", "Technical details", "Технические подробности"],
+  "simport.technicalHint": [
+    "Problem təkrarlanarsa, bu mətni administratora göndərin.",
+    "If the problem repeats, send this text to the administrator.",
+    "Если проблема повторится, отправьте этот текст администратору.",
+  ],
+  "simport.localModules": [
+    "AI {count} modulu oxuya bilmədi; onlar mətnin öz başlıq və siyahılarına görə oxundu. Onları diqqətlə yoxlayın: {titles}",
+    "The AI could not read {count} module(s); they were read from the text's own headings and lists. Check them carefully: {titles}",
+    "AI не смог прочитать модулей: {count}; они прочитаны по заголовкам и спискам самого текста. Проверьте их внимательно: {titles}",
+  ],
+  "simport.availabilityError": [
+    "İdxal limitini yoxlamaq alınmadı. Yenə də başlada bilərsiniz.",
+    "Could not check the import limit. You can still start.",
+    "Не удалось проверить лимит импорта. Всё равно можно начать.",
+  ],
+  "simport.limitReached": [
+    "Bugünkü idxal limiti bitib ({limit}). Sabah yenidən cəhd edin.",
+    "Today's import limit ({limit}) is used up. Try again tomorrow.",
+    "Дневной лимит импорта ({limit}) исчерпан. Попробуйте завтра.",
+  ],
 
   // Import: review
   "simport.reviewIntro": [
