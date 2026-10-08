@@ -460,6 +460,32 @@ export function syllabusApprovalInApp(locale: ServerLocale, d: { syllabusTitle: 
   return { title: tx.title, body: d.count === 1 && d.studentName ? tx.one(cleanTitle(d.studentName, 60), s) : tx.many(d.count, s) };
 }
 
+export const teacherGroupPath = (groupId: string) => `/teacher/groups/${encodeURIComponent(groupId)}`;
+
+const GROUP_JOINED: Record<ServerLocale, { title: string; body: (name: string, group: string) => string; someone: string }> = {
+  az: {
+    title: "Yeni tələbə qoşuldu",
+    body: (n, g) => `${n} dəvət linki ilə «${g}» qrupuna qoşuldu.`,
+    someone: "Bir tələbə",
+  },
+  en: {
+    title: "New student joined",
+    body: (n, g) => `${n} joined “${g}” via the invite link.`,
+    someone: "A student",
+  },
+  ru: {
+    title: "Новый студент в группе",
+    body: (n, g) => `${n} вступил(а) в группу «${g}» по ссылке-приглашению.`,
+    someone: "Студент",
+  },
+};
+
+export function groupMemberJoinedInApp(locale: ServerLocale, d: { groupName: string; studentName: string | null }) {
+  const tx = GROUP_JOINED[locale];
+  const name = d.studentName?.trim() ? cleanTitle(d.studentName, 60) : tx.someone;
+  return { title: tx.title, body: tx.body(name, cleanTitle(d.groupName, 80)) };
+}
+
 const SYL_DONE: Record<ServerLocale, {
   title: (s: string) => string;
   body: string;

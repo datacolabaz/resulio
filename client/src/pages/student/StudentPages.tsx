@@ -373,10 +373,16 @@ export function StudentGroups() {
   const list = trpc.student.groups.useQuery();
   const [code, setCode] = useState("");
   const [, nav] = useLocation();
-  const [progressId, setProgressId] = useState<string | null>(null);
+  const search = useSearch();
+  // `?group=<id>`: arriving straight from joining that group through its invite link opens it.
+  const [progressId, setProgressId] = useState<string | null>(() => new URLSearchParams(search).get("group"));
   // Only matters once the student already has at least one group -- see below.
   const [joinOpen, setJoinOpen] = useState(false);
   const hasGroups = !!list.data?.length;
+  useEffect(() => {
+    if (list.isSuccess && progressId) document.getElementById(`group-${progressId}`)?.scrollIntoView({ block: "start" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list.isSuccess]);
   return (
     <AppShell area="learning">
       {list.isLoading ? (
@@ -390,7 +396,7 @@ export function StudentGroups() {
             <Panel title={t("student.myGroups")}>
               <ul className="divide-y">
                 {list.data!.map((g) => (
-                  <li key={g.id} className="py-2 text-sm">
+                  <li key={g.id} id={`group-${g.id}`} className="scroll-mt-20 py-2 text-sm">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="min-w-0 break-words">{g.name} <span className="text-xs text-muted-foreground">{g.subject}</span></span>
                       <span className="flex items-center gap-2">
@@ -410,7 +416,7 @@ export function StudentGroups() {
                         )}
                       </span>
                     </div>
-                    {progressId === g.id && (
+                    {progressId === g.id && g.status === "ACTIVE" && (
                       <>
                         <GroupProgressPanel groupId={g.id} />
                         <GroupBoardPanel groupId={g.id} />

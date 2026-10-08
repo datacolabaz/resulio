@@ -5,7 +5,7 @@ import { ActivityTimeline } from "@/components/syllabus/ActivityTimeline";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
+import { SettingToggle } from "@/components/ui/setting-toggle";
 import { t } from "@/i18n/messages";
 import { fmtDateTime, fmtDuration, fmtRelative } from "@/lib/format";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
@@ -627,13 +627,13 @@ function SettingsDialog({ id, initial, onClose }: { id: string; initial: Analyti
               );
             })}
           </div>
-          <div className="flex items-start gap-3 rounded-xl border border-border p-3">
-            <Switch id="sa-digest" checked={digest} onCheckedChange={setDigest} />
-            <label htmlFor="sa-digest" className="min-w-0 text-sm">
-              <span className="font-medium">{t("sa.settings.digest")}</span>
-              <span className="block text-xs text-muted-foreground">{t("sa.settings.digestHelp")}</span>
-            </label>
-          </div>
+          <SettingToggle
+            id="sa-digest"
+            label={t("sa.settings.digest")}
+            hint={t("sa.settings.digestHelp")}
+            checked={digest}
+            onCheckedChange={setDigest}
+          />
         </DialogBody>
         <DialogFooter className="gap-2 sm:justify-between">
           <Button variant="ghost" onClick={() => setDraft(Object.fromEntries(THRESHOLD_KEYS.map((k) => [k, String(DEFAULT_RISK_THRESHOLDS[k])])) as Record<RiskThresholdKey, string>)}>

@@ -110,9 +110,9 @@ export const site = {
     "Школьные форматы: KSQ и BSQ (малое и большое суммативное оценивание в школах Азербайджана), а также обычные экзамены.",
   ],
   "site.feature.groups": [
-    "Qruplar: dəvət kodu, dəvət linki və ya e-poçt ilə dəvət; qoşulma sorğularını müəllim təsdiqləyir.",
-    "Groups: invite by code, link or email; the teacher approves join requests.",
-    "Группы: приглашение по коду, ссылке или эл. почте; запросы на вступление одобряет учитель.",
+    "Qruplar: dəvət kodu, dəvət linki və ya e-poçt ilə dəvət; linklə qoşulan şagird dərhal qrupa əlavə olunur.",
+    "Groups: invite by code, link or email; students who join by link are added instantly.",
+    "Группы: приглашение по коду, ссылке или эл. почте; вступившие по ссылке сразу попадают в группу.",
   ],
   "site.feature.sharing": [
     "İmtahanı seçilmiş qrupa və ya fərdi şagirdlərə link, QR kod, WhatsApp və Telegram ilə göndərmək.",

@@ -29,6 +29,7 @@ Code: `server/notifications/` — `events.ts` (events and their channels), `temp
 | `SYLLABUS_AT_RISK_DIGEST` | syllabus creator | IN_APP, EMAIL (e-mail off by default) | daily after 08:00 Baku when students are at risk and the syllabus' digest is on (`syllabus/analytics.ts`); key `syl-risk:<syllabusId>:<YYYY-MM-DD>` |
 | `TASK_ASSIGNED` | student | IN_APP, EMAIL, PUSH | a teacher creates a task, or an edit makes it reach new students; or a student joins a group with open tasks (`modules/taskNotify.ts`); key `task-assigned:<taskId>:<userId>` |
 | `TASK_UPDATED` | student | IN_APP, PUSH, EMAIL (e-mail off by default) | an edit moves the deadline by ≥ 1 hour; to students the task already reached; key `task-deadline:<taskId>:<userId>:<deadlineMs>` |
+| `GROUP_MEMBER_JOINED` | group's workspace owner | IN_APP, PUSH | a student joined through the group's invite code/link or a single-use invite link (`modules/groupJoin.ts`), or a leftover pending request was activated at startup; informational only, nothing to approve; key `group-join:<membershipId>` / `group-join-link:<linkId>` |
 | `EXAM_RESULT_READY` | student | EMAIL | only for exams with "E-mail results to students" ticked: the 30 s sweeper (`server/modules/resultEmail.ts`) mails each result once it is final (no manual grading pending) and released; score, percentage and the wrong-answer deduction, never the answers. Claimed in `result_email_log` (one row per result; students without an address are logged as `NO_EMAIL` and skipped); key `exam-result:<resultId>` |
 
 ### Tasks
@@ -39,8 +40,9 @@ never the teacher. An open-link task with nobody selected notifies nobody. On ed
 the task newly reaches get `TASK_ASSIGNED`. The task form's **Tələbələrə bildiriş göndər**
 (default on) turns both notices off for that save.
 
-When a student becomes an active member of a group (join code, invite link, e-mail invite, teacher
-adds or approves them), they get **one** `TASK_ASSIGNED` listing the group's tasks with a future
+When a student becomes an active member of a group (join code/link, single-use invite link, e-mail
+invite, teacher adds or approves them, or the startup activation of a leftover pending link request),
+they get **one** `TASK_ASSIGNED` listing the group's tasks with a future
 deadline that they have not submitted and were not told about (key `task-join:<userId>:<hash>`;
 each listed task's own key is taken with SKIPPED `BATCHED` rows so it is never announced again).
 

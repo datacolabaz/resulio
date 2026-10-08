@@ -225,6 +225,13 @@
       "when": 1791371473491,
       "tag": "0031_exam_penalty_result_emails",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "5",
+      "when": 1791443385879,
+      "tag": "0032_group_join_instant",
+      "breakpoints": true
     }
   ]
 }

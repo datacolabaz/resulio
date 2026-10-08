@@ -49,6 +49,7 @@ import * as attempts from "./modules/attempts";
 import { AppError } from "./modules/errors";
 import * as groupEmailInvites from "./modules/groupEmailInvites";
 import * as groupInviteLinks from "./modules/groupInviteLinks";
+import * as groupJoin from "./modules/groupJoin";
 import * as groups from "./modules/groups";
 import * as motivation from "./modules/motivation";
 import * as notifications from "./modules/notifications";
@@ -795,9 +796,7 @@ const studentRouter = router({
     .mutation(async ({ ctx, input }) => {
       const code = input.inviteCode.toUpperCase();
       const joined = await groups.joinByInvite(ctx.user.id, code);
-      if (joined.status === "ACTIVE") taskNotify.notifyOpenTasksOnJoin(joined.groupId, ctx.user.id);
-      const verb = joined.status === "ACTIVE" ? "Yeni tələbə qoşuldu" : "Qoşulma sorğusu";
-      await notifications.notify(joined.ownerUserId, verb, `${ctx.user.name ?? "Tələbə"} → ${joined.groupName}`);
+      groupJoin.afterLinkJoin(joined, ctx.user.name ?? null, groupJoin.linkJoinKey(joined.membershipId));
       await shareTracking.recordShareEvent({
         targetType: "GROUP",
         targetId: code,
@@ -822,8 +821,7 @@ const studentRouter = router({
         throw error;
       }
       if (joined.outcome === "JOINED") {
-        taskNotify.notifyOpenTasksOnJoin(joined.groupId, ctx.user.id);
-        await notifications.notify(joined.ownerUserId, "Yeni tələbə qoşuldu", `${ctx.user.name ?? "Tələbə"} → ${joined.groupName}`);
+        groupJoin.afterLinkJoin({ ...joined, userId: ctx.user.id }, ctx.user.name ?? null, groupJoin.singleUseLinkJoinKey(joined.linkId));
         await shareTracking.recordShareEvent({
           targetType: "GROUP",
           targetId: groupInviteLinks.inviteLinkShareTarget(joined.linkId),

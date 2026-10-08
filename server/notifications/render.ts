@@ -15,6 +15,7 @@ import {
   buildTaskAssignedEmail,
   buildTaskUpdatedEmail,
   gradeInAppText,
+  groupMemberJoinedInApp,
   studentTaskPath,
   taskAssignedInApp,
   taskAssignedPath,
@@ -28,6 +29,7 @@ import {
   syllabusUnlockedInApp,
   teacherAnalyticsPath,
   teacherApprovalsPath,
+  teacherGroupPath,
 } from "./templates";
 
 export interface Recipient {
@@ -109,6 +111,10 @@ export function renderNotification<E extends EventType>(event: E, data: EventDat
       const d = data as EventData["EXAM_RESULT_READY"];
       const email = buildExamResultEmail({ ...d, to, locale, appUrl });
       return { title: email.subject, body: "", path: examResultPath(d.resultId), email };
+    }
+    case "GROUP_MEMBER_JOINED": {
+      const d = data as EventData["GROUP_MEMBER_JOINED"];
+      return { ...groupMemberJoinedInApp(locale, d), path: teacherGroupPath(d.groupId), email: null };
     }
     default:
       throw new Error(`No renderer for ${String(event)}`);

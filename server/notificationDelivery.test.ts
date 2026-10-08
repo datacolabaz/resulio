@@ -221,6 +221,7 @@ describe("dispatcher", () => {
           wrongCount: 2,
           penalty: { ratio: 4, wrongCount: 2, penaltyPoints: 0.5 },
         },
+        GROUP_MEMBER_JOINED: { groupId: "g1", groupName: "G", studentName: "A" },
       }[event];
       const rendered = renderNotification(event, data, { locale: "az", email: "a@b.c" }, "https://resulio.co");
       expect(rendered.title.length).toBeGreaterThan(0);
