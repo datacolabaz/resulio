@@ -1,3 +1,4 @@
+import { pickAnnouncementText } from "../../shared/announcements";
 import type { EmailMessage } from "../_core/email";
 import type { ServerLocale } from "../_core/locale";
 import type { EventData, EventType } from "./events";
@@ -24,12 +25,15 @@ import {
   syllabusApprovalInApp,
   syllabusAtRiskInApp,
   syllabusCompletedInApp,
+  syllabusJoinDecidedInApp,
+  syllabusJoinRequestedInApp,
   syllabusLessonPath,
   syllabusPath,
   syllabusUnlockedInApp,
   teacherAnalyticsPath,
   teacherApprovalsPath,
   teacherGroupPath,
+  teacherJoinRequestsPath,
 } from "./templates";
 
 export interface Recipient {
@@ -115,6 +119,20 @@ export function renderNotification<E extends EventType>(event: E, data: EventDat
     case "GROUP_MEMBER_JOINED": {
       const d = data as EventData["GROUP_MEMBER_JOINED"];
       return { ...groupMemberJoinedInApp(locale, d), path: teacherGroupPath(d.groupId), email: null };
+    }
+    case "SYLLABUS_JOIN_REQUESTED": {
+      const d = data as EventData["SYLLABUS_JOIN_REQUESTED"];
+      return { ...syllabusJoinRequestedInApp(locale, d), path: teacherJoinRequestsPath(d.syllabusId), email: null };
+    }
+    case "SYLLABUS_JOIN_DECIDED": {
+      const d = data as EventData["SYLLABUS_JOIN_DECIDED"];
+      return { ...syllabusJoinDecidedInApp(locale, d), path: d.path, email: null };
+    }
+    case "ANNOUNCEMENT": {
+      const d = data as EventData["ANNOUNCEMENT"];
+      const text = pickAnnouncementText(d.texts, d.language, locale);
+      if (!text) throw new Error("ANNOUNCEMENT_WITHOUT_TEXT");
+      return { title: text.title, body: text.body, path: d.url, email: null };
     }
     default:
       throw new Error(`No renderer for ${String(event)}`);

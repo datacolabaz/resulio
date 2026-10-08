@@ -20,7 +20,9 @@ import { sweepExpiredAttempts } from "../modules/attempts";
 import { runPendingLinkJoinBackfill } from "../modules/groupJoin";
 import { runGroupProfileBackfill } from "../modules/groupProfiles";
 import { sweepResultEmails } from "../modules/resultEmail";
+import { resumeAnnouncements } from "../notifications/announcements";
 import { startNotificationWorker } from "../notifications/dispatcher";
+import { logWebPushStatus } from "../notifications/webPush";
 import { runModuleDetailsBackfills } from "../syllabus/moduleDetailsBackfill";
 import { runDailyDigest, runDailyRetention } from "../syllabus/analytics";
 import { flushDueNotices } from "../syllabus/notify";
@@ -134,6 +136,8 @@ async function startServer() {
 
   startAttemptSweeper();
   startNotificationWorker();
+  logWebPushStatus();
+  void resumeAnnouncements();
   startSyllabusProgression();
   if (getDb()) {
     runPendingLinkJoinBackfill().catch((error) => console.error("[Groups] Pending join backfill failed", error instanceof Error ? error.message : error));

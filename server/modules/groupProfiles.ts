@@ -21,7 +21,7 @@ export interface GroupProfileView {
 
 const chunks = <T>(list: readonly T[]) => Array.from({ length: Math.ceil(list.length / CHUNK) }, (_, i) => list.slice(i * CHUNK, (i + 1) * CHUNK));
 
-/** Stored rows by group id; empty before migration 0037 so reads still work. */
+/** Stored rows by group id; empty before migration 0040 so reads still work. */
 export async function loadProfiles(groupIds: readonly string[], db: DbOrTx = requireDb()): Promise<Map<string, StoredProfile>> {
   const out = new Map<string, StoredProfile>();
   try {
@@ -68,7 +68,7 @@ export async function withProfiles<T extends { id: string; subject: string; grad
   return rows.map((r) => ({ ...r, ...profileView(r, stored.get(r.id), kinds.get(r.providerWorkspaceId)) }));
 }
 
-/** Upserts the teacher's choice. Returns false before migration 0037 (the caller keeps the level elsewhere). */
+/** Upserts the teacher's choice. Returns false before migration 0040 (the caller keeps the level elsewhere). */
 export async function saveProfile(groupId: string, profile: StoredProfile, db: DbOrTx = requireDb()): Promise<boolean> {
   try {
     await db
@@ -139,7 +139,7 @@ export async function runGroupProfileBackfill(db: DbOrTx = requireDb()) {
     return plan;
   } catch (error) {
     if (!isMissingTable(error)) throw error;
-    console.warn(`${TAG}: backfill waits for migration 0037`);
+    console.warn(`${TAG}: backfill waits for migration 0040`);
     return [];
   }
 }

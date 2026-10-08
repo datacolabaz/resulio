@@ -107,7 +107,7 @@ describe("static hosting", () => {
     for (const bot of ["GPTBot", "OAI-SearchBot", "ChatGPT-User", "PerplexityBot", "ClaudeBot", "Claude-SearchBot", "Google-Extended", "Applebot-Extended", "Bingbot"]) {
       expect(robots).toContain(`User-agent: ${bot}\n`);
     }
-    for (const path of ["/teacher", "/student", "/admin", "/task/", "/invite/", "/material/", "/api/"]) expect(robots).toContain(`Disallow: ${path}\n`);
+    for (const path of ["/teacher", "/student", "/admin", "/task/", "/invite/", "/material/", "/syllabus/", "/api/"]) expect(robots).toContain(`Disallow: ${path}\n`);
     for (const page of SITE_PAGES.filter((p) => p.path !== "/")) expect(robots).not.toContain(`Disallow: ${page.path}\n`);
     expect(robots).toContain("Sitemap: https://resulio.co/sitemap.xml");
   });

@@ -140,7 +140,7 @@ export default function WelcomePage() {
 
   if (loading) return null;
   if (!user) return <Redirect to={`/?returnTo=${encodeURIComponent("/welcome")}`} />;
-  if (returnTo.startsWith("/join/") || returnTo.startsWith("/g/") || returnTo.startsWith("/exam/")) return <Redirect to={returnTo} />;
+  if (returnTo.startsWith("/join/") || returnTo.startsWith("/g/") || returnTo.startsWith("/exam/") || returnTo.startsWith("/syllabus/")) return <Redirect to={returnTo} />;
 
   const contexts = availableContexts(user);
   const onlyPending = user.pendingMemberships > 0 && user.activeMemberships === 0 && !user.contexts.teaching;

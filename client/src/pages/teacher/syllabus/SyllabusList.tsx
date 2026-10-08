@@ -6,12 +6,13 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { getLocale, t } from "@/i18n/messages";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { fileDownloadUrl } from "@/lib/uploadFile";
-import { Archive, ArchiveRestore, BookOpen, EllipsisVertical, FileUp, Plus, Sparkles, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, BookOpen, EllipsisVertical, FileUp, Link2, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation } from "wouter";
 import { DeleteSyllabusDialog } from "./DeleteSyllabusDialog";
 import { ImportDialog, importPath } from "./ImportDialog";
+import { useCopyShareLink, usePendingJoinRequests } from "./ShareAndRequests";
 import { emptySyllabusFields, fieldsPayload, SyllabusFieldsForm } from "./SyllabusFields";
 import { SyllabusShell, SyllabusVisibilityBadges, toastError } from "./shared";
 
@@ -19,6 +20,7 @@ type SyllabusRow = RouterOutputs["teacher"]["syllabus"]["list"][number];
 
 function CardMenu({ s, onDelete }: { s: SyllabusRow; onDelete: () => void }) {
   const utils = trpc.useUtils();
+  const shareLink = useCopyShareLink();
   const archived = !!s.archivedAt;
   const archive = trpc.teacher.syllabus.setArchived.useMutation({
     onSuccess: () => {
@@ -41,6 +43,10 @@ function CardMenu({ s, onDelete }: { s: SyllabusRow; onDelete: () => void }) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        <DropdownMenuItem disabled={shareLink.pending} onSelect={() => void shareLink.copy(s)}>
+          <Link2 aria-hidden />
+          {t("common.copyLink")}
+        </DropdownMenuItem>
         <DropdownMenuItem
           disabled={archive.isPending}
           onSelect={() => (archived || confirm(t("syllabus.settings.archiveConfirm"))) && archive.mutate({ id: s.id, archived: !archived })}
@@ -140,6 +146,7 @@ function ImportButton({ onClick, variant = "outline" }: { onClick: () => void; v
 
 function SyllabusListBody() {
   const list = trpc.teacher.syllabus.list.useQuery();
+  const openRequests = usePendingJoinRequests();
   const [open, setOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
@@ -205,6 +212,7 @@ function SyllabusListBody() {
                   <div className="flex flex-1 flex-col gap-2 p-4">
                     <div className="flex flex-wrap items-center gap-2">
                       <SyllabusVisibilityBadges syllabus={s} activeGrants={s.activeGrantCount} />
+                      {openRequests(s.id) > 0 && <Pill>{t("sylShare.requests.newCount", { count: openRequests(s.id) })}</Pill>}
                     </div>
                     <div className="break-words font-semibold">{s.title}</div>
                     {(s.subject || s.level) && <div className="text-sm text-muted-foreground">{[s.subject, s.level].filter(Boolean).join(" · ")}</div>}

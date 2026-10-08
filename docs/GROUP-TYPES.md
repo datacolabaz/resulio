@@ -12,7 +12,7 @@ the group form, cards and join pages adapt to it.
 ## Data model
 
 `study_groups` is a hot table, so (per the add-only rule in `docs/SYLLABUS-ARCHITECTURE.md`) no
-column was added to it. Migration `0038_group_profiles` only creates a side table:
+column was added to it. Migration `0040_group_profiles` only creates a side table:
 
 ```
 group_profiles (
@@ -72,8 +72,8 @@ FROM study_groups g JOIN group_profiles p ON p.groupId = g.id WHERE p.source LIK
 
 For a course, the old value is still in `study_groups.grade` until the teacher next saves the group
 (reads ignore `grade` for courses). Rolling back to the previous release therefore needs only
-`DROP TABLE group_profiles;` (plus removing the 0038 row from `__drizzle_migrations`) — no data was
-moved out of `study_groups`; only levels typed after the upgrade live solely in the side table. Before migration 0038 is applied,
+`DROP TABLE group_profiles;` (plus removing the 0040 row from `__drizzle_migrations`) — no data was
+moved out of `study_groups`; only levels typed after the upgrade live solely in the side table. Before migration 0040 is applied,
 saving a course falls back to keeping its level in `grade`, so nothing typed is lost either way.
 
 ## Default type for a new group
@@ -83,16 +83,12 @@ usually create more of the same), else the workspace category as above, else **K
 (the neutral choice: "İstiqamət / Səviyyə" reads fine for anything that isn't a school class, while
 "Sinif" is wrong for a course). The teacher's own click always wins over the default.
 
-## Merging next to `web-push-announcements` (migration 0037)
+## Migration numbering
 
-0038 is numbered after that branch's 0037 (`prevId` already points at its snapshot). Whichever of the
-two lands second must fix the migration metadata before merging:
-
-- **This branch second:** in `drizzle/meta/_journal.json` keep both entries (0037, then 0038), and
-  rebuild `0038_snapshot.json` as the 0037 snapshot plus the `group_profiles` table (keep 0038's `id`;
-  `prevId` = 0037's `id`). `node scripts/verify-migrations.cjs drizzle` must pass.
-- **web-push second:** renumber its migration to 0039 (SQL file, journal `idx`/`tag`, snapshot file),
-  set its `prevId` to 0038's `id` and add `group_profiles` to its snapshot.
+There is no 0038 in the journal: this migration was first drafted as 0038, but 0039 reached `main`
+first. drizzle's migrator only applies migrations whose `when` is newer than the last applied one, so
+an older 0038 would be skipped where 0039 already ran; it was regenerated as 0040 on top of the 0039
+snapshot instead. Do not reuse 0038.
 
 ## Related labels
 

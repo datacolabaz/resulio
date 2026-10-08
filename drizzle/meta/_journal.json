@@ -262,10 +262,24 @@
       "breakpoints": true
     },
     {
-      "idx": 38,
+      "idx": 37,
       "version": "5",
-      "when": 1791478907445,
-      "tag": "0038_group_profiles",
+      "when": 1791478800651,
+      "tag": "0037_web_push_announcements",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "5",
+      "when": 1791482517612,
+      "tag": "0039_syllabus_join_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "5",
+      "when": 1791483140032,
+      "tag": "0040_group_profiles",
       "breakpoints": true
     }
   ]

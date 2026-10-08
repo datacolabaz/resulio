@@ -34,9 +34,11 @@ import {
   type AuditTargetType,
   type SecurityEventType,
 } from "../shared/adminPermissions";
+import { ANNOUNCEMENT_AUDIENCES, ANNOUNCEMENT_STATUSES, type AnnouncementTexts } from "../shared/announcements";
 import { ANSWER_SOURCES, CONFIDENCE_LEVELS, IMPORT_ITEM_STATUSES, IMPORT_JOB_STATUSES, type ImportIssue } from "../shared/questionImport";
 import { REFERRAL_SOURCES } from "../shared/referralSources";
 import { SYLLABUS_IMPORT_STATUSES, type SyllabusImportDetail } from "../shared/syllabusImport";
+import { JOIN_REQUEST_STATUSES, JOIN_REQUEST_TYPES } from "../shared/syllabusJoin";
 import type { ClassScheduleEntry } from "../shared/schedule";
 import { GROUP_TYPES } from "../shared/groupType";
 import { SHARE_CHANNELS, SHARE_EVENT_TYPES, SHARE_TARGET_TYPES } from "../shared/shareTracking";
@@ -951,6 +953,68 @@ export const pushDevices = mysqlTable(
   (t) => [index("push_devices_user_idx").on(t.userId)],
 );
 
+/**
+ * Browser (Web Push) subscriptions of signed-in users and anonymous visitors (`userId` null).
+ * The endpoint is a capability URL: never log it or return it to clients. Unique by its SHA-256
+ * because endpoints can be longer than an index allows.
+ */
+export const webPushSubscriptions = mysqlTable(
+  "web_push_subscriptions",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    endpointHash: varchar("endpointHash", { length: 64 }).notNull().unique(),
+    endpoint: text("endpoint").notNull(),
+    p256dh: varchar("p256dh", { length: 128 }).notNull(),
+    auth: varchar("auth", { length: 64 }).notNull(),
+    userId: int("userId"),
+    locale: varchar("locale", { length: 8 }).notNull().default("az"),
+    userAgent: varchar("userAgent", { length: 255 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    lastSeenAt: timestamp("lastSeenAt").defaultNow().notNull(),
+    /** Consecutive failed sends; reset on success, the row is dropped after too many. */
+    failureCount: int("failureCount").notNull().default(0),
+  },
+  (t) => [index("web_push_subscriptions_user_idx").on(t.userId)],
+);
+
+/** Admin-sent platform announcements and their delivery totals (filled when sending finishes). */
+export const announcements = mysqlTable(
+  "announcements",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    audience: mysqlEnum("audience", ANNOUNCEMENT_AUDIENCES).notNull(),
+    /** AUTO or one of az/en/ru. */
+    language: varchar("language", { length: 8 }).notNull(),
+    texts: json("texts").$type<AnnouncementTexts>().notNull(),
+    url: varchar("url", { length: 500 }).notNull(),
+    status: mysqlEnum("status", ANNOUNCEMENT_STATUSES).notNull().default("QUEUED"),
+    createdByUserId: int("createdByUserId").notNull(),
+    targetUsers: int("targetUsers").notNull().default(0),
+    targetAnonymous: int("targetAnonymous").notNull().default(0),
+    inAppSent: int("inAppSent").notNull().default(0),
+    pushSent: int("pushSent").notNull().default(0),
+    pushFailed: int("pushFailed").notNull().default(0),
+    error: varchar("error", { length: 255 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    startedAt: timestamp("startedAt"),
+    finishedAt: timestamp("finishedAt"),
+  },
+  (t) => [index("announcements_status_idx").on(t.status)],
+);
+
+/** One row per (announcement, anonymous subscription): claimed before sending so a resumed run never sends twice. */
+export const announcementDeliveries = mysqlTable(
+  "announcement_deliveries",
+  {
+    announcementId: int("announcementId").notNull(),
+    subscriptionId: int("subscriptionId").notNull(),
+    /** SENDING | SENT | FAILED | GONE */
+    status: varchar("status", { length: 16 }).notNull().default("SENDING"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.announcementId, t.subscriptionId] })],
+);
+
 /** Superseded by `taskGradingSettings` (0024 copied its values there); kept because migrations only add. */
 export const taskNotificationSettings = mysqlTable("task_notification_settings", {
   taskId: id("taskId").primaryKey(),
@@ -1529,6 +1593,61 @@ export const syllabusImportJobs = mysqlTable(
   (t) => [index("syllabus_import_jobs_workspace_idx").on(t.providerWorkspaceId, t.createdAt)],
 );
 export type SyllabusImportJob = typeof syllabusImportJobs.$inferSelect;
+
+/**
+ * The public share link of a syllabus (`/syllabus/<code>`, shared/syllabusJoin.ts), created on first
+ * use. Separate from group invite codes. Regenerating replaces `code`; turning it off keeps it.
+ */
+export const syllabusShareLinks = mysqlTable("syllabus_share_links", {
+  syllabusId: id("syllabusId").primaryKey(),
+  code: varchar("code", { length: 32 }).notNull().unique(),
+  active: boolean("active").notNull().default(true),
+  createdBy: int("createdBy").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+/** Teacher opt-in: this group (which must also hold a live grant for the syllabus) is offered on its share page. */
+export const syllabusGroupListings = mysqlTable(
+  "syllabus_group_listings",
+  {
+    syllabusId: id("syllabusId").notNull(),
+    groupId: id("groupId").notNull(),
+    createdBy: int("createdBy").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.syllabusId, t.groupId] })],
+);
+
+/**
+ * A student's request, sent from the share page, to join an upcoming group (GROUP, `groupId` set) or
+ * for individual participation (INDIVIDUAL). `openKey` is set only while PENDING, so the unique index
+ * allows one open request per student, syllabus, type and group, and a new one after a decision.
+ */
+export const syllabusJoinRequests = mysqlTable(
+  "syllabus_join_requests",
+  {
+    id: id("id").primaryKey(),
+    syllabusId: id("syllabusId").notNull(),
+    workspaceId: id("workspaceId").notNull(),
+    studentId: int("studentId").notNull(),
+    type: mysqlEnum("type", JOIN_REQUEST_TYPES).notNull(),
+    groupId: id("groupId"),
+    message: varchar("message", { length: 1000 }).notNull().default(""),
+    status: mysqlEnum("status", JOIN_REQUEST_STATUSES).notNull().default("PENDING"),
+    openKey: varchar("openKey", { length: 128 }).unique(),
+    decisionNote: varchar("decisionNote", { length: 500 }),
+    decidedBy: int("decidedBy"),
+    decidedAt: timestamp("decidedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [
+    index("syllabus_join_requests_syllabus_idx").on(t.syllabusId, t.status),
+    index("syllabus_join_requests_workspace_idx").on(t.workspaceId, t.status),
+    index("syllabus_join_requests_student_idx").on(t.studentId),
+  ],
+);
+export type SyllabusJoinRequest = typeof syllabusJoinRequests.$inferSelect;
 
 /**
  * Question bank structure, two levels per workspace: a subject (`parentId` null) and its sections

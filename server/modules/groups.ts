@@ -68,7 +68,7 @@ type GroupIdentity = { name: string; subject: string; grade: string; description
 
 /**
  * Stores the type's fields: Fənn/İstiqamət in `subject`, Sinif in `grade`, type and Səviyyə in
- * group_profiles. Before migration 0037 a course level falls back to `grade`, so nothing typed is
+ * group_profiles. Before migration 0040 a course level falls back to `grade`, so nothing typed is
  * lost and the read-time classifier still finds it.
  */
 async function storeProfile(groupId: string, fields: GroupTypeFields) {
@@ -138,6 +138,28 @@ export async function addMemberByEmail(scope: TeacherScope, groupId: string, ema
   const db = requireDb();
   await assertGroupOwner(scope, groupId);
   const [student] = await db.select().from(users).where(eq(users.email, email.trim().toLowerCase())).limit(1);
+  if (!student) throw new AppError("STUDENT_NOT_FOUND");
+  const ws = await workspaceOwnerOf(scope.workspaceId, db);
+  if (ws.ownerUserId === student.id) throw new AppError("CANNOT_JOIN_OWN_GROUP");
+  const [existing] = await db
+    .select()
+    .from(groupMembers)
+    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, student.id)))
+    .limit(1);
+  if (existing?.status === "ACTIVE") throw new AppError("ALREADY_MEMBER");
+  if (existing) {
+    await db.update(groupMembers).set({ status: "ACTIVE" }).where(eq(groupMembers.id, existing.id));
+  } else {
+    await db.insert(groupMembers).values({ groupId, userId: student.id, membershipRole: "STUDENT", status: "ACTIVE" });
+  }
+  return { studentId: student.id, status: "ACTIVE" as const };
+}
+
+/** Same as addMemberByEmail for a known user id (an accepted syllabus join request). */
+export async function addMemberById(scope: TeacherScope, groupId: string, studentId: number) {
+  const db = requireDb();
+  await assertGroupOwner(scope, groupId);
+  const [student] = await db.select({ id: users.id }).from(users).where(eq(users.id, studentId)).limit(1);
   if (!student) throw new AppError("STUDENT_NOT_FOUND");
   const ws = await workspaceOwnerOf(scope.workspaceId, db);
   if (ws.ownerUserId === student.id) throw new AppError("CANNOT_JOIN_OWN_GROUP");

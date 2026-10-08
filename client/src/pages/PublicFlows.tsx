@@ -64,15 +64,16 @@ function useShareAttribution(targetType: ShareTargetType, targetId: string, read
 }
 
 /** Extra group facts shown on a join-preview screen, only for the fields the teacher chose to share. */
-function GroupPreviewDetails({
+export function GroupPreviewDetails({
   g,
 }: {
-  g: { groupType: GroupType; subject: string; grade: string; level: string; language?: string; format?: string; startDate?: string | Date | null; classSchedule?: ClassScheduleEntry[] };
+  g: { groupType?: GroupType; subject?: string; grade?: string; level?: string; language?: string; format?: string; startDate?: string | Date | null; classSchedule?: ClassScheduleEntry[] };
 }) {
   const schedule = scheduleSummary(g.classSchedule);
+  const facts = g.groupType ? groupFacts({ groupType: g.groupType, subject: g.subject ?? "", grade: g.grade ?? "", level: g.level }) : [];
   return (
     <dl className="mt-3 space-y-1 text-xs text-muted-foreground">
-      {groupFacts(g).map((f) => (
+      {facts.map((f) => (
         <div key={f.label} className="flex gap-1"><dt className="font-medium text-foreground-secondary">{f.label}:</dt><dd className="min-w-0 break-words">{f.value}</dd></div>
       ))}
       {!!g.language && (

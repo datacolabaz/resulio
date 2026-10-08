@@ -22,8 +22,37 @@ import * as syllabusAdmin from "./syllabus/admin";
 import * as syllabusAnalytics from "./syllabus/analytics";
 import { guardTables } from "./syllabus/availability";
 import { UNLOCK_TARGET_TYPES } from "../shared/syllabus";
+import {
+  ANNOUNCEMENT_AUDIENCES,
+  ANNOUNCEMENT_BODY_MAX,
+  ANNOUNCEMENT_LANGUAGES,
+  ANNOUNCEMENT_TITLE_MAX,
+  ANNOUNCEMENT_URL_MAX,
+  announcementTextsValid,
+  isSafeAnnouncementUrl,
+  type AnnouncementTexts,
+} from "../shared/announcements";
+import { createAnnouncement, listAnnouncements } from "./notifications/announcements";
+import { subscriberCounts, webPushEnabled } from "./notifications/webPush";
 
 const reason = z.string().trim().min(ADMIN_REASON_MIN).max(ADMIN_REASON_MAX);
+
+const announcementText = z.object({
+  title: z.string().trim().max(ANNOUNCEMENT_TITLE_MAX),
+  body: z.string().trim().max(ANNOUNCEMENT_BODY_MAX),
+});
+export const announcementInput = z
+  .object({
+    audience: z.enum(ANNOUNCEMENT_AUDIENCES),
+    language: z.enum(ANNOUNCEMENT_LANGUAGES),
+    texts: z.object({ az: announcementText.optional(), en: announcementText.optional(), ru: announcementText.optional() }),
+    url: z.string().trim().min(1).max(ANNOUNCEMENT_URL_MAX).refine(isSafeAnnouncementUrl, "INVALID_URL"),
+  })
+  .refine((a) => announcementTextsValid(a.language, a.texts), { message: "TEXT_REQUIRED", path: ["texts"] })
+  .transform((a) => ({
+    ...a,
+    texts: Object.fromEntries(Object.entries(a.texts).filter(([, v]) => v && v.title && v.body)) as AnnouncementTexts,
+  }));
 const entityId = z.string().trim().min(1).max(32);
 const workspaceId = entityId;
 const userId = z.number().int().positive();
@@ -113,6 +142,18 @@ export const adminRouter = router({
     review: adminProcedure("security.review")
       .input(z.object({ id: z.number().int().positive(), status: z.enum(["REVIEWED", "DISMISSED"]), reason }))
       .mutation(({ ctx, input }) => security.reviewSecurityEvent(ctx.admin, input.id, input.status, input.reason)),
+  }),
+
+  announcements: router({
+    overview: adminProcedure("announcements.view").query(async () => ({
+      webPushEnabled: webPushEnabled(),
+      subscribers: await subscriberCounts(),
+    })),
+    list: adminProcedure("announcements.view").query(() => listAnnouncements()),
+    /** Stores the announcement and starts sending in the background. */
+    send: adminProcedure("announcements.send")
+      .input(announcementInput)
+      .mutation(({ ctx, input }) => createAnnouncement(ctx.admin, input)),
   }),
 
   syllabus: router({
