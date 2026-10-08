@@ -5,6 +5,7 @@ import { groupEmailInvites, groupMembers, groups, providerWorkspaces, type Group
 import { requireDb, type DbOrTx } from "../db";
 import type { TeacherScope } from "./access";
 import { AppError } from "./errors";
+import { groupProfileOf } from "./groupProfiles";
 import { assertGroupOwner, workspaceOwnerOf } from "./groups";
 
 const TOKEN_BYTES = 32;
@@ -98,6 +99,7 @@ export async function publicEmailInvitePreview(token: string) {
   if (!invite || inviteDisplayStatus(invite) !== "PENDING") return null;
   const [group] = await db
     .select({
+      id: groups.id,
       name: groups.name,
       subject: groups.subject,
       grade: groups.grade,
@@ -111,6 +113,7 @@ export async function publicEmailInvitePreview(token: string) {
       providerTitle: providerWorkspaces.title,
       teachingCategory: providerWorkspaces.teachingCategory,
       teachingSubcategory: providerWorkspaces.teachingSubcategory,
+      providerType: providerWorkspaces.providerType,
     })
     .from(groups)
     .innerJoin(providerWorkspaces, eq(providerWorkspaces.id, groups.providerWorkspaceId))
@@ -120,7 +123,7 @@ export async function publicEmailInvitePreview(token: string) {
   return {
     name: group.name,
     subject: group.subject,
-    grade: group.grade,
+    ...(await groupProfileOf(group, db)),
     teacherName: group.providerName || group.providerTitle,
     language: group.language,
     format: group.format,

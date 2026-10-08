@@ -82,7 +82,7 @@ export function SyllabusFieldsForm({ value, onChange, idPrefix }: { value: Sylla
       </label>
       <label className="text-sm">
         <span className={fieldLabel}>{t("syllabus.field.subject")}</span>
-        <Input maxLength={120} value={value.subject} onChange={(e) => set({ subject: e.target.value })} />
+        <Input maxLength={120} value={value.subject} onChange={(e) => set({ subject: e.target.value })} placeholder={t("syllabus.field.subjectPlaceholder")} />
       </label>
       <label className="text-sm">
         <span className={fieldLabel}>{t("syllabus.field.level")}</span>

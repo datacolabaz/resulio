@@ -101,7 +101,19 @@ export function SectionSelect({
 const NEW = "__new";
 
 /** A name field with create/cancel buttons; not a <form>, so it can sit inside other forms. */
-function InlineCreate({ label, pending, onCreate, onCancel }: { label: string; pending: boolean; onCreate: (name: string) => void; onCancel: () => void }) {
+function InlineCreate({
+  label,
+  placeholder,
+  pending,
+  onCreate,
+  onCancel,
+}: {
+  label: string;
+  placeholder?: string;
+  pending: boolean;
+  onCreate: (name: string) => void;
+  onCancel: () => void;
+}) {
   const [name, setName] = useState("");
   const submit = () => name.trim() && onCreate(name.trim());
   return (
@@ -110,7 +122,7 @@ function InlineCreate({ label, pending, onCreate, onCancel }: { label: string; p
         autoFocus
         maxLength={120}
         aria-label={label}
-        placeholder={label}
+        placeholder={placeholder ?? label}
         value={name}
         onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => {
@@ -167,7 +179,13 @@ export function SectionPicker({ value, onChange, className = "" }: { value: stri
       <label className="text-sm">
         <span className="text-foreground-secondary">{t("qbank.subject")}</span>
         {creating === "SUBJECT" ? (
-          <InlineCreate label={t("qbank.newSubjectName")} pending={create.isPending} onCreate={(name) => create.mutate({ name })} onCancel={() => setCreating(null)} />
+          <InlineCreate
+            label={t("qbank.newSubjectName")}
+            placeholder={t("qbank.subjectPlaceholder")}
+            pending={create.isPending}
+            onCreate={(name) => create.mutate({ name })}
+            onCancel={() => setCreating(null)}
+          />
         ) : (
           <select
             className={`mt-1 w-full ${topicSelectClass}`}
@@ -416,7 +434,7 @@ function NewSubjectForm({ outline }: { outline: Outline }) {
     >
       <label className="text-sm">
         <span className="text-foreground-secondary">{t("qbank.newSubjectName")}</span>
-        <Input maxLength={120} value={name} onChange={(e) => setName(e.target.value)} />
+        <Input maxLength={120} value={name} onChange={(e) => setName(e.target.value)} placeholder={t("qbank.subjectPlaceholder")} />
       </label>
       <label className="text-sm">
         <span className="text-foreground-secondary">{t("qbank.topics.link")}</span>

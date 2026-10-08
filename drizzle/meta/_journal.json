@@ -260,6 +260,13 @@
       "when": 1791474210326,
       "tag": "0036_syllabus_import_detail",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "5",
+      "when": 1791478907445,
+      "tag": "0038_group_profiles",
+      "breakpoints": true
     }
   ]
 }

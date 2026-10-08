@@ -38,6 +38,7 @@ import { ANSWER_SOURCES, CONFIDENCE_LEVELS, IMPORT_ITEM_STATUSES, IMPORT_JOB_STA
 import { REFERRAL_SOURCES } from "../shared/referralSources";
 import { SYLLABUS_IMPORT_STATUSES, type SyllabusImportDetail } from "../shared/syllabusImport";
 import type { ClassScheduleEntry } from "../shared/schedule";
+import { GROUP_TYPES } from "../shared/groupType";
 import { SHARE_CHANNELS, SHARE_EVENT_TYPES, SHARE_TARGET_TYPES } from "../shared/shareTracking";
 import {
   APPROVAL_DECISIONS,
@@ -1361,6 +1362,21 @@ export const syllabusAssessmentAssignments = mysqlTable(
 export const groupLearningSettings = mysqlTable("group_learning_settings", {
   groupId: id("groupId").primaryKey(),
   progressVisibleToGroup: boolean("progressVisibleToGroup").notNull().default(true),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+/**
+ * School class vs course, kept beside study_groups (add-only). `study_groups.subject` holds the
+ * Fənn / İstiqamət and `study_groups.grade` the Sinif; `level` is the course Səviyyə (a GROUP_LEVELS
+ * key or free text). No row = a group from before types existed, classified on read by
+ * classifyLegacyGroup until the startup backfill writes its row. `source` is "TEACHER" once saved
+ * from the form, else "auto:<reason>" (docs/GROUP-TYPES.md).
+ */
+export const groupProfiles = mysqlTable("group_profiles", {
+  groupId: id("groupId").primaryKey(),
+  groupType: mysqlEnum("groupType", GROUP_TYPES).notNull(),
+  level: varchar("level", { length: 64 }).notNull().default(""),
+  source: varchar("source", { length: 32 }).notNull().default("TEACHER"),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 

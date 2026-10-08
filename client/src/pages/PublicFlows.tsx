@@ -12,6 +12,7 @@ import {
   fmtDateTime,
   fmtDay,
   fmtDuration,
+  groupFacts,
   groupFormatLabel,
   groupLanguageLabel,
   liveLabel,
@@ -21,6 +22,7 @@ import {
 import { trpc } from "@/lib/trpc";
 import { sharedFileDownloadUrl } from "@/lib/uploadFile";
 import { visitorId } from "@/lib/visitor";
+import type { GroupType } from "@shared/groupType";
 import type { ClassScheduleEntry } from "@shared/schedule";
 import { DEFAULT_SHARE_CAMPAIGN, parseShareCampaign, parseShareSource, type ShareTargetType } from "@shared/shareTracking";
 import { useEffect, useMemo, useRef } from "react";
@@ -62,10 +64,17 @@ function useShareAttribution(targetType: ShareTargetType, targetId: string, read
 }
 
 /** Extra group facts shown on a join-preview screen, only for the fields the teacher chose to share. */
-function GroupPreviewDetails({ g }: { g: { language?: string; format?: string; startDate?: string | Date | null; classSchedule?: ClassScheduleEntry[] } }) {
+function GroupPreviewDetails({
+  g,
+}: {
+  g: { groupType: GroupType; subject: string; grade: string; level: string; language?: string; format?: string; startDate?: string | Date | null; classSchedule?: ClassScheduleEntry[] };
+}) {
   const schedule = scheduleSummary(g.classSchedule);
   return (
     <dl className="mt-3 space-y-1 text-xs text-muted-foreground">
+      {groupFacts(g).map((f) => (
+        <div key={f.label} className="flex gap-1"><dt className="font-medium text-foreground-secondary">{f.label}:</dt><dd className="min-w-0 break-words">{f.value}</dd></div>
+      ))}
       {!!g.language && (
         <div className="flex gap-1"><dt className="font-medium text-foreground-secondary">{t("public.preview.language")}:</dt><dd>{groupLanguageLabel(g.language)}</dd></div>
       )}
@@ -152,7 +161,7 @@ export function JoinGroupPage() {
       ) : (
         <>
           <div className="mt-3 break-words text-lg">{g.name}</div>
-          <p className="text-sm text-muted-foreground">{[g.subject, g.grade, g.teacherName].filter(Boolean).join(" · ")}</p>
+          <p className="text-sm text-muted-foreground">{[t(`groups.type.${g.groupType}`), g.teacherName].filter(Boolean).join(" · ")}</p>
           <GroupPreviewDetails g={g} />
           {!!g.description && <p className="mt-3 text-sm">{g.description}</p>}
           <div className="mt-6">
@@ -202,7 +211,7 @@ export function PublicEmailInvitePage() {
       ) : (
         <>
           <div className="mt-3 break-words text-lg">{g.name}</div>
-          <p className="text-sm text-muted-foreground">{[g.subject, g.grade, g.teacherName].filter(Boolean).join(" · ")}</p>
+          <p className="text-sm text-muted-foreground">{[t(`groups.type.${g.groupType}`), g.teacherName].filter(Boolean).join(" · ")}</p>
           <GroupPreviewDetails g={g} />
           {!!g.description && <p className="mt-3 text-sm">{g.description}</p>}
           <p className="mt-3 text-xs text-muted-foreground">{t("public.invite.emailNote")}</p>
@@ -282,7 +291,7 @@ export function InviteLinkPage() {
       ) : (
         <>
           <div className="mt-3 break-words text-lg">{live.group.name}</div>
-          <p className="text-sm text-muted-foreground">{[live.group.subject, live.group.grade, live.group.teacherName].filter(Boolean).join(" · ")}</p>
+          <p className="text-sm text-muted-foreground">{[t(`groups.type.${live.group.groupType}`), live.group.teacherName].filter(Boolean).join(" · ")}</p>
           <GroupPreviewDetails g={live.group} />
           {!!live.group.description && <p className="mt-3 text-sm">{live.group.description}</p>}
           <p className="mt-3 text-xs text-muted-foreground">{t("public.inviteLink.singleUseNote")}</p>

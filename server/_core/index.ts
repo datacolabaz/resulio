@@ -18,6 +18,7 @@ import { serveStatic, setupVite } from "./vite";
 import { getDb, warnIfGoogleAuthSchemaMissing } from "../db";
 import { sweepExpiredAttempts } from "../modules/attempts";
 import { runPendingLinkJoinBackfill } from "../modules/groupJoin";
+import { runGroupProfileBackfill } from "../modules/groupProfiles";
 import { sweepResultEmails } from "../modules/resultEmail";
 import { startNotificationWorker } from "../notifications/dispatcher";
 import { runModuleDetailsBackfills } from "../syllabus/moduleDetailsBackfill";
@@ -137,6 +138,7 @@ async function startServer() {
   if (getDb()) {
     runPendingLinkJoinBackfill().catch((error) => console.error("[Groups] Pending join backfill failed", error instanceof Error ? error.message : error));
     runModuleDetailsBackfills().catch((error) => console.error("[Syllabus] module details backfill failed", error instanceof Error ? error.message : error));
+    runGroupProfileBackfill().catch((error) => console.error("[Groups] group type backfill failed", error instanceof Error ? error.message : error));
   }
 
   const port = Number(process.env.PORT || "3000");
