@@ -1,5 +1,6 @@
 import type { SyllabusItemKind } from "../../shared/syllabus";
 import { hasModuleDetails, type ModuleDetails } from "../../shared/syllabusModuleDetails";
+import { emptyTiming, hasCourseTiming, type SyllabusTiming } from "../../shared/syllabusTiming";
 import { withLegacyFallback } from "./legacyModuleDetails";
 import type { EngineOutput, ItemEval, LessonResult, ModuleResult, VersionStructure } from "./types";
 
@@ -24,7 +25,12 @@ const itemState = (e: ItemEval | undefined) => (e ? { state: e.state, available:
  * otherwise carries only its title, lock state and lesson/assessment stubs (no description, no content).
  * Its legacy `objectives` / `prerequisitesText` are never sent: they reach students only as details.
  */
-export function studentPathView(structure: VersionStructure, out: EngineOutput, details: ReadonlyMap<string, ModuleDetails> = new Map()) {
+export function studentPathView(
+  structure: VersionStructure,
+  out: EngineOutput,
+  details: ReadonlyMap<string, ModuleDetails> = new Map(),
+  timing: SyllabusTiming = emptyTiming(),
+) {
   const lessons = new Map<string, LessonResult>(out.lessons.map((l) => [l.id, l]));
   const modules = new Map<string, ModuleResult>(out.modules.map((m) => [m.id, m]));
   const finalEvals = new Map(out.finalItems.map((e) => [e.itemId, e]));
@@ -36,6 +42,8 @@ export function studentPathView(structure: VersionStructure, out: EngineOutput, 
     completed: out.syllabusCompleted,
     currentModuleId: out.currentModuleId,
     currentLessonId: out.currentLessonId,
+    /** Course duration and cadence as the author set them; null when neither is set. */
+    courseTiming: hasCourseTiming(timing.course) ? timing.course : null,
     modules: structure.modules.map((m) => {
       const mr = modules.get(m.id)!;
       const mEvals = new Map(mr.items.map((e) => [e.itemId, e]));
@@ -51,6 +59,7 @@ export function studentPathView(structure: VersionStructure, out: EngineOutput, 
         totalLessons: mr.totalLessons,
         description: locked ? null : m.description,
         estimatedMinutes: m.estimatedMinutes,
+        duration: timing.modules[m.id] ?? null,
         details: hasModuleDetails(moduleDetails) ? moduleDetails : null,
         lessons: m.lessons.map((l) => {
           const lr = lessons.get(l.id)!;

@@ -90,18 +90,19 @@ export async function studentDetail(scope: TeacherScope, syllabusId: string, stu
   const state = await progression.current(enrollment);
   if (!state) throw new AppError("NOT_FOUND");
   const db = requireDb();
-  const [lessonRows, itemRows, unlocks, approvals, [student], details] = await Promise.all([
+  const [lessonRows, itemRows, unlocks, approvals, [student], details, timing] = await Promise.all([
     db.select().from(syllabusLessonProgress).where(eq(syllabusLessonProgress.enrollmentId, enrollment.id)),
     db.select().from(syllabusItemProgress).where(eq(syllabusItemProgress.enrollmentId, enrollment.id)),
     progression.manualUnlocksOf(enrollment.id),
     db.select().from(syllabusApprovals).where(eq(syllabusApprovals.enrollmentId, enrollment.id)),
     db.select({ id: users.id, name: users.name }).from(users).where(eq(users.id, studentId)).limit(1),
     store.moduleDetailsOfVersion(enrollment.versionId),
+    store.timingOfVersion(enrollment.versionId),
   ]);
   return {
     student: { id: studentId, name: student?.name ?? "—" },
     enrollment: state.enrollment,
-    path: studentPathView(state.structure, state.output, details),
+    path: studentPathView(state.structure, state.output, details, timing),
     lessons: state.output.lessons.map((l) => {
       const row = lessonRows.find((r) => r.lessonId === l.id);
       return {

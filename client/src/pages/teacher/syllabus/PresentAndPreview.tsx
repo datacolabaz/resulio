@@ -1,5 +1,6 @@
 import { EmptyState, ErrorNote, Loading, Pill } from "@/components/AppShell";
 import { ModuleDetailsBlocks } from "@/components/syllabus/ModuleDetailsBlocks";
+import { CourseTimingPills, durationText } from "@/components/syllabus/Timing";
 import { Hints, StudentItemView } from "@/components/syllabus/StudentItemView";
 import { Markdown } from "@/components/syllabus/TheoryView";
 import { Button } from "@/components/ui/button";
@@ -148,6 +149,7 @@ function PreviewBody({ id }: { id: string }) {
         <div className="min-w-0">
           <h2 className="break-words text-2xl font-semibold">{syllabus.title}</h2>
           {(syllabus.subject || syllabus.level) && <p className="text-sm text-muted-foreground">{[syllabus.subject, syllabus.level].filter(Boolean).join(" · ")}</p>}
+          {path.courseTiming && <div className="mt-1 flex flex-wrap gap-1.5"><CourseTimingPills timing={path.courseTiming} /></div>}
         </div>
       </header>
       {syllabus.description && <p className="max-w-3xl whitespace-pre-wrap text-sm text-foreground-secondary">{syllabus.description}</p>}
@@ -160,6 +162,7 @@ function PreviewBody({ id }: { id: string }) {
               <div key={m.id} className="rounded-2xl border border-border bg-card p-3">
                 <p className="text-xs uppercase tracking-wide text-muted-foreground">{t("syllabus.preview.moduleN", { n: mi + 1 })}</p>
                 <p className="font-semibold">{m.title}</p>
+                {m.duration && <p className="text-xs text-muted-foreground">{durationText(m.duration)}</p>}
                 <ul className="mt-2 space-y-1">
                   {m.lessons.map((l) => {
                     const active = current?.lesson.id === l.id;

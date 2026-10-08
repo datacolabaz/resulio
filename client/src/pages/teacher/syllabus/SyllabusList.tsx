@@ -6,11 +6,12 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { getLocale, t } from "@/i18n/messages";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { fileDownloadUrl } from "@/lib/uploadFile";
-import { Archive, ArchiveRestore, BookOpen, EllipsisVertical, Plus, Sparkles, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, BookOpen, EllipsisVertical, FileUp, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation } from "wouter";
 import { DeleteSyllabusDialog } from "./DeleteSyllabusDialog";
+import { ImportDialog, importPath } from "./ImportDialog";
 import { emptySyllabusFields, fieldsPayload, SyllabusFieldsForm } from "./SyllabusFields";
 import { SyllabusShell, SyllabusStatusBadge, toastError } from "./shared";
 
@@ -104,9 +105,43 @@ function SampleButton({ variant = "outline" }: { variant?: "outline" | "default"
   );
 }
 
+/** Imports still running, failed or waiting for review, so the teacher can pick up where they left off. */
+function OpenImports() {
+  const open = trpc.teacher.syllabus.aiImport.open.useQuery(undefined, {
+    retry: false,
+    refetchInterval: (q) => (q.state.data?.some((j) => j.status === "QUEUED" || j.status === "PROCESSING") ? 4000 : false),
+  });
+  if (!open.data?.length) return null;
+  return (
+    <section className="rounded-2xl border border-border bg-card p-3" aria-label={t("simport.openTitle")}>
+      <h2 className="mb-2 text-sm font-semibold">{t("simport.openTitle")}</h2>
+      <ul className="space-y-1.5">
+        {open.data.map((j) => (
+          <li key={j.id} className="flex flex-wrap items-center gap-2 text-sm">
+            <Link href={importPath(j.id)} className="min-w-0 truncate font-medium text-link hover:underline">
+              {j.title ?? j.fileName ?? t("simport.pastedText")}
+            </Link>
+            <Pill>{t(`simport.status.${j.status}`)}</Pill>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function ImportButton({ onClick, variant = "outline" }: { onClick: () => void; variant?: "outline" | "default" }) {
+  return (
+    <Button variant={variant} onClick={onClick}>
+      <FileUp className="mr-1 h-4 w-4" aria-hidden />
+      {t("simport.button")}
+    </Button>
+  );
+}
+
 function SyllabusListBody() {
   const list = trpc.teacher.syllabus.list.useQuery();
   const [open, setOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   if (list.isLoading) return <Loading />;
@@ -125,8 +160,10 @@ function SyllabusListBody() {
             <Plus className="mr-1 h-4 w-4" aria-hidden />
             {t("syllabus.new")}
           </Button>
+          <ImportButton onClick={() => setImporting(true)} />
         </div>
       </div>
+      <OpenImports />
       {rows.length === 0 ? (
         <>
           <EmptyState
@@ -136,6 +173,7 @@ function SyllabusListBody() {
               <div className="flex flex-wrap justify-center gap-2">
                 <SampleButton variant="default" />
                 <Button variant="outline" onClick={() => setOpen(true)}>{t("syllabus.new")}</Button>
+                <ImportButton onClick={() => setImporting(true)} />
               </div>
             }
           />
@@ -188,6 +226,7 @@ function SyllabusListBody() {
         </>
       )}
       <CreateDialog open={open} onOpenChange={setOpen} />
+      <ImportDialog open={importing} onOpenChange={setImporting} />
       <DeleteSyllabusDialog syllabusId={deleting} open={deleting !== null} onOpenChange={(v) => !v && setDeleting(null)} />
     </div>
   );

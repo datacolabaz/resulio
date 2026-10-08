@@ -10,6 +10,8 @@ import {
 } from "../../shared/syllabus";
 import { analyticsSettingsSchema } from "../../shared/syllabusAnalytics";
 import { moduleDetailsSchema } from "../../shared/syllabusModuleDetails";
+import { SYLLABUS_IMPORT_MAX_TEXT, syllabusImportStructureSchema } from "../../shared/syllabusImport";
+import { courseTimingSchema, durationSchema } from "../../shared/syllabusTiming";
 import { timestampDate } from "../../shared/timestamp";
 import { rateLimit, router, studentProcedure, teacherProcedure } from "../_core/trpc";
 import * as access from "./access";
@@ -18,6 +20,7 @@ import { clientActivityBatchSchema } from "./activityRules";
 import * as authoring from "./authoring";
 import { assertSyllabusEnabled, isSchemaBehind, syllabusEnabledFor } from "./availability";
 import * as draft from "./draft";
+import * as imports from "./importJobs";
 import * as learning from "./learning";
 import * as links from "./links";
 import * as publishing from "./publishing";
@@ -117,6 +120,12 @@ export const teacherSyllabusRouter = router({
   updateModuleDetails: syllabusTeacherProcedure
     .input(z.object({ moduleId: entityId, details: moduleDetailsSchema, expectedRevision: revision }))
     .mutation(({ ctx, input }) => authoring.updateModuleDetails(ctx.scope, input.moduleId, input.details, input.expectedRevision)),
+  updateCourseTiming: syllabusTeacherProcedure
+    .input(z.object({ id: entityId, course: courseTimingSchema, expectedRevision: revision }))
+    .mutation(({ ctx, input }) => authoring.updateCourseTiming(ctx.scope, input.id, input.course, input.expectedRevision)),
+  updateModuleDuration: syllabusTeacherProcedure
+    .input(z.object({ moduleId: entityId, duration: durationSchema.nullable(), expectedRevision: revision }))
+    .mutation(({ ctx, input }) => authoring.updateModuleDuration(ctx.scope, input.moduleId, input.duration, input.expectedRevision)),
   deleteModule: syllabusTeacherProcedure
     .input(z.object({ moduleId: entityId, expectedRevision: revision }))
     .mutation(({ ctx, input }) => authoring.deleteModule(ctx.scope, input.moduleId, input.expectedRevision)),
@@ -170,6 +179,24 @@ export const teacherSyllabusRouter = router({
     .use(rateLimit("syllabusCreateSample", 5, MINUTE))
     .input(z.object({ locale: z.enum(["az", "en", "ru"]).default("az") }))
     .mutation(({ ctx, input }) => sample.createSampleSyllabus(ctx.scope, input.locale)),
+  aiImport: router({
+    availability: syllabusTeacherProcedure.query(({ ctx }) => imports.importAvailability(ctx.scope)),
+    open: syllabusTeacherProcedure.query(({ ctx }) => imports.listOpenImports(ctx.scope)),
+    get: syllabusTeacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => imports.getImport(ctx.scope, input.id)),
+    start: syllabusTeacherProcedure
+      .use(rateLimit("syllabusImportStart", 10, MINUTE))
+      .input(z.union([z.object({ text: z.string().max(SYLLABUS_IMPORT_MAX_TEXT + 10_000) }), z.object({ fileId: entityId })]))
+      .mutation(({ ctx, input }) => imports.startImport(ctx.scope, input)),
+    retry: syllabusTeacherProcedure
+      .use(rateLimit("syllabusImportStart", 10, MINUTE))
+      .input(z.object({ id: entityId }))
+      .mutation(({ ctx, input }) => imports.retryImport(ctx.scope, input.id)),
+    create: syllabusTeacherProcedure
+      .use(rateLimit("syllabusImportCreate", 10, MINUTE))
+      .input(z.object({ id: entityId, structure: syllabusImportStructureSchema }))
+      .mutation(({ ctx, input }) => imports.createFromImport(ctx.scope, input.id, input.structure)),
+    remove: syllabusTeacherProcedure.input(z.object({ id: entityId })).mutation(({ ctx, input }) => imports.deleteImport(ctx.scope, input.id)),
+  }),
   preview: syllabusTeacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => draft.preview(ctx.scope, input.id)),
   publishPreview: syllabusTeacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => draft.publishPreview(ctx.scope, input.id)),
   publish: syllabusTeacherProcedure

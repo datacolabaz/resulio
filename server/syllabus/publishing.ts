@@ -12,6 +12,7 @@ import { announceFirstPublish } from "./notify";
 import { answerKeyOf, cloneContainer, createContainer } from "./practiceTasks";
 import { buildStructure, contentHash, nextVersionLabel } from "./snapshot";
 import * as store from "./store";
+import { draftTiming, freezeTiming } from "./timing";
 
 /**
  * Publish = freeze the draft into an immutable version (§4.4). Existing enrollments stay on the
@@ -31,6 +32,7 @@ export async function publish(scope: TeacherScope, syllabusId: string, opts: { l
   const answerKeys = new Map<string, string | null>();
   for (const it of draftItems) if (it.kind === "STUDENT_PRACTICE" && it.taskId) answerKeys.set(it.id, await answerKeyOf(db, it.taskId));
   const moduleDetails = await draftModuleDetails(syllabusId, db);
+  const timing = await draftTiming(syllabusId, db);
 
   const result = await db.transaction(async (tx) => {
     const [locked] = await tx.select().from(syllabi).where(eq(syllabi.id, syllabusId)).for("update");
@@ -102,6 +104,7 @@ export async function publish(scope: TeacherScope, syllabusId: string, opts: { l
       }),
     );
     await freezeModuleDetails(tx, versionId, moduleDetails, structure.modules.map((m) => m.id));
+    await freezeTiming(tx, versionId, timing, structure.modules.map((m) => m.id));
     await tx
       .update(syllabi)
       .set({ currentVersionId: versionId, status: "PUBLISHED", hasDraftChanges: false })

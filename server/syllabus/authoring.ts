@@ -33,6 +33,7 @@ import {
   type SyllabusNodeStatus,
 } from "../../shared/syllabus";
 import { emptyModuleDetails, type ModuleDetails } from "../../shared/syllabusModuleDetails";
+import { timingFor, type CourseTiming, type Duration } from "../../shared/syllabusTiming";
 import { requireDb, type DbOrTx } from "../db";
 import type { TeacherScope } from "../modules/access";
 import { AppError, type AppErrorCode } from "../modules/errors";
@@ -40,6 +41,7 @@ import { ownedSyllabus } from "./access";
 import { applyLegacyPatch } from "./legacyModuleDetails";
 import { draftModuleDetails, purgeModuleDetails, saveDraftModuleDetails } from "./moduleDetails";
 import { cloneContainer, createContainer, deleteContainers, syncContainer } from "./practiceTasks";
+import { draftTiming, patchDraftTiming, purgeTiming, withCourse, withModuleDuration } from "./timing";
 
 /**
  * Draft editing. Students never read these tables (they read the pinned version), so every edit
@@ -259,6 +261,7 @@ async function purgeSyllabus(tx: DbOrTx, workspaceId: string, id: string) {
   const versionIds = (await tx.select({ id: syllabusVersions.id }).from(syllabusVersions).where(eq(syllabusVersions.syllabusId, id))).map((v) => v.id);
   if (versionIds.length) await tx.delete(syllabusVersionItems).where(inArray(syllabusVersionItems.versionId, versionIds));
   await purgeModuleDetails(tx, id, versionIds);
+  await purgeTiming(tx, id, versionIds);
   await tx.delete(syllabusVersions).where(eq(syllabusVersions.syllabusId, id));
   await tx.delete(syllabusItems).where(eq(syllabusItems.syllabusId, id));
   await tx.delete(syllabusLessons).where(eq(syllabusLessons.syllabusId, id));
@@ -313,14 +316,16 @@ export async function setArchived(scope: TeacherScope, id: string, archived: boo
 export async function draftTree(scope: TeacherScope, id: string) {
   const syllabus = await ownedSyllabus(scope, id);
   const db = requireDb();
-  const [modules, lessons, items, details] = await Promise.all([
+  const [modules, lessons, items, details, timing] = await Promise.all([
     db.select().from(syllabusModules).where(and(eq(syllabusModules.syllabusId, id), isNull(syllabusModules.deletedAt))).orderBy(asc(syllabusModules.position)),
     db.select().from(syllabusLessons).where(and(eq(syllabusLessons.syllabusId, id), isNull(syllabusLessons.deletedAt))).orderBy(asc(syllabusLessons.position)),
     db.select().from(syllabusItems).where(and(eq(syllabusItems.syllabusId, id), isNull(syllabusItems.deletedAt))).orderBy(asc(syllabusItems.position)),
     draftModuleDetails(id, db),
+    draftTiming(id, db),
   ]);
   return {
     syllabus: { ...syllabus, effectiveRules: resolveRules(syllabus.completionRules) },
+    timing: timingFor(timing, modules.map((m) => m.id)),
     modules: modules.map((m) => {
       const d = details.get(m.id) ?? emptyModuleDetails();
       return {
@@ -403,6 +408,21 @@ export async function deleteModule(scope: TeacherScope, moduleId: string, expect
     await tx.update(syllabusLessons).set({ deletedAt: now }).where(and(eq(syllabusLessons.moduleId, moduleId), isNull(syllabusLessons.deletedAt)));
     await tx.update(syllabusItems).set({ deletedAt: now }).where(and(eq(syllabusItems.moduleId, moduleId), isNull(syllabusItems.deletedAt)));
   });
+  return { ok: true };
+}
+
+export async function updateCourseTiming(scope: TeacherScope, syllabusId: string, course: CourseTiming, expectedRevision?: number) {
+  const syllabus = await ownedSyllabus(scope, syllabusId);
+  await touchDraft(syllabus, expectedRevision);
+  await patchDraftTiming(syllabusId, withCourse(course));
+  return { ok: true };
+}
+
+/** `duration` null clears it. */
+export async function updateModuleDuration(scope: TeacherScope, moduleId: string, duration: Duration | null, expectedRevision?: number) {
+  const { module, syllabus } = await ownedModule(scope, moduleId);
+  await touchDraft(syllabus, expectedRevision);
+  await patchDraftTiming(module.syllabusId, withModuleDuration(moduleId, duration));
   return { ok: true };
 }
 
@@ -715,5 +735,7 @@ export async function duplicateModule(scope: TeacherScope, moduleId: string, exp
       await copyItems(tx, scope, items.filter((it) => it.scope === "LESSON" && it.lessonId === l.id), { syllabusId: module.syllabusId, moduleId: id, lessonId: lessonCopy });
     }
   });
+  const duration = (await draftTiming(module.syllabusId)).modules[moduleId];
+  if (duration) await patchDraftTiming(module.syllabusId, withModuleDuration(id, duration));
   return (await ownedModule(scope, id)).module;
 }

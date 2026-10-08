@@ -2,6 +2,7 @@ import { AppShell, ErrorNote, Loading, Panel, Pill } from "@/components/AppShell
 import { StatusBadge, toneSurface } from "@/components/StatusBadge";
 import { ActivityTimeline } from "@/components/syllabus/ActivityTimeline";
 import { ModuleDetailsBlocks } from "@/components/syllabus/ModuleDetailsBlocks";
+import { CourseTimingPills, durationText } from "@/components/syllabus/Timing";
 import { StudentWorkflow } from "@/components/syllabus/Workflow";
 import { Button } from "@/components/ui/button";
 import { t, type MessageKey } from "@/i18n/messages";
@@ -114,6 +115,7 @@ function ActivePath({ id, path, record }: { id: string; path: Path; record: Reco
         description={path.syllabus.description}
         extra={
           <>
+            <CourseTimingPills timing={path.courseTiming} />
             {path.version.label && <Pill>{t("learn.version", { label: path.version.label })}</Pill>}
             {path.access.endsAt && <Pill>{t("learn.accessUntil", { at: fmtDateTime(path.access.endsAt) })}</Pill>}
           </>
@@ -215,6 +217,7 @@ function ModuleCard({
             <span>{statusText(m.status)}</span>
             <span>{t("learn.lessonsDone", { done: m.completedLessons, total: m.totalLessons })}</span>
             {m.lessons.some((l) => lessonChange(path.lessonChanges, l.id)) && <StatusBadge tone="info" icon={Sparkles}>{t("ux.change.UPDATED")}</StatusBadge>}
+            {m.duration ? <span>{durationText(m.duration)}</span> : null}
             {m.estimatedMinutes ? <span>{t("learn.minutes", { count: m.estimatedMinutes })}</span> : null}
           </div>
           {!locked && <ProgressBar value={pct(m.completedLessons, m.totalLessons)} label={t("learn.moduleProgress", { title: m.title })} />}
