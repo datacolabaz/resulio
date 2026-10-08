@@ -27,6 +27,24 @@ export const app = {
   "shell.language": ["Dil: {name}", "Language: {name}", "Язык: {name}"],
   "shell.primaryNav": ["Əsas naviqasiya", "Main navigation", "Основная навигация"],
 
+  // Browser-notification permission prompt
+  "notifyPrompt.title": ["Yeniliklərdən vaxtında xəbərdar olun", "Get updates as they happen", "Узнавайте о новостях вовремя"],
+  "notifyPrompt.body": [
+    "Resulio.co-da yeni elanlar, imkanlar və vacib yeniliklər yayımlandıqda sizə bildiriş göndərək.",
+    "We'll notify you when new announcements, opportunities and important updates are published on Resulio.co.",
+    "Мы пришлём уведомление, когда на Resulio.co появятся новые объявления, возможности и важные обновления.",
+  ],
+  "notifyPrompt.allow": ["Bildirişlərə icazə ver", "Allow notifications", "Разрешить уведомления"],
+  "notifyPrompt.notNow": ["İndi yox", "Not now", "Не сейчас"],
+  "notifyPrompt.enabled": ["Resulio.co bildirişləri aktivdir.", "Resulio.co notifications are on.", "Уведомления Resulio.co включены."],
+  "notifyPrompt.blockedTitle": ["Bildirişlər bloklanıb", "Notifications are blocked", "Уведомления заблокированы"],
+  "notifyPrompt.blockedBody": [
+    "Brauzer bu sayt üçün bildirişləri bloklayıb. Aktiv etmək üçün ünvan sətrindəki sayt ikonuna klikləyin və bildirişlərə icazə verin.",
+    "Your browser blocks notifications for this site. To turn them on, click the site icon in the address bar and allow notifications.",
+    "Браузер блокирует уведомления для этого сайта. Чтобы включить их, нажмите на значок сайта в адресной строке и разрешите уведомления.",
+  ],
+  "notifyPrompt.gotIt": ["Aydındır", "Got it", "Понятно"],
+
   "landing.cancelled": ["Giriş ləğv edildi.", "Sign-in was cancelled.", "Вход отменён."],
   "landing.loginFailed": [
     "Google ilə giriş alınmadı ({reason}). Yenidən cəhd edin.",

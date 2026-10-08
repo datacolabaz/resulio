@@ -122,6 +122,32 @@ see the task and grade rows; teachers see every row.
    the same for retries of the same notice and new for a new notice.
 4. Add Settings labels `settings.event.<EVENT>` (AZ/EN/RU).
 
+## Browser notification prompt (web)
+
+`client/src/components/NotificationPermissionPrompt.tsx` (mounted once in `App.tsx`), hook
+`hooks/useNotificationPrompt.ts`, pure logic in `lib/notificationPrompt.ts` (tests:
+`server/notificationPrompt.test.ts`). A non-modal card asks for the browser's notification
+permission; after a grant it shows one local test notification ("Resulio.co bildirişləri aktivdir.").
+
+- Shown after 8 s of visible time on site or on the second page (SPA route change), never on
+  sign-in/onboarding, exam/task taking, the lesson player or editors with a sticky action bar
+  (`EXCLUDED_ROUTES`).
+- Only when `Notification` exists, the page is a secure context and the permission is `default`.
+  "İndi yox", Escape or × → not again for 7 days; shown and ignored → not again for 1 day;
+  granted → never again; a denial is never re-requested (guidance to the browser settings is shown
+  only right after the user clicked and the browser answered "denied").
+- State: `localStorage["resulio.notifyPrompt.v1"]` = `{ v, shownCount, lastShownAt, dismissedAt,
+  grantedAt, deniedAt }`; unreadable storage counts as empty.
+- It waits while an element marked `data-notify-avoid` (e.g. the landing hero sign-up buttons) is
+  where the card would appear, and re-checks on scroll/resize.
+
+**No web push yet.** There is no service worker, VAPID key, `PushSubscription` endpoint or web
+push provider; `push.ts` only sends to mobile Expo tokens. A grant therefore only enables the local
+test notification. To send news/announcements: add a service worker (`push` / `notificationclick`),
+a VAPID key pair, a `web` provider in `push.ts` that stores `PushSubscription`s (signed-in users via
+`devices.register`; anonymous visitors need a separate subscription table keyed by endpoint), an
+`ANNOUNCEMENT` event / admin broadcast, and subscribe right after the grant in `useNotificationPrompt`.
+
 ## Mobile push
 
 Off until configured. Built-in provider: Expo (fits a React Native / Expo app); other providers

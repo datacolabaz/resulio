@@ -117,26 +117,29 @@ export default function Home() {
                 {t("landing.loginFailed", { reason: loginReason })}
               </p>
             )}
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Button
-                size="lg"
-                disabled={startingFree}
-                className={ctaActive}
-                onClick={() => {
-                  setStartingFree(true);
-                  startLogin(returnTo);
-                }}
-              >
-                {startingFree && <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground/40 border-t-primary-foreground motion-reduce:animate-none" aria-hidden />}
-                {t("landing.hero.ctaPrimary")}
-              </Button>
-              <Button asChild size="lg" variant="outline" className={ctaActive}>
-                <a href="#dashboard-preview" onClick={(e) => scrollToId(e, "dashboard-preview")}>
-                  {t("landing.hero.ctaSecondary")}
-                </a>
-              </Button>
+            {/* The notification prompt waits while these sign-up actions sit where it would appear. */}
+            <div data-notify-avoid="">
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                <Button
+                  size="lg"
+                  disabled={startingFree}
+                  className={ctaActive}
+                  onClick={() => {
+                    setStartingFree(true);
+                    startLogin(returnTo);
+                  }}
+                >
+                  {startingFree && <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground/40 border-t-primary-foreground motion-reduce:animate-none" aria-hidden />}
+                  {t("landing.hero.ctaPrimary")}
+                </Button>
+                <Button asChild size="lg" variant="outline" className={ctaActive}>
+                  <a href="#dashboard-preview" onClick={(e) => scrollToId(e, "dashboard-preview")}>
+                    {t("landing.hero.ctaSecondary")}
+                  </a>
+                </Button>
+              </div>
+              <EmailSignIn className="max-w-sm" googleReturnTo={returnTo} />
             </div>
-            <EmailSignIn className="max-w-sm" googleReturnTo={returnTo} />
             {demoAvailable.data && (
               <div className="mt-4 flex flex-wrap gap-3">
                 <Button variant="ghost" size="sm" disabled={demo.isPending} onClick={() => void enterDemo("TEACHER")}>

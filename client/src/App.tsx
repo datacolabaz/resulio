@@ -38,6 +38,7 @@ import { AssignmentsPage, LibraryPage, UsagePage } from "@/pages/teacher/Teacher
 import { lazy, Suspense, useEffect, useRef } from "react";
 import { Redirect, Route, Switch, useLocation, useParams } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { NotificationPermissionPrompt } from "./components/NotificationPermissionPrompt";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { useAuth } from "./_core/hooks/useAuth";
 
@@ -244,6 +245,7 @@ function LocalizedApp() {
       <ScrollReset />
       <SuspendedGate>
         <Router />
+        <NotificationPermissionPrompt />
       </SuspendedGate>
     </>
   );
