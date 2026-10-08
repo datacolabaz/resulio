@@ -18,6 +18,7 @@ import { serveStatic, setupVite } from "./vite";
 import { getDb, warnIfGoogleAuthSchemaMissing } from "../db";
 import { sweepExpiredAttempts } from "../modules/attempts";
 import { runPendingLinkJoinBackfill } from "../modules/groupJoin";
+import { groupLinkPreview, groupPreviewRoute } from "../modules/groupLinkPreview";
 import { runGroupProfileBackfill } from "../modules/groupProfiles";
 import { sweepResultEmails } from "../modules/resultEmail";
 import { resumeAnnouncements } from "../notifications/announcements";
@@ -119,6 +120,7 @@ async function startServer() {
     res.set("Cache-Control", "no-store").type("application/javascript").send(publicPlatformScript());
   });
   app.get("/api/public/syllabus-preview/:code", syllabusPreviewRoute);
+  app.get("/api/public/group-preview/:kind/:key", groupPreviewRoute);
   registerGoogleAuthRoutes(app);
   registerFileRoutes(app);
   app.use(
@@ -129,11 +131,11 @@ async function startServer() {
     }),
   );
   if (process.env.NODE_ENV === "development") {
-    await setupVite(app, server, { syllabusPreview: syllabusLinkPreview });
+    await setupVite(app, server, { syllabusPreview: syllabusLinkPreview, groupPreview: groupLinkPreview });
   } else if (ENV.frontendUrl) {
     app.use(frontendRedirect(ENV.frontendUrl));
   } else {
-    serveStatic(app, { syllabusPreview: syllabusLinkPreview });
+    serveStatic(app, { syllabusPreview: syllabusLinkPreview, groupPreview: groupLinkPreview });
   }
 
   startAttemptSweeper();

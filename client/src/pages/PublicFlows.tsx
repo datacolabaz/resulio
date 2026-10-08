@@ -13,6 +13,7 @@ import {
   fmtDay,
   fmtDuration,
   groupFacts,
+  groupFactsLine,
   groupFormatLabel,
   groupLanguageLabel,
   liveLabel,
@@ -22,6 +23,8 @@ import {
 import { trpc } from "@/lib/trpc";
 import { sharedFileDownloadUrl } from "@/lib/uploadFile";
 import { visitorId } from "@/lib/visitor";
+import { useSharePageMeta } from "@/seo/usePageMeta";
+import { groupPageTitle } from "@shared/groupLinks";
 import type { GroupType } from "@shared/groupType";
 import type { ClassScheduleEntry } from "@shared/schedule";
 import { DEFAULT_SHARE_CAMPAIGN, parseShareCampaign, parseShareSource, type ShareTargetType } from "@shared/shareTracking";
@@ -127,6 +130,11 @@ function Card({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Same title as the server-rendered link preview; only while the link lets people join (dead links keep the generic title). */
+function useGroupPageMeta(g: { name: string; groupType: GroupType; subject: string; grade: string; level: string; teacherName: string } | null | undefined) {
+  useSharePageMeta(g ? groupPageTitle(g.name) : null, g ? [groupFactsLine(g), g.teacherName].filter(Boolean).join(" · ") : "");
+}
+
 /** Why the group's invite link turns people away right now, shown before anyone signs in or presses Join. */
 function InviteRejectionNote({ rejection }: { rejection: "INVITE_CODE_INACTIVE" | "INVITE_CODE_EXPIRED" | "GROUP_NOT_ACCEPTING" }) {
   if (rejection === "GROUP_NOT_ACCEPTING") return <p role="alert" className="text-sm text-muted-foreground">{t("public.join.notAccepting")}</p>;
@@ -154,6 +162,7 @@ export function JoinGroupPage() {
   });
   const g = invite.data;
   const { channel, campaign, visitorId: vid } = useShareAttribution("GROUP", inviteCode, Boolean(g));
+  useGroupPageMeta(g && !g.rejection ? g : null);
   return (
     <Card>
       <h1 className="mt-4 text-xl font-semibold">{t("public.join.title")}</h1>
@@ -203,6 +212,7 @@ export function PublicEmailInvitePage() {
   const utils = trpc.useUtils();
   const accept = trpc.student.acceptEmailInvite.useMutation({ onSuccess: () => utils.auth.me.invalidate() });
   const g = invite.data;
+  useGroupPageMeta(g);
   const returnTo = `/invite/${token}`;
   return (
     <Card>
@@ -258,6 +268,7 @@ export function InviteLinkPage() {
   const p = preview.data;
   const live = p && (p.state === "ACTIVE" || p.state === "REDEEMED_BY_YOU") ? p : null;
   const { channel, campaign, visitorId: vid } = useShareAttribution("GROUP", live ? `link:${live.linkId}` : "", Boolean(live));
+  useGroupPageMeta(live?.state === "ACTIVE" ? live.group : null);
   const returnTo = `/g/${token}${window.location.search}`;
   const signIn = (
     <>

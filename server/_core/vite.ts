@@ -5,10 +5,10 @@ import { nanoid } from "nanoid";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import viteConfig from "../../vite.config";
-import { previewResolver, syllabusPreviewHtml, type PreviewLookup } from "./linkPreview";
+import { linkPreviewHtml, previewResolvers, type PreviewSources } from "./linkPreview";
 import { mountSpa } from "./spa";
 
-export async function setupVite(app: Express, server: Server, opts: { syllabusPreview?: PreviewLookup } = {}) {
+export async function setupVite(app: Express, server: Server, opts: PreviewSources = {}) {
   const serverOptions = {
     middlewareMode: true,
     hmr: { server },
@@ -21,7 +21,7 @@ export async function setupVite(app: Express, server: Server, opts: { syllabusPr
     server: serverOptions,
     appType: "custom",
   });
-  const resolvePreview = opts.syllabusPreview ? previewResolver(opts.syllabusPreview, { ttlMs: 0 }) : null;
+  const resolvers = previewResolvers(opts, { ttlMs: 0 });
 
   app.use(vite.middlewares);
   app.use("*", async (req, res, next) => {
@@ -42,7 +42,7 @@ export async function setupVite(app: Express, server: Server, opts: { syllabusPr
         `src="/src/main.tsx?v=${nanoid()}"`
       );
       let page = await vite.transformIndexHtml(url, template);
-      if (resolvePreview) page = (await syllabusPreviewHtml(page, new URL(url, "http://localhost").pathname, resolvePreview)) ?? page;
+      page = (await linkPreviewHtml(page, new URL(url, "http://localhost").pathname, resolvers)) ?? page;
       res.status(200).set({ "Content-Type": "text/html" }).end(page);
     } catch (e) {
       vite.ssrFixStacktrace(e as Error);
@@ -51,7 +51,7 @@ export async function setupVite(app: Express, server: Server, opts: { syllabusPr
   });
 }
 
-export function serveStatic(app: Express, opts: { syllabusPreview?: PreviewLookup } = {}) {
+export function serveStatic(app: Express, opts: PreviewSources = {}) {
   const distPath =
     process.env.NODE_ENV === "development"
       ? path.resolve(import.meta.dirname, "../..", "dist", "public")
