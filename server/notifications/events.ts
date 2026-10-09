@@ -59,8 +59,11 @@ export interface EventData {
   GROUP_MEMBER_JOINED: { groupId: string; groupName: string; studentName: string | null };
   /** To the teacher: a student asked, from the syllabus share page, to join a group (`groupName`) or to take part individually (null). */
   SYLLABUS_JOIN_REQUESTED: { requestId: string; syllabusId: string; syllabusTitle: string; studentName: string | null; groupName: string | null };
-  /** To the student: the teacher answered their request. `path` is where the notice leads. */
-  SYLLABUS_JOIN_DECIDED: { requestId: string; syllabusTitle: string; decision: "ACCEPTED" | "REJECTED"; groupName: string | null; note: string | null; path: string };
+  /**
+   * To the student: the teacher answered their request. `path` is where the notice leads;
+   * `accessGranted` (absent on older rows) when accepting also opened the syllabus to them.
+   */
+  SYLLABUS_JOIN_DECIDED: { requestId: string; syllabusTitle: string; decision: "ACCEPTED" | "REJECTED"; groupName: string | null; note: string | null; path: string; accessGranted?: boolean };
   /** An admin's platform announcement (announcements.ts); the recipient's language is picked at render time. */
   ANNOUNCEMENT: { announcementId: number; language: AnnouncementLanguage; texts: AnnouncementTexts; url: string };
 }

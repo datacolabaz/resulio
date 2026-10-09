@@ -117,7 +117,7 @@ export interface DispatcherDeps {
 }
 
 export function createDispatcher(deps: DispatcherDeps) {
-  async function attempt(channel: Channel, event: EventType, userId: number, data: unknown): Promise<ChannelResult> {
+  async function attempt(channel: Channel, event: EventType, userId: number, data: unknown, deliveryId?: number): Promise<ChannelResult> {
     try {
       const guard = (deps.guards ?? guards)[event] as SendGuard<EventType> | undefined;
       const blocked = guard ? await guard(data as EventData[EventType]) : null;
@@ -125,7 +125,7 @@ export function createDispatcher(deps: DispatcherDeps) {
       const recipient = await deps.recipient(userId);
       if (!recipient) return { status: "SKIPPED", reason: "NO_USER" };
       const content = renderNotification(event, data as EventData[EventType], recipient, deps.appUrl());
-      return await deps.adapters[channel].send(userId, content, event);
+      return await deps.adapters[channel].send(userId, content, event, deliveryId);
     } catch (error) {
       return { status: "FAILED", reason: (error instanceof Error ? error.message : "ERROR").slice(0, 200), retryable: true };
     }
@@ -137,7 +137,7 @@ export function createDispatcher(deps: DispatcherDeps) {
     if (!row) return;
     const result: ChannelResult =
       isEventType(row.event) && isChannel(row.channel)
-        ? await attempt(row.channel, row.event, row.userId, row.payload)
+        ? await attempt(row.channel, row.event, row.userId, row.payload, row.id)
         : { status: "SKIPPED", reason: "UNKNOWN_EVENT" };
     const next = settle(result, row.attempts, new Date());
     await deps.store.finish(id, { ...next, error: next.error?.slice(0, 255) ?? null });

@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { t } from "@/i18n/messages";
+import { isMessageKey, t } from "@/i18n/messages";
 import { trpc } from "@/lib/trpc";
 import { formatFileSize, uploadFile, UploadError, type UploadedFile } from "@/lib/uploadFile";
 import { SYLLABUS_IMPORT_FILE_EXTENSIONS, SYLLABUS_IMPORT_MAX_TEXT, SYLLABUS_IMPORT_MIN_TEXT, SYLLABUS_IMPORT_TEXT_EXTENSIONS } from "@shared/syllabusImport";
@@ -16,6 +16,12 @@ const ACCEPT = [...SYLLABUS_IMPORT_FILE_EXTENSIONS, ...SYLLABUS_IMPORT_TEXT_EXTE
 const isTextFile = (name: string) => SYLLABUS_IMPORT_TEXT_EXTENSIONS.some((ext) => name.toLowerCase().endsWith(ext));
 
 export const importPath = (jobId: string) => `/teacher/syllabus/import/${jobId}`;
+
+/** Why an import failed, in the teacher's words (unknown codes read as a generic error). */
+export const importFailureText = (code: string | null) => {
+  const key = `simport.failed.${code ?? ""}`;
+  return isMessageKey(key) ? t(key) : t("simport.failed.INTERNAL");
+};
 
 /**
  * "Create from a file or text (AI)": paste the syllabus or pick a file. Text files are read here and

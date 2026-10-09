@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { authAccounts, groupEmailInvites, groupMembers, shareEvents, users } from "../../drizzle/schema";
+import { authAccounts, groupEmailInvites, groupMembers, shareEvents, syllabusAccessGrants, users } from "../../drizzle/schema";
 import { resetRateLimits } from "../_core/rateLimit";
 import * as db from "../db";
 import { defaultContext, resolveAccess } from "../modules/access";
@@ -320,6 +320,22 @@ describe("direct sign-in default context", () => {
     await testDb().insert(groupMembers).values({ groupId: group.id, userId: student.id, status: "PENDING" });
     const access = await resolveAccess(student.id);
     expect(access.pendingMemberships).toBe(1);
+    expect(defaultContext(access, null)).toBe("learning");
+  });
+
+  it("an individual syllabus grant opens the learning area without any group; expired or revoked ones don't", async () => {
+    const teacher = await makeTeacher("Fərdi grant müəllimi");
+    const student = await makeUser("Fərdi tələbə");
+    const grant = (over: Partial<typeof syllabusAccessGrants.$inferInsert>) =>
+      testDb().insert(syllabusAccessGrants).values({ id: `g-${Math.random().toString(36).slice(2)}`, syllabusId: "syl-x", studentId: student.id, grantedBy: teacher.user.id, ...over });
+
+    await grant({ endsAt: new Date(Date.now() - 60_000) });
+    await grant({ status: "REVOKED" });
+    expect(defaultContext(await resolveAccess(student.id), null)).toBeNull();
+
+    await grant({});
+    const access = await resolveAccess(student.id);
+    expect(access.contexts.learning).toBe(true);
     expect(defaultContext(access, null)).toBe("learning");
   });
 });

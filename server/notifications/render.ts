@@ -1,7 +1,7 @@
 import { pickAnnouncementText } from "../../shared/announcements";
 import type { EmailMessage } from "../_core/email";
 import type { ServerLocale } from "../_core/locale";
-import type { EventData, EventType } from "./events";
+import { isEventType, type EventData, type EventType } from "./events";
 import {
   aiAlertText,
   aiGradeInAppText,
@@ -48,6 +48,16 @@ export interface RenderedNotification {
   /** Path in the web/mobile app the notification should open. */
   path: string;
   email: EmailMessage | null;
+}
+
+/** Where a stored event leads in the app (the in-app inbox link); null when it cannot be rendered. */
+export function notificationPath(event: string, payload: unknown): string | null {
+  if (!isEventType(event)) return null;
+  try {
+    return renderNotification(event, payload as EventData[EventType], { locale: "az", email: null }, "").path || null;
+  } catch {
+    return null;
+  }
 }
 
 export function renderNotification<E extends EventType>(event: E, data: EventData[E], recipient: Recipient, appUrl: string): RenderedNotification {

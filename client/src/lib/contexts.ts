@@ -14,7 +14,7 @@ export const contextLabel = (ctx: UiContext) => t(`context.${ctx}`);
 
 /** Mirrors the server rule; the server re-checks every request against real records. */
 export function canEnter(user: Me, ctx: UiContext) {
-  if (ctx === "learning") return user.activeMemberships + user.pendingMemberships > 0;
+  if (ctx === "learning") return user.contexts.learning || user.pendingMemberships > 0;
   return user.contexts[ctx];
 }
 

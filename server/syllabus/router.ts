@@ -322,10 +322,20 @@ export const teacherSyllabusRouter = router({
     .mutation(({ ctx, input }) => shareLinks.setGroupListed(ctx.scope, input.id, input.groupId, input.listed)),
   joinRequests: syllabusTeacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => joinRequests.syllabusJoinRequests(ctx.scope, input.id)),
   joinRequestCounts: syllabusTeacherProcedure.query(({ ctx }) => joinRequests.joinRequestCounts(ctx.scope)),
+  pendingJoinRequests: syllabusTeacherProcedure.query(({ ctx }) => joinRequests.pendingJoinRequests(ctx.scope)),
   decideJoinRequest: syllabusTeacherProcedure
     .use(rateLimit("syllabusDecideJoinRequest", 60, MINUTE))
-    .input(z.object({ requestId: entityId, decision: z.enum(JOIN_DECISIONS), note: shortText(JOIN_DECISION_NOTE_MAX).nullish() }))
-    .mutation(({ ctx, input }) => joinRequests.decideJoinRequest(ctx.scope, input.requestId, input.decision, input.note ?? null)),
+    .input(
+      z.object({
+        requestId: entityId,
+        decision: z.enum(JOIN_DECISIONS),
+        note: shortText(JOIN_DECISION_NOTE_MAX).nullish(),
+        grantAccess: z.boolean().optional(),
+      }),
+    )
+    .mutation(({ ctx, input }) =>
+      joinRequests.decideJoinRequest(ctx.scope, input.requestId, input.decision, input.note ?? null, { grantAccess: input.grantAccess }),
+    ),
 });
 
 export const studentSyllabusRouter = router({

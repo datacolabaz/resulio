@@ -59,6 +59,21 @@ export async function grantAccess(scope: TeacherScope, syllabusId: string, input
   return listGrants(scope, syllabusId);
 }
 
+/**
+ * An accepted individual join request opens the syllabus to that student. The request is the
+ * student's own consent, so unlike `grantAccess` they need not be in one of the teacher's groups.
+ * A student who already has a live individual grant gets no second one.
+ */
+export async function grantFromJoinRequest(scope: TeacherScope, syllabus: Syllabus, studentId: number, now = new Date()) {
+  const before = await store.grantsForSyllabus(syllabus.id);
+  if (before.some((g) => g.studentId === studentId && grantState(g, now) === "ACTIVE")) return false;
+  const row = { id: nanoid(), syllabusId: syllabus.id, groupId: null, studentId, startsAt: null, endsAt: null, note: null, grantedBy: scope.userId };
+  await store.insertGrants([row]);
+  announceGrants(syllabus, before, [{ ...row, status: "ACTIVE", grantedAt: now, revokedAt: null, revokedBy: null }]);
+  await logActivity([{ userId: studentId, workspaceId: scope.workspaceId, syllabusId: syllabus.id, activityType: "ACCESS_GRANTED", source: "SERVER" }]);
+  return true;
+}
+
 async function ownedGrant(scope: TeacherScope, syllabusId: string, grantId: string) {
   await ownedSyllabus(scope, syllabusId);
   const [row] = await requireDb()

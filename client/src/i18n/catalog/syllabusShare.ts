@@ -143,16 +143,42 @@ export const syllabusShare = {
     "{student} будет добавлен(а) в группу «{group}» и получит доступ к силлабусам этой группы.",
   ],
   "sylShare.requests.acceptIndividualNote": [
-    "Müraciət qəbul edilmiş kimi qeyd olunacaq və tələbəyə bildiriş gedəcək. Giriş avtomatik açılmır: tələbə ilə əlaqə saxlayın, onu qrupa əlavə edin və ya fərdi giriş verin.",
-    "The request is marked accepted and the student is notified. No access is opened automatically: get in touch, add the student to a group or grant individual access.",
-    "Заявка будет отмечена как принятая, студент получит уведомление. Доступ автоматически не открывается: свяжитесь со студентом, добавьте его в группу или выдайте индивидуальный доступ.",
+    "Müraciət qəbul edilmiş kimi qeyd olunacaq və tələbəyə bildiriş gedəcək. Proqram açılmayacaq: tələbə ilə əlaqə saxlayın və ya onu qrupa əlavə edin.",
+    "The request is marked accepted and the student is notified. The programme stays closed: get in touch or add the student to a group.",
+    "Заявка будет отмечена как принятая, студент получит уведомление. Программа не откроется: свяжитесь со студентом или добавьте его в группу.",
+  ],
+  "sylShare.requests.acceptIndividualOpenNote": [
+    "Müraciət qəbul ediləcək, proqram {student} üçün fərdi olaraq açılacaq və tələbəyə bildiriş gedəcək.",
+    "The request is accepted, the programme opens to {student} individually and the student is notified.",
+    "Заявка будет принята, программа откроется для {student} индивидуально, студент получит уведомление.",
+  ],
+  "sylShare.requests.grantAccess": [
+    "Proqramı bu tələbəyə indi fərdi olaraq aç",
+    "Open the programme to this student individually now",
+    "Сразу открыть программу этому студенту индивидуально",
   ],
   "sylShare.requests.note": ["Tələbəyə qeyd (istəyə bağlı)", "Note to the student (optional)", "Комментарий студенту (необязательно)"],
   "sylShare.requests.reason": ["Səbəb (istəyə bağlı)", "Reason (optional)", "Причина (необязательно)"],
   "sylShare.requests.acceptedToast": ["Müraciət qəbul edildi", "Request accepted", "Заявка принята"],
+  "sylShare.requests.acceptedOpenToast": [
+    "Müraciət qəbul edildi, proqram tələbəyə açıldı",
+    "Request accepted, the programme is open to the student",
+    "Заявка принята, программа открыта студенту",
+  ],
   "sylShare.requests.rejectedToast": ["Müraciət rədd edildi", "Request declined", "Заявка отклонена"],
   "sylShare.requests.decidedAt": ["Cavab: {date}", "Answered: {date}", "Ответ: {date}"],
   "sylShare.requests.newCount": ["{count} yeni müraciət", "{count} new {count|request|requests}", "{count} {count|новая заявка|новые заявки|новых заявок}"],
+
+  // Teacher: pending requests across syllabi (syllabus list)
+  "sylShare.inbox.title": ["Gözləyən müraciətlər", "Pending requests", "Ожидающие заявки"],
+  "sylShare.inbox.help": [
+    "Tələbələrin ictimai syllabus linklərindən göndərdiyi və cavabınızı gözləyən müraciətlər.",
+    "Requests students sent from your public syllabus links that are waiting for your answer.",
+    "Заявки, отправленные студентами по публичным ссылкам на силлабусы и ожидающие вашего ответа.",
+  ],
+  "sylShare.inbox.view": ["Bax", "View", "Открыть"],
+  "sylShare.inbox.showAll": ["Hamısını göstər ({count})", "Show all ({count})", "Показать все ({count})"],
+  "sylShare.inbox.showLess": ["Daha az göstər", "Show less", "Свернуть"],
 
   // Student dashboard
   "sylShare.mine.title": ["Kurs müraciətlərim", "My course requests", "Мои заявки на курсы"],

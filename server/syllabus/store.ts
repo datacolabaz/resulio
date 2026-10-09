@@ -63,6 +63,10 @@ export async function grantsForSyllabus(syllabusId: string, db: DbOrTx = require
   return db.select().from(syllabusAccessGrants).where(eq(syllabusAccessGrants.syllabusId, syllabusId));
 }
 
+export async function insertGrants(rows: Array<typeof syllabusAccessGrants.$inferInsert>, db: DbOrTx = requireDb()) {
+  if (rows.length) await db.insert(syllabusAccessGrants).values(rows);
+}
+
 /** Every grant row (any status) that names this student or one of their active groups. */
 export async function grantsReachingStudent(studentId: number, groupIds: readonly string[], db: DbOrTx = requireDb()) {
   const conds = [eq(syllabusAccessGrants.studentId, studentId)];

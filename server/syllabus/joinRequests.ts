@@ -5,7 +5,8 @@ import { AppError } from "../modules/errors";
 import { activeGroupIdsOfStudent, addMemberById, assertGroupOwner } from "../modules/groups";
 import { notifyOpenTasksOnJoin } from "../modules/taskNotify";
 import { dispatch } from "../notifications/dispatcher";
-import { ownedSyllabus } from "./access";
+import { syllabusPath as studentSyllabusPath } from "../notifications/templates";
+import { grantFromJoinRequest, ownedSyllabus } from "./access";
 import { effectiveGrant } from "./accessRules";
 import { isSchemaBehind, syllabusEnabledFor } from "./availability";
 import * as joinStore from "./joinStore";
@@ -16,7 +17,8 @@ import * as store from "./store";
 /**
  * The public syllabus page and the join requests sent from it. The page and a request never give
  * access to the syllabus: an accepted GROUP request adds the student to the group (the group's
- * own grant then applies); an accepted INDIVIDUAL request is a decision only, the teacher follows up.
+ * own grant then applies); an accepted INDIVIDUAL request opens it only when the teacher chooses
+ * to grant individual access while accepting.
  */
 
 export const requestDedupeKey = (requestId: string) => `syl-join-req:${requestId}`;
@@ -184,12 +186,24 @@ export async function joinRequestCounts(scope: TeacherScope) {
   return joinStore.pendingCountsOfWorkspace(scope.workspaceId);
 }
 
+/** Open requests of every syllabus this workspace owns (the "waiting requests" block on the syllabus list). */
+export async function pendingJoinRequests(scope: TeacherScope) {
+  return joinStore.pendingRequestsOfWorkspace(scope.workspaceId);
+}
+
+export interface DecideOptions {
+  /** INDIVIDUAL only: also open the syllabus to the student with an individual grant. */
+  grantAccess?: boolean;
+}
+
 /**
  * Accept or reject a pending request of this workspace. Accepting a GROUP request adds the student
  * to the group the same way "add student" does (open-task and syllabus notices included); if the
- * student is already a member it is just marked accepted. If adding fails the request stays pending.
+ * student is already a member it is just marked accepted. Accepting an INDIVIDUAL request is a
+ * decision only unless the teacher asks to open the syllabus too. If the side effect fails the
+ * request stays pending.
  */
-export async function decideJoinRequest(scope: TeacherScope, requestId: string, decision: JoinDecision, rawNote: string | null) {
+export async function decideJoinRequest(scope: TeacherScope, requestId: string, decision: JoinDecision, rawNote: string | null, options: DecideOptions = {}) {
   const request = await joinStore.requestById(requestId);
   if (!request || request.workspaceId !== scope.workspaceId) throw new AppError("NOT_FOUND");
   const syllabus = await ownedSyllabus(scope, request.syllabusId);
@@ -197,28 +211,41 @@ export async function decideJoinRequest(scope: TeacherScope, requestId: string, 
   const note = rawNote?.trim().slice(0, JOIN_DECISION_NOTE_MAX) || null;
   const joinsGroup = decision === "ACCEPTED" && request.type === "GROUP" && !!request.groupId;
   const group = joinsGroup ? await assertGroupOwner(scope, request.groupId!) : null;
+  const opensSyllabus = decision === "ACCEPTED" && request.type === "INDIVIDUAL" && !!options.grantAccess;
+  if (opensSyllabus && syllabus.archivedAt) throw new AppError("SYLLABUS_ARCHIVED");
 
   if (!(await joinStore.closeRequest(requestId, { status: decision, decidedBy: scope.userId, decisionNote: note }))) throw new AppError("JOIN_REQUEST_NOT_PENDING");
-  if (group) {
-    try {
-      await addMemberById(scope, group.id, request.studentId);
-      notifyOpenTasksOnJoin(group.id, request.studentId);
-      announceGroupJoin(group.id, request.studentId);
-    } catch (error) {
-      if (!(error instanceof AppError && error.code === "ALREADY_MEMBER")) {
-        await joinStore.reopenRequest(request, openKeyOf(request));
-        throw error;
+  try {
+    if (group) {
+      try {
+        await addMemberById(scope, group.id, request.studentId);
+        notifyOpenTasksOnJoin(group.id, request.studentId);
+        announceGroupJoin(group.id, request.studentId);
+      } catch (error) {
+        if (!(error instanceof AppError && error.code === "ALREADY_MEMBER")) throw error;
       }
     }
+    if (opensSyllabus) await grantFromJoinRequest(scope, syllabus, request.studentId);
+  } catch (error) {
+    await joinStore.reopenRequest(request, openKeyOf(request));
+    throw error;
   }
 
   const link = await joinStore.shareLinkOf(syllabus.id);
-  const path = group ? "/student/groups" : link?.active ? syllabusSharePath(link.code) : "/student";
+  const path = group ? "/student/groups" : opensSyllabus ? studentSyllabusPath(syllabus.id) : link?.active ? syllabusSharePath(link.code) : "/student";
   dispatch({
     event: "SYLLABUS_JOIN_DECIDED",
     userId: request.studentId,
     dedupeKey: decisionDedupeKey(requestId),
-    data: { requestId, syllabusTitle: syllabus.title, decision, groupName: request.type === "GROUP" ? (group?.name ?? (request.groupId ? await joinStore.groupName(request.groupId) : null)) : null, note, path },
+    data: {
+      requestId,
+      syllabusTitle: syllabus.title,
+      decision,
+      groupName: request.type === "GROUP" ? (group?.name ?? (request.groupId ? await joinStore.groupName(request.groupId) : null)) : null,
+      note,
+      path,
+      accessGranted: opensSyllabus,
+    },
   });
-  return { id: requestId, status: decision };
+  return { id: requestId, status: decision, accessGranted: opensSyllabus };
 }
