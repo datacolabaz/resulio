@@ -35,6 +35,8 @@ export const ADMIN_PERMISSIONS = [
   "storage.view",
   /** Edit the storage soft quota. */
   "storage.manage",
+  /** Run the MySQL → R2 file copy and its checks (super admin only). */
+  "storage.migrate",
 ] as const;
 export type AdminPermission = (typeof ADMIN_PERMISSIONS)[number];
 
@@ -123,6 +125,9 @@ export const AUDIT_ACTIONS = [
   "AI_PRICE_CHANGED",
   "AI_PRICE_DELETED",
   "PLATFORM_SETTINGS_CHANGED",
+  "FILE_MIGRATION_STARTED",
+  "FILE_MIGRATION_CANCELLED",
+  "FILE_MIGRATION_FINISHED",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -137,6 +142,7 @@ export const AUDIT_TARGET_TYPES = [
   "ANNOUNCEMENT",
   "AI_MODEL_PRICE",
   "PLATFORM_SETTING",
+  "FILE_MIGRATION",
 ] as const;
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 

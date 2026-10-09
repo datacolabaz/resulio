@@ -16,6 +16,8 @@ import { createContext } from "./context";
 import { getMigrationStatus, runAutoMigrate } from "./autoMigrate";
 import { serveStatic, setupVite } from "./vite";
 import { installAiUsageLogging } from "../aiUsage/log";
+import { scheduleFileMigrationResume } from "../fileStorage/job";
+import { describeStorageBackend, objectStore } from "../fileStorage/r2";
 import { getDb, warnIfGoogleAuthSchemaMissing } from "../db";
 import { sweepExpiredAttempts } from "../modules/attempts";
 import { runPendingLinkJoinBackfill } from "../modules/groupJoin";
@@ -103,6 +105,8 @@ function startSyllabusProgression() {
 async function startServer() {
   await runAutoMigrate();
   installAiUsageLogging();
+  console.info(describeStorageBackend());
+  if (objectStore()) scheduleFileMigrationResume();
   const app = express();
   const server = createServer(app);
   app.set("trust proxy", 1);

@@ -4,9 +4,12 @@ import { files } from "../drizzle/schema";
 import {
   contentDisposition,
   createR2Store,
+  describeStorageBackend,
   objectKeyFor,
   r2ConfigFromEnv,
   r2DownloadMode,
+  r2MissingEnv,
+  redactR2Secrets,
   SIGNED_URL_TTL_SECONDS,
   uploadBackend,
   type ObjectStore,
@@ -50,7 +53,7 @@ vi.mock("./platformSettings", () => ({
 }));
 
 const { storageSummary } = await import("./fileStorage/summary");
-const { migrateFiles } = await import("./fileStorage/migrate");
+const { md5Hex, migrateFiles } = await import("./fileStorage/migrate");
 
 const ENV = { R2_ACCOUNT_ID: "acc123", R2_ACCESS_KEY_ID: "AKID", R2_SECRET_ACCESS_KEY: "secret", R2_BUCKET: "resulio-files" };
 const CONFIG: R2Config = { accountId: "acc123", accessKeyId: "AKID", secretAccessKey: "secret", bucket: "resulio-files", publicBaseUrl: "", endpoint: "https://acc123.r2.cloudflarestorage.com" };
@@ -176,8 +179,8 @@ describe("storage summary", () => {
 
   it("adds up totals, the database / R2 split and the groups, without reading file contents", async () => {
     mocks.results = [
-      [{ count: 5, bytes: "3000" }], // all files
-      [{ count: 2, bytes: 1000 }], // in R2
+      [{ count: 5, bytes: "3000", dbCount: "4", dbBytes: "2400" }], // all files; 4 still have MySQL bytes
+      [{ count: 2, bytes: 1000, bothCount: "1" }], // in R2; 1 of them copied, MySQL copy kept
       [
         { mimeType: "application/pdf", count: 3, bytes: 2000 },
         { mimeType: "image/jpeg", count: 1, bytes: 600 },
@@ -194,8 +197,9 @@ describe("storage summary", () => {
     expect(s.totalFiles).toBe(5);
     expect(s.totalBytes).toBe(3000);
     expect(s.softQuotaBytes).toBe(5_000_000);
-    expect(s.backend.inDatabase).toEqual({ count: 3, bytes: 2000 });
+    expect(s.backend.inDatabase).toEqual({ count: 4, bytes: 2400 });
     expect(s.backend.inObjectStore).toEqual({ count: 2, bytes: 1000 });
+    expect(s.backend.inBoth).toBe(1);
     expect(s.byType).toEqual([
       { key: "PDF", count: 3, bytes: 2000 },
       { key: "IMAGE", count: 2, bytes: 1000 },
@@ -208,20 +212,29 @@ describe("storage summary", () => {
 });
 
 describe("moving files to R2", () => {
-  const store = (sizes: Map<string, number | null>, failPut = false): ObjectStore & { put: ReturnType<typeof vi.fn> } => ({
-    backend: "r2",
-    bucket: "resulio-files",
-    put: vi.fn(async (key: string, body: Buffer) => {
-      if (failPut) throw new Error("network");
-      if (!sizes.has(key)) sizes.set(key, body.byteLength);
-    }),
-    get: vi.fn(),
-    head: vi.fn(async (key: string) => sizes.get(key) ?? null),
-    remove: vi.fn(),
-    signedGetUrl: vi.fn(),
-    publicUrl: () => null,
-  });
+  type Obj = { size: number; etag: string | null };
+  const store = (objects = new Map<string, Obj>(), opts: { failPut?: boolean; ignorePut?: boolean; corrupt?: boolean } = {}) => {
+    const s = {
+      backend: "r2" as const,
+      bucket: "resulio-files",
+      put: vi.fn(async (key: string, body: Buffer) => {
+        if (opts.failPut) throw new Error("network");
+        if (opts.ignorePut) return;
+        objects.set(key, { size: body.byteLength, etag: opts.corrupt ? "0".repeat(32) : md5Hex(body) });
+      }),
+      get: vi.fn(),
+      head: vi.fn(async (key: string) => objects.get(key)?.size ?? null),
+      stat: vi.fn(async (key: string) => objects.get(key) ?? null),
+      remove: vi.fn(),
+      signedGetUrl: vi.fn(),
+      publicUrl: () => null,
+    };
+    return s satisfies ObjectStore;
+  };
+  const HELLO = Buffer.from("hello");
+  const data = (buf = HELLO) => [{ data: buf.toString("base64") }];
   const file = { id: "f1", workspaceId: "ws", fileName: "a.pdf", mimeType: "application/pdf", sizeBytes: 5 };
+  const stored = (over: Record<string, unknown> = {}) => ({ ...file, objectKey: "files/ws/f1.pdf", storedBytes: 5, hasData: 1, ...over });
   const quiet = () => undefined;
 
   beforeEach(() => {
@@ -232,33 +245,151 @@ describe("moving files to R2", () => {
 
   it("only reports in a dry run", async () => {
     mocks.results = [[file], []];
-    const s = store(new Map());
+    const s = store();
     const report = await migrateFiles({ store: s, mode: "copy", apply: false, log: quiet });
     expect(report).toMatchObject({ candidates: 1, bytes: 5, done: 0, failed: [] });
     expect(s.put).not.toHaveBeenCalled();
     expect(mocks.inserts).toEqual([]);
   });
 
-  it("copies, verifies the size and records the object, keeping the MySQL copy", async () => {
-    mocks.results = [[file], [{ data: Buffer.from("hello").toString("base64") }], []];
-    const report = await migrateFiles({ store: store(new Map()), mode: "copy", apply: true, log: quiet });
-    expect(report.done).toBe(1);
+  it("copies, checks size and MD5, and records the object, keeping the MySQL copy", async () => {
+    mocks.results = [[file], data(), []];
+    const s = store();
+    const report = await migrateFiles({ store: s, mode: "copy", apply: true, log: quiet });
+    expect(report).toMatchObject({ done: 1, skipped: 0, failed: [], cursor: "f1" });
+    expect(s.put).toHaveBeenCalledWith("files/ws/f1.pdf", HELLO, "application/pdf");
     expect(mocks.inserts).toEqual([expect.objectContaining({ fileId: "f1", bucket: "resulio-files", objectKey: "files/ws/f1.pdf", sizeBytes: 5 })]);
     expect(mocks.updates).toEqual([]);
+    expect(s.remove).not.toHaveBeenCalled();
+  });
+
+  it("is idempotent: an object already there with the same size and MD5 is only recorded", async () => {
+    mocks.results = [[file], data(), []];
+    const s = store(new Map([["files/ws/f1.pdf", { size: 5, etag: md5Hex(HELLO) }]]));
+    const report = await migrateFiles({ store: s, mode: "copy", apply: true, log: quiet });
+    expect(report).toMatchObject({ done: 1, skipped: 1 });
+    expect(s.put).not.toHaveBeenCalled();
+    expect(mocks.inserts).toHaveLength(1);
+  });
+
+  it("re-uploads over a partial or different object", async () => {
+    mocks.results = [[file], data(), []];
+    const objects = new Map([["files/ws/f1.pdf", { size: 2, etag: "abc" }]]);
+    const s = store(objects);
+    const report = await migrateFiles({ store: s, mode: "copy", apply: true, log: quiet });
+    expect(report).toMatchObject({ done: 1, skipped: 0 });
+    expect(s.put).toHaveBeenCalledTimes(1);
+    expect(objects.get("files/ws/f1.pdf")).toEqual({ size: 5, etag: md5Hex(HELLO) });
   });
 
   it("does not record a copy whose stored size is wrong", async () => {
-    mocks.results = [[file], [{ data: Buffer.from("hello").toString("base64") }], []];
-    const report = await migrateFiles({ store: store(new Map([["files/ws/f1.pdf", 3]])), mode: "copy", apply: true, log: quiet });
-    expect(report.failed).toHaveLength(1);
+    mocks.results = [[file], data(), []];
+    const report = await migrateFiles({ store: store(new Map([["files/ws/f1.pdf", { size: 3, etag: null }]]), { ignorePut: true }), mode: "copy", apply: true, log: quiet });
+    expect(report.failed).toEqual([expect.objectContaining({ id: "f1", error: expect.stringContaining("size check failed") })]);
     expect(mocks.inserts).toEqual([]);
   });
 
+  it("does not record a copy whose MD5 differs from the MySQL bytes", async () => {
+    mocks.results = [[file], data(), []];
+    const report = await migrateFiles({ store: store(new Map(), { corrupt: true }), mode: "copy", apply: true, log: quiet });
+    expect(report.failed[0].error).toContain("checksum");
+    expect(mocks.inserts).toEqual([]);
+  });
+
+  it("keeps going after a failed file and reports it", async () => {
+    mocks.results = [[file, { ...file, id: "f2", fileName: "b.pdf" }], data(), data(), []];
+    const report = await migrateFiles({ store: store(new Map(), { failPut: true }), mode: "copy", apply: true, log: quiet });
+    expect(report.failed.map((f) => [f.id, f.fileName, f.error])).toEqual([
+      ["f1", "a.pdf", "network"],
+      ["f2", "b.pdf", "network"],
+    ]);
+    expect(report.cursor).toBe("f2");
+  });
+
+  it("stops before the next file when asked, without moving the resume cursor past unfinished work", async () => {
+    mocks.results = [[file, { ...file, id: "f2" }], data(), []];
+    let calls = 0;
+    const report = await migrateFiles({ store: store(), mode: "copy", apply: true, log: quiet, after: "f0", shouldStop: () => calls++ > 0 });
+    expect(report).toMatchObject({ done: 1, stopped: true, cursor: "f0" });
+    expect(mocks.inserts).toHaveLength(1);
+  });
+
+  it("handles several files at once within a batch", async () => {
+    const many = Array.from({ length: 6 }, (_, i) => ({ ...file, id: `f${i}` }));
+    mocks.results = [many, ...many.map(() => data()), []];
+    const s = store();
+    let inFlight = 0;
+    let peak = 0;
+    const uploaded = new Set<string>();
+    s.put.mockImplementation(async (key: string) => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      uploaded.add(key);
+      inFlight--;
+    });
+    s.stat.mockImplementation(async (key: string) => (uploaded.has(key) ? { size: 5, etag: md5Hex(HELLO) } : null));
+    const report = await migrateFiles({ store: s, mode: "copy", apply: true, concurrency: 3, log: quiet });
+    expect(report.done).toBe(6);
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(3);
+  });
+
+  it("verifies recorded objects by size and MD5 without writing anything", async () => {
+    const s = store(new Map([["files/ws/f1.pdf", { size: 5, etag: md5Hex(HELLO) }]]));
+    mocks.results = [[stored(), stored({ id: "f2", objectKey: "files/ws/f2.pdf" }), stored({ id: "f3", objectKey: "files/ws/f3.pdf" })], data(), data(Buffer.from("HELLO")), []];
+    s.stat.mockImplementation(async (key: string) => (key.endsWith("f2.pdf") ? null : { size: 5, etag: md5Hex(HELLO) }));
+    const report = await migrateFiles({ store: s, mode: "verify", apply: true, log: quiet });
+    expect(report.done).toBe(1);
+    expect(report.failed.map((f) => [f.id, f.error])).toEqual([
+      ["f2", "object missing from the bucket"],
+      ["f3", "checksum mismatch with the MySQL copy"],
+    ]);
+    expect(mocks.inserts).toEqual([]);
+    expect(mocks.updates).toEqual([]);
+    expect(s.put).not.toHaveBeenCalled();
+    expect(s.remove).not.toHaveBeenCalled();
+  });
+
+  it("flags a size mismatch even when the MySQL copy is gone", async () => {
+    mocks.results = [[stored({ hasData: 0, storedBytes: 9 })], []];
+    const report = await migrateFiles({ store: store(new Map([["files/ws/f1.pdf", { size: 5, etag: null }]])), mode: "verify", apply: true, log: quiet });
+    expect(report.failed[0].error).toBe("size mismatch: bucket 5, recorded 9");
+  });
+
   it("purges the MySQL copy only when the object is confirmed", async () => {
-    mocks.results = [[{ ...file, objectKey: "files/ws/f1.pdf" }, { ...file, id: "f2", objectKey: "files/ws/f2.pdf" }], []];
-    const report = await migrateFiles({ store: store(new Map([["files/ws/f1.pdf", 5]])), mode: "purge", apply: true, log: quiet });
+    mocks.results = [[stored(), stored({ id: "f2", objectKey: "files/ws/f2.pdf" })], []];
+    const report = await migrateFiles({ store: store(new Map([["files/ws/f1.pdf", { size: 5, etag: null }]])), mode: "purge", apply: true, log: quiet });
     expect(report.done).toBe(1);
     expect(report.failed.map((f) => f.id)).toEqual(["f2"]);
     expect(mocks.updates).toEqual([{ dataBase64: "" }]);
+  });
+});
+
+describe("R2 status helpers", () => {
+  it("lists missing variable names and never prints values", () => {
+    expect(r2MissingEnv({})).toEqual(["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"]);
+    expect(r2MissingEnv({ ...ENV, R2_SECRET_ACCESS_KEY: "" })).toEqual(["R2_SECRET_ACCESS_KEY"]);
+    const line = describeStorageBackend(ENV);
+    expect(line).toBe("[storage] backend=r2 bucket=resulio-files download=redirect");
+    expect(line).not.toContain("secret");
+    expect(line).not.toContain("AKID");
+    expect(describeStorageBackend({})).toContain("backend=db");
+    expect(describeStorageBackend({ ...ENV, FILE_STORAGE_BACKEND: "db" })).toContain("FILE_STORAGE_BACKEND=db");
+  });
+
+  it("masks credentials, the account id and signed-URL parameters in error text", () => {
+    const env = { ...ENV, R2_SECRET_ACCESS_KEY: "s3cr3t-value", R2_ACCESS_KEY_ID: "AKIDVALUE" };
+    const out = redactR2Secrets("denied for AKIDVALUE/s3cr3t-value at acc123.r2.cloudflarestorage.com?X-Amz-Credential=AKIDVALUE%2F2026&X-Amz-Signature=abcd", env);
+    expect(out).not.toContain("s3cr3t-value");
+    expect(out).not.toContain("AKIDVALUE");
+    expect(out).not.toContain("acc123");
+    expect(out).not.toContain("abcd");
+    expect(redactR2Secrets("x".repeat(500), env)).toHaveLength(300);
+  });
+
+  it("reads the size and the unquoted ETag from HEAD", async () => {
+    const client: S3Like = { send: async () => ({ ContentLength: 7, ETag: '"ABCDEF0123456789ABCDEF0123456789"' }) };
+    expect(await createR2Store(CONFIG, client).stat("k")).toEqual({ size: 7, etag: "abcdef0123456789abcdef0123456789" });
   });
 });
