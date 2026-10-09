@@ -255,7 +255,7 @@ describe("expiry and auto-submit", () => {
     expect(retry.resultId).toBe(submitted.resultId);
   });
 
-  it("rejects an autosave that arrives after the server deadline and keeps the saved answer", async () => {
+  it("rejects an autosave that arrives after the deadline and its grace period, and keeps the saved answer", async () => {
     const { assessment, student } = await setup();
     const { attemptId } = await sessions.startAttempt(assessment.id, student.id);
     const [q1] = await questionIdsOf(attemptId);
@@ -300,6 +300,63 @@ describe("expiry and auto-submit", () => {
     expect(await sessions.sessionPing(attemptId, student.id, true)).toEqual({ open: false });
     const [row] = await rowsOf(assessment.id, student.id);
     expect(row.status).toBe("EXPIRED_NO_ANSWERS");
+  });
+
+  it("accepts an autosave still in flight within the grace period; the late submit is graded at the deadline", async () => {
+    const { assessment, student } = await setup();
+    const { attemptId } = await sessions.startAttempt(assessment.id, student.id);
+    const [q1] = await questionIdsOf(attemptId);
+    await expire(attemptId, 2);
+
+    expect(await sessions.sessionPing(attemptId, student.id, false)).toMatchObject({ open: true });
+    expect((await sessions.attemptView(attemptId, student.id)).done).toBe(false);
+    await sessions.sweepExpiredAttempts();
+    expect((await rowsOf(assessment.id, student.id))[0].status).toBe("IN_PROGRESS");
+
+    await sessions.saveAnswers(attemptId, student.id, [{ questionId: q1, answer: "a", revision: 1 }]);
+    const { resultId } = await sessions.submitAttempt(attemptId, student.id);
+    const [row] = await rowsOf(assessment.id, student.id);
+    expect(row.status).toBe("AUTO_SUBMITTED");
+    expect(row.submittedAt?.getTime()).toBe(row.deadlineAt.getTime());
+    const [item] = await db()
+      .select()
+      .from(resultItems)
+      .where(and(eq(resultItems.resultId, resultId!), eq(resultItems.versionQuestionId, q1)));
+    expect(item.status).not.toBe("UNANSWERED");
+  });
+
+  it("closes an abandoned attempt (browser closed) once the grace period has passed", async () => {
+    const { assessment, student } = await setup();
+    const { attemptId } = await sessions.startAttempt(assessment.id, student.id);
+    const [q1] = await questionIdsOf(attemptId);
+    await sessions.saveAnswers(attemptId, student.id, [{ questionId: q1, answer: "a", revision: 1 }]);
+    await expire(attemptId, 2);
+    expect(await sessions.sweepExpiredAttempts()).toBe(0);
+    await expire(attemptId);
+    expect(await sessions.sweepExpiredAttempts()).toBe(1);
+    const [row] = await rowsOf(assessment.id, student.id);
+    expect(row.status).toBe("AUTO_SUBMITTED");
+    expect(await resultCount(attemptId)).toBe(1);
+  });
+});
+
+describe("server deadline", () => {
+  it("a refresh or resume returns the original deadline, never a fresh full duration", async () => {
+    const { assessment, student } = await setup();
+    const { attemptId } = await sessions.startAttempt(assessment.id, student.id);
+    const [row] = await rowsOf(assessment.id, student.id);
+    expect(row.deadlineAt.getTime() - row.startedAt.getTime()).toBe(600_000);
+
+    const first = await sessions.attemptView(attemptId, student.id);
+    expect(await sessions.startAttempt(assessment.id, student.id)).toEqual({ attemptId, resumed: true });
+    const second = await sessions.attemptView(attemptId, student.id);
+    if (first.done || second.done) throw new Error("expected open session");
+    expect(first.deadlineAt.getTime()).toBe(row.deadlineAt.getTime());
+    expect(second.deadlineAt.getTime()).toBe(row.deadlineAt.getTime());
+    expect(Math.abs(second.serverNow.getTime() - Date.now())).toBeLessThan(5000);
+    const ping = await sessions.sessionPing(attemptId, student.id, false);
+    if (!ping.open) throw new Error("expected open session");
+    expect(ping.deadlineAt.getTime()).toBe(row.deadlineAt.getTime());
   });
 });
 

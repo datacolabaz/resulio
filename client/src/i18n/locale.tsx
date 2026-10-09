@@ -10,6 +10,8 @@ type LocaleContextValue = {
 
 const LocaleContext = createContext<LocaleContextValue | null>(null);
 export const LOCALE_STORAGE_KEY = "resulio-locale";
+/** Set when the person picked the language; a locale only detected from the browser never outranks their profile. */
+export const LOCALE_CHOSEN_KEY = "resulio-locale-chosen";
 
 function readStored(): Locale | null {
   try {
@@ -17,6 +19,14 @@ function readStored(): Locale | null {
     return isLocale(saved) ? saved : null;
   } catch {
     return null;
+  }
+}
+
+function wasChosen(): boolean {
+  try {
+    return localStorage.getItem(LOCALE_CHOSEN_KEY) === "1";
+  } catch {
+    return false;
   }
 }
 
@@ -35,7 +45,7 @@ export function LocaleProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const profileLocale = me.data?.locale;
-    if (!readStored() && isLocale(profileLocale) && profileLocale !== locale) setLocaleState(profileLocale);
+    if (!wasChosen() && isLocale(profileLocale) && profileLocale !== locale) setLocaleState(profileLocale);
   }, [me.data?.locale, locale]);
 
   useEffect(() => {
@@ -61,6 +71,11 @@ export function LocaleProvider({ children }: { children: React.ReactNode }) {
   const saveMutate = saveLocale.mutate;
   const setLocale = useCallback(
     (next: Locale) => {
+      try {
+        localStorage.setItem(LOCALE_CHOSEN_KEY, "1");
+      } catch {
+        // storage unavailable: the choice still applies for this page view
+      }
       setLocaleState(next);
       if (signedIn) saveMutate({ locale: next });
     },
