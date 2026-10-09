@@ -26,6 +26,7 @@ import { requestMeta } from "./_core/requestMeta";
 import { systemRouter } from "./_core/systemRouter";
 import { GROUP_FORMATS, GROUP_JOIN_POLICIES, PROVIDER_TYPES, PUSH_PLATFORMS, TASK_ACCESS_MODES, UI_CONTEXTS, type TaskAccessMode } from "../drizzle/schema";
 import { adminRouter } from "./adminRouter";
+import { myAiQuota } from "./aiUsage/limits";
 import {
   limited,
   partnerProcedure,
@@ -565,6 +566,8 @@ const teacherAnalyticsRouter = router({
 
 const teacherAiRouter = router({
   usage: teacherProcedure.query(({ ctx }) => store.usageOf(ctx.scope.workspaceId)),
+  /** The teacher's own AI limits (set by the platform admin) and usage against them. */
+  quota: teacherProcedure.query(({ ctx }) => myAiQuota(ctx.user.id)),
   generate: teacherProcedure
     .use(rateLimit("aiGenerate", 10, MINUTE))
     .input(ai.aiGenerateSchema)

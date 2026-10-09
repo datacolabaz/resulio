@@ -1,8 +1,9 @@
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { files, materials, tasks, type FileRow } from "../../drizzle/schema";
+import { fileObjects, files, materials, tasks, type FileRow } from "../../drizzle/schema";
 import type { ShareCampaign, ShareChannel } from "../../shared/shareTracking";
 import { requireDb } from "../db";
+import { objectKeyFor, objectStore, uploadBackend } from "../fileStorage/r2";
 import { managedWorkspaces } from "./access";
 import { recordEvent } from "./activity";
 import { AppError } from "./errors";
@@ -11,12 +12,10 @@ import { recordShareEvent } from "./shareTracking";
 import { fileOpenToAnyone, taskReachesStudent } from "./taskAccess";
 
 /**
- * File storage for task attachments, material files, and student submission files. Content is
- * kept as base64 text on the `files` row (see drizzle/schema.ts for why) rather than on disk or a
- * third-party bucket — this app is self-hosted on Railway against its own MySQL, and leaning on
- * that same database (already the durable store for everything else — see the tasks/materials
- * migration this replaces the "beta: file name only" placeholder for) needs no new service or
- * credentials to work in production.
+ * File storage for task attachments, material files, and student submission files. By default the
+ * content is kept as base64 text on the `files` row (see drizzle/schema.ts for why), which needs no
+ * service beyond the app's own MySQL. With Cloudflare R2 configured, new uploads go to the bucket
+ * instead and `file_objects` records where; reads handle both (docs/FILE-STORAGE.md).
  */
 
 /** 8 MB covers worksheets, slide decks, and scanned pages comfortably while staying well under
@@ -58,6 +57,7 @@ export interface SavedFile {
   mimeType: string;
 }
 
+/** With R2 configured (server/fileStorage/r2.ts) the bytes go to the bucket and `dataBase64` stays empty. */
 export async function saveFile(input: {
   workspaceId: string;
   uploadedBy: number;
@@ -68,24 +68,53 @@ export async function saveFile(input: {
   const mimeType = assertAllowedUpload(input.fileName, input.buffer.byteLength);
   const id = nanoid();
   const name = input.fileName.slice(0, 255);
-  await requireDb()
-    .insert(files)
-    .values({
-      id,
-      workspaceId: input.workspaceId,
-      uploadedBy: input.uploadedBy,
-      fileName: name,
-      mimeType,
-      sizeBytes: input.buffer.byteLength,
-      dataBase64: input.buffer.toString("base64"),
-      isPublic: input.isPublic,
-    });
+  const row = {
+    id,
+    workspaceId: input.workspaceId,
+    uploadedBy: input.uploadedBy,
+    fileName: name,
+    mimeType,
+    sizeBytes: input.buffer.byteLength,
+    isPublic: input.isPublic,
+  };
+  const store = uploadBackend() === "r2" ? objectStore() : null;
+  if (!store) {
+    await requireDb()
+      .insert(files)
+      .values({ ...row, dataBase64: input.buffer.toString("base64") });
+    return { id, name, size: input.buffer.byteLength, mimeType };
+  }
+  const objectKey = objectKeyFor(row);
+  await store.put(objectKey, input.buffer, mimeType);
+  await requireDb().transaction(async (tx) => {
+    await tx.insert(files).values({ ...row, dataBase64: "" });
+    await tx.insert(fileObjects).values({ fileId: id, backend: store.backend, bucket: store.bucket, objectKey, sizeBytes: input.buffer.byteLength });
+  });
   return { id, name, size: input.buffer.byteLength, mimeType };
 }
 
 export async function fileRow(id: string): Promise<FileRow | null> {
   const [row] = await requireDb().select().from(files).where(eq(files.id, id)).limit(1);
   return row ?? null;
+}
+
+/** The bucket object holding this file's bytes, or null when they are in `files.dataBase64`. */
+export async function storedObjectOf(file: Pick<FileRow, "id" | "dataBase64">) {
+  if (file.dataBase64) return null;
+  const [location] = await requireDb().select().from(fileObjects).where(eq(fileObjects.fileId, file.id)).limit(1);
+  if (!location) return null;
+  const store = objectStore();
+  if (!store || store.bucket !== location.bucket) {
+    console.error(`[files] ${file.id} is in ${location.backend}:${location.bucket}, which is not configured`);
+    throw new AppError("FILE_NOT_FOUND");
+  }
+  return { store, key: location.objectKey };
+}
+
+/** A file's bytes from MySQL (base64 column) or from the object store, whichever holds them. */
+export async function fileBytes(file: Pick<FileRow, "id" | "dataBase64">): Promise<Buffer> {
+  const stored = await storedObjectOf(file);
+  return stored ? stored.store.get(stored.key) : Buffer.from(file.dataBase64, "base64");
 }
 
 async function teacherOwnsWorkspace(workspaceId: string, userId: number) {

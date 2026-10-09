@@ -1,4 +1,5 @@
-import { getLocale, isMessageKey, t } from "@/i18n/messages";
+import { getLocale, isMessageKey, t, type MessageKey } from "@/i18n/messages";
+import { nextPeriodStart } from "@shared/aiUsage";
 import { formatDateTime, formatDay, formatDayKeyShort, formatDuration, formatRelative, formatTime, type DateInput } from "@/lib/dates";
 import { GROUP_LEVELS, type GroupLevel, type GroupType } from "@shared/groupType";
 import { sortBySchedule, type ClassScheduleEntry } from "@shared/schedule";
@@ -6,6 +7,9 @@ import { sortBySchedule, type ClassScheduleEntry } from "@shared/schedule";
 export function errorText(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error ?? "");
   const key = `error.${message}`;
+  if (message === "AI_TEACHER_MONTHLY_LIMIT" || message === "AI_TEACHER_DAILY_LIMIT") {
+    return t(key as MessageKey, { date: fmtDay(nextPeriodStart(message === "AI_TEACHER_MONTHLY_LIMIT" ? "month" : "day")) });
+  }
   if (isMessageKey(key)) return t(key);
   // Input validation failures arrive as a JSON list of issues, never meant for people.
   if (/^\s*[[{]/.test(message)) return t(message.includes("DATE_OUT_OF_RANGE") ? "error.DATE_OUT_OF_RANGE" : "error.INVALID_INPUT");
@@ -18,6 +22,13 @@ export const fmtDayKeyShort = (key: string) => formatDayKeyShort(key, getLocale(
 export const fmtTime = (value: DateInput) => formatTime(value, getLocale());
 export const fmtRelative = (value: DateInput, now: DateInput = Date.now()) => formatRelative(value, getLocale(), now);
 export const fmtDuration = (seconds: number | null | undefined) => formatDuration(seconds, getLocale());
+
+export const fmtNumber = (value: number, maxFractionDigits = 0) => new Intl.NumberFormat(getLocale(), { maximumFractionDigits: maxFractionDigits }).format(value);
+/** 1.2K / 3.4M style, for token counts. */
+export const fmtCompact = (value: number) => new Intl.NumberFormat(getLocale(), { notation: "compact", maximumFractionDigits: 1 }).format(value);
+/** US dollars; small amounts keep more decimals so a few cents of AI spend do not show as $0.00. */
+export const fmtUsd = (value: number) =>
+  new Intl.NumberFormat(getLocale(), { style: "currency", currency: "USD", currencyDisplay: "narrowSymbol", minimumFractionDigits: 2, maximumFractionDigits: value > 0 && value < 1 ? 4 : 2 }).format(value);
 
 /** Countdown text for the exam timer, e.g. 04:59 or 1:02:03. */
 export function fmtClock(ms: number): string {

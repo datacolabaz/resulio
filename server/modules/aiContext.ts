@@ -2,7 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { files } from "../../drizzle/schema";
 import type { ServerLocale } from "../_core/locale";
 import { requireDb } from "../db";
-import { ALLOWED_FILE_TYPES, extensionOf, MAX_FILE_BYTES } from "./files";
+import { ALLOWED_FILE_TYPES, extensionOf, fileBytes, MAX_FILE_BYTES } from "./files";
 import { extractDocument, renderDoc, type ExtractedDoc } from "./textExtract";
 
 /**
@@ -56,12 +56,14 @@ export async function loadTaskAttachments(workspaceId: string, attachments: Arra
     .from(files)
     .where(and(inArray(files.id, ids), eq(files.workspaceId, workspaceId)));
   const byId = new Map(rows.map((r) => [r.id, r]));
-  return attachments.slice(0, 20).map((a) => {
-    const row = byId.get(a.fileId);
-    if (!row || !ALLOWED_FILE_TYPES[extensionOf(row.fileName)] || row.sizeBytes > MAX_FILE_BYTES) return { name: a.name, doc: null };
-    const result = extractDocument(row.fileName, Buffer.from(row.dataBase64, "base64"));
-    return { name: row.fileName, doc: result.ok ? result.doc : null };
-  });
+  return Promise.all(
+    attachments.slice(0, 20).map(async (a): Promise<TaskAttachmentDoc> => {
+      const row = byId.get(a.fileId);
+      if (!row || !ALLOWED_FILE_TYPES[extensionOf(row.fileName)] || row.sizeBytes > MAX_FILE_BYTES) return { name: a.name, doc: null };
+      const result = extractDocument(row.fileName, await fileBytes(row));
+      return { name: row.fileName, doc: result.ok ? result.doc : null };
+    }),
+  );
 }
 
 export const REVIEW_LIMITS = { answerKey: 8_000, task: 6_000, student: 24_000, total: 60_000 };

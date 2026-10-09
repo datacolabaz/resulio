@@ -11,8 +11,13 @@ import {
   SECURITY_EVENT_TYPES,
   SECURITY_SEVERITIES,
 } from "../shared/adminPermissions";
+import { AI_CALL_STATUSES, AI_FEATURES } from "../shared/aiUsage";
 import { adminProcedure, router } from "./_core/trpc";
+import * as aiAdmin from "./aiUsage/admin";
+import { storageSummary } from "./fileStorage/summary";
 import { listAudit } from "./modules/admin/audit";
+import { dashboard } from "./modules/admin/dashboard";
+import { getPlatformSettings } from "./platformSettings";
 import * as roles from "./modules/admin/roles";
 import * as security from "./modules/admin/security";
 import * as adminUsers from "./modules/admin/users";
@@ -59,9 +64,54 @@ const userId = z.number().int().positive();
 const cursor = z.number().int().positive().optional();
 const limit = z.number().int().min(1).max(200).optional();
 
+const limitValue = z.number().int().min(0).max(1_000_000_000_000).nullable();
+const usdPerMillion = z.number().min(0).max(10_000);
+
 export const adminRouter = router({
   /** Roles/permissions the server will honour for this admin (allowlist applied). */
   me: adminProcedure("overview.view").query(({ ctx }) => ({ roles: ctx.admin.roles, permissions: ctx.admin.permissions })),
+  dashboard: adminProcedure("overview.view").query(({ ctx }) => dashboard(ctx.admin)),
+
+  /** Estimated AI spend (Gemini has no balance API), request log, prices and per-teacher limits. */
+  ai: router({
+    analytics: adminProcedure("ai.view").query(() => aiAdmin.aiAnalytics()),
+    logs: adminProcedure("ai.view")
+      .input(z.object({ before: cursor, limit, feature: z.enum(AI_FEATURES).optional(), status: z.enum(AI_CALL_STATUSES).optional(), userId: userId.optional() }))
+      .query(({ input }) => aiAdmin.listAiLogs(input)),
+    prices: adminProcedure("ai.view").query(() => aiAdmin.listPrices()),
+    setPrice: adminProcedure("ai.manage")
+      .input(z.object({ model: z.string().trim().min(1).max(120), inputUsdPerMillion: usdPerMillion, outputUsdPerMillion: usdPerMillion, note: z.string().trim().max(255).default("") }))
+      .mutation(({ ctx, input }) => aiAdmin.upsertPrice(ctx.admin, input)),
+    deletePrice: adminProcedure("ai.manage")
+      .input(z.object({ model: z.string().trim().min(1).max(120) }))
+      .mutation(({ ctx, input }) => aiAdmin.deletePrice(ctx.admin, input.model)),
+    settings: adminProcedure("ai.view").query(() => getPlatformSettings({ fresh: true })),
+    setSettings: adminProcedure("ai.manage")
+      .input(z.object({ monthlyBudgetUsd: z.number().min(0).max(1_000_000).nullable().optional(), defaultMonthlyTokenQuota: limitValue.optional(), defaultDailyRequestCap: limitValue.optional() }))
+      .mutation(({ ctx, input }) =>
+        aiAdmin.updateSettings(ctx.admin, {
+          ...(input.monthlyBudgetUsd !== undefined ? { "ai.monthlyBudgetUsd": input.monthlyBudgetUsd } : {}),
+          ...(input.defaultMonthlyTokenQuota !== undefined ? { "ai.defaultMonthlyTokenQuota": input.defaultMonthlyTokenQuota } : {}),
+          ...(input.defaultDailyRequestCap !== undefined ? { "ai.defaultDailyRequestCap": input.defaultDailyRequestCap } : {}),
+        }),
+      ),
+    teachers: adminProcedure("ai.view")
+      .input(z.object({ query: z.string().trim().max(255).optional() }).optional())
+      .query(({ input }) => aiAdmin.teacherLimits({ query: input?.query })),
+    setTeacherLimit: adminProcedure("ai.manage")
+      .input(z.object({ userId, monthlyTokenQuota: limitValue, dailyRequestCap: limitValue }))
+      .mutation(({ ctx, input }) => aiAdmin.setTeacherLimit(ctx.admin, input.userId, input)),
+    resetTeacherUsage: adminProcedure("ai.manage")
+      .input(z.object({ userId }))
+      .mutation(({ ctx, input }) => aiAdmin.resetTeacherUsage(ctx.admin, input.userId)),
+  }),
+
+  storage: router({
+    summary: adminProcedure("storage.view").query(() => storageSummary()),
+    setSoftQuota: adminProcedure("storage.manage")
+      .input(z.object({ softQuotaBytes: z.number().int().min(0).max(1e15).nullable() }))
+      .mutation(({ ctx, input }) => aiAdmin.updateSettings(ctx.admin, { "storage.softQuotaBytes": input.softQuotaBytes })),
+  }),
 
   users: router({
     search: adminProcedure("users.search")

@@ -1,6 +1,4 @@
-import { useAuth } from "@/_core/hooks/useAuth";
-import { ErrorNote, LanguageSwitch, Loading, Panel, ThemeToggle } from "@/components/AppShell";
-import { BrandMark } from "@/components/BrandMark";
+import { ErrorNote, Loading, Panel } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -9,73 +7,24 @@ import { StatusBadge, type Tone } from "@/components/StatusBadge";
 import { t } from "@/i18n/messages";
 import { errorText, fmtDateTime } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
-import { ADMIN_REASON_MIN, type AdminPermission } from "@shared/adminPermissions";
+import { ADMIN_REASON_MIN } from "@shared/adminPermissions";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Link, Redirect, Route, Switch, useLocation } from "wouter";
+import { Redirect, Route, Switch, useLocation } from "wouter";
+import { AiAnalyticsPage, AiLogsPage, AiPricingPage } from "./AdminAi";
+import AiLimitsPage from "./AdminAiLimits";
 import AdminAnnouncementsPage from "./AdminAnnouncements";
+import AdminDashboardPage from "./AdminDashboard";
+import { AdminLayout } from "./AdminLayout";
+import AdminSettingsPage from "./AdminSettings";
+import AdminStoragePage from "./AdminStorage";
+import { useAdmin } from "./adminShared";
 
 /**
- * Minimal, functional admin console — list/suspend/unsuspend/revoke-sessions, an audit log
- * reader and a security-event reviewer. The server (adminProcedure) is the only real authority;
- * every check here is a UI convenience to hide controls the server would refuse anyway.
+ * Admin console: dashboard, users, teacher AI limits, AI usage, storage, announcements, the audit log
+ * and security events. The server (adminProcedure) is the only real authority; every check here is
+ * a UI convenience to hide controls the server would refuse anyway.
  */
-function useAdmin() {
-  const { user, loading } = useAuth();
-  const can = (p: AdminPermission) => !!user?.admin?.permissions.includes(p);
-  return { user, loading, can };
-}
-
-function AdminNav() {
-  const [location] = useLocation();
-  const { can } = useAdmin();
-  const tabs: Array<[string, string]> = [
-    ["/admin/users", t("admin.nav.users")],
-    ["/admin/audit", t("admin.nav.audit")],
-    ["/admin/security", t("admin.nav.security")],
-    ...(can("announcements.view") ? ([["/admin/announcements", t("admin.nav.announcements")]] as Array<[string, string]>) : []),
-  ];
-  return (
-    <nav className="flex flex-wrap gap-1">
-      {tabs.map(([href, label]) => (
-        <Button key={href} asChild size="sm" variant={location === href ? "default" : "ghost"}>
-          <Link href={href}>{label}</Link>
-        </Button>
-      ))}
-    </nav>
-  );
-}
-
-function AdminShell({ children }: { children: React.ReactNode }) {
-  const { user, loading, logout } = useAuth();
-  if (loading) return <div className="p-10 text-center text-muted-foreground">{t("app.loading")}</div>;
-  if (!user) return <Redirect to={`/?returnTo=${encodeURIComponent("/admin/users")}`} />;
-  if (!user.isAdmin) return <Redirect to="/welcome" />;
-  return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="border-b bg-card">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 p-4">
-          <div className="flex items-center gap-3">
-            <BrandMark size={32} className="rounded-lg" />
-            <div>
-              <div className="text-sm font-semibold">{t("admin.title")}</div>
-              <div className="text-xs text-muted-foreground">{user.name}</div>
-            </div>
-          </div>
-          <AdminNav />
-          <div className="flex items-center gap-2">
-            <Link href="/welcome" className="text-xs text-link underline-offset-4 hover:underline">{t("admin.backToApp")}</Link>
-            <LanguageSwitch />
-            <ThemeToggle />
-            <Button variant="outline" size="sm" onClick={() => void logout()}>{t("common.logout")}</Button>
-          </div>
-        </div>
-      </header>
-      <main className="mx-auto max-w-5xl p-4 sm:p-6">{children}</main>
-    </div>
-  );
-}
-
 const STATUS_TONE: Record<string, Tone> = { ACTIVE: "success", SUSPENDED: "danger" };
 
 /** Collects a mandatory reason (server enforces the same minimum) before a high-risk admin action. */
@@ -112,11 +61,14 @@ function ReasonDialog({
   );
 }
 
-function AdminUsersPage() {
+function AdminUsersPage({ params }: { params: { id?: string } }) {
   const { can } = useAdmin();
   const utils = trpc.useUtils();
+  const [, navigate] = useLocation();
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<number | null>(null);
+  const parsed = Number(params.id);
+  const selected = Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  const setSelected = (id: number | null) => navigate(id === null ? "/admin/users" : `/admin/users/${id}`);
   const [action, setAction] = useState<"suspend" | "unsuspend" | "revoke" | null>(null);
   const search = trpc.admin.users.search.useQuery({ query: query.trim() || undefined }, { enabled: can("users.search") });
   const detail = trpc.admin.users.get.useQuery({ userId: selected ?? 0 }, { enabled: selected !== null && can("users.view") });
@@ -133,31 +85,6 @@ function AdminUsersPage() {
 
   return (
     <div className="space-y-5">
-      <Panel title={t("admin.nav.users")}>
-        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("admin.users.searchPlaceholder")} />
-        {search.error && <ErrorNote error={search.error} />}
-        {search.isLoading ? <Loading /> : (
-          <ul className="mt-3 divide-y text-sm">
-            {(search.data ?? []).map((u) => (
-              <li key={u.id}>
-                <button
-                  type="button"
-                  className="flex w-full flex-wrap items-center justify-between gap-2 py-2 text-left hover:bg-muted/40"
-                  onClick={() => setSelected(u.id)}
-                >
-                  <span className="min-w-0">
-                    <span className="block break-words font-medium">{u.name ?? "—"}</span>
-                    <span className="block break-all text-xs text-muted-foreground">{u.email}</span>
-                  </span>
-                  <StatusBadge tone={STATUS_TONE[u.accountStatus] ?? "neutral"}>{u.accountStatus}</StatusBadge>
-                </button>
-              </li>
-            ))}
-            {!search.data?.length && <li className="py-3 text-muted-foreground">{t("admin.users.noResults")}</li>}
-          </ul>
-        )}
-      </Panel>
-
       {selected !== null && (
         <Panel title={t("admin.users.detailTitle")} action={<Button variant="ghost" size="sm" onClick={() => setSelected(null)}>{t("common.close")}</Button>}>
           {detail.error ? <ErrorNote error={detail.error} /> : !d ? <Loading /> : (
@@ -181,6 +108,32 @@ function AdminUsersPage() {
           )}
         </Panel>
       )}
+
+      <Panel title={t("admin.nav.users")}>
+        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("admin.users.searchPlaceholder")} />
+        {search.error && <ErrorNote error={search.error} />}
+        {search.isLoading ? <Loading /> : (
+          <ul className="mt-3 divide-y text-sm">
+            {(search.data ?? []).map((u) => (
+              <li key={u.id}>
+                <button
+                  type="button"
+                  aria-current={u.id === selected ? "true" : undefined}
+                  className={`flex w-full flex-wrap items-center justify-between gap-2 py-2 text-left hover:bg-muted/40 ${u.id === selected ? "bg-muted/60" : ""}`}
+                  onClick={() => setSelected(u.id)}
+                >
+                  <span className="min-w-0">
+                    <span className="block break-words font-medium">{u.name ?? "—"}</span>
+                    <span className="block break-all text-xs text-muted-foreground">{u.email}</span>
+                  </span>
+                  <StatusBadge tone={STATUS_TONE[u.accountStatus] ?? "neutral"}>{u.accountStatus}</StatusBadge>
+                </button>
+              </li>
+            ))}
+            {!search.data?.length && <li className="py-3 text-muted-foreground">{t("admin.users.noResults")}</li>}
+          </ul>
+        )}
+      </Panel>
 
       <ReasonDialog
         open={action !== null}
@@ -282,14 +235,24 @@ function AdminSecurityPage() {
 
 export default function AdminRoutes() {
   return (
-    <AdminShell>
+    <AdminLayout>
       <Switch>
-        <Route path="/admin" component={() => <Redirect to="/admin/users" />} />
+        <Route path="/admin" component={AdminDashboardPage} />
         <Route path="/admin/users" component={AdminUsersPage} />
+        <Route path="/admin/users/:id" component={AdminUsersPage} />
+        <Route path="/admin/teachers/ai-limits" component={AiLimitsPage} />
+        <Route path="/admin/teachers">{() => <Redirect to="/admin/teachers/ai-limits" />}</Route>
+        <Route path="/admin/ai" component={AiAnalyticsPage} />
+        <Route path="/admin/ai/logs" component={AiLogsPage} />
+        <Route path="/admin/ai/pricing" component={AiPricingPage} />
+        <Route path="/admin/ai/limits" component={AiLimitsPage} />
+        <Route path="/admin/storage" component={AdminStoragePage} />
+        <Route path="/admin/settings" component={AdminSettingsPage} />
         <Route path="/admin/audit" component={AdminAuditPage} />
         <Route path="/admin/security" component={AdminSecurityPage} />
         <Route path="/admin/announcements" component={AdminAnnouncementsPage} />
+        <Route>{() => <Redirect to="/admin" />}</Route>
       </Switch>
-    </AdminShell>
+    </AdminLayout>
   );
 }

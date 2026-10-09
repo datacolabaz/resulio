@@ -92,7 +92,7 @@ const STUDENT_NAV: typeof TEACHER_NAV = [
 const DESKTOP_QUERY = "(min-width: 1024px)";
 
 /** The sidebar is a static column from `lg`; below that it is an off-canvas drawer. */
-function useDesktop() {
+export function useDesktop() {
   const [desktop, setDesktop] = useState(() => window.matchMedia?.(DESKTOP_QUERY).matches ?? true);
   useEffect(() => {
     const media = window.matchMedia?.(DESKTOP_QUERY);
@@ -104,8 +104,12 @@ function useDesktop() {
   return desktop;
 }
 
-export function LanguageSwitch({ className = "" }: { className?: string }) {
+export function LanguageSwitch({ className = "", tone = "default" }: { className?: string; tone?: "default" | "sidebar" }) {
   const { locale, setLocale } = useI18n();
+  const [activeClass, idleClass] =
+    tone === "sidebar"
+      ? ["bg-sidebar-primary text-sidebar-primary-foreground", "text-sidebar-foreground hover:bg-sidebar-accent"]
+      : ["bg-primary text-primary-foreground", "text-muted-foreground hover:bg-muted"];
   return (
     <div role="group" aria-label={t("language.heading")} className={`flex items-center gap-1 ${className}`}>
       {supportedLocales.map((code) => (
@@ -116,7 +120,7 @@ export function LanguageSwitch({ className = "" }: { className?: string }) {
           onClick={() => setLocale(code)}
           aria-pressed={locale === code}
           aria-label={LOCALE_NAMES[code]}
-          className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase ${locale === code ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+          className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase ${locale === code ? activeClass : idleClass}`}
         >
           {code}
         </button>
@@ -415,7 +419,7 @@ export function AppShell({
                     {t("nav.settings")}
                   </DropdownMenuItem>
                   {user?.isAdmin && (
-                    <DropdownMenuItem onSelect={() => nav("/admin/users")}>
+                    <DropdownMenuItem onSelect={() => nav("/admin")}>
                       <Shield className="h-4 w-4" aria-hidden />
                       {t("nav.admin")}
                     </DropdownMenuItem>

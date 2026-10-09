@@ -1,3 +1,4 @@
+import { AiQuotaNote } from "@/components/AiQuotaNote";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -116,6 +117,7 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           {a?.enabled && <p className="text-xs text-muted-foreground">{t("simport.limits", { size: formatFileSize(a.maxBytes), pages: a.maxPages, left: a.remainingToday })}</p>}
           {limitReached && <p role="status" className="text-sm text-destructive">{t("simport.limitReached", { limit: a.dailyLimit })}</p>}
           {availability.isError && <p role="status" className="text-xs text-muted-foreground">{t("simport.availabilityError")}</p>}
+          {open && <AiQuotaNote />}
           <p className="text-xs text-muted-foreground">{t("simport.reviewNote")}</p>
         </DialogBody>
         <DialogFooter>

@@ -21,6 +21,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx server/seed.ts",
     "admin:grant": "tsx scripts/admin-grant.ts",
+    "files:to-r2": "tsx scripts/migrate-files-to-r2.ts",
     "dev:static": "vite --host 0.0.0.0 --port ${PORT:-3000} --strictPort",
     "build:static": "vite build"
   },

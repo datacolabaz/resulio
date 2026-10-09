@@ -28,6 +28,13 @@ export const ADMIN_PERMISSIONS = [
   "syllabus.override",
   "announcements.view",
   "announcements.send",
+  /** AI usage analytics, request log, prices and teacher limits (read). */
+  "ai.view",
+  /** Edit prices, the monthly budget and teacher AI limits. */
+  "ai.manage",
+  "storage.view",
+  /** Edit the storage soft quota. */
+  "storage.manage",
 ] as const;
 export type AdminPermission = (typeof ADMIN_PERMISSIONS)[number];
 
@@ -41,6 +48,8 @@ const SUPPORT_PERMISSIONS: readonly AdminPermission[] = [
   "audit.viewSupport",
   "security.view",
   "syllabus.view",
+  "ai.view",
+  "storage.view",
 ];
 
 /** PARTNER_ADMIN, FINANCE_ADMIN and CONTENT_REVIEWER are reserved: they grant nothing yet. */
@@ -109,10 +118,26 @@ export const AUDIT_ACTIONS = [
   "SYLLABUS_MANUAL_UNLOCK",
   "SYLLABUS_UNLOCK_REVOKED",
   "ANNOUNCEMENT_SENT",
+  "AI_LIMIT_CHANGED",
+  "AI_USAGE_RESET",
+  "AI_PRICE_CHANGED",
+  "AI_PRICE_DELETED",
+  "PLATFORM_SETTINGS_CHANGED",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
-export const AUDIT_TARGET_TYPES = ["USER", "WORKSPACE", "PARTNER_PROFILE", "FEATURE_FLAG", "PLATFORM_ROLE", "SECURITY_EVENT", "SYLLABUS_ENROLLMENT", "ANNOUNCEMENT"] as const;
+export const AUDIT_TARGET_TYPES = [
+  "USER",
+  "WORKSPACE",
+  "PARTNER_PROFILE",
+  "FEATURE_FLAG",
+  "PLATFORM_ROLE",
+  "SECURITY_EVENT",
+  "SYLLABUS_ENROLLMENT",
+  "ANNOUNCEMENT",
+  "AI_MODEL_PRICE",
+  "PLATFORM_SETTING",
+] as const;
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 
 export const SECURITY_EVENT_TYPES = [
