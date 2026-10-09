@@ -8,7 +8,9 @@ import {
   SYLLABUS_IMPORT_MAX_PAGES,
   SYLLABUS_IMPORT_MAX_TEXT,
   SYLLABUS_IMPORT_MIN_TEXT,
+  SYLLABUS_IMPORT_DETAIL_MAX,
   SYLLABUS_IMPORT_TEXT_EXTENSIONS,
+  parseImportDetail,
   syllabusImportStructureSchema,
   type SyllabusImportDetail,
   type SyllabusImportError,
@@ -23,6 +25,7 @@ import { requireDb } from "../db";
 import type { TeacherScope } from "../modules/access";
 import { providerAlertFor, sendAiAlert } from "../modules/aiAlerts";
 import { AppError } from "../modules/errors";
+import { redactR2Secrets } from "../fileStorage/r2";
 import { extensionOf, fileBytes, fileRow, MAX_FILE_BYTES } from "../modules/files";
 import { extractDocument, renderDoc } from "../modules/textExtract";
 import { planChunks } from "../questionBank/extraction";
@@ -47,7 +50,7 @@ export const SYLLABUS_IMPORT_STALE_MS = 3 * 60 * 1000;
 const HEARTBEAT_MS = 30_000;
 /** No new model request starts after this; modules not read by then are read from the text. */
 const RUN_BUDGET_MS = 12 * 60 * 1000;
-const DETAIL_MAX = 2_000;
+const DETAIL_MAX = SYLLABUS_IMPORT_DETAIL_MAX;
 const MIME_BY_EXT: Record<string, string> = { ".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg" };
 
 /**
@@ -125,8 +128,14 @@ async function prepareSource(scope: TeacherScope, input: { text?: string; fileId
   if (!file || file.workspaceId !== scope.workspaceId) throw new AppError("FILE_NOT_FOUND");
   const ext = extensionOf(file.fileName);
   const base = { fileId: file.id, fileName: file.fileName.slice(0, 255), sizeBytes: file.sizeBytes };
+  const bytes = async () => {
+    const read = await importFileBytes({ fileId: file.id, providerWorkspaceId: scope.workspaceId });
+    if ("bytes" in read) return Buffer.from(read.bytes);
+    console.error(`[syllabusImport] ${read.missing}`);
+    throw new AppError("FILE_NOT_FOUND");
+  };
   if (ext === ".docx") {
-    const doc = extractDocument(file.fileName, await fileBytes(file));
+    const doc = extractDocument(file.fileName, await bytes());
     if (!doc.ok) throw new AppError("SYLLABUS_IMPORT_UNREADABLE");
     const text = checkText(renderDoc(doc.doc));
     return { ...base, mimeType: "text/plain", sourceText: text, pageCount: null, chunkCount: textSteps(text) };
@@ -134,7 +143,7 @@ async function prepareSource(scope: TeacherScope, input: { text?: string; fileId
   const mimeType = MIME_BY_EXT[ext];
   if (!mimeType) throw new AppError("SYLLABUS_IMPORT_FILE_TYPE");
   if (mimeType !== "application/pdf") return { ...base, mimeType, sourceText: null, pageCount: 1, chunkCount: 1 };
-  const pageCount = await pdfPageCount(new Uint8Array(await fileBytes(file)));
+  const pageCount = await pdfPageCount(new Uint8Array(await bytes()));
   if (pageCount > SYLLABUS_IMPORT_MAX_PAGES) throw new AppError("IMPORT_TOO_MANY_PAGES");
   return { ...base, mimeType, sourceText: null, pageCount, chunkCount: planChunks(pageCount, SYLLABUS_IMPORT_CHUNK_PAGES).length };
 }
@@ -292,6 +301,24 @@ export function importDetail(read: Pick<ExtractResult, "localModules" | "failure
   return { ...(read.localModules.length ? { localModules: read.localModules } : {}), ...(message ? { message } : {}) };
 }
 
+/**
+ * The uploaded file's bytes, wherever they are kept: `files.dataBase64` (MySQL) or the object store
+ * (R2, located through `file_objects`). A file that is gone or cannot be read gives the reason, with
+ * any R2 credentials masked, instead of an exception.
+ */
+export async function importFileBytes(job: Pick<SyllabusImportJob, "fileId" | "providerWorkspaceId">): Promise<{ bytes: Uint8Array } | { missing: string }> {
+  const file = job.fileId ? await fileRow(job.fileId) : null;
+  if (!file || file.workspaceId !== job.providerWorkspaceId) return { missing: `file ${job.fileId ?? "-"} not found` };
+  try {
+    const bytes = await fileBytes(file);
+    if (!bytes.byteLength && file.sizeBytes > 0) return { missing: `file ${file.id}: no stored content (neither in MySQL nor in the object store)` };
+    return { bytes: new Uint8Array(bytes) };
+  } catch (error) {
+    const why = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    return { missing: redactR2Secrets(`file ${file.id} could not be read: ${why}`) };
+  }
+}
+
 /** Runs one import. Every way out sets the job to READY or FAILED (with a reason that is logged). */
 export async function runImport(jobId: string, runId: string) {
   const db = requireDb();
@@ -305,9 +332,9 @@ export async function runImport(jobId: string, runId: string) {
 
   let bytes: Uint8Array | null = null;
   if (job.sourceText === null) {
-    const file = job.fileId ? await fileRow(job.fileId) : null;
-    if (!file || file.workspaceId !== job.providerWorkspaceId) return void (await fail("FILE_MISSING", `file ${job.fileId ?? "-"} not found`));
-    bytes = new Uint8Array(await fileBytes(file));
+    const read = await importFileBytes(job);
+    if ("missing" in read) return void (await fail("FILE_MISSING", read.missing));
+    bytes = read.bytes;
   }
   if ((await usedInLastDay(job.providerWorkspaceId)) >= ENV.syllabusImportDailyLimit) return void (await fail("DAILY_LIMIT"));
   await db.insert(aiUsageEvents).values({ workspaceId: job.providerWorkspaceId, kind: SYLLABUS_IMPORT_USAGE_KIND, refId: jobId });
@@ -374,7 +401,7 @@ export async function runImport(jobId: string, runId: string) {
 // Reads, create, delete
 // ---------------------------------------------------------------------------
 
-function jobView(job: SyllabusImportJob, now = Date.now()) {
+export function jobView(job: SyllabusImportJob, now = Date.now()) {
   const stale = (job.status === "QUEUED" || job.status === "PROCESSING") && now - job.updatedAt.getTime() > SYLLABUS_IMPORT_STALE_MS;
   const result = job.result ? syllabusImportStructureSchema.safeParse(job.result) : null;
   const unreadable = job.status === "READY" && !result?.success;
@@ -384,7 +411,7 @@ function jobView(job: SyllabusImportJob, now = Date.now()) {
     fileName: job.fileName,
     status: stale || unreadable ? ("FAILED" as const) : job.status,
     errorCode: stale ? "INTERRUPTED" : unreadable ? "INTERNAL" : job.errorCode,
-    detail: (job.detail ?? null) as SyllabusImportDetail | null,
+    detail: parseImportDetail(job.detail),
     pageCount: job.pageCount,
     chunkCount: job.chunkCount,
     chunksDone: job.chunksDone,

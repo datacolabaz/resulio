@@ -51,6 +51,51 @@ export interface SyllabusImportDetail {
   localModules?: string[];
 }
 
+export const SYLLABUS_IMPORT_DETAIL_MAX = 2_000;
+const DETAIL_TITLE_MAX = 255;
+const DETAIL_MODULES_MAX = 60;
+
+const detailText = (v: unknown): string => {
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (v === null || v === undefined) return "";
+  try {
+    return JSON.stringify(v) ?? "";
+  } catch {
+    return "";
+  }
+};
+
+const moduleTitle = (v: unknown): string => {
+  if (typeof v === "string") return v.trim();
+  if (v && typeof v === "object" && typeof (v as { title?: unknown }).title === "string") return (v as { title: string }).title.trim();
+  return detailText(v).trim();
+};
+
+/**
+ * A job's stored `detail` as the page can render it: plain strings only. Rows written by older
+ * versions or by hand (a bare string, a message object, titles as objects) are read leniently
+ * rather than reaching the page as objects React cannot render.
+ */
+export function parseImportDetail(raw: unknown): SyllabusImportDetail | null {
+  if (raw === null || raw === undefined) return null;
+  let value = raw;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      /* a plain message */
+    }
+  }
+  const obj = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+  const message = detailText(obj ? obj.message : value).trim().slice(0, SYLLABUS_IMPORT_DETAIL_MAX);
+  const rawModules = obj?.localModules;
+  const list = Array.isArray(rawModules) ? rawModules : rawModules === undefined || rawModules === null ? [] : [rawModules];
+  const localModules = list.map(moduleTitle).filter(Boolean).map((t) => t.slice(0, DETAIL_TITLE_MAX)).slice(0, DETAIL_MODULES_MAX);
+  if (!message && !localModules.length) return null;
+  return { ...(localModules.length ? { localModules } : {}), ...(message ? { message } : {}) };
+}
+
 const title = z.string().trim().min(1).max(255);
 const line = z.string().trim().min(1).max(500);
 

@@ -7,11 +7,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { t } from "@/i18n/messages";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { reviewEdit, reviewProblems, reviewStats, reviewTimingCheck, type Review } from "@/lib/syllabusImportReview";
-import type { ImportModule } from "@shared/syllabusImport";
+import { parseImportDetail, syllabusImportStructureSchema, type ImportModule, type SyllabusImportDetail } from "@shared/syllabusImport";
 import { hasModuleDetails } from "@shared/syllabusModuleDetails";
 import { MAX_LESSONS_PER_WEEK } from "@shared/syllabusTiming";
 import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, ChevronDown, ChevronRight, RotateCcw, Sparkles, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Component, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useParams } from "wouter";
 import { importFailureText } from "./ImportDialog";
@@ -20,6 +20,17 @@ import { fieldLabel, SyllabusShell, toastError } from "./shared";
 type Job = RouterOutputs["teacher"]["syllabus"]["aiImport"]["get"];
 
 const running = (status: string) => status === "QUEUED" || status === "PROCESSING";
+const sourceName = (job: Pick<Job, "fileName">) => (typeof job.fileName === "string" && job.fileName) || t("simport.pastedText");
+
+function TechnicalDetails({ text, hint }: { text: string; hint?: boolean }) {
+  return (
+    <details className="rounded-xl border border-border bg-muted p-3 text-xs">
+      <summary className="cursor-pointer font-medium text-foreground-secondary">{t("simport.technicalDetails")}</summary>
+      {hint && <p className="mt-2 text-muted-foreground">{t("simport.technicalHint")}</p>}
+      <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-foreground-secondary">{text}</pre>
+    </details>
+  );
+}
 
 function Progress({ job }: { job: Job }) {
   const total = Math.max(1, job.chunkCount);
@@ -280,7 +291,7 @@ function ModuleReview({ s, set, index, open, onToggle }: { s: Review; set: (s: R
   );
 }
 
-function ReviewEditor({ job, initial }: { job: Job; initial: Review }) {
+function ReviewEditor({ job, detail, initial }: { job: Pick<Job, "id">; detail: SyllabusImportDetail | null; initial: Review }) {
   const [, nav] = useLocation();
   const [s, set] = useState<Review>(initial);
   const [open, setOpen] = useState<Set<number>>(() => new Set([0]));
@@ -314,7 +325,7 @@ function ReviewEditor({ job, initial }: { job: Job; initial: Review }) {
         <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-link" aria-hidden />
         {t("simport.reviewIntro")}
       </p>
-      {!!job.detail?.localModules?.length && <LocalModulesNote titles={job.detail.localModules} message={job.detail.message} />}
+      {!!detail?.localModules?.length && <LocalModulesNote titles={detail.localModules} message={detail.message} />}
       <CourseFields s={s} set={set} />
       <Panel title={t("simport.modules")}>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -364,9 +375,11 @@ function JobState({ job }: { job: Job }) {
     },
     onError: toastError,
   });
-  const source = job.fileName ?? t("simport.pastedText");
+  const source = sourceName(job);
+  const detail = useMemo(() => parseImportDetail(job.detail), [job.detail]);
+  const review = useMemo(() => (job.result ? syllabusImportStructureSchema.safeParse(job.result) : null), [job.result]);
 
-  if (job.status === "READY" && job.result) return <ReviewEditor job={job} initial={job.result} />;
+  if (job.status === "READY" && review?.success) return <ReviewEditor job={job} detail={detail} initial={review.data} />;
   if (job.status === "COMPLETED" && job.syllabusId) {
     return (
       <Panel title={source}>
@@ -386,13 +399,7 @@ function JobState({ job }: { job: Job }) {
       ) : (
         <div className="space-y-3">
           <p className="text-sm text-destructive" role="alert">{importFailureText(job.errorCode)}</p>
-          {job.detail?.message && (
-            <details className="rounded-xl border border-border bg-muted p-3 text-xs">
-              <summary className="cursor-pointer font-medium text-foreground-secondary">{t("simport.technicalDetails")}</summary>
-              <p className="mt-2 text-muted-foreground">{t("simport.technicalHint")}</p>
-              <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-foreground-secondary">{job.detail.message}</pre>
-            </details>
-          )}
+          {detail?.message && <TechnicalDetails text={detail.message} hint />}
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" disabled={retry.isPending} onClick={() => retry.mutate({ id: job.id })}>
               <RotateCcw className="mr-1 h-4 w-4" aria-hidden />
@@ -409,12 +416,69 @@ function JobState({ job }: { job: Job }) {
   );
 }
 
+/** What the page shows instead of the job when it fails to render: the job's reason, the error and a way on. */
+export function ImportRenderError({ job, error, onRetry }: { job: Job; error: Error; onRetry: () => void }) {
+  const rerun = trpc.teacher.syllabus.aiImport.retry.useMutation({ onSuccess: onRetry, onError: toastError });
+  const detail = parseImportDetail(job.detail);
+  const technical = [detail?.message, `${error.name}: ${error.message}`].filter(Boolean).join("\n");
+  const canRerun = !running(job.status) && job.status !== "COMPLETED";
+  return (
+    <Panel title={sourceName(job)}>
+      <div className="space-y-3" data-testid="import-error">
+        <p className="text-sm text-destructive" role="alert">
+          {job.status === "FAILED" ? importFailureText(job.errorCode) : t("simport.renderError")}
+        </p>
+        <TechnicalDetails text={technical} />
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={onRetry}>
+            <RotateCcw className="mr-1 h-4 w-4" aria-hidden />
+            {t("simport.retry")}
+          </Button>
+          {canRerun && (
+            <Button variant="ghost" disabled={rerun.isPending} onClick={() => rerun.mutate({ id: job.id })}>
+              <Sparkles className="mr-1 h-4 w-4" aria-hidden />
+              {t("simport.reanalyse")}
+            </Button>
+          )}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+/** Keeps a render error in the job view on this page instead of the app-wide "reload the page" screen. */
+class ImportRenderBoundary extends Component<{ job: Job; onRetry: () => void; children: React.ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: unknown) {
+    return { error: error instanceof Error ? error : new Error(String(error)) };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error(`[syllabusImport] job ${this.props.job.id} could not be shown`, error);
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    const retry = () => {
+      this.setState({ error: null });
+      this.props.onRetry();
+    };
+    return <ImportRenderError job={this.props.job} error={this.state.error} onRetry={retry} />;
+  }
+}
+
 export default function SyllabusImportPage() {
   const params = useParams<{ jobId: string }>();
   const job = trpc.teacher.syllabus.aiImport.get.useQuery(
     { id: params.jobId },
     { retry: false, refetchInterval: (q) => (q.state.data && running(q.state.data.status) ? 2500 : false) },
   );
+  const body = job.data ? (
+    <ImportRenderBoundary key={job.data.id} job={job.data} onRetry={() => void job.refetch()}>
+      <JobState job={job.data} />
+    </ImportRenderBoundary>
+  ) : null;
   return (
     <SyllabusShell title={t("simport.title")}>
       <div className="mx-auto max-w-4xl space-y-4">
@@ -422,7 +486,7 @@ export default function SyllabusImportPage() {
           <ArrowLeft className="h-4 w-4" aria-hidden />
           {t("nav.syllabus")}
         </Link>
-        {job.isLoading ? <Loading /> : job.error ? <ErrorNote error={job.error} /> : job.data ? <JobState job={job.data} /> : null}
+        {job.isLoading ? <Loading /> : job.error ? <ErrorNote error={job.error} /> : body}
       </div>
     </SyllabusShell>
   );

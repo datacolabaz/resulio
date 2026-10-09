@@ -1,5 +1,6 @@
 import { API_BASE } from "@/const";
 import { getActiveWorkspaceId } from "@/lib/contexts";
+import { reloadForStaleChunk } from "@/lib/lazyPage";
 import { trpc } from "@/lib/trpc";
 import { SITE_PAGES } from "@/seo/pages";
 import { UNAUTHED_ERR_MSG, WORKSPACE_HEADER } from '@shared/const';
@@ -49,6 +50,11 @@ queryClient.getMutationCache().subscribe(event => {
     redirectToLoginIfUnauthorized(error);
     console.error("[API Mutation Error]", error);
   }
+});
+
+// A chunk preloaded for a lazy page that a deploy has removed: reload once for the new build.
+window.addEventListener("vite:preloadError", (event) => {
+  if (reloadForStaleChunk((event as Event & { payload?: unknown }).payload)) event.preventDefault();
 });
 
 const trpcClient = trpc.createClient({
