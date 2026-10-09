@@ -4,7 +4,9 @@ import { t } from "@/i18n/messages";
 import { fmtDay, fmtNumber } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import { formatFileSize } from "@/lib/uploadFile";
+import { Cloud, Database } from "lucide-react";
 import { NoAccess, SettingsLink, UsageBar, useAdmin } from "./adminShared";
+import { R2MigrationPanel } from "./AdminStorageR2";
 
 type Group = { key: string; count: number; bytes: number };
 
@@ -44,10 +46,23 @@ export default function AdminStoragePage() {
 
   return (
     <div className="space-y-5">
-      <h1 className="text-xl font-semibold tracking-tight">{t("admin.nav.storage")}</h1>
+      <div className="space-y-1.5">
+        <h1 className="text-xl font-semibold tracking-tight">{t("admin.nav.storage")}</h1>
+        <StatusBadge tone={s.backend.uploadsTo === "r2" ? "info" : "neutral"} icon={s.backend.uploadsTo === "r2" ? Cloud : Database}>
+          {s.backend.uploadsTo === "r2" ? t("admin.storage.newFilesR2", { bucket: s.backend.r2Bucket ?? "" }) : t("admin.storage.newFilesDb")}
+        </StatusBadge>
+      </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <StatCard label={t("admin.storage.total")} value={formatFileSize(s.totalBytes)} hint={t("admin.storage.fileCount", { count: fmtNumber(s.totalFiles) })} />
-        <StatCard label={t("admin.storage.inDb")} value={formatFileSize(s.backend.inDatabase.bytes)} hint={t("admin.storage.fileCount", { count: fmtNumber(s.backend.inDatabase.count) })} />
+        <StatCard
+          label={t("admin.storage.inDb")}
+          value={formatFileSize(s.backend.inDatabase.bytes)}
+          hint={
+            s.backend.inBoth
+              ? `${t("admin.storage.fileCount", { count: fmtNumber(s.backend.inDatabase.count) })} · ${t("admin.storage.alsoInR2", { count: fmtNumber(s.backend.inBoth) })}`
+              : t("admin.storage.fileCount", { count: fmtNumber(s.backend.inDatabase.count) })
+          }
+        />
         <StatCard label={t("admin.storage.inR2")} value={formatFileSize(s.backend.inObjectStore.bytes)} hint={t("admin.storage.fileCount", { count: fmtNumber(s.backend.inObjectStore.count) })} />
       </div>
 
@@ -72,6 +87,8 @@ export default function AdminStoragePage() {
           </div>
         )}
       </Panel>
+
+      <R2MigrationPanel />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <GroupList title={t("admin.storage.byType")} groups={s.byType} total={s.totalBytes} label={(k) => t(`admin.storage.type.${k as (typeof s.byType)[number]["key"]}`)} />

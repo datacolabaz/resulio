@@ -51,21 +51,59 @@ reaches, public share page, …), exactly as before. Then, for a file in R2:
 
 ## Moving existing files
 
-`scripts/migrate-files-to-r2.ts` (`pnpm files:to-r2`) is a dry run unless `--apply`, and is safe to
-re-run or stop at any point. Run it where both `DATABASE_URL` and the `R2_*` variables are set, e.g.
-`railway run pnpm files:to-r2` from a checkout linked to the API service.
+On start the API logs which backend new uploads use, without secrets, e.g.
+`[storage] backend=r2 bucket=resulio-files download=redirect` or
+`[storage] backend=db (R2 not configured; missing R2_BUCKET)`.
+
+### From the admin panel (recommended)
+
+Admin → **Files & storage** → **Copy files to R2** (needs the `storage.migrate` permission; super
+admins have it, support admins only see the status). The section only works once R2 is configured;
+otherwise it names the missing variables.
+
+1. **Check**: a dry run on the server: how many files and MB would be copied, how many are already in
+   the bucket, and any problems (bucket not reachable, files without data, objects in another bucket).
+2. **Copy** (after a confirmation): runs on the server as a background job, in batches of 25 with 4
+   uploads at a time. The page polls progress (files, MB, errors). Per-file errors are listed with
+   secrets removed; the job continues past them, and running it again retries only what is missing.
+   **Cancel** stops after the files in flight.
+3. **Verify copies**: re-checks every recorded object: it exists, its size matches, and its MD5
+   (the R2 ETag) matches the MySQL bytes.
+
+Safety:
+
+- The job never deletes or changes MySQL file data, and it does not change where downloads come
+  from: files that still have their MySQL copy are served from MySQL.
+- Idempotent: an object already in the bucket with the same size and MD5 is skipped; anything else is
+  uploaded again and checked (size and MD5) before it is recorded in `file_objects`.
+- One job at a time: the state lives in `platform_settings` (`job.r2Migration`) and is changed under a
+  row lock. A running job saves a heartbeat every few seconds; if the API restarts, the job resumes by
+  itself about two minutes later (or an admin can resume or cancel it as soon as it shows as
+  interrupted).
+- Start, cancel and finish are written to the admin audit log.
+
+MySQL copies are kept. Remove them only with the CLI purge below, a few days later and after a
+database backup.
+
+### From the command line
+
+`scripts/migrate-files-to-r2.ts` (`pnpm files:to-r2`) uses the same code. It is a dry run unless
+`--apply`, and is safe to re-run or stop at any point. Run it where both `DATABASE_URL` and the `R2_*`
+variables are set, e.g. `railway run pnpm files:to-r2` from a checkout linked to the API service.
 
 ```sh
 pnpm files:to-r2                      # plan: how many files / MB would be copied
-pnpm files:to-r2 --apply              # copy; checks each object's size, then records it in file_objects
+pnpm files:to-r2 --apply              # copy; checks each object's size and MD5, then records it in file_objects
+pnpm files:to-r2 --verify --apply     # re-check every copied object (size + MD5)
 pnpm files:to-r2 --purge-db           # plan the purge
 pnpm files:to-r2 --purge-db --apply   # empty files.dataBase64, only where the object is confirmed in R2
 ```
 
-`--limit N` caps the files per run, `--batch N` the batch size (50). Copying keeps the MySQL copy, so
-downloads are unchanged until the purge; the purge re-checks every object first and skips any that is
-missing or has the wrong size. The database only shrinks on disk after the purge (MySQL reuses the
-space; `OPTIMIZE TABLE files` returns it).
+`--limit N` caps the files per run, `--batch N` the batch size (50), `--concurrency N` parallel
+uploads (4). Copying keeps the MySQL copy, so downloads are unchanged until the purge; the purge is
+only available here (not in the admin panel), re-checks every object first and skips any that is
+missing or has the wrong size. Take a database backup before purging. The database only shrinks on
+disk after the purge (MySQL reuses the space; `OPTIMIZE TABLE files` returns it).
 
 ## Admin view
 
