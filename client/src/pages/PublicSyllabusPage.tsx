@@ -3,6 +3,7 @@ import { LanguageSwitch, Pill, ThemeToggle } from "@/components/AppShell";
 import { BrandMark } from "@/components/BrandMark";
 import { EmailSignIn } from "@/components/EmailSignIn";
 import { JoinRequestStatusBadge } from "@/components/syllabus/JoinRequestStatus";
+import { ModuleToggleAll, useOpenModules } from "@/components/syllabus/ModuleToggles";
 import { Bullets, ModuleDetailsBlocks } from "@/components/syllabus/ModuleDetailsBlocks";
 import { CourseTimingPills, durationText } from "@/components/syllabus/Timing";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { GroupPreviewDetails } from "@/pages/PublicFlows";
 import { useSharePageMeta } from "@/seo/usePageMeta";
 import { JOIN_MESSAGE_MAX, syllabusPageTitle } from "@shared/syllabusJoin";
+import { ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Link, useParams } from "wouter";
@@ -61,51 +63,84 @@ function Frame({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Programme({ s }: { s: Page["syllabus"] }) {
+function Programme({ s, code }: { s: Page["syllabus"]; code: string }) {
   const hasFinal = s.finalProjects.length > 0 || s.finalAssessments.length > 0;
+  const modules = useOpenModules({
+    view: "public",
+    syllabusId: code,
+    moduleIds: s.modules.map((_, i) => String(i)),
+    initial: () => (s.modules.length === 1 ? ["0"] : []),
+  });
   return (
     <section aria-labelledby="programme" className="space-y-3">
-      <h2 id="programme" className="text-lg font-semibold">{t("sylShare.page.programme")}</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="programme" className="text-lg font-semibold">{t("sylShare.page.programme")}</h2>
+        {s.modules.length > 1 && (
+          <ModuleToggleAll allOpen={modules.allOpen} noneOpen={modules.noneOpen} onOpenAll={modules.openAll} onCloseAll={modules.closeAll} />
+        )}
+      </div>
       <ol className="space-y-3">
-        {s.modules.map((m, i) => (
-          <li key={i} className="rounded-2xl border border-border bg-card p-4 sm:p-5">
-            <div className="text-xs font-medium uppercase tracking-wide text-link">{t("sylShare.page.module", { n: i + 1 })}</div>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <h3 className="break-words text-base font-semibold">{m.title}</h3>
-              {m.duration && <Pill>{durationText(m.duration)}</Pill>}
-            </div>
-            {m.lessons.length > 0 && (
-              <div className="mt-3">
-                <h4 className="text-sm font-medium text-foreground-secondary">{t("sylShare.page.lessonList")}</h4>
-                <ol className="ml-5 mt-1 list-decimal space-y-1 text-sm marker:text-muted-foreground">
-                  {m.lessons.map((l, j) => (
-                    <li key={j} className="break-words">
-                      {l.title}
-                      {l.projects.length > 0 && (
-                        <ul className="ml-4 mt-1 list-disc text-xs text-foreground-secondary">
-                          {l.projects.map((p, k) => <li key={k} className="break-words">{p}</li>)}
-                        </ul>
-                      )}
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            )}
-            {m.projects.length > 0 && (
-              <div className="mt-3">
-                <h4 className="text-sm font-medium text-foreground-secondary">{t("sylShare.page.projects")}</h4>
-                <Bullets items={m.projects} />
-              </div>
-            )}
-            {m.assessments.length > 0 && (
-              <div className="mt-3">
-                <h4 className="text-sm font-medium text-foreground-secondary">{t("sylShare.page.assessments")}</h4>
-                <Bullets items={m.assessments} />
-              </div>
-            )}
-            <ModuleDetailsBlocks details={m.details} as="h4" className="mt-3" />
-          </li>
-        ))}
+        {s.modules.map((m, i) => {
+          const expanded = modules.isOpen(String(i));
+          const panelId = `programme-module-${i}`;
+          return (
+            <li key={i} className="rounded-2xl border border-border bg-card">
+              <h3>
+                <button
+                  type="button"
+                  className="flex w-full items-start gap-3 rounded-2xl p-4 text-left hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-5"
+                  aria-expanded={expanded}
+                  aria-controls={expanded ? panelId : undefined}
+                  onClick={() => modules.toggle(String(i))}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-xs font-medium uppercase tracking-wide text-link">{t("sylShare.page.module", { n: i + 1 })}</span>
+                    <span className="mt-1 flex flex-wrap items-center gap-2">
+                      <span className="break-words text-base font-semibold">{m.title}</span>
+                      {m.lessons.length > 0 && <Pill>{t("syllabus.count.lessons", { count: m.lessons.length })}</Pill>}
+                      {m.duration && <Pill>{durationText(m.duration)}</Pill>}
+                    </span>
+                  </span>
+                  <ChevronDown className={`mt-1 h-5 w-5 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`} aria-hidden />
+                </button>
+              </h3>
+              {expanded && (
+                <div id={panelId} className="border-t border-border px-4 pb-4 sm:px-5 sm:pb-5">
+                  {m.lessons.length > 0 && (
+                    <div className="mt-3">
+                      <h4 className="text-sm font-medium text-foreground-secondary">{t("sylShare.page.lessonList")}</h4>
+                      <ol className="ml-5 mt-1 list-decimal space-y-1 text-sm marker:text-muted-foreground">
+                        {m.lessons.map((l, j) => (
+                          <li key={j} className="break-words">
+                            {l.title}
+                            {l.projects.length > 0 && (
+                              <ul className="ml-4 mt-1 list-disc text-xs text-foreground-secondary">
+                                {l.projects.map((p, k) => <li key={k} className="break-words">{p}</li>)}
+                              </ul>
+                            )}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
+                  {m.projects.length > 0 && (
+                    <div className="mt-3">
+                      <h4 className="text-sm font-medium text-foreground-secondary">{t("sylShare.page.projects")}</h4>
+                      <Bullets items={m.projects} />
+                    </div>
+                  )}
+                  {m.assessments.length > 0 && (
+                    <div className="mt-3">
+                      <h4 className="text-sm font-medium text-foreground-secondary">{t("sylShare.page.assessments")}</h4>
+                      <Bullets items={m.assessments} />
+                    </div>
+                  )}
+                  <ModuleDetailsBlocks details={m.details} as="h4" className="mt-3" />
+                </div>
+              )}
+            </li>
+          );
+        })}
       </ol>
       {hasFinal && (
         <div className="rounded-2xl border border-border bg-card p-4 sm:p-5">
@@ -395,7 +430,7 @@ export default function PublicSyllabusPage() {
           {isOwner && <p className="mt-2 text-xs text-muted-foreground">{t("sylShare.page.ownerCta")}</p>}
         </div>
       </header>
-      <Programme s={s} />
+      <Programme s={s} code={code} />
       <JoinSection page={page} onRequest={request} />
       <RequestDialog code={page.code} syllabusTitle={s.title} target={target} onClose={() => setTarget(null)} />
     </Frame>
