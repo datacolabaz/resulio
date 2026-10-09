@@ -1,3 +1,4 @@
+import { AiQuotaNote } from "@/components/AiQuotaNote";
 import { AppShell, ErrorNote, Loading, Panel } from "@/components/AppShell";
 import { draftFromQuestion, QuestionEditor } from "@/components/QuestionEditor";
 import { QuestionPreview } from "@/components/questionBank/QuestionPreview";
@@ -105,6 +106,7 @@ function UploadPanel() {
               {t("qimport.limits", { size: formatFileSize(a.maxBytes), pages: a.maxPages, left: a.remainingToday })}
             </p>
           </div>
+          <AiQuotaNote className="max-w-xl" />
           <div className="max-w-xl space-y-1">
             <SectionPicker value={sectionId} onChange={setSectionId} />
             <p className="text-xs text-muted-foreground">{t("qimport.sectionHelp")}</p>
