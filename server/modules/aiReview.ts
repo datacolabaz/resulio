@@ -6,6 +6,8 @@ import { aiUsageEvents, files, submissionAiReviews, taskSubmissions, tasks, user
 import { ENV } from "../_core/env";
 import { invokeLLM, llmFailureReason, type InvokeParams, type InvokeResult, type LlmFailureReason, type Message } from "../_core/llm";
 import { serverLocale } from "../_core/locale";
+import { withAiUsage } from "../aiUsage/context";
+import { aiLimitCheck, assertAiAllowed } from "../aiUsage/limits";
 import { requireDb } from "../db";
 import { managedWorkspaces, type TeacherScope } from "./access";
 import { extractJson } from "./ai";
@@ -14,7 +16,7 @@ import { providerAlertFor, sendAiAlert, usageAlertFor } from "./aiAlerts";
 import { answerKeyForReview } from "./answerKey";
 import { autoGradeAfterReview, autoGradeBlockedBy, autoGradeSetting, clampScore, type ReviewForGrading } from "./autoGrade";
 import { AppError } from "./errors";
-import { ALLOWED_FILE_TYPES, extensionOf, MAX_FILE_BYTES } from "./files";
+import { ALLOWED_FILE_TYPES, extensionOf, fileBytes, MAX_FILE_BYTES } from "./files";
 import { extractDocument, renderDoc, type ExtractedDoc } from "./textExtract";
 
 /**
@@ -304,13 +306,15 @@ async function reviewSubmission(submissionId: string): Promise<Partial<Submissio
   const ids = sub.files.map((f) => f.fileId);
   const rows = ids.length ? await db.select().from(files).where(inArray(files.id, ids)) : [];
   const byId = new Map(rows.map((r) => [r.id, r]));
-  const fileInputs: ReviewFileInput[] = sub.files.map((f) => {
-    const row = byId.get(f.fileId);
-    const problem = fileProblem(row, sub.studentId, task.providerWorkspaceId);
-    if (problem || !row) return { name: f.name, problem, text: null };
-    const extracted = extractDocument(row.fileName, Buffer.from(row.dataBase64, "base64"));
-    return extracted.ok ? { name: row.fileName, problem: null, text: null, doc: extracted.doc } : { name: row.fileName, problem: null, text: null };
-  });
+  const fileInputs: ReviewFileInput[] = await Promise.all(
+    sub.files.map(async (f): Promise<ReviewFileInput> => {
+      const row = byId.get(f.fileId);
+      const problem = fileProblem(row, sub.studentId, task.providerWorkspaceId);
+      if (problem || !row) return { name: f.name, problem, text: null };
+      const extracted = extractDocument(row.fileName, await fileBytes(row));
+      return extracted.ok ? { name: row.fileName, problem: null, text: null, doc: extracted.doc } : { name: row.fileName, problem: null, text: null };
+    }),
+  );
 
   const reviewInput = { deadline: task.deadline, submittedAt: sub.submittedAt, answerText: sub.comment ?? "", files: fileInputs };
   const first = assembleReviewInput(reviewInput);
@@ -323,6 +327,8 @@ async function reviewSubmission(submissionId: string): Promise<Partial<Submissio
     await sendAiAlert(workspaceId, "LIMIT_REACHED", { used, limit });
     return { checks: first.checks, inputChars: first.text.length, status: "SKIPPED", errorCode: "DAILY_LIMIT" };
   }
+  if (!(await aiLimitCheck(task.createdBy)).ok) return { checks: first.checks, inputChars: first.text.length, status: "SKIPPED", errorCode: "TEACHER_AI_LIMIT" };
+  const usage = { userId: task.createdBy, workspaceId, operationId: nanoid() };
 
   await db.insert(aiUsageEvents).values({ workspaceId, kind: AI_REVIEW_USAGE_KIND, refId: submissionId });
   const usageAlert = usageAlertFor(used + 1, limit);
@@ -330,7 +336,8 @@ async function reviewSubmission(submissionId: string): Promise<Partial<Submissio
 
   const description = [task.description, task.instructions].filter(Boolean).join("\n\n");
   const attachments = await loadTaskAttachments(workspaceId, task.attachments);
-  const answerKey = await answerKeyForReview(task, { title: task.title, description, attachments }, { autoDraft: (await autoGradeSetting(task.id)).enabled });
+  const autoDraft = (await autoGradeSetting(task.id)).enabled;
+  const answerKey = await withAiUsage({ feature: "ANSWER_KEY_DRAFT", ...usage }, () => answerKeyForReview(task, { title: task.title, description, attachments }, { autoDraft }));
   const fitted = fitReviewContext({
     title: task.title,
     description,
@@ -341,10 +348,12 @@ async function reviewSubmission(submissionId: string): Promise<Partial<Submissio
   const { checks, text } = assembleReviewInput({ ...reviewInput, maxRows: fitted.rowCap });
   const base = { checks, inputChars: text.length };
   const [student] = await db.select({ locale: users.preferredLocale }).from(users).where(eq(users.id, sub.studentId)).limit(1);
-  const outcome = await reviewWithModel({ ...fitted.task, locale: serverLocale(student?.locale) }, text, {
-    model: ENV.aiReviewModel || undefined,
-    suspicious: checks.some((c) => c.code === "INJECTION_SUSPECTED"),
-  });
+  const outcome = await withAiUsage({ feature: "SUBMISSION_REVIEW", ...usage }, () =>
+    reviewWithModel({ ...fitted.task, locale: serverLocale(student?.locale) }, text, {
+      model: ENV.aiReviewModel || undefined,
+      suspicious: checks.some((c) => c.code === "INJECTION_SUSPECTED"),
+    }),
+  );
   if (!outcome.ok) {
     if (outcome.providerAlert) await sendAiAlert(workspaceId, outcome.providerAlert);
     return { ...base, status: "FAILED", errorCode: outcome.errorCode };
@@ -447,6 +456,7 @@ export async function rerunReview(scope: TeacherScope, submissionId: string) {
     .where(eq(submissionAiReviews.submissionId, submissionId))
     .limit(1);
   if (rerunBlockedBy(review, Date.now())) throw new AppError("AI_REVIEW_IN_PROGRESS");
+  if (ENV.aiReviewEnabled) await assertAiAllowed(scope.userId);
   // Refuse up front at the cap so an existing finished review is not replaced by a DAILY_LIMIT skip.
   if (ENV.aiReviewEnabled) {
     const used = await usedInLastDay(scope.workspaceId);

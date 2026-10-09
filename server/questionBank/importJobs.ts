@@ -15,11 +15,13 @@ import {
 import { isGeminiUrl } from "../_core/aiConfig";
 import { ENV } from "../_core/env";
 import { invokeLLM, LlmHttpError, llmFailureReason, type MessageContent } from "../_core/llm";
+import { withAiUsage } from "../aiUsage/context";
+import { assertAiAllowed } from "../aiUsage/limits";
 import { requireDb } from "../db";
 import type { TeacherScope } from "../modules/access";
 import { providerAlertFor, sendAiAlert } from "../modules/aiAlerts";
 import { AppError } from "../modules/errors";
-import { extensionOf, fileRow, MAX_FILE_BYTES } from "../modules/files";
+import { extensionOf, fileBytes, fileRow, MAX_FILE_BYTES } from "../modules/files";
 import { createBankQuestion } from "./bank";
 import { buildExtractionMessages, findDuplicates, normalizeItem, parseExtraction, planChunks, type ImportDraft, type SectionContext } from "./extraction";
 import { pdfPageCount, pdfPageTexts, pdfSlice } from "./pdf";
@@ -107,7 +109,7 @@ async function loadFile(workspaceId: string, fileId: string) {
   if (!file || file.workspaceId !== workspaceId) throw new AppError("FILE_NOT_FOUND");
   const mimeType = MIME_BY_EXT[extensionOf(file.fileName)];
   if (!mimeType) throw new AppError("IMPORT_FILE_TYPE");
-  return { file, mimeType, bytes: new Uint8Array(Buffer.from(file.dataBase64, "base64")) };
+  return { file, mimeType, bytes: new Uint8Array(await fileBytes(file)) };
 }
 
 const isBusy = (job: Pick<QuestionImportJob, "status" | "updatedAt">, now = Date.now()) =>
@@ -122,6 +124,7 @@ export async function startImport(scope: TeacherScope, input: { fileId: string; 
   const chunkCount = mimeType === "application/pdf" ? planChunks(pageCount, IMPORT_CHUNK_PAGES).length : 1;
   const used = await usedInLastDay(scope.workspaceId);
   if (used + chunkCount > ENV.questionImportDailyLimit) throw new AppError("IMPORT_DAILY_LIMIT");
+  await assertAiAllowed(scope.userId);
 
   const id = nanoid();
   const runId = nanoid();
@@ -141,7 +144,7 @@ export async function startImport(scope: TeacherScope, input: { fileId: string; 
       chunkCount,
       runId,
     });
-  scheduleRun(id, runId);
+  scheduleRun(scope, id, runId);
   return jobView(await ownedJob(scope, id));
 }
 
@@ -152,22 +155,23 @@ export async function retryImport(scope: TeacherScope, id: string) {
   if (job.status === "COMPLETED" || (job.status === "READY" && (await acceptedCount(id)) > 0)) throw new AppError("IMPORT_BUSY");
   const used = await usedInLastDay(scope.workspaceId);
   if (used + job.chunkCount > ENV.questionImportDailyLimit) throw new AppError("IMPORT_DAILY_LIMIT");
+  await assertAiAllowed(scope.userId);
   const runId = nanoid();
   await requireDb()
     .update(questionImportJobs)
     .set({ status: "QUEUED", runId, errorCode: null, chunksDone: 0, finishedAt: null })
     .where(eq(questionImportJobs.id, id));
-  scheduleRun(id, runId);
+  scheduleRun(scope, id, runId);
   return jobView(await ownedJob(scope, id));
 }
 
-function scheduleRun(jobId: string, runId: string) {
-  setImmediate(() => {
+function scheduleRun(scope: TeacherScope, jobId: string, runId: string) {
+  withAiUsage({ feature: "QUESTION_IMPORT", userId: scope.userId, workspaceId: scope.workspaceId }, () => setImmediate(() => {
     runImport(jobId, runId).catch(async (error) => {
       console.error("[questionImport] run failed", error);
       await finishRun(jobId, runId, { status: "FAILED", errorCode: "INTERNAL" }).catch(() => false);
     });
-  });
+  }));
 }
 
 async function finishRun(jobId: string, runId: string, patch: Partial<QuestionImportJob>): Promise<boolean> {

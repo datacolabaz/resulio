@@ -440,6 +440,33 @@ const fetchWithBackoff = async (
     : new Error("LLM request failed after exhausting retries");
 };
 
+/** What the usage log needs from one invokeLLM call (retries included); see server/aiUsage/log.ts. */
+export type LlmCallEvent = {
+  model: string;
+  ok: boolean;
+  httpStatus?: number;
+  latencyMs: number;
+  usage?: InvokeResult["usage"];
+  /** For estimating tokens when the provider sends no `usage`. */
+  messages: unknown;
+  reply?: unknown;
+};
+
+let llmCallListener: ((event: LlmCallEvent) => void) | null = null;
+
+/** One listener, called after every invokeLLM; it must return at once and never throw into the call. */
+export function setLlmCallListener(listener: ((event: LlmCallEvent) => void) | null) {
+  llmCallListener = listener;
+}
+
+function notifyLlmCall(event: LlmCallEvent) {
+  try {
+    llmCallListener?.(event);
+  } catch (error) {
+    console.warn("[llm] call listener failed", error);
+  }
+}
+
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   const config = requireLlmConfig();
 
@@ -511,20 +538,32 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   }
 
   const url = openAiEndpoint(config.baseUrl, "chat/completions");
-  const response = await fetchWithBackoff(url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify(payload),
-  }, timeoutMs, maxRetries);
-
-  if (!response.ok) {
-    throw await providerError(response, "LLM invoke", resolvedModel, url);
+  const startedAt = Date.now();
+  const callEvent = (rest: Omit<LlmCallEvent, "model" | "latencyMs" | "messages">, model = resolvedModel): LlmCallEvent => ({ model: model || "", latencyMs: Date.now() - startedAt, messages: payload.messages, ...rest });
+  let response: Response;
+  try {
+    response = await fetchWithBackoff(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify(payload),
+    }, timeoutMs, maxRetries);
+  } catch (error) {
+    notifyLlmCall(callEvent({ ok: false }));
+    throw error;
   }
 
-  return (await response.json()) as InvokeResult;
+  if (!response.ok) {
+    const error = await providerError(response, "LLM invoke", resolvedModel, url);
+    notifyLlmCall(callEvent({ ok: false, httpStatus: error.status }));
+    throw error;
+  }
+
+  const result = (await response.json()) as InvokeResult;
+  notifyLlmCall(callEvent({ ok: true, httpStatus: response.status, usage: result.usage, reply: result.choices?.[0]?.message?.content }, result.model || resolvedModel));
+  return result;
 }
 
 export type ModelInfo = {

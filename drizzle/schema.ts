@@ -34,6 +34,7 @@ import {
   type AuditTargetType,
   type SecurityEventType,
 } from "../shared/adminPermissions";
+import { AI_CALL_STATUSES, type AiFeature } from "../shared/aiUsage";
 import { ANNOUNCEMENT_AUDIENCES, ANNOUNCEMENT_STATUSES, type AnnouncementTexts } from "../shared/announcements";
 import { ANSWER_SOURCES, CONFIDENCE_LEVELS, IMPORT_ITEM_STATUSES, IMPORT_JOB_STATUSES, type ImportIssue } from "../shared/questionImport";
 import { REFERRAL_SOURCES } from "../shared/referralSources";
@@ -816,6 +817,67 @@ export const aiUsageEvents = mysqlTable(
   (t) => [index("ai_usage_events_workspace_idx").on(t.workspaceId, t.createdAt)],
 );
 
+/**
+ * One row per model request (server/aiUsage/log.ts), written after the reply without blocking it.
+ * Tokens come from the provider's `usage`; `tokensEstimated` marks rows where it sent none.
+ * Cost is fixed at write time from ai_model_prices, so later price edits do not rewrite history.
+ */
+export const aiRequestLogs = mysqlTable(
+  "ai_request_logs",
+  {
+    id: bigint("id", { mode: "number" }).autoincrement().primaryKey(),
+    userId: int("userId"),
+    workspaceId: id("workspaceId"),
+    feature: varchar("feature", { length: 40 }).$type<AiFeature>().notNull(),
+    /** One user action (an import, a review); the daily cap counts these, not model requests. */
+    operationId: varchar("operationId", { length: 32 }),
+    model: varchar("model", { length: 120 }).notNull().default(""),
+    promptTokens: int("promptTokens").notNull().default(0),
+    completionTokens: int("completionTokens").notNull().default(0),
+    totalTokens: int("totalTokens").notNull().default(0),
+    tokensEstimated: boolean("tokensEstimated").notNull().default(false),
+    costMicroUsd: bigint("costMicroUsd", { mode: "number" }).notNull().default(0),
+    status: mysqlEnum("status", AI_CALL_STATUSES).notNull(),
+    httpStatus: int("httpStatus"),
+    latencyMs: int("latencyMs").notNull().default(0),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [
+    index("ai_request_logs_created_idx").on(t.createdAt),
+    index("ai_request_logs_user_idx").on(t.userId, t.createdAt),
+    index("ai_request_logs_feature_idx").on(t.feature, t.createdAt),
+  ],
+);
+
+/** Admin-editable price per model, USD per million tokens. Model "*" prices every model without its own row. */
+export const aiModelPrices = mysqlTable("ai_model_prices", {
+  model: varchar("model", { length: 120 }).primaryKey(),
+  inputUsdPerMillion: double("inputUsdPerMillion").notNull(),
+  outputUsdPerMillion: double("outputUsdPerMillion").notNull(),
+  note: varchar("note", { length: 255 }).notNull().default(""),
+  updatedBy: int("updatedBy"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+/** Per-teacher AI limit overrides; see shared/aiUsage.ts for what null and 0 mean. */
+export const aiTeacherLimits = mysqlTable("ai_teacher_limits", {
+  userId: int("userId").primaryKey(),
+  monthlyTokenQuota: bigint("monthlyTokenQuota", { mode: "number" }),
+  dailyRequestCap: int("dailyRequestCap"),
+  /** Admin reset: usage before this instant does not count toward the current day/month. */
+  usageResetAt: timestamp("usageResetAt"),
+  updatedBy: int("updatedBy"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+/** Small admin settings (AI budget and default limits, storage soft quota); keys in server/modules/admin/settings.ts. */
+export const platformSettings = mysqlTable("platform_settings", {
+  key: varchar("key", { length: 64 }).primaryKey(),
+  value: json("value").$type<unknown>(),
+  updatedBy: int("updatedBy"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 /** A file a teacher shares with a group and/or individual students. The actual bytes live in `files`
  *  (see below); fileId/mimeType/sizeBytes are denormalized here so the list view never needs a join. */
 export const materials = mysqlTable(
@@ -863,6 +925,19 @@ export const files = mysqlTable(
   },
   (t) => [index("files_workspace_idx").on(t.workspaceId)],
 );
+
+/**
+ * Where a file's bytes live when they are not in `files.dataBase64` (that column is then empty).
+ * Written by uploads while an object store is configured and by scripts/migrate-files-to-r2.ts.
+ */
+export const fileObjects = mysqlTable("file_objects", {
+  fileId: id("fileId").primaryKey(),
+  backend: varchar("backend", { length: 16 }).notNull(),
+  bucket: varchar("bucket", { length: 63 }).notNull(),
+  objectKey: varchar("objectKey", { length: 512 }).notNull(),
+  sizeBytes: int("sizeBytes").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
 
 export const notifications = mysqlTable(
   "notifications",

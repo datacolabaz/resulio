@@ -17,11 +17,13 @@ import {
 import { isGeminiUrl } from "../_core/aiConfig";
 import { ENV } from "../_core/env";
 import { invokeLLM, LlmHttpError, type MessageContent } from "../_core/llm";
+import { withAiUsage } from "../aiUsage/context";
+import { assertAiAllowed } from "../aiUsage/limits";
 import { requireDb } from "../db";
 import type { TeacherScope } from "../modules/access";
 import { providerAlertFor, sendAiAlert } from "../modules/aiAlerts";
 import { AppError } from "../modules/errors";
-import { extensionOf, fileRow, MAX_FILE_BYTES } from "../modules/files";
+import { extensionOf, fileBytes, fileRow, MAX_FILE_BYTES } from "../modules/files";
 import { extractDocument, renderDoc } from "../modules/textExtract";
 import { planChunks } from "../questionBank/extraction";
 import { filePart, pdfInputMode, type InputMode } from "../questionBank/importJobs";
@@ -124,7 +126,7 @@ async function prepareSource(scope: TeacherScope, input: { text?: string; fileId
   const ext = extensionOf(file.fileName);
   const base = { fileId: file.id, fileName: file.fileName.slice(0, 255), sizeBytes: file.sizeBytes };
   if (ext === ".docx") {
-    const doc = extractDocument(file.fileName, Buffer.from(file.dataBase64, "base64"));
+    const doc = extractDocument(file.fileName, await fileBytes(file));
     if (!doc.ok) throw new AppError("SYLLABUS_IMPORT_UNREADABLE");
     const text = checkText(renderDoc(doc.doc));
     return { ...base, mimeType: "text/plain", sourceText: text, pageCount: null, chunkCount: textSteps(text) };
@@ -132,7 +134,7 @@ async function prepareSource(scope: TeacherScope, input: { text?: string; fileId
   const mimeType = MIME_BY_EXT[ext];
   if (!mimeType) throw new AppError("SYLLABUS_IMPORT_FILE_TYPE");
   if (mimeType !== "application/pdf") return { ...base, mimeType, sourceText: null, pageCount: 1, chunkCount: 1 };
-  const pageCount = await pdfPageCount(new Uint8Array(Buffer.from(file.dataBase64, "base64")));
+  const pageCount = await pdfPageCount(new Uint8Array(await fileBytes(file)));
   if (pageCount > SYLLABUS_IMPORT_MAX_PAGES) throw new AppError("IMPORT_TOO_MANY_PAGES");
   return { ...base, mimeType, sourceText: null, pageCount, chunkCount: planChunks(pageCount, SYLLABUS_IMPORT_CHUNK_PAGES).length };
 }
@@ -146,12 +148,13 @@ export async function startImport(scope: TeacherScope, input: { text?: string; f
   if (!ENV.syllabusImportEnabled) throw new AppError("IMPORT_UNAVAILABLE");
   const source = await prepareSource(scope, input);
   await checkDailyLimit(scope.workspaceId);
+  await assertAiAllowed(scope.userId);
   const id = nanoid();
   const runId = nanoid();
   await requireDb()
     .insert(syllabusImportJobs)
     .values({ id, providerWorkspaceId: scope.workspaceId, createdBy: scope.userId, ...source, status: "QUEUED", runId });
-  scheduleRun(id, runId);
+  scheduleRun(scope, id, runId);
   return jobView(await ownedJob(scope, id));
 }
 
@@ -161,23 +164,24 @@ export async function retryImport(scope: TeacherScope, id: string) {
   const job = await ownedJob(scope, id);
   if (isBusy(job) || job.status === "COMPLETED") throw new AppError("IMPORT_BUSY");
   await checkDailyLimit(scope.workspaceId);
+  await assertAiAllowed(scope.userId);
   const runId = nanoid();
   await requireDb()
     .update(syllabusImportJobs)
     .set({ status: "QUEUED", runId, errorCode: null, detail: null, chunksDone: 0, finishedAt: null, result: null })
     .where(eq(syllabusImportJobs.id, id));
-  scheduleRun(id, runId);
+  scheduleRun(scope, id, runId);
   return jobView(await ownedJob(scope, id));
 }
 
-function scheduleRun(jobId: string, runId: string) {
-  setImmediate(() => {
+function scheduleRun(scope: TeacherScope, jobId: string, runId: string) {
+  withAiUsage({ feature: "SYLLABUS_IMPORT", userId: scope.userId, workspaceId: scope.workspaceId }, () => setImmediate(() => {
     runImport(jobId, runId).catch(async (error) => {
       const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
       console.error(`[syllabusImport] job ${jobId} failed: INTERNAL — ${message}`, error);
       await setIfOurs(jobId, runId, { status: "FAILED", errorCode: "INTERNAL", detail: { message: message.slice(0, DETAIL_MAX) }, finishedAt: new Date() }).catch(() => false);
     });
-  });
+  }));
 }
 
 async function setIfOurs(jobId: string, runId: string, patch: Partial<SyllabusImportJob>): Promise<boolean> {
@@ -303,7 +307,7 @@ export async function runImport(jobId: string, runId: string) {
   if (job.sourceText === null) {
     const file = job.fileId ? await fileRow(job.fileId) : null;
     if (!file || file.workspaceId !== job.providerWorkspaceId) return void (await fail("FILE_MISSING", `file ${job.fileId ?? "-"} not found`));
-    bytes = new Uint8Array(Buffer.from(file.dataBase64, "base64"));
+    bytes = new Uint8Array(await fileBytes(file));
   }
   if ((await usedInLastDay(job.providerWorkspaceId)) >= ENV.syllabusImportDailyLimit) return void (await fail("DAILY_LIMIT"));
   await db.insert(aiUsageEvents).values({ workspaceId: job.providerWorkspaceId, kind: SYLLABUS_IMPORT_USAGE_KIND, refId: jobId });

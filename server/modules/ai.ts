@@ -2,6 +2,8 @@ import { z } from "zod";
 import { DIFFICULTIES, questionInputSchema, type QuestionInput } from "../../shared/assessment";
 import { ENV } from "../_core/env";
 import { invokeLLM } from "../_core/llm";
+import { withAiUsage } from "../aiUsage/context";
+import { assertAiAllowed } from "../aiUsage/limits";
 import { createBankQuestion } from "../questionBank/bank";
 import { guardBankTables, ownedSection } from "../questionBank/topics";
 import { store } from "../resulioStore";
@@ -76,8 +78,9 @@ export async function generateQuestions(scope: TeacherScope, input: AiGenerateIn
   if (!ENV.llmConfigured) throw new AppError("AI_UNAVAILABLE");
   const usage = store.usageOf(scope.workspaceId);
   if (usage.used + input.count > usage.limit) throw new AppError("AI_USAGE_LIMIT_REACHED");
+  await assertAiAllowed(scope.userId);
 
-  const result = await invokeLLM({
+  const result = await withAiUsage({ feature: "QUESTION_GENERATE", userId: scope.userId, workspaceId: scope.workspaceId }, () => invokeLLM({
     messages: [
       {
         role: "system",
@@ -95,7 +98,7 @@ export async function generateQuestions(scope: TeacherScope, input: AiGenerateIn
       },
     ],
     responseFormat: { type: "json_object" },
-  }).catch(async (error: unknown) => {
+  })).catch(async (error: unknown) => {
     const alert = providerAlertFor(error);
     if (alert) await sendAiAlert(scope.workspaceId, alert);
     throw error;

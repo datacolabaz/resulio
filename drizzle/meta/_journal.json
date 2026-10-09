@@ -281,6 +281,13 @@
       "when": 1791483140032,
       "tag": "0040_group_profiles",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "5",
+      "when": 1791534585031,
+      "tag": "0041_ai_usage_and_file_objects",
+      "breakpoints": true
     }
   ]
 }

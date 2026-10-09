@@ -5,6 +5,8 @@ import { aiUsageEvents, taskAnswerKeys, tasks, users, type AnswerKeySource } fro
 import { ENV } from "../_core/env";
 import { invokeLLM, llmFailureReason, type InvokeParams, type InvokeResult, type Message } from "../_core/llm";
 import { serverLocale, type ServerLocale } from "../_core/locale";
+import { withAiUsage } from "../aiUsage/context";
+import { assertAiAllowed } from "../aiUsage/limits";
 import { requireDb } from "../db";
 import { dispatch } from "../notifications/dispatcher";
 import { isMissingTable } from "../notifications/preferences";
@@ -135,10 +137,13 @@ export async function draftAnswerKeyForTeacher(
 ): Promise<{ text: string }> {
   if (!ENV.aiReviewEnabled) throw new AppError("AI_UNAVAILABLE");
   if ((await draftsInLastDay(scope.workspaceId)) >= ANSWER_KEY_DRAFT_DAILY_LIMIT) throw new AppError("AI_USAGE_LIMIT_REACHED");
+  await assertAiAllowed(scope.userId);
   const attachments = await loadTaskAttachments(scope.workspaceId, input.attachments);
   const [teacher] = await requireDb().select({ locale: users.preferredLocale }).from(users).where(eq(users.id, scope.userId)).limit(1);
   await requireDb().insert(aiUsageEvents).values({ workspaceId: scope.workspaceId, kind: ANSWER_KEY_USAGE_KIND, refId: "form" });
-  const result = await generateAnswerKey({ title: input.title, description: input.description, attachments }, serverLocale(teacher?.locale));
+  const result = await withAiUsage({ feature: "ANSWER_KEY_DRAFT", userId: scope.userId, workspaceId: scope.workspaceId }, () =>
+    generateAnswerKey({ title: input.title, description: input.description, attachments }, serverLocale(teacher?.locale)),
+  );
   if (!result.ok) throw new AppError("AI_ANSWER_KEY_FAILED");
   return { text: result.text };
 }
