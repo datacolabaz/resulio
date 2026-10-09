@@ -2,17 +2,19 @@ import { AppShell, ErrorNote, Loading, Panel, Pill } from "@/components/AppShell
 import { StatusBadge, toneSurface } from "@/components/StatusBadge";
 import { ActivityTimeline } from "@/components/syllabus/ActivityTimeline";
 import { ModuleDetailsBlocks } from "@/components/syllabus/ModuleDetailsBlocks";
+import { ModuleToggleAll, useOpenModules } from "@/components/syllabus/ModuleToggles";
 import { CourseTimingPills, durationText } from "@/components/syllabus/Timing";
 import { StudentWorkflow } from "@/components/syllabus/Workflow";
 import { Button } from "@/components/ui/button";
 import { t, type MessageKey } from "@/i18n/messages";
 import { errorText, fmtDateTime, fmtDay } from "@/lib/format";
 import { nodeVisual, pct, type LockReason } from "@/lib/syllabusLearn";
+import { studentDefaultOpen } from "@/lib/syllabusModuleOpen";
 import { lessonChange } from "@/lib/syllabusWorkflow";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import type { ActivityEvent } from "@/lib/syllabusTracker";
 import { Award, ChevronDown, ChevronLeft, ClipboardCheck, Clock, Hourglass, Lock, Sparkles, Trophy, Users } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useParams } from "wouter";
 import { lessonPath, lockText, NodeIcon, ProgressBar, sessionPath, statusText, syllabusPath } from "./common";
@@ -92,18 +94,13 @@ function CompletionCard({ completion }: { completion: NonNullable<Path["completi
 }
 
 function ActivePath({ id, path, record }: { id: string; path: Path; record: Recorder }) {
-  const [open, setOpen] = useState<Set<string>>(() => new Set(path.currentModuleId ? [path.currentModuleId] : path.modules[0] ? [path.modules[0].id] : []));
+  const modules = useOpenModules({ view: "student", syllabusId: id, moduleIds: path.modules.map((m) => m.id), initial: () => studentDefaultOpen(path) });
   const scores = new Map(path.summary.assessments.map((a) => [a.itemId, a]));
+  const wasOpen = useRef(new Set<string>());
   useEffect(() => {
-    for (const m of path.modules) if (open.has(m.id) && m.status !== "LOCKED") record({ type: "MODULE_OPENED", moduleId: m.id });
-  }, [open, path.modules, record]);
-  const toggle = (moduleId: string) =>
-    setOpen((s) => {
-      const next = new Set(s);
-      if (next.has(moduleId)) next.delete(moduleId);
-      else next.add(moduleId);
-      return next;
-    });
+    for (const m of path.modules) if (modules.open.has(m.id) && !wasOpen.current.has(m.id) && m.status !== "LOCKED") record({ type: "MODULE_OPENED", moduleId: m.id });
+    wasOpen.current = new Set(modules.open);
+  }, [modules.open, path.modules, record]);
   const currentLesson = path.currentLessonId;
   return (
     <div className="space-y-4">
@@ -140,8 +137,14 @@ function ActivePath({ id, path, record }: { id: string; path: Path; record: Reco
       {!path.completion && <StudentWorkflow />}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-3">
+          {path.modules.length > 1 && (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-foreground-secondary">{t("syllabus.modules.title")}</h2>
+              <ModuleToggleAll allOpen={modules.allOpen} noneOpen={modules.noneOpen} onOpenAll={modules.openAll} onCloseAll={modules.closeAll} />
+            </div>
+          )}
           {path.modules.map((m, i) => (
-            <ModuleCard key={m.id} id={id} module={m} index={i} path={path} expanded={open.has(m.id)} onToggle={() => toggle(m.id)} scores={scores} record={record} />
+            <ModuleCard key={m.id} id={id} module={m} index={i} path={path} expanded={modules.isOpen(m.id)} onToggle={() => modules.toggle(m.id)} scores={scores} record={record} />
           ))}
           {path.finalAssessments.length > 0 && (
             <Panel title={t("learn.finalAssessments")}>
@@ -206,7 +209,13 @@ function ModuleCard({
   const panelId = `module-${m.id}`;
   return (
     <section className={`min-w-0 rounded-2xl border bg-card ${visual === "current" ? "border-primary/50" : "border-border"}`}>
-      <button type="button" className="flex w-full items-start gap-3 p-4 text-left" aria-expanded={expanded} aria-controls={panelId} onClick={onToggle}>
+      <button
+        type="button"
+        className="flex w-full items-start gap-3 rounded-2xl p-4 text-left hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-expanded={expanded}
+        aria-controls={expanded ? panelId : undefined}
+        onClick={onToggle}
+      >
         <NodeIcon visual={visual} className="mt-0.5 h-6 w-6" />
         <div className="min-w-0 flex-1 space-y-1.5">
           <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("learn.moduleN", { n: index + 1 })}</div>
@@ -443,6 +452,54 @@ function GroupPanel({ id, groups }: { id: string; groups: Path["groups"] }) {
   );
 }
 
+function EndedModules({ ended }: { ended: Ended }) {
+  const modules = useOpenModules({ view: "student-ended", syllabusId: ended.syllabus.id, moduleIds: ended.modules.map((m) => m.id), initial: () => [] });
+  return (
+    <div className="space-y-3">
+      {ended.modules.length > 1 && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-foreground-secondary">{t("syllabus.modules.title")}</h2>
+          <ModuleToggleAll allOpen={modules.allOpen} noneOpen={modules.noneOpen} onOpenAll={modules.openAll} onCloseAll={modules.closeAll} />
+        </div>
+      )}
+      {ended.modules.map((m, i) => {
+        const expanded = modules.isOpen(m.id);
+        const panelId = `ended-module-${m.id}`;
+        return (
+          <section key={m.id} className="rounded-2xl border border-border bg-card">
+            <button
+              type="button"
+              className="flex w-full items-start gap-3 rounded-2xl p-4 text-left hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-expanded={expanded}
+              aria-controls={expanded ? panelId : undefined}
+              onClick={() => modules.toggle(m.id)}
+            >
+              <NodeIcon visual={nodeVisual(m.status, false)} className="mt-0.5 h-6 w-6" />
+              <div className="min-w-0 flex-1">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("learn.moduleN", { n: i + 1 })}</div>
+                <h2 className="break-words font-semibold">{m.title}</h2>
+                <p className="text-xs text-muted-foreground">{t("learn.lessonsDone", { done: m.completedLessons, total: m.totalLessons })}</p>
+              </div>
+              <ChevronDown className={`mt-1 h-5 w-5 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`} aria-hidden />
+            </button>
+            {expanded && (
+              <ol id={panelId} className="space-y-1 border-t border-border p-4">
+                {m.lessons.map((l, li) => (
+                  <li key={l.id} className="flex items-center gap-2 text-sm">
+                    <NodeIcon visual={nodeVisual(l.status, false)} className="h-4 w-4" />
+                    <span className="text-xs text-muted-foreground">{t("learn.lessonN", { n: li + 1 })}</span>
+                    <span className="min-w-0 truncate">{l.title}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
 function EndedPath({ ended }: { ended: Ended }) {
   const access = ended.access;
   return (
@@ -470,31 +527,7 @@ function EndedPath({ ended }: { ended: Ended }) {
           </div>
         </Panel>
       )}
-      {ended.modules.length > 0 && (
-        <div className="space-y-3">
-          {ended.modules.map((m, i) => (
-            <section key={m.id} className="rounded-2xl border border-border bg-card p-4">
-              <div className="flex items-start gap-3">
-                <NodeIcon visual={nodeVisual(m.status, false)} className="mt-0.5 h-6 w-6" />
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("learn.moduleN", { n: i + 1 })}</div>
-                  <h2 className="break-words font-semibold">{m.title}</h2>
-                  <p className="text-xs text-muted-foreground">{t("learn.lessonsDone", { done: m.completedLessons, total: m.totalLessons })}</p>
-                  <ol className="mt-2 space-y-1">
-                    {m.lessons.map((l, li) => (
-                      <li key={l.id} className="flex items-center gap-2 text-sm">
-                        <NodeIcon visual={nodeVisual(l.status, false)} className="h-4 w-4" />
-                        <span className="text-xs text-muted-foreground">{t("learn.lessonN", { n: li + 1 })}</span>
-                        <span className="min-w-0 truncate">{l.title}</span>
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              </div>
-            </section>
-          ))}
-        </div>
-      )}
+      {ended.modules.length > 0 && <EndedModules ended={ended} />}
       {!ended.progress && access !== "PENDING" && <StatusBadge tone="neutral">{t("learn.ended.noProgress")}</StatusBadge>}
     </div>
   );

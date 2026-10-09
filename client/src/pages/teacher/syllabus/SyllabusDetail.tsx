@@ -1,5 +1,6 @@
 import { EmptyState, ErrorNote, Loading, Panel, Pill } from "@/components/AppShell";
 import { CompletionRulesForm } from "@/components/syllabus/CompletionRulesForm";
+import { ModuleToggleAll, useOpenModules } from "@/components/syllabus/ModuleToggles";
 import { SortableList } from "@/components/syllabus/SortableList";
 import { TeacherWorkflow } from "@/components/syllabus/Workflow";
 import { Button } from "@/components/ui/button";
@@ -230,10 +231,10 @@ function AssessmentList({
   );
 }
 
-function ModuleCard({ tree, module, handle, onEdit }: { tree: Tree; module: ModuleNode; handle: React.ReactNode; onEdit: () => void }) {
+function ModuleCard({ tree, module, handle, onEdit, open, onToggle }: { tree: Tree; module: ModuleNode; handle: React.ReactNode; onEdit: () => void; open: boolean; onToggle: () => void }) {
   const syllabusId = tree.syllabus.id;
   const refresh = useSyllabusRefresh(syllabusId);
-  const [open, setOpen] = useState(true);
+  const panelId = `builder-module-${module.id}`;
   const duplicate = trpc.teacher.syllabus.duplicateModule.useMutation({ onSuccess: refresh, onError: toastError });
   const remove = trpc.teacher.syllabus.deleteModule.useMutation({ onSuccess: refresh, onError: toastError });
   const reorderLessons = trpc.teacher.syllabus.reorderLessons.useMutation({ onSuccess: refresh, onError: toastError });
@@ -242,7 +243,13 @@ function ModuleCard({ tree, module, handle, onEdit }: { tree: Tree; module: Modu
     <section className="rounded-2xl border border-border bg-card">
       <div className="flex flex-wrap items-center gap-2 p-3">
         {handle}
-        <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={onToggle}
+          aria-expanded={open}
+          aria-controls={open ? panelId : undefined}
+        >
           {open ? <ChevronDown className="h-4 w-4 shrink-0" aria-hidden /> : <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />}
           <span className="min-w-0">
             <span className="block break-words font-semibold">{module.title}</span>
@@ -273,7 +280,7 @@ function ModuleCard({ tree, module, handle, onEdit }: { tree: Tree; module: Modu
         </div>
       </div>
       {open && (
-        <div className="space-y-3 border-t border-border p-3">
+        <div id={panelId} className="space-y-3 border-t border-border p-3">
           <ModuleTiming tree={tree} module={module} />
           {module.lessons.length === 0 && <p className="text-sm text-muted-foreground">{t("syllabus.module.noLessons")}</p>}
           <SortableList
@@ -302,9 +309,16 @@ function StructureTab({ tree }: { tree: Tree }) {
   const [editing, setEditing] = useState<ModuleNode | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const reorder = trpc.teacher.syllabus.reorderModules.useMutation({ onSuccess: refresh, onError: toastError });
+  const modules = useOpenModules({ view: "builder", syllabusId, moduleIds: tree.modules.map((m) => m.id), initial: () => (tree.modules.length === 1 ? [tree.modules[0].id] : []), openAdded: true });
   return (
     <div className="space-y-4">
       {tree.modules.length > 0 && <CourseTimingPanel tree={tree} />}
+      {tree.modules.length > 1 && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-foreground-secondary">{t("syllabus.modules.title")}</h2>
+          <ModuleToggleAll allOpen={modules.allOpen} noneOpen={modules.noneOpen} onOpenAll={modules.openAll} onCloseAll={modules.closeAll} />
+        </div>
+      )}
       {tree.modules.length === 0 ? (
         <EmptyState
           title={t("syllabus.structure.emptyTitle")}
@@ -319,7 +333,16 @@ function StructureTab({ tree }: { tree: Tree }) {
           getLabel={(m) => m.title}
           onReorder={(next) => reorder.mutate({ syllabusId, orderedIds: next.map((m) => m.id) })}
         >
-          {(module, { handle }) => <ModuleCard tree={tree} module={module} handle={handle} onEdit={() => { setEditing(module); setDialogOpen(true); }} />}
+          {(module, { handle }) => (
+            <ModuleCard
+              tree={tree}
+              module={module}
+              handle={handle}
+              open={modules.isOpen(module.id)}
+              onToggle={() => modules.toggle(module.id)}
+              onEdit={() => { setEditing(module); setDialogOpen(true); }}
+            />
+          )}
         </SortableList>
       )}
       {tree.modules.length > 0 && (

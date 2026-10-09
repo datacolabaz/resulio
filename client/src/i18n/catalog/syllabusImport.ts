@@ -115,6 +115,12 @@ export const syllabusImport = {
   ],
   "simport.progress": ["{done} / {total} addım hazırdır", "{done} of {total} steps done", "Готово шагов: {done} из {total}"],
   "simport.retry": ["Yenidən cəhd et", "Try again", "Повторить"],
+  "simport.reanalyse": ["Yenidən təhlil et", "Analyse again", "Разобрать заново"],
+  "simport.renderError": [
+    "Bu idxalın nəticəsini göstərmək alınmadı. Yenidən cəhd edin və ya faylı yenidən təhlil edin.",
+    "This import's result could not be shown. Try again or analyse the file again.",
+    "Не удалось показать результат этого импорта. Повторите попытку или разберите файл заново.",
+  ],
   "simport.removeConfirm": ["Bu idxal silinsin?", "Delete this import?", "Удалить этот импорт?"],
   "simport.alreadyCreated": ["Bu idxaldan syllabus artıq yaradılıb.", "A syllabus has already been created from this import.", "Силлабус из этого импорта уже создан."],
   "simport.openSyllabus": ["Syllabus-u aç", "Open the syllabus", "Открыть силлабус"],

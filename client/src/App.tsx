@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { LocaleProvider, useI18n } from "@/i18n/locale";
 import { t } from "@/i18n/messages";
 import { canEnter, entryPath, getActiveWorkspaceId, setActiveWorkspaceId, type UiContext } from "@/lib/contexts";
+import { lazyPage } from "@/lib/lazyPage";
 import { trpc } from "@/lib/trpc";
 import AdminRoutes from "@/pages/admin/Admin";
 import Home from "@/pages/Home";
@@ -35,7 +36,7 @@ import { AssessmentParticipantsPage } from "@/pages/teacher/Participants";
 import { ResultDetailPage, ResultsPage } from "@/pages/teacher/Results";
 import TeacherHome from "@/pages/teacher/TeacherHome";
 import { AssignmentsPage, LibraryPage, UsagePage } from "@/pages/teacher/TeacherModules";
-import { lazy, Suspense, useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { Redirect, Route, Switch, useLocation, useParams } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { NotificationPermissionPrompt } from "./components/NotificationPermissionPrompt";
@@ -43,18 +44,18 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import { useAuth } from "./_core/hooks/useAuth";
 
 /** Syllabus screens are code-split: most users never open them, so they stay out of the main bundle. */
-const LessonPlayer = lazy(() => import("@/pages/student/syllabus/LessonPlayer").then((m) => ({ default: m.LessonPlayer })));
-const MySyllabi = lazy(() => import("@/pages/student/syllabus/MySyllabi").then((m) => ({ default: m.MySyllabi })));
-const SyllabusPathPage = lazy(() => import("@/pages/student/syllabus/SyllabusPath").then((m) => ({ default: m.SyllabusPathPage })));
-const LessonEditorPage = lazy(() => import("@/pages/teacher/syllabus/LessonEditor").then((m) => ({ default: m.LessonEditorPage })));
-const PresentModePage = lazy(() => import("@/pages/teacher/syllabus/PresentAndPreview").then((m) => ({ default: m.PresentModePage })));
-const SyllabusPreviewPage = lazy(() => import("@/pages/teacher/syllabus/PresentAndPreview").then((m) => ({ default: m.SyllabusPreviewPage })));
-const SyllabusDetailPage = lazy(() => import("@/pages/teacher/syllabus/SyllabusDetail").then((m) => ({ default: m.SyllabusDetailPage })));
-const SyllabusListPage = lazy(() => import("@/pages/teacher/syllabus/SyllabusList").then((m) => ({ default: m.SyllabusListPage })));
-const SyllabusImportPage = lazy(() => import("@/pages/teacher/syllabus/SyllabusImportPage"));
-const PublicSyllabusPage = lazy(() => import("@/pages/PublicSyllabusPage"));
-const QuestionImportPage = lazy(() => import("@/pages/teacher/QuestionImport").then((m) => ({ default: m.QuestionImportPage })));
-const QuestionImportReviewPage = lazy(() => import("@/pages/teacher/QuestionImport").then((m) => ({ default: m.QuestionImportReviewPage })));
+const LessonPlayer = lazyPage(() => import("@/pages/student/syllabus/LessonPlayer").then((m) => ({ default: m.LessonPlayer })));
+const MySyllabi = lazyPage(() => import("@/pages/student/syllabus/MySyllabi").then((m) => ({ default: m.MySyllabi })));
+const SyllabusPathPage = lazyPage(() => import("@/pages/student/syllabus/SyllabusPath").then((m) => ({ default: m.SyllabusPathPage })));
+const LessonEditorPage = lazyPage(() => import("@/pages/teacher/syllabus/LessonEditor").then((m) => ({ default: m.LessonEditorPage })));
+const PresentModePage = lazyPage(() => import("@/pages/teacher/syllabus/PresentAndPreview").then((m) => ({ default: m.PresentModePage })));
+const SyllabusPreviewPage = lazyPage(() => import("@/pages/teacher/syllabus/PresentAndPreview").then((m) => ({ default: m.SyllabusPreviewPage })));
+const SyllabusDetailPage = lazyPage(() => import("@/pages/teacher/syllabus/SyllabusDetail").then((m) => ({ default: m.SyllabusDetailPage })));
+const SyllabusListPage = lazyPage(() => import("@/pages/teacher/syllabus/SyllabusList").then((m) => ({ default: m.SyllabusListPage })));
+const SyllabusImportPage = lazyPage(() => import("@/pages/teacher/syllabus/SyllabusImportPage"));
+const PublicSyllabusPage = lazyPage(() => import("@/pages/PublicSyllabusPage"));
+const QuestionImportPage = lazyPage(() => import("@/pages/teacher/QuestionImport").then((m) => ({ default: m.QuestionImportPage })));
+const QuestionImportReviewPage = lazyPage(() => import("@/pages/teacher/QuestionImport").then((m) => ({ default: m.QuestionImportReviewPage })));
 
 function PageLoading() {
   return <div role="status" className="p-10 text-center text-muted-foreground">{t("app.loading")}</div>;
