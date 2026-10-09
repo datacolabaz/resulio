@@ -55,8 +55,10 @@ function fakeAsk(override?: (req: AskRequest, calls: number) => AskReply | Error
   return { ask, calls };
 }
 
+const noSleep = async () => undefined;
+
 async function read(ask: Ask) {
-  const result = await extractFromText(RAW_PASTE, { ask, nonce: () => "n" });
+  const result = await extractFromText(RAW_PASTE, { ask, nonce: () => "n", sleep: noSleep });
   return { ...result, s: normalizeStructure(result.raw, "")! };
 }
 
@@ -148,26 +150,29 @@ describe("the raw pasted AI Engineering syllabus", () => {
     expect(s.modules[3].details.prerequisites).toEqual([]);
   });
 
-  it("fails with the provider's reason for a bad key, and stops asking after a quota error", async () => {
+  it("fails with the provider's reason for a bad key, and stops asking after a daily quota error", async () => {
     const bad = fakeAsk(() => new LlmHttpError(401, "LLM invoke failed: 401 Unauthorized"));
     await expect(read(bad.ask)).rejects.toMatchObject({ code: "AI_KEY_INVALID" });
     await expect(read(bad.ask)).rejects.toBeInstanceOf(ImportFailure);
 
-    const quota = fakeAsk((req) => (req.kind === "module" ? new LlmHttpError(429, "quota") : undefined));
-    const { s, localModules, problem } = await extractFromText(RAW_PASTE, { ask: quota.ask, concurrency: 1 }).then((r) => ({ ...r, s: normalizeStructure(r.raw, "")! }));
+    const quota = fakeAsk((req) => (req.kind === "module" ? new LlmHttpError(429, "quota", { quotaWindow: "day" }) : undefined));
+    const { s, localModules, failures, problem } = await extractFromText(RAW_PASTE, { ask: quota.ask, concurrency: 1, sleep: noSleep }).then((r) => ({ ...r, s: normalizeStructure(r.raw, "")! }));
     expect(quota.calls.filter((c) => c.kind === "module")).toHaveLength(1);
     expect(localModules).toHaveLength(9);
+    expect(failures).toHaveLength(9);
+    expect(failures[1]).toContain("not sent, AI requests stopped after AI_QUOTA");
     expect(problem?.code).toBe("AI_QUOTA");
     expect(s.modules).toHaveLength(9);
   });
 
-  it("reads a time-out module from the text and records why", async () => {
+  it("reads a module that times out twice from the text and records why", async () => {
     const timeout = Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" });
-    const { ask } = fakeAsk((req) => (moduleIndex(req) === 5 ? timeout : undefined));
-    const { s, localModules, problem } = await read(ask);
+    const { ask, calls } = fakeAsk((req) => (moduleIndex(req) === 5 ? timeout : undefined));
+    const { s, localModules, failures, problem } = await read(ask);
+    expect(calls.filter((c) => c.kind === "module" && moduleIndex(c) === 5)).toHaveLength(2);
     expect(localModules).toEqual([SOURCE[5].title]);
     expect(problem).toMatchObject({ code: "AI_TIMEOUT" });
-    expect(problem?.detail).toContain("module 6");
+    expect(failures).toEqual([expect.stringMatching(/^module 6 .*timeout/)]);
     expect(s.modules[5].lessons.map((l) => l.title)).toEqual(SOURCE[5].topics);
   });
 });

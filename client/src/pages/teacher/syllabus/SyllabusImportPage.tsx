@@ -35,6 +35,32 @@ function Progress({ job }: { job: Job }) {
   );
 }
 
+/** Modules the AI could not read were added from the document's own headings: a short note, the list and the reason folded. */
+function LocalModulesNote({ titles, message }: { titles: string[]; message?: string }) {
+  return (
+    <div className="rounded-xl border border-warning/40 bg-warning-surface p-3 text-sm text-warning" role="note">
+      <p className="flex items-start gap-2">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+        {t("simport.localModules", { count: titles.length })}
+      </p>
+      <details className="mt-2 pl-6">
+        <summary className="cursor-pointer font-medium">{t("simport.localModulesList")}</summary>
+        <ul className="mt-1 list-disc space-y-0.5 pl-5">
+          {titles.map((title, i) => (
+            <li key={i}>{title}</li>
+          ))}
+        </ul>
+      </details>
+      {message && (
+        <details className="mt-1 pl-6 text-xs">
+          <summary className="cursor-pointer font-medium">{t("simport.technicalDetails")}</summary>
+          <pre className="mt-1 whitespace-pre-wrap break-words font-mono">{message}</pre>
+        </details>
+      )}
+    </div>
+  );
+}
+
 function IconButton({ label, onClick, disabled, danger, children }: { label: string; onClick: () => void; disabled?: boolean; danger?: boolean; children: React.ReactNode }) {
   return (
     <Button type="button" size="icon" variant="ghost" className={`h-8 w-8 ${danger ? "text-destructive" : ""}`} aria-label={label} title={label} disabled={disabled} onClick={onClick}>
@@ -288,12 +314,7 @@ function ReviewEditor({ job, initial }: { job: Job; initial: Review }) {
         <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-link" aria-hidden />
         {t("simport.reviewIntro")}
       </p>
-      {!!job.detail?.localModules?.length && (
-        <p className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning-surface p-3 text-sm text-warning" role="note">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-          {t("simport.localModules", { count: job.detail.localModules.length, titles: job.detail.localModules.join("; ") })}
-        </p>
-      )}
+      {!!job.detail?.localModules?.length && <LocalModulesNote titles={job.detail.localModules} message={job.detail.message} />}
       <CourseFields s={s} set={set} />
       <Panel title={t("simport.modules")}>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
