@@ -56,6 +56,13 @@ vi.mock("./fileStorage/summary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./fileStorage/summary")>()),
   storageSummary: vi.fn(async () => ({ totalBytes: 0 })),
 }));
+vi.mock("./fileStorage/job", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./fileStorage/job")>()),
+  fileMigrationStatus: vi.fn(async () => ({ configured: false, job: null })),
+  fileMigrationPlan: vi.fn(async () => ({})),
+  startFileMigration: vi.fn(async () => ({})),
+  cancelFileMigration: vi.fn(async () => ({})),
+}));
 
 const { aiLimitCheck, assertAiAllowed } = await import("./aiUsage/limits");
 const { appRouter } = await import("./routers");
@@ -180,8 +187,9 @@ describe("admin permissions for AI and storage", () => {
     expect(support).toEqual(expect.arrayContaining(["ai.view", "storage.view"]));
     expect(support).not.toContain("ai.manage");
     expect(support).not.toContain("storage.manage");
-    expect(permissionsOf(["SUPER_ADMIN"])).toEqual(expect.arrayContaining(["ai.view", "ai.manage", "storage.view", "storage.manage"]));
-    for (const p of ["ai.view", "ai.manage", "storage.view", "storage.manage"] as const) expect(HIGH_RISK_PERMISSIONS).not.toContain(p);
+    expect(support).not.toContain("storage.migrate");
+    expect(permissionsOf(["SUPER_ADMIN"])).toEqual(expect.arrayContaining(["ai.view", "ai.manage", "storage.view", "storage.manage", "storage.migrate"]));
+    for (const p of ["ai.view", "ai.manage", "storage.view", "storage.manage", "storage.migrate"] as const) expect(HIGH_RISK_PERMISSIONS).not.toContain(p);
   });
 
   const caller = (id: number, email: string) =>
@@ -223,6 +231,23 @@ describe("admin permissions for AI and storage", () => {
     const boss = caller(1, "boss@example.com");
     expect(await codeOf(boss.admin.ai.setTeacherLimit({ userId: 9, monthlyTokenQuota: 100, dailyRequestCap: null }))).toBe("ok");
     expect(await codeOf(boss.admin.ai.setSettings({ monthlyBudgetUsd: 10 }))).toBe("ok");
+  });
+
+  it("let support see the R2 copy status but not check, start or cancel it", async () => {
+    const support = caller(2, "help@example.com");
+    expect(await codeOf(support.admin.storage.r2.status())).toBe("ok");
+    expect(await codeOf(support.admin.storage.r2.plan())).toBe("FORBIDDEN:ADMIN_PERMISSION");
+    expect(await codeOf(support.admin.storage.r2.start({ kind: "copy" }))).toBe("FORBIDDEN:ADMIN_PERMISSION");
+    expect(await codeOf(support.admin.storage.r2.cancel())).toBe("FORBIDDEN:ADMIN_PERMISSION");
+  });
+
+  it("let a super admin run the R2 copy, but never a purge", async () => {
+    const boss = caller(1, "boss@example.com");
+    expect(await codeOf(boss.admin.storage.r2.plan())).toBe("ok");
+    expect(await codeOf(boss.admin.storage.r2.start({ kind: "copy" }))).toBe("ok");
+    expect(await codeOf(boss.admin.storage.r2.start({ kind: "verify" }))).toBe("ok");
+    expect(await codeOf(boss.admin.storage.r2.cancel())).toBe("ok");
+    expect(await codeOf(boss.admin.storage.r2.start({ kind: "purge" } as never))).toMatch(/^BAD_REQUEST/);
   });
 
   it("refuse non-admins", async () => {

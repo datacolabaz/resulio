@@ -14,6 +14,7 @@ import {
 import { AI_CALL_STATUSES, AI_FEATURES } from "../shared/aiUsage";
 import { adminProcedure, router } from "./_core/trpc";
 import * as aiAdmin from "./aiUsage/admin";
+import * as fileJob from "./fileStorage/job";
 import { storageSummary } from "./fileStorage/summary";
 import { listAudit } from "./modules/admin/audit";
 import { dashboard } from "./modules/admin/dashboard";
@@ -111,6 +112,15 @@ export const adminRouter = router({
     setSoftQuota: adminProcedure("storage.manage")
       .input(z.object({ softQuotaBytes: z.number().int().min(0).max(1e15).nullable() }))
       .mutation(({ ctx, input }) => aiAdmin.updateSettings(ctx.admin, { "storage.softQuotaBytes": input.softQuotaBytes })),
+    /** Copying MySQL file bytes to R2: status, dry run, background copy / verify job. Never deletes MySQL data. */
+    r2: router({
+      status: adminProcedure("storage.view").query(() => fileJob.fileMigrationStatus()),
+      plan: adminProcedure("storage.migrate").mutation(() => fileJob.fileMigrationPlan()),
+      start: adminProcedure("storage.migrate")
+        .input(z.object({ kind: z.enum(fileJob.FILE_MIGRATION_KINDS) }))
+        .mutation(({ ctx, input }) => fileJob.startFileMigration(ctx.admin, input.kind)),
+      cancel: adminProcedure("storage.migrate").mutation(({ ctx }) => fileJob.cancelFileMigration(ctx.admin)),
+    }),
   }),
 
   users: router({
