@@ -135,7 +135,10 @@ async function session(persona, { mobile = false, init, viewport, colorScheme = 
     colorScheme,
   });
   await context.addInitScript((initial) => {
-    if (!localStorage.getItem("resulio-locale")) localStorage.setItem("resulio-locale", initial);
+    if (!localStorage.getItem("resulio-locale")) {
+      localStorage.setItem("resulio-locale", initial);
+      localStorage.setItem("resulio-locale-chosen", "1");
+    }
   }, locale ?? "az");
   if (theme) await context.addInitScript((value) => localStorage.setItem("resulio.theme", value), theme);
   if (init) await context.addInitScript(init);

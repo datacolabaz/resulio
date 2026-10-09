@@ -91,6 +91,13 @@ export const student = {
 
   "session.timeUp": ["Vaxt bitdi. Saxlanılmış cavablar qiymətləndirilir.", "Time is up. Saved answers are being graded.", "Время вышло. Сохранённые ответы оцениваются."],
   "session.timeUpNoAnswers": ["Vaxt bitdi — cavab təqdim edilməyib.", "Time is up — no answers were submitted.", "Время вышло — ответы не сданы."],
+  "session.timeUpSubmitting": ["Vaxt bitdi — cavablarınız təhvil verilir…", "Time is up — submitting your answers…", "Время вышло — ответы сдаются…"],
+  "session.timeUpRetrying": [
+    "Vaxt bitdi, amma serverlə əlaqə yoxdur. Səhifəni bağlamayın — əlaqə bərpa olunan kimi cavablar avtomatik təhvil veriləcək.",
+    "Time is up, but the server cannot be reached. Keep this page open — your answers will be submitted as soon as the connection is back.",
+    "Время вышло, но нет связи с сервером. Не закрывайте страницу — ответы будут сданы, как только связь восстановится.",
+  ],
+  "session.minutesLeft": ["{count} dəqiqə qaldı", "{count} {count|minute|minutes} left", "Осталось {count} {count|минута|минуты|минут}"],
   "session.backToExams": ["İmtahanlara qayıt", "Back to exams", "К экзаменам"],
   "session.saved": ["Yadda saxlanıldı", "Saved", "Сохранено"],
   "session.pending": ["Dəyişikliklər…", "Unsaved changes…", "Изменения…"],

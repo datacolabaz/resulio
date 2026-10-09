@@ -385,6 +385,16 @@ export function isExpired(attempt: { status: AttemptStatus; deadlineAt: Date }, 
   return attempt.status === "IN_PROGRESS" && now >= attempt.deadlineAt;
 }
 
+/**
+ * Autosaves already on their way at the deadline are accepted for this long after it; the attempt is
+ * closed once it has passed. The submission time is still the deadline.
+ */
+export const DEADLINE_GRACE_MS = 10_000;
+
+export function isPastGrace(attempt: { status: AttemptStatus; deadlineAt: Date }, now = new Date()) {
+  return attempt.status === "IN_PROGRESS" && now.getTime() >= attempt.deadlineAt.getTime() + DEADLINE_GRACE_MS;
+}
+
 /** Attempts that use up the attempt limit (a teacher-voided attempt does not). */
 export const countsTowardLimit = (status: AttemptStatus) => status !== "VOIDED";
 

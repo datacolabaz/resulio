@@ -34,8 +34,10 @@ import {
   countsTowardLimit,
   effectiveRules,
   gradeAttempt,
+  DEADLINE_GRACE_MS,
   isAnswered,
   isExpired,
+  isPastGrace,
   liveStatus,
   penaltyRule,
   throttleElapsed,
@@ -239,9 +241,10 @@ export async function startAttempt(assessmentId: string, studentId: number, viaA
 // Attempt view and autosave
 // ---------------------------------------------------------------------------
 
+/** Within the grace period an expired attempt still opens, so the page can send what it kept on the device and submit. */
 export async function attemptView(attemptId: string, studentId: number) {
   let attempt = await ownAttempt(attemptId, studentId);
-  if (isExpired(attempt)) {
+  if (isPastGrace(attempt)) {
     await finalizeAttempt(attempt.id, { auto: true });
     attempt = await ownAttempt(attemptId, studentId);
   }
@@ -252,6 +255,9 @@ export async function attemptView(attemptId: string, studentId: number) {
   const { version, questions } = await loadVersion(attempt.versionId);
   const byId = new Map(questions.map((q) => [q.id, q]));
   const ordered = attempt.questionOrder.map((id) => byId.get(id)).filter((q): q is FrozenQuestion => Boolean(q));
+  const answers = await answersOf(attempt.id);
+  /** Highest stored answer revision; the client continues from here (also after switching device). */
+  const revision = await maxRevision(attempt.id);
   return {
     done: false as const,
     attemptId: attempt.id,
@@ -260,11 +266,11 @@ export async function attemptView(attemptId: string, studentId: number) {
     instructions: version.settings.instructions,
     startedAt: attempt.startedAt,
     deadlineAt: attempt.deadlineAt,
+    // Read last, as close to the response as possible: the client derives its clock offset from it.
     serverNow: new Date(),
     questions: ordered.map((q, i) => ({ ...toStudentQuestion(q, `${attempt.id}:${q.id}`), position: i + 1 })),
-    answers: await answersOf(attempt.id),
-    /** Highest stored answer revision; the client continues from here (also after switching device). */
-    revision: await maxRevision(attempt.id),
+    answers,
+    revision,
   };
 }
 
@@ -289,7 +295,7 @@ export async function saveAnswers(
   const db = requireDb();
   const attempt = await ownAttempt(attemptId, studentId);
   if (attempt.status !== "IN_PROGRESS") throw new AppError("ATTEMPT_CLOSED");
-  if (isExpired(attempt)) {
+  if (isPastGrace(attempt)) {
     await finalizeAttempt(attempt.id, { auto: true });
     throw new AppError("ATTEMPT_CLOSED");
   }
@@ -305,7 +311,7 @@ export async function saveAnswers(
       .where(eq(attempts.id, attemptId))
       .for("update");
     now = new Date();
-    if (!locked || locked.status !== "IN_PROGRESS" || isExpired(locked, now)) {
+    if (!locked || locked.status !== "IN_PROGRESS" || isPastGrace(locked, now)) {
       closed = true;
       return 0;
     }
@@ -356,7 +362,7 @@ export async function saveAnswers(
 export async function sessionPing(attemptId: string, studentId: number, interacted: boolean) {
   const attempt = await ownAttempt(attemptId, studentId);
   if (attempt.status !== "IN_PROGRESS") return { open: false as const };
-  if (isExpired(attempt)) {
+  if (isPastGrace(attempt)) {
     await finalizeAttempt(attempt.id, { auto: true });
     return { open: false as const };
   }
@@ -370,7 +376,8 @@ export async function sessionPing(attemptId: string, studentId: number, interact
       .set(set)
       .where(and(eq(attempts.id, attempt.id), eq(attempts.status, "IN_PROGRESS")));
   }
-  return { open: true as const, deadlineAt: attempt.deadlineAt, serverNow: now };
+  // A fresh reading after the write, as close to the response as possible: the client derives its clock offset from it.
+  return { open: true as const, deadlineAt: attempt.deadlineAt, serverNow: new Date() };
 }
 
 // ---------------------------------------------------------------------------
@@ -504,13 +511,13 @@ export async function penaltyOf(resultId: string, db: DbOrTx = requireDb()): Pro
   }
 }
 
-/** Background sweep: close attempts whose server deadline has passed. */
+/** Background sweep: close attempts whose server deadline and grace period have passed (e.g. the browser was closed). */
 export async function sweepExpiredAttempts(limit = 100) {
   const db = requireDb();
   const expired = await db
     .select({ id: attempts.id })
     .from(attempts)
-    .where(and(eq(attempts.status, "IN_PROGRESS"), lte(attempts.deadlineAt, new Date())))
+    .where(and(eq(attempts.status, "IN_PROGRESS"), lte(attempts.deadlineAt, new Date(Date.now() - DEADLINE_GRACE_MS))))
     .limit(limit);
   for (const row of expired) {
     try {

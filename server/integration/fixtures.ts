@@ -10,6 +10,7 @@ import type { SessionTimes } from "../_core/sdk";
 import { requireDb } from "../db";
 import type { TeacherScope } from "../modules/access";
 import * as assessments from "../modules/assessments";
+import { DEADLINE_GRACE_MS } from "../modules/engine";
 import * as groups from "../modules/groups";
 import { appRouter } from "../routers";
 
@@ -71,8 +72,8 @@ export async function questionIdsOf(attemptId: string) {
   return row.order;
 }
 
-/** Moves the server deadline into the past, as if the clock had run out. */
-export async function expire(attemptId: string, secondsAgo = 1) {
+/** Moves the server deadline into the past, by default beyond the grace period, as if the clock had run out long ago. */
+export async function expire(attemptId: string, secondsAgo = DEADLINE_GRACE_MS / 1000 + 2) {
   await db().update(attempts).set({ deadlineAt: new Date(Date.now() - secondsAgo * 1000) }).where(eq(attempts.id, attemptId));
 }
 

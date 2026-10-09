@@ -3,20 +3,34 @@ import { QuestionRenderer } from "@/components/QuestionRenderer";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { t } from "@/i18n/messages";
+import { clockJumped, clockOffset, crossedWarning, displaySeconds, remainingMs } from "@/lib/examClock";
 import { errorText, fmtClock } from "@/lib/format";
 import { resultPath, safeReturnPath } from "@/lib/syllabusLearn";
 import { trpc } from "@/lib/trpc";
 import type { StudentAnswer } from "@shared/assessment";
-import { AlarmClock, Check, Clock, CloudOff } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlarmClock, Check, Clock, CloudOff, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { toast } from "sonner";
 import { Link, Redirect, useLocation, useParams, useSearch } from "wouter";
 
 const SAVE_DELAY_MS = 1200;
 const RETRY_MS = 8000;
 const PING_MS = 60_000;
+const TICK_MS = 250;
+/** Extra server time checks when the tab is shown again, focused or back online are at most this frequent. */
+const RESYNC_MIN_MS = 10_000;
+/** A slower round trip says too little about the server clock to correct the offset. */
+const MAX_SYNC_RTT_MS = 10_000;
+/** Close to the deadline an answer is saved at once instead of after the typing pause. */
+const FLUSH_NOW_BEFORE_DEADLINE_MS = 5000;
+const FINISH_RETRY_MS = 5000;
+/** Fail fast instead of pausing while offline: this page keeps answers on the device and retries itself. */
+const NETWORK = { networkMode: "always" } as const;
 
 type SaveState = "saved" | "pending" | "saving" | "offline";
+type FlushOutcome = "saved" | "offline" | "closed";
+type FinishState = "idle" | "submitting" | "retrying";
+type ExamClock = { deadlineMs: number; offsetMs: number };
 
 function isAnswered(v: StudentAnswer | undefined) {
   if (v === undefined || v === null) return false;
@@ -25,6 +39,8 @@ function isAnswered(v: StudentAnswer | undefined) {
   if (typeof v === "object") return Object.keys(v).length > 0;
   return true;
 }
+
+const isClosedError = (e: unknown) => e instanceof Error && e.message === "ATTEMPT_CLOSED";
 
 function bufferKey(attemptId: string) {
   return `resulio:attempt:${attemptId}`;
@@ -60,40 +76,125 @@ function readRevisions(attemptId: string): Record<string, number> {
   }
 }
 
+/**
+ * The only part of the page that re-renders every second. Reads the clock on a steady interval and
+ * again whenever the page comes back (tab shown, focus, resumed from freezing).
+ */
+function Countdown({
+  clock,
+  onExpiredChange,
+  onWarning,
+  onClockJump,
+}: {
+  clock: MutableRefObject<ExamClock>;
+  onExpiredChange: (expired: boolean) => void;
+  onWarning: (minutes: number) => void;
+  onClockJump: () => void;
+}) {
+  const read = () => remainingMs(clock.current.deadlineMs, clock.current.offsetMs);
+  const [seconds, setSeconds] = useState(() => displaySeconds(read()));
+  const handlers = useRef({ onExpiredChange, onWarning, onClockJump });
+  handlers.current = { onExpiredChange, onWarning, onClockJump };
+
+  useEffect(() => {
+    let lastWall = Date.now();
+    let lastRemaining: number | null = null;
+    let expired: boolean | null = null;
+    const tick = () => {
+      const wall = Date.now();
+      if (clockJumped(lastWall, wall, TICK_MS)) handlers.current.onClockJump();
+      lastWall = wall;
+      const ms = remainingMs(clock.current.deadlineMs, clock.current.offsetMs, wall);
+      const warning = crossedWarning(lastRemaining, ms);
+      if (warning !== null) handlers.current.onWarning(warning / 60_000);
+      lastRemaining = ms;
+      setSeconds(displaySeconds(ms));
+      if ((ms <= 0) !== expired) {
+        expired = ms <= 0;
+        handlers.current.onExpiredChange(expired);
+      }
+    };
+    tick();
+    const interval = setInterval(tick, TICK_MS);
+    const onShow = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+    document.addEventListener("visibilitychange", onShow);
+    document.addEventListener("resume", tick);
+    window.addEventListener("focus", tick);
+    window.addEventListener("pageshow", tick);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onShow);
+      document.removeEventListener("resume", tick);
+      window.removeEventListener("focus", tick);
+      window.removeEventListener("pageshow", tick);
+    };
+  }, [clock]);
+
+  const lowTime = seconds <= 60;
+  const text = fmtClock(seconds * 1000);
+  return (
+    <div
+      role="timer"
+      aria-label={lowTime ? t("session.lowTime", { time: text }) : t("session.timeLeft", { time: text })}
+      className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 font-mono text-lg tabular-nums ${lowTime ? "border-destructive/40 bg-danger-surface text-destructive" : "border-transparent bg-muted text-foreground"}`}
+    >
+      {lowTime ? <AlarmClock className="h-4 w-4" aria-hidden /> : <Clock className="h-4 w-4 text-muted-foreground" aria-hidden />}
+      {text}
+    </div>
+  );
+}
+
 export default function StudentSession() {
   const { id } = useParams<{ id: string }>();
   const attemptId = id!;
   const [, navigate] = useLocation();
   const returnTo = safeReturnPath(new URLSearchParams(useSearch()).get("returnTo"));
   const utils = trpc.useUtils();
-  const session = trpc.student.session.useQuery({ attemptId }, { enabled: Boolean(id), refetchOnWindowFocus: false, retry: false });
-  const save = trpc.student.save.useMutation();
-  const submit = trpc.student.submit.useMutation();
-  const ping = trpc.student.ping.useMutation();
+  const session = trpc.student.session.useQuery({ attemptId }, { enabled: Boolean(id), refetchOnWindowFocus: false, retry: false, ...NETWORK });
+  const save = trpc.student.save.useMutation(NETWORK);
+  const submit = trpc.student.submit.useMutation(NETWORK);
+  const ping = trpc.student.ping.useMutation(NETWORK);
 
   const [answers, setAnswers] = useState<Record<string, StudentAnswer>>({});
   const [current, setCurrent] = useState(0);
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
+  const [expired, setExpired] = useState(false);
+  const [finishState, setFinishState] = useState<FinishState>("idle");
   const pending = useRef<Record<string, StudentAnswer>>({});
   /** Per-question revision of the pending value; strictly increasing across the attempt. */
   const revisions = useRef<Record<string, number>>({});
   const revision = useRef(0);
   const interacted = useRef(true);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const inFlight = useRef<Promise<boolean> | null>(null);
-  const offset = useRef(0);
+  const inFlight = useRef<Promise<FlushOutcome> | null>(null);
+  const clock = useRef<ExamClock>({ deadlineMs: 0, offsetMs: 0 });
+  const clockReady = useRef(false);
+  const lastSync = useRef(-RESYNC_MIN_MS);
+  /** The device clock jumped (or the page slept) and the offset has not been re-measured since. */
+  const jumped = useRef(false);
+  const finishing = useRef(false);
   const initialised = useRef(false);
 
   const data = session.data && !session.data.done ? session.data : null;
   const refetch = session.refetch;
   const saveAsync = save.mutateAsync;
+  const submitAsync = submit.mutateAsync;
+  const pingAsync = ping.mutateAsync;
+
+  if (data && !clockReady.current) {
+    clockReady.current = true;
+    clock.current = {
+      deadlineMs: new Date(data.deadlineAt).getTime(),
+      offsetMs: clockOffset(new Date(data.serverNow).getTime(), session.dataUpdatedAt || Date.now()),
+    };
+  }
 
   useEffect(() => {
     if (!data || initialised.current) return;
     initialised.current = true;
-    offset.current = new Date(data.serverNow).getTime() - Date.now();
     const buffered = readBuffer(attemptId);
     const bufferedRevisions = readRevisions(attemptId);
     const known = new Set(data.questions.map((q) => q.id));
@@ -105,7 +206,7 @@ export default function StudentSession() {
     if (Object.keys(pending.current).length) setSaveState("pending");
   }, [data, attemptId]);
 
-  const flush = useCallback(async (): Promise<boolean> => {
+  const flush = useCallback(async (): Promise<FlushOutcome> => {
     if (timer.current) {
       clearTimeout(timer.current);
       timer.current = null;
@@ -113,10 +214,10 @@ export default function StudentSession() {
     if (inFlight.current) await inFlight.current;
     const batch = { ...pending.current };
     const entries = Object.entries(batch).map(([questionId, answer]) => ({ questionId, answer, revision: revisions.current[questionId] }));
-    if (!entries.length) return true;
+    if (!entries.length) return "saved";
     setSaveState("saving");
     const run = saveAsync({ attemptId, entries })
-      .then(() => {
+      .then((): FlushOutcome => {
         for (const [k, v] of Object.entries(batch)) {
           if (pending.current[k] !== v) continue;
           delete pending.current[k];
@@ -124,12 +225,15 @@ export default function StudentSession() {
         }
         writeBuffer(attemptId, pending.current, revisions.current);
         setSaveState(Object.keys(pending.current).length ? "pending" : "saved");
-        return true;
+        return "saved";
       })
-      .catch((e: unknown) => {
-        if (e instanceof Error && e.message === "ATTEMPT_CLOSED") void refetch();
-        else setSaveState("offline");
-        return false;
+      .catch((e: unknown): FlushOutcome => {
+        if (isClosedError(e)) {
+          void refetch();
+          return "closed";
+        }
+        setSaveState("offline");
+        return "offline";
       })
       .finally(() => {
         inFlight.current = null;
@@ -146,34 +250,64 @@ export default function StudentSession() {
     writeBuffer(attemptId, pending.current, revisions.current);
     setSaveState("pending");
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => void flush(), SAVE_DELAY_MS);
+    const soon = remainingMs(clock.current.deadlineMs, clock.current.offsetMs) < FLUSH_NOW_BEFORE_DEADLINE_MS;
+    timer.current = setTimeout(() => void flush(), soon ? 0 : SAVE_DELAY_MS);
   };
 
-  useEffect(() => {
-    const tick = setInterval(() => setNow(Date.now()), 500);
-    return () => clearInterval(tick);
-  }, []);
+  /** Re-reads the server deadline and clock. Also the session heartbeat. */
+  const resync = useCallback(
+    async (minGapMs: number): Promise<"open" | "closed" | "unreachable" | "skipped"> => {
+      // Monotonic: the device clock itself may just have jumped.
+      if (performance.now() - lastSync.current < minGapMs) return "skipped";
+      lastSync.current = performance.now();
+      const wasActive = interacted.current;
+      interacted.current = false;
+      const sentPerf = performance.now();
+      try {
+        const r = await pingAsync({ attemptId, interacted: wasActive });
+        if (!r.open) {
+          void refetch();
+          return "closed";
+        }
+        // The round trip is timed monotonically and anchored at the receive time, so it stays valid
+        // even if the device clock jumped while the request was in flight.
+        const roundTrip = performance.now() - sentPerf;
+        const receivedAt = Date.now();
+        clock.current.deadlineMs = new Date(r.deadlineAt).getTime();
+        if (roundTrip < MAX_SYNC_RTT_MS) {
+          clock.current.offsetMs = clockOffset(new Date(r.serverNow).getTime(), receivedAt - roundTrip, receivedAt);
+          jumped.current = false;
+        }
+        return "open";
+      } catch {
+        interacted.current ||= wasActive;
+        return "unreachable";
+      }
+    },
+    [attemptId, pingAsync, refetch],
+  );
 
-  const pingAsync = ping.mutateAsync;
   const sessionOpen = Boolean(data);
   useEffect(() => {
     if (!sessionOpen) return;
-    const send = () => {
-      if (document.visibilityState !== "visible") return;
-      const wasActive = interacted.current;
-      interacted.current = false;
-      pingAsync({ attemptId, interacted: wasActive })
-        .then((r) => {
-          if (!r.open) void refetch();
-        })
-        .catch(() => {
-          interacted.current ||= wasActive;
-        });
+    const beat = () => {
+      if (document.visibilityState === "visible") void resync(0);
     };
-    send();
-    const interval = setInterval(send, PING_MS);
-    return () => clearInterval(interval);
-  }, [sessionOpen, attemptId, pingAsync, refetch]);
+    const wake = () => {
+      if (document.visibilityState === "visible") void resync(jumped.current ? 0 : RESYNC_MIN_MS);
+    };
+    beat();
+    const interval = setInterval(beat, PING_MS);
+    document.addEventListener("visibilitychange", wake);
+    window.addEventListener("focus", wake);
+    window.addEventListener("online", wake);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", wake);
+      window.removeEventListener("focus", wake);
+      window.removeEventListener("online", wake);
+    };
+  }, [sessionOpen, resync]);
 
   const questionRef = useRef<HTMLElement>(null);
   const navigated = useRef(false);
@@ -203,44 +337,105 @@ export default function StudentSession() {
     return () => window.removeEventListener("beforeunload", warn);
   }, []);
 
-  const remainingMs = data ? new Date(data.deadlineAt).getTime() - (now + offset.current) : 0;
-  const expired = Boolean(data) && remainingMs <= 0;
-  const expiryHandled = useRef(false);
-  useEffect(() => {
-    if (!expired || expiryHandled.current) return;
-    expiryHandled.current = true;
-    toast.info(t("session.timeUp"));
-    const later = setTimeout(() => void refetch(), 1500);
-    return () => clearTimeout(later);
-  }, [expired, refetch]);
-
   useEffect(() => {
     if (session.data?.done) writeBuffer(attemptId, {});
   }, [session.data, attemptId]);
 
   const answeredCount = useMemo(() => (data ? data.questions.filter((q) => isAnswered(answers[q.id])).length : 0), [data, answers]);
 
-  const doSubmit = async () => {
-    await flush();
-    try {
-      const r = await submit.mutateAsync({ attemptId });
-      writeBuffer(attemptId, {});
+  const assessmentId = data?.assessmentId;
+  const leave = useCallback(
+    (resultId: string | null) => {
       if (returnTo) {
         void utils.student.syllabus.invalidate();
         toast.success(t("learn.assessment.submitted"));
-        navigate(r.resultId ? resultPath(r.resultId, returnTo) : returnTo);
-      } else if (r.resultId) navigate(resultPath(r.resultId, null));
+        navigate(resultId ? resultPath(resultId, returnTo) : returnTo);
+      } else if (resultId) navigate(resultPath(resultId, null));
       else {
         toast.info(t("session.timeUpNoAnswers"));
-        navigate(`/student/assessments/${data?.assessmentId ?? ""}`);
+        navigate(`/student/assessments/${assessmentId ?? ""}`);
       }
+    },
+    [returnTo, utils, navigate, assessmentId],
+  );
+
+  const doSubmit = async () => {
+    await flush();
+    try {
+      const r = await submitAsync({ attemptId });
+      writeBuffer(attemptId, {});
+      leave(r.resultId);
     } catch (e) {
       toast.error(errorText(e));
       void refetch();
     }
   };
 
-  if (session.error) {
+  /**
+   * At 00:00: confirm the deadline with the server (a wrong device clock must not end the exam early),
+   * save what is still on the device, then submit. Repeats until it gets through.
+   */
+  const autoFinishRef = useRef(async () => {});
+  const finishRetry = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoFinish = useCallback(async () => {
+    if (finishing.current) return;
+    finishing.current = true;
+    if (finishRetry.current) clearTimeout(finishRetry.current);
+    setFinishState("submitting");
+    const retryLater = () => {
+      setFinishState("retrying");
+      finishRetry.current = setTimeout(() => void autoFinishRef.current(), FINISH_RETRY_MS);
+    };
+    try {
+      const sync = await resync(0);
+      if (sync === "closed") return;
+      if (sync === "unreachable") return retryLater();
+      if (remainingMs(clock.current.deadlineMs, clock.current.offsetMs) > 0) {
+        setFinishState("idle");
+        return;
+      }
+      const saved = await flush();
+      if (saved === "closed") return;
+      if (saved === "offline") return retryLater();
+      const r = await submitAsync({ attemptId });
+      writeBuffer(attemptId, {});
+      if (r.resultId) toast.info(t("session.timeUp"));
+      leave(r.resultId);
+    } catch (e) {
+      if (isClosedError(e)) void refetch();
+      else retryLater();
+    } finally {
+      finishing.current = false;
+    }
+  }, [resync, flush, submitAsync, attemptId, leave, refetch]);
+  autoFinishRef.current = autoFinish;
+
+  useEffect(() => {
+    if (expired) void autoFinishRef.current();
+    else setFinishState("idle");
+  }, [expired]);
+
+  useEffect(() => {
+    if (finishState !== "retrying") return;
+    const again = () => void autoFinishRef.current();
+    window.addEventListener("online", again);
+    return () => window.removeEventListener("online", again);
+  }, [finishState]);
+
+  useEffect(
+    () => () => {
+      if (finishRetry.current) clearTimeout(finishRetry.current);
+    },
+    [],
+  );
+
+  const onWarning = useCallback((minutes: number) => toast.warning(t("session.minutesLeft", { count: minutes })), []);
+  const onClockJump = useCallback(() => {
+    jumped.current = true;
+    if (document.visibilityState === "visible") void resync(0);
+  }, [resync]);
+
+  if (session.error && !session.data) {
     return (
       <div className="flex min-h-screen items-center justify-center p-6">
         <div className="max-w-md rounded-2xl border bg-card p-6 text-center">
@@ -258,14 +453,12 @@ export default function StudentSession() {
   if (!data) return <Loading />;
 
   const q = data.questions[current];
-  const lowTime = remainingMs < 60_000;
   const saveLabel: Record<SaveState, string> = {
     saved: t("session.saved"),
     pending: t("session.pending"),
     saving: t("session.saving"),
     offline: t("session.offline"),
   };
-  const clock = fmtClock(remainingMs);
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -277,16 +470,19 @@ export default function StudentSession() {
             <span className="min-w-0 break-words">{saveLabel[saveState]}</span>
           </div>
         </div>
-        <div
-          role="timer"
-          aria-label={lowTime ? t("session.lowTime", { time: clock }) : t("session.timeLeft", { time: clock })}
-          className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 font-mono text-lg tabular-nums ${lowTime ? "border-destructive/40 bg-danger-surface text-destructive" : "border-transparent bg-muted text-foreground"}`}
-        >
-          {lowTime ? <AlarmClock className="h-4 w-4" aria-hidden /> : <Clock className="h-4 w-4 text-muted-foreground" aria-hidden />}
-          {clock}
-        </div>
+        <Countdown clock={clock} onExpiredChange={setExpired} onWarning={onWarning} onClockJump={onClockJump} />
         <Button className="shrink-0" onClick={() => setConfirmOpen(true)} disabled={expired || submit.isPending}>{t("session.submit")}</Button>
       </header>
+
+      {expired && finishState !== "idle" && (
+        <div
+          role={finishState === "retrying" ? "alert" : "status"}
+          className={`flex items-start gap-2 border-b px-4 py-2 text-sm ${finishState === "retrying" ? "bg-danger-surface text-destructive" : "bg-muted text-foreground"}`}
+        >
+          {finishState === "retrying" ? <CloudOff className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /> : <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin" aria-hidden />}
+          <span className="min-w-0 break-words">{finishState === "retrying" ? t("session.timeUpRetrying") : t("session.timeUpSubmitting")}</span>
+        </div>
+      )}
 
       <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4 p-4 lg:flex-row">
         <nav aria-label={t("session.navigator")} className="order-2 lg:order-1 lg:w-56">
@@ -340,7 +536,7 @@ export default function StudentSession() {
         </main>
       </div>
 
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+      <Dialog open={confirmOpen && !expired} onOpenChange={setConfirmOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("session.confirmTitle")}</DialogTitle>

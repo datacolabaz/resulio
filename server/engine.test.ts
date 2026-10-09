@@ -3,10 +3,12 @@ import {
   checkCanStart,
   computeDeadline,
   correctAnswerOf,
+  DEADLINE_GRACE_MS,
   effectiveRules,
   gradeAttempt,
   gradeQuestion,
   isExpired,
+  isPastGrace,
   liveStatus,
   median,
   parseNumber,
@@ -222,6 +224,15 @@ describe("access rules", () => {
     expect(isExpired({ status: "IN_PROGRESS", deadlineAt }, new Date("2026-05-01T11:54:59Z"))).toBe(false);
     expect(isExpired({ status: "IN_PROGRESS", deadlineAt }, deadlineAt)).toBe(true);
     expect(isExpired({ status: "SUBMITTED", deadlineAt }, new Date("2026-05-02T00:00:00Z"))).toBe(false);
+  });
+
+  it("closes an attempt for answers only after the grace period", () => {
+    const deadlineAt = new Date("2026-05-01T11:55:00Z");
+    const after = (ms: number) => new Date(deadlineAt.getTime() + ms);
+    expect(isPastGrace({ status: "IN_PROGRESS", deadlineAt }, after(DEADLINE_GRACE_MS - 1))).toBe(false);
+    expect(isPastGrace({ status: "IN_PROGRESS", deadlineAt }, after(DEADLINE_GRACE_MS))).toBe(true);
+    expect(isPastGrace({ status: "AUTO_SUBMITTED", deadlineAt }, after(DEADLINE_GRACE_MS * 10))).toBe(false);
+    expect(DEADLINE_GRACE_MS).toBeLessThanOrEqual(15_000);
   });
 
   it("derives live status from the window", () => {
