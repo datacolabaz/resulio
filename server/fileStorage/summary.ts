@@ -44,9 +44,21 @@ const n = (v: unknown) => Number(v ?? 0);
 
 export async function storageSummary() {
   const db = requireDb();
-  const [total] = await db.select({ count: sql<number>`count(*)`, bytes: sql<number>`coalesce(sum(${files.sizeBytes}), 0)` }).from(files);
+  const hasData = sql`${files.dataBase64} <> ''`;
+  const [total] = await db
+    .select({
+      count: sql<number>`count(*)`,
+      bytes: sql<number>`coalesce(sum(${files.sizeBytes}), 0)`,
+      dbCount: sql<number>`coalesce(sum(case when ${hasData} then 1 else 0 end), 0)`,
+      dbBytes: sql<number>`coalesce(sum(case when ${hasData} then ${files.sizeBytes} else 0 end), 0)`,
+    })
+    .from(files);
   const [inObjects] = await db
-    .select({ count: sql<number>`count(*)`, bytes: sql<number>`coalesce(sum(${files.sizeBytes}), 0)` })
+    .select({
+      count: sql<number>`count(*)`,
+      bytes: sql<number>`coalesce(sum(${files.sizeBytes}), 0)`,
+      bothCount: sql<number>`coalesce(sum(case when ${hasData} then 1 else 0 end), 0)`,
+    })
     .from(files)
     .innerJoin(fileObjects, eq(fileObjects.fileId, files.id));
 
@@ -116,8 +128,10 @@ export async function storageSummary() {
       uploadsTo: uploadBackend(),
       r2Configured: !!r2,
       r2Bucket: r2?.bucket ?? null,
-      inDatabase: { count: n(total?.count) - n(inObjects?.count), bytes: n(total?.bytes) - n(inObjects?.bytes) },
+      /** Files whose bytes are still in MySQL, including copies already in R2 (kept until the CLI purge). */
+      inDatabase: { count: n(total?.dbCount), bytes: n(total?.dbBytes) },
       inObjectStore: { count: n(inObjects?.count), bytes: n(inObjects?.bytes) },
+      inBoth: n(inObjects?.bothCount),
     },
     byType: groupTotals(byMime.map((r) => ({ key: fileTypeGroup(r.mimeType), count: n(r.count), bytes: n(r.bytes) })), FILE_TYPE_GROUPS),
     byFeature: groupTotals(byFeatureRows.map((r) => ({ key: r.key, count: n(r.count), bytes: n(r.bytes) })), STORAGE_FEATURES),

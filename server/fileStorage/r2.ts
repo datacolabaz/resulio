@@ -21,6 +21,13 @@ export interface R2Config {
 
 const env = (e: NodeJS.ProcessEnv, key: string) => (e[key] ?? "").trim().replace(/^['"]|['"]$/g, "").trim();
 
+export const R2_REQUIRED_ENV = ["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"] as const;
+
+/** Names (never values) of the required R2 variables that are unset or blank. */
+export function r2MissingEnv(e: NodeJS.ProcessEnv = process.env): string[] {
+  return R2_REQUIRED_ENV.filter((key) => !env(e, key));
+}
+
 export function r2ConfigFromEnv(e: NodeJS.ProcessEnv = process.env): R2Config | null {
   const accountId = env(e, "R2_ACCOUNT_ID");
   const accessKeyId = env(e, "R2_ACCESS_KEY_ID");
@@ -48,6 +55,25 @@ export function uploadBackend(e: NodeJS.ProcessEnv = process.env): "db" | "r2" {
   return r2ConfigFromEnv(e) ? "r2" : "db";
 }
 
+/** Error text safe to store and show: R2 credentials and the account id masked, length capped. */
+export function redactR2Secrets(message: string, e: NodeJS.ProcessEnv = process.env): string {
+  let out = message;
+  for (const key of ["R2_SECRET_ACCESS_KEY", "R2_ACCESS_KEY_ID", "R2_ACCOUNT_ID"]) {
+    const value = env(e, key);
+    if (value.length >= 4) out = out.split(value).join("***");
+  }
+  out = out.replace(/(X-Amz-(?:Credential|Signature|Security-Token)=)[^&\s]+/gi, "$1***");
+  return out.length > 300 ? `${out.slice(0, 297)}...` : out;
+}
+
+/** One startup log line about where file bytes go; bucket name only, no credentials. */
+export function describeStorageBackend(e: NodeJS.ProcessEnv = process.env): string {
+  const config = r2ConfigFromEnv(e);
+  if (!config) return `[storage] backend=db (R2 not configured; missing ${r2MissingEnv(e).join(", ")})`;
+  if (uploadBackend(e) === "db") return `[storage] backend=db (FILE_STORAGE_BACKEND=db; R2 bucket=${config.bucket} available for copies)`;
+  return `[storage] backend=r2 bucket=${config.bucket} download=${r2DownloadMode(e)}`;
+}
+
 export const SIGNED_URL_TTL_SECONDS = 300;
 
 /** The subset of S3Client the store uses, so tests can pass a fake. */
@@ -62,6 +88,8 @@ export interface ObjectStore {
   get(key: string): Promise<Buffer>;
   /** Size in bytes, or null when the object does not exist. */
   head(key: string): Promise<number | null>;
+  /** Size and ETag (the MD5 hex for single-part uploads), or null when the object does not exist. */
+  stat(key: string): Promise<{ size: number; etag: string | null } | null>;
   remove(key: string): Promise<void>;
   signedGetUrl(key: string, opts: { fileName: string; contentType: string; expiresIn?: number }): Promise<string>;
   publicUrl(key: string): string | null;
@@ -86,6 +114,16 @@ export function createR2Store(config: R2Config, client?: S3Like, presign?: Presi
     });
   const sign: Presign = presign ?? ((c, command, opts) => getSignedUrl(c as S3Client, command, opts));
   const Bucket = config.bucket;
+  async function stat(key: string) {
+    try {
+      const out = (await s3.send(new HeadObjectCommand({ Bucket, Key: key }))) as { ContentLength?: number; ETag?: string };
+      return { size: out.ContentLength ?? 0, etag: out.ETag ? out.ETag.replace(/"/g, "").toLowerCase() : null };
+    } catch (error) {
+      const status = (error as { $metadata?: { httpStatusCode?: number }; name?: string }) ?? {};
+      if (status.$metadata?.httpStatusCode === 404 || status.name === "NotFound") return null;
+      throw error;
+    }
+  }
   return {
     backend: "r2",
     bucket: Bucket,
@@ -98,15 +136,9 @@ export function createR2Store(config: R2Config, client?: S3Like, presign?: Presi
       return Buffer.from(await out.Body.transformToByteArray());
     },
     async head(key) {
-      try {
-        const out = (await s3.send(new HeadObjectCommand({ Bucket, Key: key }))) as { ContentLength?: number };
-        return out.ContentLength ?? 0;
-      } catch (error) {
-        const status = (error as { $metadata?: { httpStatusCode?: number }; name?: string }) ?? {};
-        if (status.$metadata?.httpStatusCode === 404 || status.name === "NotFound") return null;
-        throw error;
-      }
+      return (await stat(key))?.size ?? null;
     },
+    stat,
     async remove(key) {
       await s3.send(new DeleteObjectCommand({ Bucket, Key: key }));
     },
