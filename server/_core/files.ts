@@ -6,6 +6,7 @@ import { parseShareCampaign, parseShareSource, VISITOR_ID_PATTERN } from "@share
 import type { User } from "../../drizzle/schema";
 import { tasks } from "../../drizzle/schema";
 import { requireDb } from "../db";
+import { contentDisposition, r2DownloadMode } from "../fileStorage/r2";
 import { resolveWorkspace } from "../modules/access";
 import { AppError, type AppErrorCode } from "../modules/errors";
 import * as filesModule from "../modules/files";
@@ -163,10 +164,17 @@ export function registerFileRoutes(app: Express) {
       if (user) await filesModule.recordDownload(file, user.id);
       const share = shareDownloadParams(req);
       if (share) await filesModule.recordShareDownload(file, share, user?.id ?? null);
-      const buffer = Buffer.from(file.dataBase64, "base64");
-      const asciiName = file.fileName.replace(/[^\x20-\x7E]/g, "_");
+      const stored = await filesModule.storedObjectOf(file);
+      if (stored && r2DownloadMode() === "redirect") {
+        // Access was checked above; the signed URL is short-lived and names this one object.
+        const publicUrl = access === "OPEN" ? stored.store.publicUrl(stored.key) : null;
+        res.setHeader("Cache-Control", "no-store");
+        res.redirect(302, publicUrl ?? (await stored.store.signedGetUrl(stored.key, { fileName: file.fileName, contentType: file.mimeType })));
+        return;
+      }
+      const buffer = stored ? await stored.store.get(stored.key) : Buffer.from(file.dataBase64, "base64");
       res.setHeader("Content-Type", file.mimeType);
-      res.setHeader("Content-Disposition", `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(file.fileName)}`);
+      res.setHeader("Content-Disposition", contentDisposition(file.fileName));
       res.setHeader("Cache-Control", "private, max-age=0, no-cache");
       res.send(buffer);
     } catch (error) {
