@@ -24,7 +24,8 @@ import { ModuleBlocksEditor } from "./ModuleBlocksEditor";
 import { CourseTimingPanel, LessonMinutes, ModuleTiming } from "./TimingEditors";
 import { StudentsTab } from "./StudentsTab";
 import { PublishDialog } from "./PublishDialog";
-import { AccessTab, GrantDialog, SettingsTab, VersionsTab } from "./SyllabusTabs";
+import { GrantDialog } from "./GrantDialog";
+import { AccessTab, SettingsTab, VersionsTab } from "./SyllabusTabs";
 import { CopyShareLinkButton, RequestsTab, usePendingJoinRequests } from "./ShareAndRequests";
 import { fieldLabel, KIND_ICON, kindLabel, NodeStatusBadge, SyllabusShell, SyllabusVisibilityBadges, toastError, useSyllabusRefresh } from "./shared";
 

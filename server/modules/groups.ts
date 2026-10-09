@@ -439,10 +439,11 @@ export async function teacherStudents(scope: TeacherScope) {
         eq(groupMembers.membershipRole, "STUDENT"),
       ),
     );
-  const byStudent = new Map<number, { id: number; name: string | null; email: string | null; avatarUrl: string | null; groups: string[] }>();
+  const byStudent = new Map<number, { id: number; name: string | null; email: string | null; avatarUrl: string | null; groups: string[]; groupIds: string[] }>();
   for (const r of rows) {
-    const cur = byStudent.get(r.id) ?? { id: r.id, name: r.name, email: r.email, avatarUrl: r.avatarUrl, groups: [] };
+    const cur = byStudent.get(r.id) ?? { id: r.id, name: r.name, email: r.email, avatarUrl: r.avatarUrl, groups: [], groupIds: [] };
     cur.groups.push(r.groupName);
+    cur.groupIds.push(r.groupId);
     byStudent.set(r.id, cur);
   }
   return [...byStudent.values()];

@@ -30,10 +30,16 @@ export interface GrantInput {
   note?: string;
 }
 
-export async function grantAccess(scope: TeacherScope, syllabusId: string, input: GrantInput) {
+/**
+ * The dialog decides the shape: a group grant also covers students who join the group later; a
+ * group with some students unchecked arrives as individual grants. Either way every id is checked
+ * against the teacher's workspace here.
+ */
+export async function grantAccess(scope: TeacherScope, syllabusId: string, input: GrantInput, now = new Date()) {
   const syllabus = await ownedSyllabus(scope, syllabusId);
   if (syllabus.archivedAt) throw new AppError("SYLLABUS_ARCHIVED");
   if (input.startsAt && input.endsAt && input.endsAt <= input.startsAt) throw new AppError("SYLLABUS_INVALID_TARGET");
+  if (input.endsAt && input.endsAt <= now) throw new AppError("SYLLABUS_INVALID_TARGET");
   const groupIds = [...new Set(input.groupIds)];
   const studentIds = [...new Set(input.studentIds)];
   for (const g of groupIds) await assertGroupOwner(scope, g);
@@ -47,7 +53,6 @@ export async function grantAccess(scope: TeacherScope, syllabusId: string, input
   ].map((r) => ({ id: nanoid(), syllabusId, ...r, startsAt: input.startsAt, endsAt: input.endsAt, note: input.note?.trim() || null, grantedBy: scope.userId }));
   const before = rows.length ? await store.grantsForSyllabus(syllabusId) : [];
   if (rows.length) await requireDb().insert(syllabusAccessGrants).values(rows);
-  const now = new Date();
   announceGrants(
     syllabus,
     before,
