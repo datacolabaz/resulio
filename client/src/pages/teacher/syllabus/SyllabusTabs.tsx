@@ -2,7 +2,7 @@ import { EmptyState, ErrorNote, Loading, Panel, Pill } from "@/components/AppShe
 import { StatusBadge } from "@/components/StatusBadge";
 import { CompletionRulesForm } from "@/components/syllabus/CompletionRulesForm";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { SettingToggle } from "@/components/ui/setting-toggle";
 import { t } from "@/i18n/messages";
@@ -14,6 +14,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { DeleteSyllabusDialog } from "./DeleteSyllabusDialog";
+import { GrantDialog } from "./GrantDialog";
 import { GroupListingsPanel, ShareLinkPanel } from "./ShareAndRequests";
 import type { Tree } from "./SyllabusDetail";
 import { fieldsFromSyllabus, fieldsPayload, SyllabusFieldsForm } from "./SyllabusFields";
@@ -138,94 +139,6 @@ export function VersionsTab({ tree }: { tree: Tree }) {
 
 type Grant = RouterOutputs["teacher"]["syllabus"]["grants"][number];
 
-export function GrantDialog({
-  syllabusId,
-  open,
-  onOpenChange,
-  preset,
-}: {
-  syllabusId: string;
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  preset: { groupIds: string[]; studentIds: number[] } | null;
-}) {
-  const utils = trpc.useUtils();
-  const groups = trpc.teacher.groups.list.useQuery(undefined, { enabled: open });
-  const students = trpc.teacher.students.useQuery(undefined, { enabled: open });
-  const blank = () => ({ groupIds: preset?.groupIds ?? [], studentIds: preset?.studentIds ?? [], startsAt: "", endsAt: "", note: "" });
-  const [f, setF] = useState(blank);
-  const [lastKey, setLastKey] = useState("");
-  const key = `${open}-${JSON.stringify(preset)}`;
-  if (key !== lastKey) {
-    setLastKey(key);
-    if (open) setF(blank());
-  }
-  const grant = trpc.teacher.syllabus.grant.useMutation({
-    onSuccess: () => {
-      void utils.teacher.syllabus.grants.invalidate({ id: syllabusId });
-      void utils.teacher.syllabus.list.invalidate();
-      toast.success(t("syllabus.access.granted"));
-      onOpenChange(false);
-    },
-    onError: toastError,
-  });
-  const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
-  const startsAt = fromLocalInput(f.startsAt);
-  const endsAt = fromLocalInput(f.endsAt);
-  const badRange = !!startsAt && !!endsAt && endsAt <= startsAt;
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl">
-        <DialogHeader><DialogTitle>{t("syllabus.access.grantTitle")}</DialogTitle></DialogHeader>
-        <DialogBody className="grid content-start gap-3">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <fieldset>
-              <legend className={`mb-1 text-sm ${fieldLabel}`}>{t("common.groups")}</legend>
-              <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border p-2">
-                {(groups.data ?? []).map((g) => (
-                  <label key={g.id} className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" className="accent-link" checked={f.groupIds.includes(g.id)} onChange={() => setF({ ...f, groupIds: toggle(f.groupIds, g.id) })} />
-                    <span className="min-w-0 break-words">{g.name}</span>
-                  </label>
-                ))}
-                {!groups.data?.length && <div className="text-xs text-muted-foreground">{t("modules.noGroups")}</div>}
-              </div>
-            </fieldset>
-            <fieldset>
-              <legend className={`mb-1 text-sm ${fieldLabel}`}>{t("common.students")}</legend>
-              <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border p-2">
-                {(students.data ?? []).map((s) => (
-                  <label key={s.id} className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" className="accent-link" checked={f.studentIds.includes(s.id)} onChange={() => setF({ ...f, studentIds: toggle(f.studentIds, s.id) })} />
-                    <span className="min-w-0 break-words">{s.name ?? s.email}</span>
-                  </label>
-                ))}
-                {!students.data?.length && <div className="text-xs text-muted-foreground">{t("modules.noStudents")}</div>}
-              </div>
-            </fieldset>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="text-sm"><span className={fieldLabel}>{t("syllabus.access.startsAt")}</span><Input type="datetime-local" value={f.startsAt} onChange={(e) => setF({ ...f, startsAt: e.target.value })} /></label>
-            <label className="text-sm"><span className={fieldLabel}>{t("syllabus.access.endsAt")}</span><Input type="datetime-local" value={f.endsAt} onChange={(e) => setF({ ...f, endsAt: e.target.value })} /></label>
-          </div>
-          <p className="text-xs text-muted-foreground">{t("syllabus.access.datesHelp")}</p>
-          {badRange && <p role="alert" className="text-xs text-destructive">{t("syllabus.access.badRange")}</p>}
-          <label className="text-sm"><span className={fieldLabel}>{t("syllabus.access.note")}</span><Input maxLength={255} value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></label>
-        </DialogBody>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
-          <Button
-            disabled={(!f.groupIds.length && !f.studentIds.length) || badRange || grant.isPending}
-            onClick={() => grant.mutate({ id: syllabusId, groupIds: f.groupIds, studentIds: f.studentIds, startsAt, endsAt, note: f.note || undefined })}
-          >
-            {t("syllabus.access.grant")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function DatesDialog({ syllabusId, grant, onClose }: { syllabusId: string; grant: Grant | null; onClose: () => void }) {
   const utils = trpc.useUtils();
   const [startsAt, setStartsAt] = useState("");
@@ -251,6 +164,7 @@ function DatesDialog({ syllabusId, grant, onClose }: { syllabusId: string; grant
       <DialogContent className="max-w-md">
         <DialogHeader><DialogTitle>{t("syllabus.access.datesTitle", { label: grant?.label ?? "" })}</DialogTitle></DialogHeader>
         <div className="grid gap-3">
+          <p className="text-xs text-muted-foreground">{t("syllabus.access.datesExplain")}</p>
           <label className="text-sm"><span className={fieldLabel}>{t("syllabus.access.startsAt")}</span><Input type="datetime-local" value={startsAt} onChange={(ev) => setStartsAt(ev.target.value)} /></label>
           <label className="text-sm"><span className={fieldLabel}>{t("syllabus.access.endsAt")}</span><Input type="datetime-local" value={endsAt} onChange={(ev) => setEndsAt(ev.target.value)} /></label>
           {badRange && <p role="alert" className="text-xs text-destructive">{t("syllabus.access.badRange")}</p>}
