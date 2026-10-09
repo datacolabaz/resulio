@@ -36,6 +36,8 @@ export interface AskRequest {
   messages: Message[];
   /** "module 3", "part 2/4", … for logs and the job's technical detail. */
   label: string;
+  /** 2+ when the previous reply was unreadable or cut off (the asker may allow a longer reply). */
+  attempt?: number;
 }
 export interface AskReply {
   content: string;
@@ -55,21 +57,44 @@ export interface AiErrorInfo {
   code: SyllabusImportError;
   /** No later request can succeed either (bad key, unknown model): the job fails. */
   fatal: boolean;
-  /** Later requests would most likely fail the same way (quota): stop asking, read the rest locally. */
+  /** Later requests would most likely fail the same way (daily quota): stop asking, read the rest locally. */
   stopAsking: boolean;
+  /** The same request may well succeed after a pause (rate window, 5xx, network error, time-out). */
+  transient?: boolean;
+  /** How long the provider asked to wait before the next request. */
+  retryAfterMs?: number;
   detail: string;
 }
 
 /** A provider / network error → what it means for the run. */
 export function classifyAiError(error: unknown): AiErrorInfo {
-  const message = (error instanceof Error ? error.message : String(error)).replace(/\s+/g, " ").slice(0, 300);
+  const message = (error instanceof Error ? error.message : String(error)).replace(/\s+/g, " ").slice(0, 400);
   if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
-    return { code: "AI_TIMEOUT", fatal: false, stopAsking: false, detail: `timeout: ${message}` };
+    return { code: "AI_TIMEOUT", fatal: false, stopAsking: false, transient: true, detail: `timeout: ${message}` };
   }
   const code = llmFailureReason(error);
-  const status = error instanceof LlmHttpError ? `HTTP ${error.status}: ` : "";
-  return { code, fatal: code === "AI_KEY_INVALID" || code === "AI_NOT_FOUND", stopAsking: code === "AI_QUOTA", detail: `${status}${message}` };
+  if (!(error instanceof LlmHttpError)) return { code, fatal: false, stopAsking: false, transient: true, detail: message };
+  if (code === "AI_QUOTA") {
+    const daily = error.quotaWindow === "day";
+    return { code, fatal: false, stopAsking: daily, transient: !daily, retryAfterMs: error.retryAfterMs, detail: message };
+  }
+  const fatal = code === "AI_KEY_INVALID" || code === "AI_NOT_FOUND";
+  return { code, fatal, stopAsking: false, transient: error.status >= 500 || error.status === 408, detail: message };
 }
+
+/** Asks per request for a transient provider error (a time-out is asked again only once). */
+const TRANSIENT_ATTEMPTS = 4;
+const TIMEOUT_ATTEMPTS = 2;
+const BACKOFF_BASE_MS = 2_000;
+const MAX_WAIT_MS = 65_000;
+
+/** Equal-jitter exponential backoff, at least what the provider asked for. */
+function transientWait(info: AiErrorInfo, retry: number): number {
+  const cap = Math.min(BACKOFF_BASE_MS * 2 ** retry, MAX_WAIT_MS);
+  return Math.min(Math.max(cap / 2 + Math.random() * (cap / 2), info.retryAfterMs ?? 0), MAX_WAIT_MS);
+}
+
+const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** A request that did not give a usable reply. */
 class StepError extends Error {
@@ -88,38 +113,68 @@ export interface RunnerOptions {
   /** True once the run no longer owns the job (retried or deleted): no new request starts. */
   shouldStop?: () => boolean;
   now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
   log?: (line: string) => void;
 }
 
 /**
- * Asking with retries for unreadable or cut-off replies. A reply cut off twice is used as far as it
- * goes (`partial`). Errors from the provider are not retried here (the HTTP layer already retried
- * 5xx/429, and a timed-out request would most likely time out again).
+ * Asking with retries. An unreadable or cut-off reply is asked again once; a reply cut off twice is
+ * used as far as it goes (`partial`). A transient provider error (rate window, 5xx, network, time-out)
+ * is asked again after a backoff of at least the provider's retry delay; a 429 pauses every request
+ * of the run, so parallel requests do not keep hitting the same rate window. A daily quota, or a 429
+ * that outlasts the retries, stops asking for the rest of the run.
  */
 export function createRunner(opts: RunnerOptions) {
   const classify = opts.classify ?? classifyAiError;
   const now = opts.now ?? Date.now;
+  const sleep = opts.sleep ?? realSleep;
   const log = opts.log ?? (() => undefined);
-  const state = { stopped: null as AiErrorInfo | null, lastProblem: null as AiErrorInfo | null };
+  const state = { stopped: null as AiErrorInfo | null, lastProblem: null as AiErrorInfo | null, pauseUntil: 0 };
+
+  const pastDeadline = (at: number) => opts.deadline !== undefined && at > opts.deadline;
+  const outOfTime = (req: AskRequest) =>
+    new StepError({ code: "AI_TIMEOUT", fatal: false, stopAsking: true, detail: `${req.label}: the import ran out of time before this request` });
+
+  async function beforeAsking(req: AskRequest) {
+    for (;;) {
+      if (state.stopped) throw new StepError({ ...state.stopped, detail: `${req.label}: not sent, AI requests stopped after ${state.stopped.code}` });
+      if (opts.shouldStop?.()) throw new StepError({ code: "INTERRUPTED", fatal: false, stopAsking: true, detail: `${req.label}: the run was replaced` });
+      if (pastDeadline(Math.max(now(), state.pauseUntil))) throw outOfTime(req);
+      const wait = state.pauseUntil - now();
+      if (wait <= 0) return;
+      await sleep(wait);
+    }
+  }
 
   async function askJson<T>(req: AskRequest, read: (value: unknown) => T | null, attempts = 2): Promise<{ value: T; partial: boolean }> {
     let partialValue: T | null = null;
     let problem: AiErrorInfo | null = null;
+    let transientRetries = 0;
     for (let attempt = 1; attempt <= attempts; attempt++) {
-      if (state.stopped) throw new StepError(state.stopped);
-      if (opts.shouldStop?.()) throw new StepError({ code: "INTERRUPTED", fatal: false, stopAsking: true, detail: `${req.label}: the run was replaced` });
-      if (opts.deadline !== undefined && now() > opts.deadline) {
-        throw new StepError({ code: "AI_TIMEOUT", fatal: false, stopAsking: true, detail: `${req.label}: the import ran out of time before this request` });
-      }
+      await beforeAsking(req);
       let reply: AskReply;
       try {
-        reply = await opts.ask(req);
+        reply = await opts.ask(attempt > 1 ? { ...req, attempt } : req);
       } catch (error) {
         const info = classify(error);
         const labelled = { ...info, detail: `${req.label}: ${info.detail}` };
         state.lastProblem = labelled;
-        if (info.fatal || info.stopAsking) state.stopped = labelled;
-        if (info.fatal) throw new ImportFailure(info.code, labelled.detail, error);
+        if (info.fatal) {
+          state.stopped = labelled;
+          throw new ImportFailure(info.code, labelled.detail, error);
+        }
+        const limit = info.code === "AI_TIMEOUT" ? TIMEOUT_ATTEMPTS : TRANSIENT_ATTEMPTS;
+        if (info.transient && !state.stopped && transientRetries + 1 < limit) {
+          const wait = transientWait(info, transientRetries++);
+          if (!pastDeadline(now() + wait)) {
+            log(`${labelled.detail} — asking again in ${Math.round(wait / 1000)}s`);
+            if (info.code === "AI_QUOTA") state.pauseUntil = Math.max(state.pauseUntil, now() + wait);
+            else await sleep(wait);
+            attempt--;
+            continue;
+          }
+        }
+        if (info.stopAsking || info.code === "AI_QUOTA") state.stopped ??= { ...labelled, stopAsking: true };
         throw new StepError(labelled, error);
       }
       const parsed = parseJsonLoose(reply.content);
@@ -176,6 +231,8 @@ export interface ExtractResult {
   raw: RawPart;
   /** Titles of modules read from the text's structure because the model could not read them. */
   localModules: string[];
+  /** Why each of those (and the course header, if it failed) could not be read by the model, in document order. */
+  failures: string[];
   /** The last problem met on the way (kept as the job's technical detail even when it succeeded). */
   problem: AiErrorInfo | null;
 }
@@ -187,6 +244,9 @@ export interface ExtractOptions extends RunnerOptions {
   concurrency?: number;
   nonce?: () => string;
 }
+
+/** Parallel model requests per run; free-tier rate windows are a few requests per minute. */
+const DEFAULT_CONCURRENCY = 2;
 
 async function pool<T, R>(items: readonly T[], limit: number, run: (item: T, index: number) => Promise<R>): Promise<R[]> {
   const out = new Array<R>(items.length);
@@ -217,6 +277,9 @@ async function extractBySections(preamble: string, sections: ModuleSection[], op
   const step = async () => opts.onStep?.(++done);
   await opts.onPlan?.(total);
   const localModules: string[] = [];
+  /** Failure reason per request index (0 = header), so they are reported in document order. */
+  const failures: Array<string | undefined> = [];
+  const reasonOf = (error: unknown) => stepErrorInfo(error)?.detail ?? (error instanceof Error ? error.message : String(error));
   const titles = sections.filter((s) => s.numbered).map((s) => s.title);
 
   const readHeader = async (): Promise<RawSyllabus> => {
@@ -228,6 +291,7 @@ async function extractBySections(preamble: string, sections: ModuleSection[], op
       return fillSyllabus(value, local);
     } catch (error) {
       if (error instanceof ImportFailure) throw error;
+      failures[0] = reasonOf(error);
       return localRaw;
     }
   };
@@ -246,11 +310,12 @@ async function extractBySections(preamble: string, sections: ModuleSection[], op
       if (error instanceof ImportFailure) throw error;
       if (!section.numbered && !isProjectSectionTitle(section.title)) return null;
       localModules.push(section.title);
+      failures[index + 1] = reasonOf(error);
       return localToRaw(section.title, local);
     }
   };
 
-  const [syllabus, ...modules] = await pool<null | ModuleSection, RawSyllabus | RawModule | null>([null, ...sections], opts.concurrency ?? 3, async (item, i) => {
+  const [syllabus, ...modules] = await pool<null | ModuleSection, RawSyllabus | RawModule | null>([null, ...sections], opts.concurrency ?? DEFAULT_CONCURRENCY, async (item, i) => {
     const out = item === null ? await readHeader() : await readSection(item, i - 1);
     await step();
     return out;
@@ -258,7 +323,7 @@ async function extractBySections(preamble: string, sections: ModuleSection[], op
   const kept = (modules as Array<RawModule | null>).filter((m): m is RawModule => !!m);
   // Keep the document order of the module list for the local-reading notice.
   localModules.sort((a, b) => titles.indexOf(a) - titles.indexOf(b));
-  return { raw: { syllabus: syllabus as RawSyllabus, modules: kept }, localModules, problem: runner.state.lastProblem };
+  return { raw: { syllabus: syllabus as RawSyllabus, modules: kept }, localModules, failures: failures.filter((f): f is string => !!f), problem: runner.state.lastProblem };
 }
 
 const MIN_SPLIT_CHARS = 1_500;
@@ -296,5 +361,5 @@ async function extractByParts(text: string, opts: ExtractOptions): Promise<Extra
     await readChunk(chunk, i, 0);
     await opts.onStep?.(i + 1);
   }
-  return { raw: mergeParts(outs), localModules: [], problem: runner.state.lastProblem };
+  return { raw: mergeParts(outs), localModules: [], failures: [], problem: runner.state.lastProblem };
 }

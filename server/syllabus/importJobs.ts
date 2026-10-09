@@ -48,12 +48,18 @@ const RUN_BUDGET_MS = 12 * 60 * 1000;
 const DETAIL_MAX = 2_000;
 const MIME_BY_EXT: Record<string, string> = { ".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg" };
 
-/** Output tokens (Gemini counts its thinking in them) and time per request kind. */
+/**
+ * Output tokens (Gemini counts its thinking in them, and a thinking model that runs out returns an
+ * empty reply) and time per request kind. A request asked again after a cut-off or unreadable reply
+ * gets twice the tokens, up to the cap.
+ */
 const REQUEST: Record<AskKind, { geminiTokens: number; tokens: number; timeoutMs: number }> = {
-  header: { geminiTokens: 8_192, tokens: 4_000, timeoutMs: 90_000 },
-  module: { geminiTokens: 16_384, tokens: 8_000, timeoutMs: 150_000 },
+  header: { geminiTokens: 16_384, tokens: 4_000, timeoutMs: 90_000 },
+  module: { geminiTokens: 32_768, tokens: 8_000, timeoutMs: 180_000 },
   document: { geminiTokens: 32_768, tokens: 16_000, timeoutMs: 240_000 },
 };
+const GEMINI_MAX_TOKENS = 65_536;
+const OTHER_MAX_TOKENS = 16_000;
 
 async function usedInLastDay(workspaceId: string) {
   const [row] = await requireDb()
@@ -193,16 +199,19 @@ const replyText = (content: unknown) =>
       ? content.map((p) => (p && typeof p === "object" && "text" in p && typeof p.text === "string" ? p.text : "")).join("")
       : "";
 
-function makeAsk(): Ask {
+/** The model request behind the pipeline's `Ask`. Retries are left to the pipeline, which paces all requests of a run together. */
+export function makeAsk(): Ask {
   const gemini = isGeminiUrl(ENV.llm.baseUrl);
-  return async ({ kind, messages }) => {
+  return async ({ kind, messages, attempt = 1 }) => {
     const r = REQUEST[kind];
+    const base = gemini ? r.geminiTokens : r.tokens;
     const result = await invokeLLM({
       messages,
       responseFormat: { type: "json_object" },
-      maxTokens: gemini ? r.geminiTokens : r.tokens,
+      maxTokens: Math.min(base * (attempt > 1 ? 2 : 1), Math.max(base, gemini ? GEMINI_MAX_TOKENS : OTHER_MAX_TOKENS)),
       model: ENV.syllabusImportModel || undefined,
       timeoutMs: r.timeoutMs,
+      maxRetries: 0,
     });
     const choice = result.choices[0];
     return { content: replyText(choice?.message?.content), finishReason: choice?.finish_reason ?? null };
@@ -266,6 +275,19 @@ async function readFile(ctx: FileCtx, runner: Runner, onStep: (done: number) => 
   return mergeParts(outs);
 }
 
+const FAILURE_LINE_MAX = 320;
+
+/**
+ * The technical detail kept on a READY job: one line per request the model could not answer (course
+ * header, modules read from the text) with the provider's reason, else the last problem met on the way.
+ */
+export function importDetail(read: Pick<ExtractResult, "localModules" | "failures" | "problem">): SyllabusImportDetail | null {
+  const lines = read.failures.length ? read.failures : read.problem ? [read.problem.detail] : [];
+  const message = lines.map((l) => (l.length > FAILURE_LINE_MAX ? `${l.slice(0, FAILURE_LINE_MAX - 1)}…` : l)).join("\n").slice(0, DETAIL_MAX);
+  if (!read.localModules.length && !message) return null;
+  return { ...(read.localModules.length ? { localModules: read.localModules } : {}), ...(message ? { message } : {}) };
+}
+
 /** Runs one import. Every way out sets the job to READY or FAILED (with a reason that is logged). */
 export async function runImport(jobId: string, runId: string) {
   const db = requireDb();
@@ -319,16 +341,15 @@ export async function runImport(jobId: string, runId: string) {
       let texts: Promise<string[]> | null = null;
       const runner = createRunner(runnerOpts);
       const raw = await readFile({ job, bytes: bytes!, mode, pageTexts: () => (texts ??= pdfPageTexts(bytes!)) }, runner, onStep);
-      read = { raw, localModules: [], problem: runner.state.lastProblem };
+      read = { raw, localModules: [], failures: [], problem: runner.state.lastProblem };
     }
     const structure = normalizeStructure(read.raw, job.fileName.replace(/\.[^.]+$/, ""));
     if (!structure) {
       const why = read.raw.modules.length ? `${read.raw.modules.length} module(s) read but none had a title` : "no module headings were found in the reply";
       return void (await fail("NO_MODULES", [why, read.problem?.detail].filter(Boolean).join("; ")));
     }
-    const detail: SyllabusImportDetail | null =
-      read.localModules.length || read.problem ? { ...(read.localModules.length ? { localModules: read.localModules } : {}), ...(read.problem ? { message: read.problem.detail.slice(0, DETAIL_MAX) } : {}) } : null;
-    if (read.localModules.length) console.warn(`[syllabusImport] job ${jobId}: ${read.localModules.length} module(s) read without the model: ${read.problem?.detail ?? ""}`);
+    const detail = importDetail(read);
+    if (read.localModules.length) console.warn(`[syllabusImport] job ${jobId}: ${read.localModules.length} module(s) read without the model:\n${detail?.message ?? ""}`);
     await setIfOurs(jobId, runId, { status: "READY", errorCode: null, detail, result: structure as unknown as Record<string, unknown>, finishedAt: new Date() });
   } catch (error) {
     if (error instanceof ImportFailure) {

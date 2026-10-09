@@ -156,10 +156,11 @@ export const syllabusImport = {
     "Если проблема повторится, отправьте этот текст администратору.",
   ],
   "simport.localModules": [
-    "AI {count} modulu oxuya bilmədi; onlar mətnin öz başlıq və siyahılarına görə oxundu. Onları diqqətlə yoxlayın: {titles}",
-    "The AI could not read {count} module(s); they were read from the text's own headings and lists. Check them carefully: {titles}",
-    "AI не смог прочитать модулей: {count}; они прочитаны по заголовкам и спискам самого текста. Проверьте их внимательно: {titles}",
+    "{count} modul sənədin başlıqlarına görə əlavə olundu — məzmunu yoxlayın.",
+    "{count} {count|module was|modules were} added from the document's headings — check {count|its|their} content.",
+    "{count} {count|модуль добавлен|модуля добавлены|модулей добавлено} по заголовкам документа — проверьте содержание.",
   ],
+  "simport.localModulesList": ["Hansı modullar?", "Which modules?", "Какие модули?"],
   "simport.availabilityError": [
     "İdxal limitini yoxlamaq alınmadı. Yenə də başlada bilərsiniz.",
     "Could not check the import limit. You can still start.",

@@ -81,6 +81,8 @@ export type InvokeParams = {
   reasoning?: Record<string, unknown>;
   /** Per attempt; defaults to REQUEST_TIMEOUT_MS. */
   timeoutMs?: number;
+  /** HTTP-level retries of 5xx/408/429 and network errors; defaults to RETRY_MAX_RETRIES. */
+  maxRetries?: number;
 };
 
 export type ToolCall = {
@@ -287,11 +289,35 @@ const ERROR_BODY_MAX_CHARS = 500;
 /** A wrong key, model or request body will not start working on a retry; timeouts and 429 may. */
 const isRetryableStatus = (status: number) => status >= 500 || status === 408 || status === 429;
 
+/** "minute" = a rate window that reopens soon; "day" = a daily quota, or a model with no quota at all ("limit: 0"). */
+export type QuotaWindow = "minute" | "day";
+
+export interface RateLimitHints {
+  retryAfterMs?: number;
+  quotaWindow?: QuotaWindow;
+}
+
+/**
+ * What a 429 body says. Gemini sends no Retry-After header: the wait is in google.rpc.RetryInfo
+ * ("retryDelay": "41s") or the message ("Please retry in 41.2s"), the window in the QuotaFailure id
+ * ("GenerateRequestsPerMinutePerProjectPerModel-FreeTier").
+ */
+export function rateLimitHints(body: string): RateLimitHints {
+  const delay = /"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/.exec(body) ?? /retry in (\d+(?:\.\d+)?)\s*s\b/i.exec(body);
+  const retryAfterMs = delay ? Math.ceil(Number(delay[1]) * 1000) : undefined;
+  const quotaWindow: QuotaWindow | undefined = /PerDay|limit:\s*0(?!\d)|insufficient_quota/i.test(body) ? "day" : /PerMinute/i.test(body) ? "minute" : undefined;
+  return { ...(retryAfterMs !== undefined ? { retryAfterMs } : {}), ...(quotaWindow ? { quotaWindow } : {}) };
+}
+
 /** Non-2xx reply from the provider; `status` lets callers tell a bad key (401/403) from quota (429). */
 export class LlmHttpError extends Error {
-  constructor(public readonly status: number, message: string) {
+  public readonly retryAfterMs?: number;
+  public readonly quotaWindow?: QuotaWindow;
+  constructor(public readonly status: number, message: string, hints: RateLimitHints = {}) {
     super(message);
     this.name = "LlmHttpError";
+    this.retryAfterMs = hints.retryAfterMs;
+    this.quotaWindow = hints.quotaWindow;
   }
 }
 
@@ -307,11 +333,31 @@ export function llmFailureReason(error: unknown): LlmFailureReason {
   return "AI_REQUEST_FAILED";
 }
 
+/** A JSON error body ({error:{status,message}}, or Gemini's [{error:…}]) as "STATUS [quota id] message"; other bodies as is. */
+function summarizeErrorBody(body: string): string {
+  try {
+    const parsed = JSON.parse(body) as unknown;
+    const first = (Array.isArray(parsed) ? parsed[0] : parsed) as { error?: { status?: unknown; message?: unknown } } | null;
+    const error = first?.error;
+    if (error && typeof error.message === "string") {
+      const quotaId = /"quotaId"\s*:\s*"([^"]+)"/.exec(body)?.[1];
+      return `${typeof error.status === "string" ? `${error.status} ` : ""}${quotaId ? `[quota ${quotaId}] ` : ""}${error.message}`;
+    }
+  } catch {
+    // Not JSON.
+  }
+  return body;
+}
+
 const providerError = async (response: Response, what: string, model: string, url: string) => {
-  const body = (await response.text().catch(() => "")).replace(/\s+/g, " ").trim().slice(0, ERROR_BODY_MAX_CHARS);
+  const raw = await response.text().catch(() => "");
+  const hints = rateLimitHints(raw);
+  const retryAfterMs = parseRetryAfter(response.headers.get("retry-after")) ?? hints.retryAfterMs;
+  const body = summarizeErrorBody(raw).replace(/\s+/g, " ").trim().slice(0, ERROR_BODY_MAX_CHARS);
   return new LlmHttpError(
     response.status,
-    `${what} failed: ${response.status} ${response.statusText} (model ${model || "default"}, ${new URL(url).host}) – ${body}`
+    `${what} failed: ${response.status} ${response.statusText} (model ${model || "default"}, ${new URL(url).host}) – ${body}`,
+    { ...hints, ...(retryAfterMs !== undefined ? { retryAfterMs } : {}) }
   );
 };
 
@@ -341,42 +387,52 @@ const computeBackoffDelay = (
 };
 
 // Retries 5xx/408/429 responses and network errors with exponential backoff, then
-// returns the final Response so callers keep their existing error handling.
+// returns the final Response so callers keep their existing error handling. A 429 for a
+// daily quota is returned at once: no retry today can succeed.
 const fetchWithBackoff = async (
   url: string,
   init: FetchInit,
-  timeoutMs = REQUEST_TIMEOUT_MS
+  timeoutMs = REQUEST_TIMEOUT_MS,
+  maxRetries = RETRY_MAX_RETRIES
 ): Promise<Response> => {
   let lastError: unknown;
 
-  for (let attempt = 0; attempt <= RETRY_MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    let response: Response;
     try {
-      const response = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
-      if (response.ok || attempt === RETRY_MAX_RETRIES || !isRetryableStatus(response.status)) {
-        return response;
-      }
-
-      const retryAfterMs = parseRetryAfter(
-        response.headers.get("retry-after")
+      response = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+    } catch (error) {
+      lastError = error;
+      // A request that timed out once will most likely time out again (and may still be billed).
+      if (attempt === maxRetries || (error instanceof Error && error.name === "TimeoutError")) throw error;
+      console.warn(
+        `LLM request retry ${attempt + 1}/${maxRetries} after network error`
       );
+      await sleep(computeBackoffDelay(attempt));
+      continue;
+    }
+    if (response.ok || !isRetryableStatus(response.status)) return response;
+
+    let retryAfterMs = parseRetryAfter(response.headers.get("retry-after"));
+    if (response.status === 429) {
+      const text = await response.text().catch(() => "");
+      const hints = rateLimitHints(text);
+      if (attempt === maxRetries || hints.quotaWindow === "day") {
+        return new Response(text, { status: response.status, statusText: response.statusText, headers: response.headers });
+      }
+      retryAfterMs ??= hints.retryAfterMs;
+    } else {
+      if (attempt === maxRetries) return response;
       try {
         await response.body?.cancel();
       } catch {
         // Body already settled; nothing to clean up.
       }
-      console.warn(
-        `LLM request retry ${attempt + 1}/${RETRY_MAX_RETRIES} after status ${response.status}`
-      );
-      await sleep(computeBackoffDelay(attempt, retryAfterMs));
-    } catch (error) {
-      lastError = error;
-      // A request that timed out once will most likely time out again (and may still be billed).
-      if (attempt === RETRY_MAX_RETRIES || (error instanceof Error && error.name === "TimeoutError")) throw error;
-      console.warn(
-        `LLM request retry ${attempt + 1}/${RETRY_MAX_RETRIES} after network error`
-      );
-      await sleep(computeBackoffDelay(attempt));
     }
+    console.warn(
+      `LLM request retry ${attempt + 1}/${maxRetries} after status ${response.status}`
+    );
+    await sleep(computeBackoffDelay(attempt, retryAfterMs));
   }
 
   throw lastError instanceof Error
@@ -402,6 +458,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     maxTokens,
     max_tokens,
     timeoutMs,
+    maxRetries,
   } = params;
 
   const payload: Record<string, unknown> = {
@@ -461,7 +518,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
       authorization: `Bearer ${config.apiKey}`,
     },
     body: JSON.stringify(payload),
-  }, timeoutMs);
+  }, timeoutMs, maxRetries);
 
   if (!response.ok) {
     throw await providerError(response, "LLM invoke", resolvedModel, url);
