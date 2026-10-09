@@ -58,6 +58,16 @@ export const format = {
   "error.AI_UNAVAILABLE": ["AI xidməti konfiqurasiya olunmayıb.", "The AI service is not configured.", "Сервис AI не настроен."],
   "error.AI_INVALID_OUTPUT": ["AI etibarlı sual qaytarmadı. Yenidən cəhd edin.", "The AI did not return valid questions. Please try again.", "AI не вернул корректные вопросы. Повторите попытку."],
   "error.AI_USAGE_LIMIT_REACHED": ["AI istifadə limiti bitib.", "The AI usage limit has been reached.", "Лимит использования AI исчерпан."],
+  "error.AI_TEACHER_MONTHLY_LIMIT": [
+    "Bu ay üçün AI limitiniz bitib. Limit {date} tarixində yenilənir.",
+    "Your AI limit for this month is used up. It resets on {date}.",
+    "Ваш лимит ИИ на этот месяц исчерпан. Он обновится {date}.",
+  ],
+  "error.AI_TEACHER_DAILY_LIMIT": [
+    "Bugünkü AI sorğu limitiniz bitib. Limit {date} tarixində yenilənir.",
+    "Your AI request limit for today is used up. It resets on {date}.",
+    "Ваш дневной лимит запросов к ИИ исчерпан. Он обновится {date}.",
+  ],
   "error.AI_REVIEW_IN_PROGRESS": ["AI yoxlaması artıq gedir. Bir az gözləyin.", "An AI check is already running. Please wait a moment.", "Проверка ИИ уже идёт. Подождите немного."],
   "error.AI_ANSWER_KEY_FAILED": ["AI cavab açarını hazırlaya bilmədi. Bir az sonra yenidən cəhd edin.", "The AI could not draft the answer key. Try again in a moment.", "ИИ не смог подготовить ключ ответов. Попробуйте чуть позже."],
   "error.AI_REVIEW_DAILY_LIMIT": ["AI yoxlama bu gün dayandı, sabah yenilənəcək.", "AI checks stopped for today; they resume tomorrow.", "Проверка ИИ на сегодня остановлена, завтра возобновится."],

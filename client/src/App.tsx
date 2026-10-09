@@ -156,7 +156,7 @@ function Router() {
       <Route path="/app">{() => <AppRedirect />}</Route>
       <Route path="/settings" component={SettingsPage} />
       <Route path="/partner">{partner(<PartnerPage />)}</Route>
-      <Route path="/admin/:rest*" component={AdminRoutes} />
+      <Route path="/admin/*" component={AdminRoutes} />
       <Route path="/admin" component={AdminRoutes} />
 
       <Route path="/teacher">{teacher(<TeacherHome />)}</Route>
