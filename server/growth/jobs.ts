@@ -8,7 +8,7 @@ import { growthEnabledFor, growthWorkspaceIds } from "./availability";
 import { markDirty, markMissingStats, onStudentRecomputed, reconcileGrowth, recomputeNow } from "./store";
 import { markMissingMastery, writeMastery } from "./weakness";
 import { dailyRiskPass, writeRisk } from "./riskStore";
-import { dailyPlanPass, onPracticeAttempt } from "./planStore";
+import { dailyPlanPass, onPracticeAttempt, sendPlanReminders } from "./planStore";
 import { dailyReleasedXpPass, syncReleasedXp } from "./releasedXp";
 
 let stepsRegistered = false;
@@ -102,9 +102,30 @@ let lastDaily: string | null = null;
 /** Hour of an instant in Baku (UTC+4, no DST). */
 export const bakuHour = (now: Date) => (now.getUTCHours() + 4) % 24;
 
-export function dailyDue(now: Date, last: string | null) {
-  return bakuHour(now) >= DAILY_HOUR_BAKU && dayKey(now) !== last;
+export function dailyDue(now: Date, last: string | null, hour = DAILY_HOUR_BAKU) {
+  return bakuHour(now) >= hour && dayKey(now) !== last;
 }
+
+/** Plan reminders go out in the afternoon, after school, never at night. */
+export const REMINDER_HOUR_BAKU = 16;
+const REMINDER_LAST_HOUR_BAKU = 21;
+
+export function reminderDue(now: Date, last: string | null) {
+  return dailyDue(now, last, REMINDER_HOUR_BAKU) && bakuHour(now) < REMINDER_LAST_HOUR_BAKU;
+}
+
+export async function runPlanReminders(now = new Date()) {
+  for (const workspaceId of await growthWorkspaceIds()) {
+    try {
+      await sendPlanReminders(workspaceId, now);
+    } catch (error) {
+      if (isSchemaBehind(error)) return;
+      console.error("[Growth] plan reminders failed", workspaceId, error instanceof Error ? error.message : error);
+    }
+  }
+}
+
+let lastReminder: string | null = null;
 
 export function startGrowthJobs() {
   if (!getDb()) return;
@@ -134,6 +155,20 @@ export function startGrowthJobs() {
       console.error("[Growth] daily jobs failed", error);
     } finally {
       daily = false;
+    }
+  }, DAILY_CHECK_MS).unref();
+  let reminding = false;
+  setInterval(async () => {
+    const now = new Date();
+    if (reminding || !reminderDue(now, lastReminder)) return;
+    reminding = true;
+    try {
+      await runPlanReminders(now);
+      lastReminder = dayKey(now);
+    } catch (error) {
+      console.error("[Growth] plan reminders failed", error);
+    } finally {
+      reminding = false;
     }
   }, DAILY_CHECK_MS).unref();
   // Startup backfill: results that arrived before the flag was on (or before this deploy).

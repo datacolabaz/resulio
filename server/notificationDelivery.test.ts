@@ -255,6 +255,7 @@ describe("dispatcher", () => {
         ANNOUNCEMENT: { announcementId: 1, language: "AUTO" as const, texts: { az: { title: "T", body: "B" } }, url: "/" },
         GROWTH_RISK_DIGEST: { count: 7, names: ["A", "B"] },
         RETAKE_ASSIGNED: { assessmentId: "a1", topics: ["Kəsrlər"], from: "Müəllim" },
+        PLAN_REMINDER: { planId: "p1", items: 2, minutes: 35 },
       }[event];
       const rendered = renderNotification(event, data, { locale: "az", email: "a@b.c" }, "https://resulio.co");
       expect(rendered.title.length).toBeGreaterThan(0);

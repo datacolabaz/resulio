@@ -5,6 +5,8 @@ import {
   assessmentOrigins,
   assessments,
   attempts,
+  groupMembers,
+  groups,
   reviewPlanItems,
   reviewPlans,
   studentGrowthSettings,
@@ -15,6 +17,7 @@ import { requireDb, type DbOrTx } from "../db";
 import { AppError } from "../modules/errors";
 import { activeGroupIdsOfStudent } from "../modules/groups";
 import { dayKey } from "../modules/motivation";
+import { dispatch } from "../notifications/dispatcher";
 import { studentGroupWorkspace } from "./availability";
 import { topGains } from "./mastery";
 import { buildPlan, planTarget, rollover, type PlanTopic } from "./plan";
@@ -207,12 +210,53 @@ export async function dailyPlanPass(workspaceId: string, now: Date) {
   }
 }
 
-/** Students with an active plan and a TODO item today; used by the reminder (P6). */
-export async function plansWithWorkToday(workspaceId: string, now: Date) {
+export interface PlanReminder {
+  studentId: number;
+  planId: string;
+  items: number;
+  minutes: number;
+}
+
+/** One reminder per plan with unfinished steps today; students who turned reminders off get none. */
+export function groupReminders(rows: { studentId: number; planId: string; minutes: number }[], optedOut: ReadonlySet<number>): PlanReminder[] {
+  const byPlan = new Map<string, PlanReminder>();
+  for (const r of rows) {
+    if (optedOut.has(r.studentId)) continue;
+    const hit = byPlan.get(r.planId) ?? { studentId: r.studentId, planId: r.planId, items: 0, minutes: 0 };
+    hit.items += 1;
+    hit.minutes += r.minutes;
+    byPlan.set(r.planId, hit);
+  }
+  return [...byPlan.values()];
+}
+
+export async function planReminders(workspaceId: string, now: Date): Promise<PlanReminder[]> {
   const today = dayKey(now);
-  return requireDb()
-    .selectDistinct({ studentId: reviewPlans.studentId, planId: reviewPlans.id })
+  const db = requireDb();
+  const rows = await db
+    .select({ studentId: reviewPlans.studentId, planId: reviewPlans.id, minutes: reviewPlanItems.minutes })
     .from(reviewPlans)
     .innerJoin(reviewPlanItems, eq(reviewPlanItems.planId, reviewPlans.id))
     .where(and(eq(reviewPlans.workspaceId, workspaceId), eq(reviewPlans.status, "ACTIVE"), eq(reviewPlanItems.dayKey, today), eq(reviewPlanItems.status, "TODO"), gt(reviewPlans.targetDay, today)));
+  if (!rows.length) return [];
+  const ids = [...new Set(rows.map((r) => r.studentId))];
+  const off = await db
+    .select({ studentId: studentGrowthSettings.studentId })
+    .from(studentGrowthSettings)
+    .where(and(eq(studentGrowthSettings.workspaceId, workspaceId), eq(studentGrowthSettings.reminders, false), inArray(studentGrowthSettings.studentId, ids)));
+  const members = await db
+    .selectDistinct({ studentId: groupMembers.userId })
+    .from(groupMembers)
+    .innerJoin(groups, eq(groups.id, groupMembers.groupId))
+    .where(and(eq(groups.providerWorkspaceId, workspaceId), eq(groupMembers.status, "ACTIVE"), eq(groupMembers.membershipRole, "STUDENT"), inArray(groupMembers.userId, ids)));
+  const stillIn = new Set(members.map((m) => m.studentId));
+  return groupReminders(rows, new Set([...off.map((r) => r.studentId), ...ids.filter((id) => !stillIn.has(id))]));
+}
+
+/** The afternoon reminder; the dedupe key keeps it to one per plan and day, across restarts too. */
+export async function sendPlanReminders(workspaceId: string, now: Date) {
+  const today = dayKey(now);
+  for (const r of await planReminders(workspaceId, now)) {
+    dispatch({ event: "PLAN_REMINDER", userId: r.studentId, dedupeKey: `growth-plan:${r.planId}:${today}`, data: { planId: r.planId, items: r.items, minutes: r.minutes } });
+  }
 }

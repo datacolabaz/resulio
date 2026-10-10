@@ -2,6 +2,7 @@ import { Loading, Panel } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
 import { t } from "@/i18n/messages";
 import { errorText, fmtDayKeyShort } from "@/lib/format";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
@@ -68,6 +69,7 @@ function PlanPanel({ groupId, data }: { groupId: string; data: PlanData }) {
     onError: (e) => toast.error(errorText(e)),
   });
   const done = trpc.student.growth.completeItem.useMutation({ onSuccess: refresh, onError: (e) => toast.error(errorText(e)) });
+  const save = trpc.student.growth.saveSettings.useMutation({ onSuccess: refresh, onError: (e) => toast.error(errorText(e)) });
   const finish = trpc.student.growth.completePlan.useMutation({
     onSuccess: () => {
       toast.success(t("plan.completed"));
@@ -96,6 +98,10 @@ function PlanPanel({ groupId, data }: { groupId: string; data: PlanData }) {
         </label>
         <Button size="sm" disabled={create.isPending} onClick={() => create.mutate({ groupId, dailyMinutes: minutes })}>{plan ? t("plan.rebuild") : t("plan.create")}</Button>
         {plan && <Button size="sm" variant="outline" disabled={finish.isPending} onClick={() => finish.mutate({ planId: plan.id })}>{t("plan.completePlan")}</Button>}
+        <label className="ml-auto flex items-center gap-2 text-sm">
+          <Switch checked={data.settings.reminders} disabled={save.isPending} onCheckedChange={(reminders) => save.mutate({ groupId, reminders })} />
+          {t("plan.reminders")}
+        </label>
       </div>
       {!plan ? (
         <p className="text-sm text-muted-foreground">{t("plan.none")}</p>

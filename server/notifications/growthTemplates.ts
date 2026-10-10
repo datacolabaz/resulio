@@ -56,6 +56,19 @@ const RETAKE: Record<ServerLocale, { title: string; body: (from: string, topics:
   ru: { title: "Вам назначен персональный тест на повторение", body: (f, t) => `${f || "Преподаватель"} подготовил короткий тест по темам: ${t}.` },
 };
 
+export const studentGrowthPath = "/student/growth";
+
+const PLAN_REMINDER: Record<ServerLocale, { title: string; body: (items: number, minutes: number) => string }> = {
+  az: { title: "Bugünkü təkrar addımlarınız gözləyir", body: (n, m) => `Planınızda bu gün ${n} addım qalıb (təxminən ${m} dəqiqə).` },
+  en: { title: "Today's review steps are waiting", body: (n, m) => `${n} ${n === 1 ? "step is" : "steps are"} left in your plan today (about ${m} min).` },
+  ru: { title: "Сегодняшние шаги повторения ждут вас", body: (n, m) => `В вашем плане на сегодня осталось шагов: ${n} (примерно ${m} мин).` },
+};
+
+export function planReminderInApp(locale: ServerLocale, d: { items: number; minutes: number }) {
+  const tx = PLAN_REMINDER[locale];
+  return { title: tx.title, body: tx.body(d.items, d.minutes) };
+}
+
 export function retakeAssignedInApp(locale: ServerLocale, d: { topics: string[]; from: string }) {
   const tx = RETAKE[locale];
   return { title: tx.title, body: tx.body(cleanTitle(d.from, 60), d.topics.map((t) => cleanTitle(t, 60)).join(", ")) };

@@ -2,7 +2,7 @@ import { pickAnnouncementText } from "../../shared/announcements";
 import type { EmailMessage } from "../_core/email";
 import type { ServerLocale } from "../_core/locale";
 import { isEventType, type EventData, type EventType } from "./events";
-import { buildRiskDigestEmail, retakeAssignedInApp, riskDigestInApp, studentAssessmentsPath, teacherGrowthPath } from "./growthTemplates";
+import { buildRiskDigestEmail, planReminderInApp, retakeAssignedInApp, riskDigestInApp, studentAssessmentsPath, studentGrowthPath, teacherGrowthPath } from "./growthTemplates";
 import {
   aiAlertText,
   aiGradeInAppText,
@@ -166,6 +166,10 @@ export function renderNotification<E extends EventType>(event: E, data: EventDat
     case "RETAKE_ASSIGNED": {
       const d = data as EventData["RETAKE_ASSIGNED"];
       return { ...retakeAssignedInApp(locale, d), path: studentAssessmentsPath, email: null };
+    }
+    case "PLAN_REMINDER": {
+      const d = data as EventData["PLAN_REMINDER"];
+      return { ...planReminderInApp(locale, d), path: studentGrowthPath, email: null };
     }
     default:
       throw new Error(`No renderer for ${String(event)}`);
