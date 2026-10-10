@@ -86,6 +86,7 @@ const STUDENT_NAV: typeof TEACHER_NAV = [
   { href: "/student/groups", key: "nav.myGroups", icon: Users },
   { href: "/student/results", key: "nav.myResults", icon: ListChecks },
   { href: "/student/progress", key: "nav.myProgress", icon: TrendingUp },
+  { href: "/student/growth", key: "nav.myGrowth", icon: Radar },
   { href: "/student/profile", key: "nav.myProfile", icon: Trophy },
   { href: "/partner", key: "nav.referral", icon: Handshake },
   { href: "/settings", key: "nav.settings", icon: Settings },
@@ -203,7 +204,10 @@ export function AppShell({
     (i) => (i.href !== "/teacher/syllabus" || syllabusFlag.data?.enabled) && (i.href !== "/teacher/growth" || growthFlag.data?.enabled),
   );
   const studentSyllabus = trpc.student.syllabus.enabled.useQuery(undefined, { enabled: area === "learning", staleTime: 5 * 60_000 });
-  const studentNav = studentSyllabus.data?.enabled ? STUDENT_NAV : STUDENT_NAV.filter((i) => i.href !== "/student/syllabus");
+  const studentGrowth = trpc.student.growth.enabled.useQuery(undefined, { enabled: area === "learning", staleTime: 5 * 60_000 });
+  const studentNav = STUDENT_NAV.filter(
+    (i) => (i.href !== "/student/syllabus" || studentSyllabus.data?.enabled) && (i.href !== "/student/growth" || studentGrowth.data?.enabled),
+  );
   const drawerOpen = open && !desktop;
 
   useEffect(() => {

@@ -7,6 +7,7 @@ import { assertGrowthEnabled, growthEnabledFor, studentGrowthGroups } from "./av
 import * as reports from "./reports";
 import { RETAKE_MAX, RETAKE_MIN } from "./retake";
 import * as riskStore from "./riskStore";
+import * as studentView from "./studentView";
 import * as topicHealth from "./topicHealth";
 import * as weakness from "./weakness";
 
@@ -96,4 +97,6 @@ export const publicGrowthReport = publicProcedure
 
 export const studentGrowthRouter = router({
   enabled: studentProcedure.query(async ({ ctx }) => ({ enabled: (await studentGrowthGroups(ctx.user.id)).length > 0 })),
+  spaces: growthStudentProcedure.query(({ ctx }) => studentView.studentSpaces(ctx.user.id)),
+  weakness: growthStudentProcedure.input(z.object({ groupId: entityId })).query(({ ctx, input }) => studentView.studentWeaknessMap(ctx.user.id, input.groupId)),
 });
