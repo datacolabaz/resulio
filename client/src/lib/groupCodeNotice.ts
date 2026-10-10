@@ -1,4 +1,6 @@
-export type GroupCodeNotice = "OPEN" | "LIMIT_REACHED" | "SELF_JOIN_OFF" | "CODE_OFF";
+import type { JoinPolicy } from "@shared/groupJoinPolicy";
+
+export type GroupCodeNotice = "OPEN" | "APPROVAL" | "LIMIT_REACHED" | "SELF_JOIN_OFF" | "CODE_OFF";
 
 /**
  * Which explanation the invite dialog shows beside the group code/link. Mirrors the order of the
@@ -6,7 +8,7 @@ export type GroupCodeNotice = "OPEN" | "LIMIT_REACHED" | "SELF_JOIN_OFF" | "CODE
  */
 export function groupCodeNotice(
   group: {
-    joinPolicy: "AUTO" | "MANUAL";
+    joinPolicy: JoinPolicy;
     codeActive: boolean;
     codeExpiresAt: string | Date | null;
     codeUsage: { uses: number; maxUses: number | null };
@@ -18,5 +20,5 @@ export function groupCodeNotice(
   if (group.joinPolicy === "MANUAL") return "SELF_JOIN_OFF";
   const { uses, maxUses } = group.codeUsage;
   if (maxUses !== null && uses >= maxUses) return "LIMIT_REACHED";
-  return "OPEN";
+  return group.joinPolicy === "APPROVAL" ? "APPROVAL" : "OPEN";
 }

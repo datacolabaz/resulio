@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { authAccounts, groupEmailInvites, groupMembers, shareEvents, syllabusAccessGrants, users } from "../../drizzle/schema";
+import { authAccounts, groupEmailInvites, groupMembers, syllabusAccessGrants, users } from "../../drizzle/schema";
 import { resetRateLimits } from "../_core/rateLimit";
 import * as db from "../db";
 import { defaultContext, resolveAccess } from "../modules/access";
@@ -63,52 +63,21 @@ describe("student entry via group code", () => {
 
     const student = await makeUser("Linklə gələn");
     const joined = await groups.joinByInvite(student.id, group.inviteCode);
-    expect(joined.status).toBe("ACTIVE");
-    expect(joined.activatedPending).toBe(false);
+    expect(joined).toMatchObject({ status: "ACTIVE", activatedPending: false });
     const [membership] = await testDb().select().from(groupMembers).where(eq(groupMembers.userId, student.id));
     expect(membership).toMatchObject({ groupId: group.id, status: "ACTIVE", id: joined.membershipId });
     expect(await groups.activeGroupIdsOfStudent(student.id)).toEqual([group.id]);
   });
 
-  it("a request left PENDING from the approval era is activated when the student opens the valid link again", async () => {
+  it("under AUTO, a waiting request is activated when the student opens the valid link again", async () => {
     const teacher = await makeTeacher("Köhnə sorğu müəllimi");
     const group = await groups.createGroup(teacher.scope, { name: "Legacy pending", subject: "", grade: "", description: "" });
     const student = await makeUser("Gözləyən tələbə (link)");
     await testDb().insert(groupMembers).values({ groupId: group.id, userId: student.id, status: "PENDING" });
 
     const joined = await groups.joinByInvite(student.id, group.inviteCode);
-    expect(joined.status).toBe("ACTIVE");
-    expect(joined.activatedPending).toBe(true);
+    expect(joined).toMatchObject({ status: "ACTIVE", activatedPending: true });
     await expect(groups.joinByInvite(student.id, group.inviteCode)).rejects.toThrow("ALREADY_MEMBER");
-  });
-
-  it("the startup backfill activates only pending requests recorded as coming through the current, valid link", async () => {
-    const teacher = await makeTeacher("Backfill müəllimi");
-    const viaLink = await groups.createGroup(teacher.scope, { name: "Backfill via link", subject: "", grade: "", description: "" });
-    const regenerated = await groups.createGroup(teacher.scope, { name: "Backfill regenerated", subject: "", grade: "", description: "" });
-    const closed = await groups.createGroup(teacher.scope, { name: "Backfill closed", subject: "", grade: "", description: "" });
-    const [proven, unproven, stale, refused] = await Promise.all(["Sübutlu", "Sübutsuz", "Köhnə kod", "Bağlı qrup"].map((n) => makeUser(n)));
-    await testDb().insert(groupMembers).values([
-      { groupId: viaLink.id, userId: proven.id, status: "PENDING" },
-      { groupId: viaLink.id, userId: unproven.id, status: "PENDING" },
-      { groupId: regenerated.id, userId: stale.id, status: "PENDING" },
-      { groupId: closed.id, userId: refused.id, status: "PENDING" },
-    ]);
-    const joinedVia = (code: string, actorUserId: number) => ({ targetType: "GROUP" as const, targetId: code, channel: "DIRECT" as const, eventType: "JOINED" as const, actorUserId });
-    await testDb().insert(shareEvents).values([joinedVia(viaLink.inviteCode, proven.id), joinedVia(regenerated.inviteCode, stale.id), joinedVia(closed.inviteCode, refused.id)]);
-    await groups.regenerateInviteCode(teacher.scope, regenerated.id);
-    await groups.setJoinPolicy(teacher.scope, closed.id, "MANUAL");
-
-    // The backfill is global; other tests' PENDING rows (none with a recorded link join) may share the table.
-    const activated = (await groups.activatePendingLinkJoins()).filter((a) => [proven.id, unproven.id, stale.id, refused.id].includes(a.userId));
-    expect(activated.map((a) => a.userId)).toEqual([proven.id]);
-    expect(activated[0]).toMatchObject({ groupId: viaLink.id, groupName: "Backfill via link", ownerUserId: teacher.user.id });
-    const statusOf = async (userId: number) => (await testDb().select().from(groupMembers).where(eq(groupMembers.userId, userId)))[0].status;
-    expect(await statusOf(proven.id)).toBe("ACTIVE");
-    expect(await statusOf(unproven.id)).toBe("PENDING");
-    expect(await statusOf(stale.id)).toBe("PENDING");
-    expect(await statusOf(refused.id)).toBe("PENDING");
-    expect((await groups.activatePendingLinkJoins()).map((a) => a.userId)).not.toContain(proven.id);
   });
 
   it("regenerating the code invalidates the old one immediately", async () => {
@@ -313,7 +282,7 @@ describe("direct sign-in default context", () => {
     expect(defaultContext(access, null)).toBeNull();
   });
 
-  it("even a PENDING join (left from the approval era) is enough to leave the onboarding screen", async () => {
+  it("even a PENDING join request is enough to leave the onboarding screen", async () => {
     const teacher = await makeTeacher("Pending default-context müəllimi");
     const group = await groups.createGroup(teacher.scope, { name: "Pending group", subject: "", grade: "", description: "" });
     const student = await makeUser("Gözləyən tələbə");

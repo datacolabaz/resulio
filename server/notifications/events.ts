@@ -26,6 +26,7 @@ export const EVENT_TYPES = [
   "MATERIAL_SHARED",
   "EXAM_RESULT_READY",
   "GROUP_MEMBER_JOINED",
+  "GROUP_JOIN_DECIDED",
   "SYLLABUS_JOIN_REQUESTED",
   "SYLLABUS_JOIN_DECIDED",
   "ANNOUNCEMENT",
@@ -58,8 +59,13 @@ export interface EventData {
   MATERIAL_SHARED: { materialId: string; title: string; excerpt: string; from: string };
   /** A final, released exam result, for exams whose teacher chose "e-mail results". Never the answers. */
   EXAM_RESULT_READY: ExamResultNotice;
-  /** To the group's teacher: a student joined through an invite link. Informational, nothing to approve. */
-  GROUP_MEMBER_JOINED: { groupId: string; groupName: string; studentName: string | null };
+  /**
+   * To the group's teacher: a student joined through an invite link (informational), or with
+   * `pending` (absent on older rows) asked to join through the group code and waits for approval.
+   */
+  GROUP_MEMBER_JOINED: { groupId: string; groupName: string; studentName: string | null; pending?: boolean };
+  /** To the student: the teacher approved or declined their group code request. */
+  GROUP_JOIN_DECIDED: { groupId: string; groupName: string; decision: "APPROVED" | "DECLINED" };
   /** To the teacher: a student asked, from the syllabus share page, to join a group (`groupName`) or to take part individually (null). */
   SYLLABUS_JOIN_REQUESTED: { requestId: string; syllabusId: string; syllabusTitle: string; studentName: string | null; groupName: string | null };
   /**
@@ -123,6 +129,7 @@ export const EVENTS: Record<EventType, EventDefinition> = {
   // Only for exams whose teacher ticked "e-mail results"; the in-app "result ready" notice exists already.
   EXAM_RESULT_READY: { channels: ["EMAIL"] },
   GROUP_MEMBER_JOINED: { channels: ["IN_APP", "PUSH"] },
+  GROUP_JOIN_DECIDED: { channels: ["IN_APP", "PUSH"] },
   SYLLABUS_JOIN_REQUESTED: { channels: ["IN_APP", "PUSH"] },
   SYLLABUS_JOIN_DECIDED: { channels: ["IN_APP", "PUSH"] },
   ANNOUNCEMENT: { channels: ["IN_APP", "PUSH"] },

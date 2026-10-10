@@ -191,6 +191,7 @@ export function AppShell({
     if (seenNewest.current && seenNewest.current !== newestNote && area === "teaching") {
       void utils.teacher.syllabus.joinRequestCounts.invalidate();
       void utils.teacher.syllabus.pendingJoinRequests.invalidate();
+      void utils.teacher.groups.invalidate();
     }
     seenNewest.current = newestNote;
   }, [newestNote, area, utils]);

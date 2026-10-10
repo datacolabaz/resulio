@@ -311,6 +311,30 @@ export const groupCodeLimits = mysqlTable("group_code_limits", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+/**
+ * Join policy APPROVAL: code/link joins wait as PENDING memberships until the teacher decides.
+ * Only meaningful while `study_groups.joinPolicy` is AUTO (MANUAL refuses code joins outright).
+ * No row = off. Beside `study_groups` (add-only migrations).
+ */
+export const groupJoinSettings = mysqlTable("group_join_settings", {
+  groupId: id("groupId").primaryKey(),
+  approvalRequired: boolean("approvalRequired").notNull().default(false),
+  updatedBy: int("updatedBy"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+/** The latest declined code/link join request per group and student, for the re-request cooldown. */
+export const groupJoinDeclines = mysqlTable(
+  "group_join_declines",
+  {
+    groupId: id("groupId").notNull(),
+    userId: int("userId").notNull(),
+    declinedBy: int("declinedBy"),
+    declinedAt: timestamp("declinedAt").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.groupId, t.userId] })],
+);
+
 export const partnerProfiles = mysqlTable("partner_profiles", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull().unique(),

@@ -17,6 +17,8 @@ import { groupCodeNotice } from "@/lib/groupCodeNotice";
 import { joinSourceLabel } from "@/lib/joinSource";
 import { liveStatus } from "@/lib/status";
 import { trpc } from "@/lib/trpc";
+import type { JoinSourceView } from "@shared/groupJoinSource";
+import { JOIN_POLICIES, type JoinPolicy } from "@shared/groupJoinPolicy";
 import { GROUP_CLASS_MAX, GROUP_LEVEL_MAX, GROUP_TYPES, type GroupType } from "@shared/groupType";
 import { GROUP_LANGUAGES, WEEK_DAYS, type ClassScheduleEntry, type GroupLanguage, type WeekDay } from "@shared/schedule";
 import { SHARE_SOURCE_PARAM } from "@shared/shareTracking";
@@ -28,8 +30,23 @@ import { Link, useLocation, useParams, useSearch } from "wouter";
 const fieldLabel = "text-foreground-secondary";
 const selectCls = "mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground";
 const GROUP_FORMATS = ["ONLINE", "IN_PERSON", "HYBRID"] as const;
-const JOIN_POLICIES = ["AUTO", "MANUAL"] as const;
-type JoinPolicy = (typeof JOIN_POLICIES)[number];
+
+/** How the group code/link treats newcomers; the same control in the group form and the invite dialog. */
+function JoinPolicyField({ value, disabled, onChange, className = "" }: { value: JoinPolicy; disabled?: boolean; onChange: (p: JoinPolicy) => void; className?: string }) {
+  return (
+    <div className={`rounded-xl border p-3 ${className}`}>
+      <label className="text-sm">
+        <span className={fieldLabel}>{t("groups.joinPolicyLabel")}</span>
+        <select className={selectCls} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value as JoinPolicy)}>
+          {JOIN_POLICIES.map((p) => (
+            <option key={p} value={p}>{t(`groups.joinPolicy.${p}`)}</option>
+          ))}
+        </select>
+      </label>
+      <p className="mt-2 text-xs text-muted-foreground">{t(`groups.joinPolicyHint.${value}`)}</p>
+    </div>
+  );
+}
 
 const ACTIVITY_RANGES = [7, 14, 30] as const;
 
@@ -168,6 +185,7 @@ interface GroupFormInitial {
   classSchedule: ClassScheduleEntry[];
   scheduleVisible: boolean;
   scoresVisibleToGroup: boolean;
+  joinPolicy: JoinPolicy;
 }
 
 const TYPE_ICONS = { SCHOOL: School, COURSE: BookOpen } as const;
@@ -248,19 +266,33 @@ function GroupFormDialog({
     classSchedule: initial?.classSchedule ?? ([] as ClassScheduleEntry[]),
     scheduleVisible: initial?.scheduleVisible ?? false,
     scoresVisibleToGroup: initial?.scoresVisibleToGroup ?? true,
+    joinPolicy: initial?.joinPolicy ?? ("AUTO" as JoinPolicy),
   });
   const defaultType = defaults.data?.groupType;
   useEffect(() => {
     if (!initial && !typeTouched && defaultType) setF((prev) => ({ ...prev, groupType: defaultType }));
   }, [defaultType]);
   const done = () => { void utils.teacher.groups.invalidate(); onOpenChange(false); };
+  const setPolicy = trpc.teacher.groups.setJoinPolicy.useMutation();
+  /** The policy has its own endpoint (it also guards the invite dialog); saved after the group itself. */
+  const savePolicy = async (groupId: string, before: JoinPolicy) => {
+    if (f.joinPolicy === before) return;
+    try {
+      await setPolicy.mutateAsync({ groupId, joinPolicy: f.joinPolicy });
+    } catch (e) {
+      toast.error(errorText(e));
+    }
+  };
   const create = trpc.teacher.groups.create.useMutation({
-    onSuccess: (g) => { onCreated?.(g.id); done(); },
+    onSuccess: async (g) => { await savePolicy(g.id, "AUTO"); onCreated?.(g.id); done(); },
     onError: (e) => toast.error(errorText(e)),
   });
-  const update = trpc.teacher.groups.update.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
+  const update = trpc.teacher.groups.update.useMutation({
+    onSuccess: async () => { if (initial) await savePolicy(initial.id, initial.joinPolicy); done(); },
+    onError: (e) => toast.error(errorText(e)),
+  });
   const payload = () => {
-    const { groupType, subject, grade, levelChoice, levelText, ...rest } = f;
+    const { groupType, subject, grade, levelChoice, levelText, joinPolicy: _policy, ...rest } = f;
     return { ...rest, ...typePayload({ groupType, subject, grade, levelChoice, levelText }), startDate: f.startDate ? new Date(f.startDate).toISOString() : null };
   };
   const keys = typeFieldKeys(f.groupType);
@@ -393,11 +425,12 @@ function GroupFormDialog({
             checked={f.scoresVisibleToGroup}
             onCheckedChange={(v) => setF({ ...f, scoresVisibleToGroup: v })}
           />
+          <JoinPolicyField value={f.joinPolicy} onChange={(joinPolicy) => setF({ ...f, joinPolicy })} />
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
           <Button
-            disabled={f.name.trim().length < 2 || create.isPending || update.isPending}
+            disabled={f.name.trim().length < 2 || create.isPending || update.isPending || setPolicy.isPending}
             onClick={() => (initial ? update.mutate({ id: initial.id, patch: payload() }) : create.mutate(payload()))}
           >
             {t("common.save")}
@@ -715,22 +748,7 @@ function InviteDialog({
             </p>
             <ShareFunnelSummary data={shareFunnel.data} />
 
-            <div className="mt-3 rounded-xl border p-3">
-              <label className="text-sm">
-                <span className={fieldLabel}>{t("groups.joinPolicyLabel")}</span>
-                <select
-                  className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground"
-                  value={joinPolicy}
-                  disabled={setPolicy.isPending}
-                  onChange={(e) => setPolicy.mutate({ groupId, joinPolicy: e.target.value as JoinPolicy })}
-                >
-                  {JOIN_POLICIES.map((p) => (
-                    <option key={p} value={p}>{t(`groups.joinPolicy.${p}`)}</option>
-                  ))}
-                </select>
-              </label>
-              <p className="mt-2 text-xs text-muted-foreground">{t(`groups.joinPolicyHint.${joinPolicy}`)}</p>
-            </div>
+            <JoinPolicyField className="mt-3" value={joinPolicy} disabled={setPolicy.isPending} onChange={(p) => setPolicy.mutate({ groupId, joinPolicy: p })} />
 
             <SettingToggle
               className="mt-3"
@@ -828,6 +846,83 @@ function InviteDialog({
   );
 }
 
+interface PendingMember {
+  studentId: number;
+  name: string | null;
+  email: string | null;
+  joinedAt: string | Date;
+  joinSource: JoinSourceView | null;
+}
+
+/** Waiting code/link requests (APPROVAL policy), decided one at a time or in bulk. */
+function JoinRequestsPanel({ groupId, pending }: { groupId: string; pending: PendingMember[] }) {
+  const utils = trpc.useUtils();
+  const [selected, setSelected] = useState<number[]>([]);
+  const ids = pending.map((m) => m.studentId);
+  const chosen = selected.filter((id) => ids.includes(id));
+  const decide = trpc.teacher.groups.decideRequests.useMutation({
+    onSuccess: (res, input) => {
+      toast.success(t(input.decision === "APPROVED" ? "groups.requestsApproved" : "groups.requestsDeclined", { count: res.decided }));
+      setSelected((prev) => prev.filter((id) => !input.studentIds.includes(id)));
+      void utils.teacher.groups.invalidate();
+    },
+    onError: (e) => toast.error(errorText(e)),
+  });
+  const run = (studentIds: number[], decision: "APPROVED" | "DECLINED") => {
+    if (decision === "DECLINED" && studentIds.length > 1 && !confirm(t("groups.declineManyConfirm", { count: studentIds.length }))) return;
+    decide.mutate({ groupId, studentIds, decision });
+  };
+  const toggle = (id: number) => setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  if (!pending.length) {
+    return (
+      <Panel>
+        <p className="text-sm text-muted-foreground">{t("groups.noRequests")}</p>
+      </Panel>
+    );
+  }
+  const all = chosen.length === ids.length;
+  return (
+    <Panel>
+      <p className="mb-3 text-xs text-muted-foreground">{t("groups.requestsHint")}</p>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" className="accent-link" checked={all} onChange={() => setSelected(all ? [] : ids)} />
+          {t("groups.selectAllRequests", { count: ids.length })}
+        </label>
+        <span className="flex flex-wrap gap-2">
+          <Button size="sm" disabled={!chosen.length || decide.isPending} onClick={() => run(chosen, "APPROVED")}>
+            {t("groups.approveSelected", { count: chosen.length })}
+          </Button>
+          <Button size="sm" variant="outline" disabled={!chosen.length || decide.isPending} onClick={() => run(chosen, "DECLINED")}>
+            {t("groups.rejectSelected", { count: chosen.length })}
+          </Button>
+        </span>
+      </div>
+      <ul className="divide-y">
+        {pending.map((m) => (
+          <li key={m.studentId} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
+            <label className="flex min-w-0 flex-1 items-start gap-2">
+              <input type="checkbox" className="mt-1 accent-link" checked={chosen.includes(m.studentId)} onChange={() => toggle(m.studentId)} />
+              <span className="min-w-0">
+                <span className="block break-words">
+                  {m.name ?? "—"} <span className="break-all text-muted-foreground">{m.email}</span>
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  {t("groups.requestedVia", { via: joinSourceLabel(m.joinSource?.joinedVia), date: fmtDateTime(m.joinedAt) })}
+                </span>
+              </span>
+            </label>
+            <span className="flex gap-2">
+              <Button size="sm" disabled={decide.isPending} onClick={() => run([m.studentId], "APPROVED")}>{t("groups.approve")}</Button>
+              <Button size="sm" variant="outline" disabled={decide.isPending} onClick={() => run([m.studentId], "DECLINED")}>{t("groups.reject")}</Button>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Panel>
+  );
+}
+
 export function GroupDetailPage() {
   const { id = "" } = useParams<{ id: string }>();
   const search = useSearch();
@@ -837,11 +932,16 @@ export function GroupDetailPage() {
   const analytics = trpc.teacher.groups.analytics.useQuery({ id });
   const [inviteOpen, setInviteOpen] = useState(() => new URLSearchParams(search).get("invite") === "1");
   const [editOpen, setEditOpen] = useState(false);
+  // `?tab=requests`: the teacher's "new join request" notice opens the waiting requests directly.
+  const [tab, setTab] = useState(() => (new URLSearchParams(search).get("tab") === "requests" ? "requests" : "students"));
+  // Also on later changes: a notice opened while already on this page only changes the query string.
   useEffect(() => {
-    if (new URLSearchParams(search).get("invite") === "1") nav(`/teacher/groups/${id}`, { replace: true });
-  }, []);
+    const params = new URLSearchParams(search);
+    if (params.get("tab") === "requests") setTab("requests");
+    if (params.get("invite") === "1") setInviteOpen(true);
+    if (params.get("invite") === "1" || params.has("tab")) nav(`/teacher/groups/${id}`, { replace: true });
+  }, [search]);
   const onDone = () => void utils.teacher.groups.invalidate();
-  const approve = trpc.teacher.groups.approveMember.useMutation({ onSuccess: onDone, onError: (e) => toast.error(errorText(e)) });
   const remove = trpc.teacher.groups.removeMember.useMutation({ onSuccess: onDone, onError: (e) => toast.error(errorText(e)) });
   const g = group.data;
   const active = g?.members.filter((m) => m.status === "ACTIVE") ?? [];
@@ -870,7 +970,7 @@ export function GroupDetailPage() {
           </div>
           <GroupSyllabiPanel groupId={id} />
 
-          <Tabs defaultValue="students" className="min-h-screen">
+          <Tabs value={tab} onValueChange={setTab} className="min-h-screen">
             <TabsList className="h-auto flex-wrap">
               <TabsTrigger value="students">{t("common.students")}</TabsTrigger>
               <TabsTrigger value="requests">{pending.length > 0 ? t("groups.tab.requestsCount", { count: pending.length }) : t("groups.tab.requests")}</TabsTrigger>
@@ -931,23 +1031,7 @@ export function GroupDetailPage() {
               </Panel>
             </TabsContent>
             <TabsContent value="requests" className="pt-3">
-              <Panel>
-                {!pending.length ? (
-                  <p className="text-sm text-muted-foreground">{t("groups.noRequests")}</p>
-                ) : (
-                  <ul className="divide-y">
-                    {pending.map((m) => (
-                      <li key={m.studentId} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
-                        <span className="min-w-0 break-words">{m.name} <span className="break-all text-muted-foreground">{m.email}</span></span>
-                        <span className="flex gap-2">
-                          <Button size="sm" onClick={() => approve.mutate({ groupId: id, studentId: m.studentId })}>{t("groups.approve")}</Button>
-                          <Button size="sm" variant="outline" onClick={() => remove.mutate({ groupId: id, studentId: m.studentId })}>{t("groups.reject")}</Button>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </Panel>
+              <JoinRequestsPanel groupId={id} pending={pending} />
             </TabsContent>
             <TabsContent value="assessments" className="pt-3">
               <Panel>

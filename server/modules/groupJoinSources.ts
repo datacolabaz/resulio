@@ -41,8 +41,9 @@ export interface JoinSourceInput {
 
 /**
  * Records how the student's membership in the group became ACTIVE. Every join path calls this
- * right after activating the row, inside the same transaction where there is one. A membership
- * that is re-activated (an approved PENDING row) gets its source replaced.
+ * right after activating the row, inside the same transaction where there is one. A code/link
+ * request under the APPROVAL policy is recorded when made (it holds a place in the code's use
+ * count) and rewritten on approval with the teacher as actor.
  */
 export async function recordJoinSource(db: DbOrTx, input: JoinSourceInput): Promise<void> {
   const [m] = await db
@@ -66,7 +67,25 @@ export async function recordJoinSource(db: DbOrTx, input: JoinSourceInput): Prom
   });
 }
 
-/** Joins through the group's current code so far (removed members still count) and its optional cap. */
+export async function joinSourceOf(db: DbOrTx, membershipId: number): Promise<{ joinedVia: GroupJoinSource; sourceId: string | null } | null> {
+  return tolerant(null, async () => {
+    const [row] = await db
+      .select({ joinedVia: groupMemberSources.joinedVia, sourceId: groupMemberSources.sourceId })
+      .from(groupMemberSources)
+      .where(eq(groupMemberSources.membershipId, membershipId))
+      .limit(1);
+    return row ?? null;
+  });
+}
+
+/** Only for a declined request: it never became a membership, so it gives its place in the code's use count back. */
+export async function deleteJoinSource(db: DbOrTx, membershipId: number): Promise<void> {
+  await tolerant(undefined, async () => {
+    await db.delete(groupMemberSources).where(eq(groupMemberSources.membershipId, membershipId));
+  });
+}
+
+/** Joins through the group's current code so far (removed members and waiting requests count) and its optional cap. */
 export async function codeUsage(db: DbOrTx, groupId: string, inviteCode: string): Promise<{ uses: number; maxUses: number | null }> {
   return tolerant({ uses: 0, maxUses: null }, async () => {
     const [limit] = await db.select({ maxUses: groupCodeLimits.maxUses }).from(groupCodeLimits).where(eq(groupCodeLimits.groupId, groupId)).limit(1);

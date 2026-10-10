@@ -302,6 +302,13 @@
       "when": 1791645497175,
       "tag": "0043_group_member_sources",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "5",
+      "when": 1791650384896,
+      "tag": "0044_group_join_approval",
+      "breakpoints": true
     }
   ]
 }

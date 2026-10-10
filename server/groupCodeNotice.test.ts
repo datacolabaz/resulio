@@ -6,7 +6,7 @@ import { inviteCodeRejection } from "./modules/groups";
 
 const NOW = new Date("2026-10-10T12:00:00Z");
 const OPEN = { joinPolicy: "AUTO" as const, codeActive: true, codeExpiresAt: null, codeUsage: { uses: 3, maxUses: null } };
-const NOTICES: GroupCodeNotice[] = ["OPEN", "LIMIT_REACHED", "SELF_JOIN_OFF", "CODE_OFF"];
+const NOTICES: GroupCodeNotice[] = ["OPEN", "APPROVAL", "LIMIT_REACHED", "SELF_JOIN_OFF", "CODE_OFF"];
 
 describe("groupCodeNotice", () => {
   it("warns an open code admits anyone, with or without an unreached limit", () => {
@@ -28,7 +28,15 @@ describe("groupCodeNotice", () => {
     expect(groupCodeNotice({ ...OPEN, codeExpiresAt: new Date("2026-10-10T11:59:59Z") }, NOW)).toBe("CODE_OFF");
   });
 
-  it("promises a join exactly when the server would accept one", () => {
+  it("says newcomers wait for approval under the approval policy, unless the link is closed anyway", () => {
+    const approval = { ...OPEN, joinPolicy: "APPROVAL" as const };
+    expect(groupCodeNotice(approval, NOW)).toBe("APPROVAL");
+    expect(groupCodeNotice({ ...approval, codeUsage: { uses: 3, maxUses: 5 } }, NOW)).toBe("APPROVAL");
+    expect(groupCodeNotice({ ...approval, codeUsage: { uses: 5, maxUses: 5 } }, NOW)).toBe("LIMIT_REACHED");
+    expect(groupCodeNotice({ ...approval, codeActive: false }, NOW)).toBe("CODE_OFF");
+  });
+
+  it("promises a join (or a request) exactly when the server would accept one", () => {
     const cases = [
       OPEN,
       { ...OPEN, codeUsage: { uses: 5, maxUses: 5 } },
@@ -36,11 +44,16 @@ describe("groupCodeNotice", () => {
       { ...OPEN, codeActive: false },
       { ...OPEN, joinPolicy: "MANUAL" as const, codeUsage: { uses: 9, maxUses: 1 } },
       { ...OPEN, codeExpiresAt: new Date("2026-10-01T00:00:00Z") },
+      { ...OPEN, joinPolicy: "APPROVAL" as const },
+      { ...OPEN, joinPolicy: "APPROVAL" as const, codeUsage: { uses: 2, maxUses: 2 } },
+      { ...OPEN, joinPolicy: "APPROVAL" as const, codeExpiresAt: new Date("2026-10-01T00:00:00Z") },
     ];
     for (const c of cases) {
       const expires = c.codeExpiresAt ? new Date(c.codeExpiresAt) : null;
       const accepts = inviteCodeRejection({ ...c, codeExpiresAt: expires }, NOW, c.codeUsage) === null;
-      expect(groupCodeNotice(c, NOW) === "OPEN").toBe(accepts);
+      const notice = groupCodeNotice(c, NOW);
+      expect(notice === "OPEN" || notice === "APPROVAL").toBe(accepts);
+      if (accepts) expect(notice).toBe(c.joinPolicy === "APPROVAL" ? "APPROVAL" : "OPEN");
     }
   });
 });
@@ -59,6 +72,18 @@ describe("group code notice texts", () => {
     expect(translate("az", "groups.codeNotice.OPEN")).toBe(
       "Qrup kodu linki çoxnəfərlikdir və paylaşıla bilər. Bu linkdən qoşulan şəxs avtomatik qrupa və qrupa bağlı aktiv imtahanlara daxil ola bilər. Daha nəzarətli qəbul üçün link limiti və ya əl ilə təsdiq aktivləşdirin.",
     );
+  });
+
+  it("uses the approved neutral wording under the approval policy, and never says 'automatically'", () => {
+    expect(translate("az", "groups.codeNotice.APPROVAL")).toMatch(/^Link ilə gələnlər siz təsdiq edənə qədər qrupa daxil olmur/);
+    expect(translate("az", "groups.codeNotice.APPROVAL")).not.toMatch(/avtomatik/);
+    expect(translate("en", "groups.codeNotice.APPROVAL")).not.toMatch(/automatic/i);
+    expect(translate("ru", "groups.codeNotice.APPROVAL")).not.toMatch(/автоматическ/i);
+  });
+
+  it("names the approval policy as the way to control an open link", () => {
+    expect(translate("en", "groups.codeNotice.OPEN")).toMatch(/manual approval/);
+    expect(translate("az", "groups.joinPolicy.APPROVAL")).toBe("Link ilə gələnlər müəllimin təsdiqini gözləyir");
   });
 
   it("fills in the usage numbers when the limit is reached", () => {

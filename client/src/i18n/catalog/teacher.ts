@@ -179,8 +179,13 @@ export const teacher = {
   "groups.codeMaxUsesClear": ["Limiti sil", "Remove limit", "Убрать лимит"],
   "groups.codeNotice.OPEN": [
     "Qrup kodu linki çoxnəfərlikdir və paylaşıla bilər. Bu linkdən qoşulan şəxs avtomatik qrupa və qrupa bağlı aktiv imtahanlara daxil ola bilər. Daha nəzarətli qəbul üçün link limiti və ya əl ilə təsdiq aktivləşdirin.",
-    "The group code link is multi-use and can be passed on. Anyone who joins through it is added to the group automatically and gets the group's active exams. For tighter control, set a join limit or switch the join policy to teacher-added students only.",
-    "Ссылка с кодом группы многоразовая, её можно переслать. Вступивший по ней автоматически попадает в группу и получает её активные экзамены. Для более строгого контроля задайте лимит вступлений или разрешите только добавление преподавателем.",
+    "The group code link is multi-use and can be passed on. Anyone who joins through it is added to the group automatically and gets the group's active exams. For tighter control, set a join limit or turn on manual approval.",
+    "Ссылка с кодом группы многоразовая, её можно переслать. Вступивший по ней автоматически попадает в группу и получает её активные экзамены. Для более строгого контроля задайте лимит вступлений или включите ручное одобрение.",
+  ],
+  "groups.codeNotice.APPROVAL": [
+    "Link ilə gələnlər siz təsdiq edənə qədər qrupa daxil olmur. Sorğular «Sorğular» bölməsində görünür.",
+    "People who come through the link don't get into the group until you approve them. Their requests appear under Requests.",
+    "Пришедшие по ссылке не попадают в группу, пока вы их не одобрите. Их заявки появляются в разделе «Запросы».",
   ],
   "groups.codeNotice.LIMIT_REACHED": [
     "Qrup kodu linkinin limiti dolub ({uses} / {max}): link paylaşılsa belə, yeni şəxs qrupa və qrupa bağlı imtahanlara daxil ola bilməz. Yenidən açmaq üçün limiti artırın və ya silin.",
@@ -212,7 +217,13 @@ export const teacher = {
   "groups.codeCopied": ["Kod kopyalandı", "Code copied", "Код скопирован"],
   "groups.joinPolicyLabel": ["Qoşulma qaydası", "Join policy", "Правило вступления"],
   "groups.joinPolicy.AUTO": ["Kod/linklə dərhal qoşulma", "Join instantly by code/link", "Мгновенное вступление по коду/ссылке"],
+  "groups.joinPolicy.APPROVAL": ["Link ilə gələnlər müəllimin təsdiqini gözləyir", "Link joins wait for the teacher's approval", "Вступившие по ссылке ждут одобрения преподавателя"],
   "groups.joinPolicy.MANUAL": ["Yalnız müəllimin manual əlavə etdiyi tələbələr", "Only students the teacher adds manually", "Только студенты, добавленные преподавателем вручную"],
+  "groups.joinPolicyHint.APPROVAL": [
+    "Kod/linklə gələn tələbə «Sorğular» bölməsinə düşür; siz təsdiq edənə qədər nə qrupa, nə də qrupun imtahan, tapşırıq və materiallarına daxil olur. Birdəfəlik linklər və e-poçt dəvətləri dərhal işləyir.",
+    "Students who come by code/link land under Requests; until you approve them they're in neither the group nor its exams, tasks and materials. Single-use links and e-mail invites still work at once.",
+    "Пришедшие по коду/ссылке попадают в «Запросы»; пока вы их не одобрите, у них нет доступа ни к группе, ни к её экзаменам, заданиям и материалам. Одноразовые ссылки и приглашения по эл. почте работают сразу.",
+  ],
   "groups.joinPolicyHint.AUTO": [
     "Kod/linklə qoşulan tələbə təsdiqsiz dərhal qrupa əlavə olunur; hər qoşulma barədə sizə bildiriş gəlir.",
     "Students who join by code/link are added right away, no approval needed; you get a notification for each join.",
@@ -308,9 +319,9 @@ export const teacher = {
   "groups.emailInviteStatus.REVOKED": ["Ləğv edilib", "Revoked", "Отозвано"],
   "groups.emailInviteStatus.EXPIRED": ["Vaxtı bitib", "Expired", "Истекло"],
   "groups.inviteByLinkMultiUse": [
-    "Ümumi link: çox nəfər istifadə edə bilər; linklə qoşulan tələbə təsdiqsiz dərhal qrupa əlavə olunur.",
-    "Shared link: many people can use it; anyone who joins through it is added right away, no approval needed.",
-    "Общая ссылка: подходит многим; вступившие по ней сразу попадают в группу без одобрения.",
+    "Ümumi link: çox nəfər istifadə edə bilər; linklə gələnlərlə nə olacağını aşağıdakı qoşulma qaydası müəyyən edir.",
+    "Shared link: many people can use it; the join rule below decides what happens to those who come through it.",
+    "Общая ссылка: подходит многим; что происходит с пришедшими по ней, определяет правило вступления ниже.",
   ],
   "groups.inviteLinks.title": ["Birdəfəlik link — hər link 1 nəfər", "Single-use links — 1 person per link", "Одноразовые ссылки — 1 человек на ссылку"],
   "groups.inviteLinks.hint": [
@@ -356,6 +367,18 @@ export const teacher = {
   "groups.removeStudent": ["{name} tələbəsini qrupdan çıxar", "Remove {name} from the group", "Удалить {name} из группы"],
   "groups.noRequests": ["Gözləyən sorğu yoxdur.", "No pending requests.", "Нет ожидающих запросов."],
   "groups.approve": ["Təsdiqlə", "Approve", "Одобрить"],
+  "groups.requestsHint": [
+    "Təsdiq etdiyiniz tələbə qrupa və qrupun aktiv imtahan, tapşırıq və materiallarına daxil olur. Rədd edilən tələbə 24 saat ərzində yenidən sorğu göndərə bilmir.",
+    "Students you approve get the group and its active exams, tasks and materials. A declined student can't ask again for 24 hours.",
+    "Одобренные студенты получают доступ к группе и её активным экзаменам, заданиям и материалам. Отклонённый студент не может подать заявку снова в течение 24 часов.",
+  ],
+  "groups.selectAllRequests": ["Hamısını seç ({count})", "Select all ({count})", "Выбрать все ({count})"],
+  "groups.approveSelected": ["Seçilənləri təsdiqlə ({count})", "Approve selected ({count})", "Одобрить выбранные ({count})"],
+  "groups.rejectSelected": ["Seçilənləri rədd et ({count})", "Decline selected ({count})", "Отклонить выбранные ({count})"],
+  "groups.requestsApproved": ["{count} sorğu təsdiqləndi", "{count} {count|request|requests} approved", "Одобрено заявок: {count}"],
+  "groups.requestsDeclined": ["{count} sorğu rədd edildi", "{count} {count|request|requests} declined", "Отклонено заявок: {count}"],
+  "groups.declineManyConfirm": ["{count} sorğunu rədd edək?", "Decline {count} {count|request|requests}?", "Отклонить заявки ({count})?"],
+  "groups.requestedVia": ["{via} · {date}", "{via} · {date}", "{via} · {date}"],
   "groups.reject": ["Rədd et", "Reject", "Отклонить"],
   "groups.noExams": ["Bu qrupa hələ imtahan təyin olunmayıb.", "No exams have been assigned to this group yet.", "Этой группе ещё не назначены экзамены."],
   "groups.progress": ["İnkişaf", "Progress", "Прогресс"],
