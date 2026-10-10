@@ -38,6 +38,7 @@ export const growth = {
 
   "settings.event.GROWTH_RISK_DIGEST": ["Gündəlik xülasə: yüksək risk radarı", "Daily digest: high risk radar", "Ежедневная сводка: радар высокого риска"],
   "settings.event.RETAKE_ASSIGNED": ["Fərdi təkrar testi təyin olundu", "Personal review test assigned", "Назначен персональный тест на повторение"],
+  "settings.event.PLAN_REMINDER": ["Təkrar planı: bugünkü addımlar", "Review plan: today's steps", "План повторения: шаги на сегодня"],
 
   "growth.tab.weakness": ["Zəiflik xəritəsi", "Weakness map", "Карта слабых мест"],
   "growth.status.STRONG": ["Güclü", "Strong", "Сильная"],
@@ -190,6 +191,7 @@ export const growth = {
   "plan.create": ["Plan qur", "Build a plan", "Составить план"],
   "plan.rebuild": ["Planı yenidən qur", "Rebuild the plan", "Пересоставить план"],
   "plan.minutes": ["Gündə neçə dəqiqə ayıra bilərsiniz?", "Minutes a day you can spend", "Сколько минут в день вы готовы уделять"],
+  "plan.reminders": ["Gündəlik xatırlatma", "Daily reminder", "Ежедневное напоминание"],
   "plan.target.EXAM": ["Hədəf: ən yaxın imtahan, {date}", "Target: your nearest exam, {date}", "Цель: ближайший экзамен, {date}"],
   "plan.target.TARGET_DATE": ["Hədəf: profilinizdəki imtahan tarixi, {date}", "Target: the exam date in your profile, {date}", "Цель: дата экзамена из профиля, {date}"],
   "plan.target.DEFAULT": ["Hədəf: iki həftəlik plan, {date} tarixinədək", "Target: a two-week plan, until {date}", "Цель: план на две недели, до {date}"],

@@ -32,6 +32,7 @@ export const EVENT_TYPES = [
   "ANNOUNCEMENT",
   "GROWTH_RISK_DIGEST",
   "RETAKE_ASSIGNED",
+  "PLAN_REMINDER",
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -82,6 +83,8 @@ export interface EventData {
   GROWTH_RISK_DIGEST: { count: number; names: string[] };
   /** To the student: the teacher assigned a personal retake on these topics. */
   RETAKE_ASSIGNED: { assessmentId: string; topics: string[]; from: string };
+  /** To the student, once a day in the afternoon: unfinished steps of today in their review plan. */
+  PLAN_REMINDER: { planId: string; items: number; minutes: number };
 }
 
 export interface ExamResultNotice {
@@ -140,9 +143,10 @@ export const EVENTS: Record<EventType, EventDefinition> = {
   SYLLABUS_JOIN_REQUESTED: { channels: ["IN_APP", "PUSH"] },
   SYLLABUS_JOIN_DECIDED: { channels: ["IN_APP", "PUSH"] },
   ANNOUNCEMENT: { channels: ["IN_APP", "PUSH"] },
-  // Growth Engine: daily teacher digest like the syllabus one; a retake is in-app and push.
+  // Growth Engine: daily teacher digest like the syllabus one; a retake and the plan reminder are in-app and push.
   GROWTH_RISK_DIGEST: { channels: ["IN_APP", "EMAIL"], defaultOff: ["EMAIL"] },
   RETAKE_ASSIGNED: { channels: ["IN_APP", "PUSH"] },
+  PLAN_REMINDER: { channels: ["IN_APP", "PUSH"] },
 };
 
 export const isEventType = (v: string): v is EventType => (EVENT_TYPES as readonly string[]).includes(v);
