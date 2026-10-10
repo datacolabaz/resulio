@@ -599,17 +599,32 @@ const assignmentInput = z.object({
   accessMode: z.enum(TASK_ACCESS_MODES).optional(),
 });
 
-const materialInput = z.object({
+const materialFields = {
   title: z.string().trim().min(2).max(255),
-  description: z.string().trim().max(5000).default(""),
-  subject: z.string().trim().max(120).default(""),
-  topic: z.string().trim().max(120).default(""),
+  description: z.string().trim().max(5000),
+  subject: z.string().trim().max(120),
+  topic: z.string().trim().max(120),
   fileName: z.string().trim().min(1).max(255),
-  fileId: z.string().trim().min(1).max(32).nullable().default(null),
-  mimeType: z.string().trim().max(127).nullable().default(null),
-  sizeBytes: z.number().int().nonnegative().nullable().default(null),
+  fileId: z.string().trim().min(1).max(32).nullable(),
+  mimeType: z.string().trim().max(127).nullable(),
+  sizeBytes: z.number().int().nonnegative().nullable(),
+  groupIds: recipients.groupIds.unwrap(),
+  studentIds: recipients.studentIds.unwrap(),
+};
+
+const materialInput = z.object({
+  ...materialFields,
+  description: materialFields.description.default(""),
+  subject: materialFields.subject.default(""),
+  topic: materialFields.topic.default(""),
+  fileId: materialFields.fileId.default(null),
+  mimeType: materialFields.mimeType.default(null),
+  sizeBytes: materialFields.sizeBytes.default(null),
   ...recipients,
 });
+
+/** No defaults here: zod 4 fills omitted keys with their defaults even inside .partial(), which would wipe the file and text of every patch that leaves them out. */
+const materialPatch = z.object(materialFields).partial();
 
 /** Resolves the recipients a patch currently points at, falling back to the row's own groupIds/studentIds when the patch doesn't touch them. */
 async function assertPatchedRecipients(
@@ -681,7 +696,7 @@ const teacherTasksRouter = router({
       return tasks.createMaterial(ctx.scope, input);
     }),
   updateMaterial: teacherProcedure
-    .input(z.object({ id: entityId, patch: materialInput.partial() }))
+    .input(z.object({ id: entityId, patch: materialPatch }))
     .mutation(async ({ ctx, input }) => {
       const current = await tasks.materialOf(ctx.scope, input.id);
       if (input.patch.groupIds !== undefined || input.patch.studentIds !== undefined) {

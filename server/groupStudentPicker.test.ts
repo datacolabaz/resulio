@@ -8,7 +8,9 @@ import {
   searchStudents,
   selectionFromTargets,
   setStudentChecked,
+  shareSummary,
   toggleGroup,
+  uncheckedCount,
   type PickStudent,
 } from "../client/src/lib/groupStudentSelection";
 
@@ -122,5 +124,40 @@ describe("form payloads", () => {
   it("deselecting a group forgets its unchecks; selecting it absorbs individual picks", () => {
     const sel = pick(check(1), group("prog"), uncheck(2), group("prog"));
     expect(sel).toEqual({ groupIds: [], excluded: [], extra: [] });
+  });
+
+  it("removing a group drops only its own students; shared members and individual picks stay", () => {
+    const sel = pick(group("prog"), group("data"), check(6), group("prog"));
+    expect(STUDENTS.filter((s) => isChecked(sel, s)).map((s) => s.id)).toEqual([3, 4, 5, 6]);
+  });
+});
+
+describe("compact picker: share summary", () => {
+  const NAMED = [
+    { id: "prog", name: "Proqramlaşdırma" },
+    { id: "data", name: "Data Analitika" },
+    { id: "info", name: "Info" },
+  ];
+  const summary = (sel: ReturnType<typeof emptySelection>) => shareSummary(planSelection(sel, STUDENTS), NAMED);
+
+  it("whole groups: their names and how many students they reach (a shared member once)", () => {
+    expect(summary(pick(group("data"), group("prog")))).toEqual({ groupNames: ["Data Analitika", "Proqramlaşdırma"], groupStudents: 5, students: 0 });
+  });
+
+  it("a group with someone left out counts as selected students only", () => {
+    expect(summary(pick(group("prog"), uncheck(2)))).toEqual({ groupNames: [], groupStudents: 0, students: 2 });
+  });
+
+  it("whole group plus individual picks", () => {
+    expect(summary(pick(group("info"), check(1)))).toEqual({ groupNames: ["Info"], groupStudents: 2, students: 1 });
+  });
+
+  it("nothing selected", () => {
+    expect(summary(emptySelection())).toEqual({ groupNames: [], groupStudents: 0, students: 0 });
+  });
+
+  it("counts left-out members of selected groups only", () => {
+    expect(uncheckedCount(pick(group("prog"), uncheck(2), uncheck(3)), STUDENTS)).toBe(2);
+    expect(uncheckedCount(pick(group("prog"), uncheck(2), group("prog")), STUDENTS)).toBe(0);
   });
 });

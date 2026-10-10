@@ -58,6 +58,26 @@ describe("materials", () => {
     const outsider = await makeUser("Yeni kənar");
     expect(await outcome(api.teacher.tasks.updateMaterial({ id: m.id, patch: { studentIds: [stranger.id, outsider.id] } }))).toMatch(/^FORBIDDEN/);
   });
+
+  it("a patch leaves out what it does not change: file, type, size and texts stay", async () => {
+    const { api, a, b } = await setup();
+    const m = await api.teacher.tasks.createMaterial(
+      material({ description: "Mətn", subject: "İnformatika", topic: "VLOOKUP", fileId: "file-1", mimeType: "application/pdf", sizeBytes: 1234, studentIds: [a.id] }),
+    );
+    const saved = await api.teacher.tasks.updateMaterial({ id: m.id, patch: { title: "Excel 2", studentIds: [a.id, b.id] } });
+    expect(saved).toMatchObject({
+      title: "Excel 2",
+      description: "Mətn",
+      subject: "İnformatika",
+      topic: "VLOOKUP",
+      fileName: "text_functions.xlsx",
+      fileId: "file-1",
+      mimeType: "application/pdf",
+      sizeBytes: 1234,
+      groupIds: [],
+      studentIds: [a.id, b.id],
+    });
+  });
 });
 
 describe("tasks", () => {
