@@ -19,7 +19,7 @@ share link never adds anyone: an exam's participants are the ACTIVE students of 
 | Policy | Teacher sees (group form and Invite dialog) | Group code / link |
 | --- | --- | --- |
 | `AUTO` (default) | "Kod/linklə dərhal qoşulma" + the warning that the link admits anyone who has it | ACTIVE at once |
-| `APPROVAL` | "Link ilə gələnlər müəllimin təsdiqini gözləyir" + the neutral note "Link ilə gələnlər siz təsdiq edənə qədər qrupa daxil olmur…" | PENDING request |
+| `APPROVAL` | "Link ilə gələnlər müəllimin təsdiqini gözləyir" + the neutral note "Link ilə gələnlər siz təsdiq edənə qədər qrupa daxil olmur…" | PENDING request; ACTIVE at once for students the teacher already knows (below) |
 | `MANUAL` | "Yalnız müəllimin manual əlavə etdiyi tələbələr" | refused (`GROUP_NOT_ACCEPTING`) |
 
 Stored without touching `study_groups`: its `joinPolicy` enum keeps `AUTO`/`MANUAL`, and
@@ -34,7 +34,9 @@ requests for the teacher; under `AUTO` a waiting student who opens a valid link 
 Every path above writes one `group_member_sources` row per membership (`groupJoinSources.recordJoinSource`;
 migration **0043**): `joinedVia`, `joinedAt`, `sourceId` (single-use link id, e-mail invite
 id, syllabus request id or the invite code used) and `actorUserId` (the student for self-joins, the
-teacher for adds and approvals). Rows are kept when a member is removed. Memberships older than the
+teacher for adds and approvals). Rows are kept when a member is removed (a removed or declined
+request's row is deleted). `autoReason` is `KNOWN_STUDENT` for a code join the APPROVAL policy let
+straight in, otherwise null. Memberships older than the
 table get one from the startup backfill (`runJoinSourceBackfill`, `backfilled = 1`): a redeemed
 single-use link, an accepted e-mail invite, an accepted syllabus request (each within 10 minutes of the
 membership row), the teacher's "joined via the invite link" notice for that membership, or a share
@@ -85,6 +87,32 @@ visits (`public.invite` returns the viewer's own `viewerStatus`). The teacher ge
 member reaches nothing: every roster read (exam targets and participants, tasks, materials, syllabus
 group grants and roster, group board, analytics, announcements) filters `status = ACTIVE`. The
 student's "Qruplarım" shows the group as "Təsdiq gözləyir".
+
+### Known students skip the queue
+
+Under `APPROVAL`, a student the group's owner already knows is admitted **at once** instead of
+leaving a request — unless the teacher unticks "Əvvəl mənim tələbəm olanları avtomatik qəbul et"
+(next to the policy, shown only for `APPROVAL`; on by default; `group_join_settings.autoApproveKnown`,
+migration **0048**). `groupJoinApproval.knownStudentReason` decides, across **every workspace the
+group's owner owns** and never counting the group being joined:
+
+| Reason | Means |
+| --- | --- |
+| `OTHER_GROUP` | an ACTIVE member of another of the teacher's groups (a PENDING request there doesn't count) |
+| `FORMER_MEMBER` | was an ACTIVE member of another of the teacher's groups and was removed: the membership's `group_member_sources` row outlives it. A declined or removed **request** deletes its source row, so it leaves nothing; memberships removed before migration 0043 left no source and don't count |
+| `SYLLABUS_REQUEST` | one of the teacher's syllabus join requests (group or individual) was accepted for the student |
+| `SYLLABUS_GRANT` | the student was given individual access to one of the teacher's syllabi (`syllabus_access_grants.studentId`), even if since revoked |
+
+Everything else still applies first: an inactive/expired/regenerated code, `MANUAL`, the use cap
+(the automatic join counts as a use like any code join) and the **24-hour decline cooldown — it wins
+over being known**. A known student's own earlier request is activated if they submit the code again;
+from the join page (which shows "request sent" with no button) it simply stays for the teacher.
+
+The membership is recorded as `GROUP_CODE_LINK` with `group_member_sources.autoReason =
+KNOWN_STUDENT` (a teacher's approval clears it). The member list shows "avtomatik qəbul edildi
+(tanış tələbə)" under the join path, and the teacher's `GROUP_MEMBER_JOINED` carries
+`autoKnown: true` ("X «Qrup» qrupuna avtomatik qəbul olundu — əvvəl sizin tələbəniz olub",
+key `group-join:<membershipId>`). The student gets the same as any `AUTO` join.
 
 ## Requests tab
 

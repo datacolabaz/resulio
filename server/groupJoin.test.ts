@@ -120,6 +120,17 @@ describe("afterLinkJoin", () => {
     });
   });
 
+  it("marks a known student let in under APPROVAL; other joins carry no flag", () => {
+    afterLinkJoin({ groupId: "g1", groupName: "Riyaziyyat 9A", ownerUserId: 1, userId: 7 }, "Aysel", linkJoinKey(42), true);
+    expect(notifyOpenTasksOnJoin).toHaveBeenCalledWith("g1", 7);
+    expect(dispatch).toHaveBeenCalledWith({
+      event: "GROUP_MEMBER_JOINED",
+      userId: 1,
+      dedupeKey: "group-join:42",
+      data: { groupId: "g1", groupName: "Riyaziyyat 9A", studentName: "Aysel", autoKnown: true },
+    });
+  });
+
   it("uses one dedupe key per membership row and per single-use link", () => {
     expect(linkJoinKey(42)).not.toBe(linkJoinKey(43));
     expect(singleUseLinkJoinKey("abc")).toBe("group-join-link:abc");
@@ -151,6 +162,15 @@ describe("GROUP_MEMBER_JOINED notice", () => {
     expect(az.path).toBe("/teacher/groups/g%201?tab=requests");
     expect(renderNotification("GROUP_MEMBER_JOINED", { ...data, pending: true }, { locale: "en", email: null }, "").title).toBe("New join request");
     expect(renderNotification("GROUP_MEMBER_JOINED", { ...data, pending: true }, { locale: "ru", email: null }, "").title).toBe("Новая заявка на вступление");
+  });
+
+  it("an automatic admission of a known student says so and opens the group", () => {
+    const az = renderNotification("GROUP_MEMBER_JOINED", { ...data, autoKnown: true }, { locale: "az", email: null }, "");
+    expect(az.title).toBe("Tələbə avtomatik qəbul edildi");
+    expect(az.body).toBe("Aysel «Riyaziyyat 9A» qrupuna avtomatik qəbul olundu — əvvəl sizin tələbəniz olub.");
+    expect(az.path).toBe("/teacher/groups/g%201");
+    expect(renderNotification("GROUP_MEMBER_JOINED", { ...data, autoKnown: true }, { locale: "en", email: null }, "").body).toContain("they have been your student before");
+    expect(renderNotification("GROUP_MEMBER_JOINED", { ...data, autoKnown: true }, { locale: "ru", email: null }, "").title).toBe("Студент принят автоматически");
   });
 });
 
@@ -195,6 +215,7 @@ describe("student.join", () => {
       userId: 7,
       status: "ACTIVE",
       activatedPending: false,
+      autoKnown: false,
     });
     const res = await caller(7, "Aysel").student.join({ inviteCode: "code123456", channel: "WHATSAPP" });
 
@@ -223,6 +244,23 @@ describe("student.join", () => {
     expect(dispatch).toHaveBeenCalledTimes(1);
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ event: "GROUP_MEMBER_JOINED", userId: 1, dedupeKey: "group-join-request:50", data: expect.objectContaining({ pending: true }) }));
     expect(shareTrackingMod.recordShareEvent).toHaveBeenCalledWith(expect.objectContaining({ targetId: "CODE123456", channel: "QR", eventType: "JOINED", actorUserId: 7 }));
+  });
+
+  it("under APPROVAL a known student is admitted at once and the teacher's notice says why", async () => {
+    vi.mocked(groupsMod.joinByInvite).mockResolvedValue({
+      membershipId: 51,
+      groupId: "g1",
+      groupName: "Riyaziyyat 9A",
+      ownerUserId: 1,
+      userId: 7,
+      status: "ACTIVE",
+      activatedPending: false,
+      autoKnown: true,
+    });
+    expect((await caller(7, "Aysel").student.join({ inviteCode: "code123456" })).status).toBe("ACTIVE");
+    expect(notifyOpenTasksOnJoin).toHaveBeenCalledWith("g1", 7);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ dedupeKey: "group-join:51", data: expect.objectContaining({ autoKnown: true }) }));
   });
 
   it("asking again while the request waits sends nothing new", async () => {

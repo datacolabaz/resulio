@@ -309,6 +309,13 @@
       "when": 1791650384896,
       "tag": "0044_group_join_approval",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "5",
+      "when": 1791654146131,
+      "tag": "0048_group_join_auto_known",
+      "breakpoints": true
     }
   ]
 }

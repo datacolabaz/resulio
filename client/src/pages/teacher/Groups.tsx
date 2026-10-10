@@ -17,7 +17,7 @@ import { groupCodeNotice } from "@/lib/groupCodeNotice";
 import { joinSourceLabel } from "@/lib/joinSource";
 import { liveStatus } from "@/lib/status";
 import { trpc } from "@/lib/trpc";
-import type { JoinSourceView } from "@shared/groupJoinSource";
+import { KNOWN_STUDENT, type JoinSourceView } from "@shared/groupJoinSource";
 import { JOIN_POLICIES, type JoinPolicy } from "@shared/groupJoinPolicy";
 import { GROUP_CLASS_MAX, GROUP_LEVEL_MAX, GROUP_TYPES, type GroupType } from "@shared/groupType";
 import { GROUP_LANGUAGES, WEEK_DAYS, type ClassScheduleEntry, type GroupLanguage, type WeekDay } from "@shared/schedule";
@@ -31,19 +31,49 @@ const fieldLabel = "text-foreground-secondary";
 const selectCls = "mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground";
 const GROUP_FORMATS = ["ONLINE", "IN_PERSON", "HYBRID"] as const;
 
-/** How the group code/link treats newcomers; the same control in the group form and the invite dialog. */
-function JoinPolicyField({ value, disabled, onChange, className = "" }: { value: JoinPolicy; disabled?: boolean; onChange: (p: JoinPolicy) => void; className?: string }) {
+/**
+ * How the group code/link treats newcomers, and under approval whether students already known to
+ * the teacher skip it; the same control in the group form and the invite dialog.
+ */
+function JoinPolicyField({
+  value,
+  autoApproveKnown,
+  disabled,
+  onChange,
+  className = "",
+}: {
+  value: JoinPolicy;
+  autoApproveKnown: boolean;
+  disabled?: boolean;
+  onChange: (p: JoinPolicy, autoApproveKnown: boolean) => void;
+  className?: string;
+}) {
   return (
     <div className={`rounded-xl border p-3 ${className}`}>
       <label className="text-sm">
         <span className={fieldLabel}>{t("groups.joinPolicyLabel")}</span>
-        <select className={selectCls} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value as JoinPolicy)}>
+        <select className={selectCls} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value as JoinPolicy, autoApproveKnown)}>
           {JOIN_POLICIES.map((p) => (
             <option key={p} value={p}>{t(`groups.joinPolicy.${p}`)}</option>
           ))}
         </select>
       </label>
       <p className="mt-2 text-xs text-muted-foreground">{t(`groups.joinPolicyHint.${value}`)}</p>
+      {value === "APPROVAL" && (
+        <label className="mt-3 flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-1 accent-link"
+            checked={autoApproveKnown}
+            disabled={disabled}
+            onChange={(e) => onChange(value, e.target.checked)}
+          />
+          <span>
+            <span className="block">{t("groups.autoApproveKnown")}</span>
+            <span className="block text-xs text-muted-foreground">{t("groups.autoApproveKnownHint")}</span>
+          </span>
+        </label>
+      )}
     </div>
   );
 }
@@ -186,6 +216,7 @@ interface GroupFormInitial {
   scheduleVisible: boolean;
   scoresVisibleToGroup: boolean;
   joinPolicy: JoinPolicy;
+  autoApproveKnown: boolean;
 }
 
 const TYPE_ICONS = { SCHOOL: School, COURSE: BookOpen } as const;
@@ -267,6 +298,7 @@ function GroupFormDialog({
     scheduleVisible: initial?.scheduleVisible ?? false,
     scoresVisibleToGroup: initial?.scoresVisibleToGroup ?? true,
     joinPolicy: initial?.joinPolicy ?? ("AUTO" as JoinPolicy),
+    autoApproveKnown: initial?.autoApproveKnown ?? true,
   });
   const defaultType = defaults.data?.groupType;
   useEffect(() => {
@@ -275,24 +307,24 @@ function GroupFormDialog({
   const done = () => { void utils.teacher.groups.invalidate(); onOpenChange(false); };
   const setPolicy = trpc.teacher.groups.setJoinPolicy.useMutation();
   /** The policy has its own endpoint (it also guards the invite dialog); saved after the group itself. */
-  const savePolicy = async (groupId: string, before: JoinPolicy) => {
-    if (f.joinPolicy === before) return;
+  const savePolicy = async (groupId: string, before: { joinPolicy: JoinPolicy; autoApproveKnown: boolean }) => {
+    if (f.joinPolicy === before.joinPolicy && f.autoApproveKnown === before.autoApproveKnown) return;
     try {
-      await setPolicy.mutateAsync({ groupId, joinPolicy: f.joinPolicy });
+      await setPolicy.mutateAsync({ groupId, joinPolicy: f.joinPolicy, autoApproveKnown: f.autoApproveKnown });
     } catch (e) {
       toast.error(errorText(e));
     }
   };
   const create = trpc.teacher.groups.create.useMutation({
-    onSuccess: async (g) => { await savePolicy(g.id, "AUTO"); onCreated?.(g.id); done(); },
+    onSuccess: async (g) => { await savePolicy(g.id, { joinPolicy: "AUTO", autoApproveKnown: true }); onCreated?.(g.id); done(); },
     onError: (e) => toast.error(errorText(e)),
   });
   const update = trpc.teacher.groups.update.useMutation({
-    onSuccess: async () => { if (initial) await savePolicy(initial.id, initial.joinPolicy); done(); },
+    onSuccess: async () => { if (initial) await savePolicy(initial.id, initial); done(); },
     onError: (e) => toast.error(errorText(e)),
   });
   const payload = () => {
-    const { groupType, subject, grade, levelChoice, levelText, joinPolicy: _policy, ...rest } = f;
+    const { groupType, subject, grade, levelChoice, levelText, joinPolicy: _policy, autoApproveKnown: _known, ...rest } = f;
     return { ...rest, ...typePayload({ groupType, subject, grade, levelChoice, levelText }), startDate: f.startDate ? new Date(f.startDate).toISOString() : null };
   };
   const keys = typeFieldKeys(f.groupType);
@@ -425,7 +457,11 @@ function GroupFormDialog({
             checked={f.scoresVisibleToGroup}
             onCheckedChange={(v) => setF({ ...f, scoresVisibleToGroup: v })}
           />
-          <JoinPolicyField value={f.joinPolicy} onChange={(joinPolicy) => setF({ ...f, joinPolicy })} />
+          <JoinPolicyField
+            value={f.joinPolicy}
+            autoApproveKnown={f.autoApproveKnown}
+            onChange={(joinPolicy, autoApproveKnown) => setF({ ...f, joinPolicy, autoApproveKnown })}
+          />
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
@@ -679,6 +715,7 @@ function InviteDialog({
   groupId,
   inviteCode,
   joinPolicy,
+  autoApproveKnown,
   codeActive,
   codeExpiresAt,
   codeUsage,
@@ -688,6 +725,7 @@ function InviteDialog({
   groupId: string;
   inviteCode: string;
   joinPolicy: JoinPolicy;
+  autoApproveKnown: boolean;
   codeActive: boolean;
   codeExpiresAt: string | Date | null;
   codeUsage: { uses: number; maxUses: number | null };
@@ -748,7 +786,13 @@ function InviteDialog({
             </p>
             <ShareFunnelSummary data={shareFunnel.data} />
 
-            <JoinPolicyField className="mt-3" value={joinPolicy} disabled={setPolicy.isPending} onChange={(p) => setPolicy.mutate({ groupId, joinPolicy: p })} />
+            <JoinPolicyField
+              className="mt-3"
+              value={joinPolicy}
+              autoApproveKnown={autoApproveKnown}
+              disabled={setPolicy.isPending}
+              onChange={(p, known) => setPolicy.mutate({ groupId, joinPolicy: p, autoApproveKnown: known })}
+            />
 
             <SettingToggle
               className="mt-3"
@@ -1010,6 +1054,9 @@ export function GroupDetailPage() {
                             >
                               <div>{joinSourceLabel(m.joinSource?.joinedVia)}</div>
                               {m.joinSource?.detail && <div className="break-words text-xs text-muted-foreground">{m.joinSource.detail}</div>}
+                              {m.joinSource?.autoReason === KNOWN_STUDENT && (
+                                <div className="text-xs text-muted-foreground">{t("groups.autoAdmittedKnown")}</div>
+                              )}
                             </td>
                             <td className="text-right">
                               <Button
@@ -1129,6 +1176,7 @@ export function GroupDetailPage() {
             groupId={id}
             inviteCode={g.inviteCode}
             joinPolicy={g.joinPolicy}
+            autoApproveKnown={g.autoApproveKnown}
             codeActive={g.codeActive}
             codeExpiresAt={g.codeExpiresAt}
             codeUsage={g.codeUsage}

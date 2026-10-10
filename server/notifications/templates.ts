@@ -495,11 +495,27 @@ const GROUP_JOIN_REQUESTED: Record<ServerLocale, { title: string; body: (name: s
   },
 };
 
-export function groupMemberJoinedInApp(locale: ServerLocale, d: { groupName: string; studentName: string | null; pending?: boolean }) {
+const GROUP_JOINED_KNOWN: Record<ServerLocale, { title: string; body: (name: string, group: string) => string }> = {
+  az: {
+    title: "Tələbə avtomatik qəbul edildi",
+    body: (n, g) => `${n} «${g}» qrupuna avtomatik qəbul olundu — əvvəl sizin tələbəniz olub.`,
+  },
+  en: {
+    title: "Student admitted automatically",
+    body: (n, g) => `${n} was admitted to “${g}” automatically — they have been your student before.`,
+  },
+  ru: {
+    title: "Студент принят автоматически",
+    body: (n, g) => `${n} автоматически принят(а) в группу «${g}» — раньше уже был(а) вашим студентом.`,
+  },
+};
+
+export function groupMemberJoinedInApp(locale: ServerLocale, d: { groupName: string; studentName: string | null; pending?: boolean; autoKnown?: boolean }) {
   const tx = GROUP_JOINED[locale];
   const name = d.studentName?.trim() ? cleanTitle(d.studentName, 60) : tx.someone;
   const group = cleanTitle(d.groupName, 80);
   if (d.pending) return { title: GROUP_JOIN_REQUESTED[locale].title, body: GROUP_JOIN_REQUESTED[locale].body(name, group) };
+  if (d.autoKnown) return { title: GROUP_JOINED_KNOWN[locale].title, body: GROUP_JOINED_KNOWN[locale].body(name, group) };
   return { title: tx.title, body: tx.body(name, group) };
 }
 

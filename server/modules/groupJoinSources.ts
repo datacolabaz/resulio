@@ -37,6 +37,8 @@ export interface JoinSourceInput {
   sourceId?: string | null;
   actorUserId: number | null;
   at?: Date;
+  /** Set when the system admitted the join itself under APPROVAL (groupJoinApproval.KNOWN_STUDENT); anything else clears it. */
+  autoReason?: string | null;
 }
 
 /**
@@ -58,6 +60,7 @@ export async function recordJoinSource(db: DbOrTx, input: JoinSourceInput): Prom
     actorUserId: input.actorUserId,
     joinedAt: input.at ?? new Date(),
     backfilled: false,
+    autoReason: input.autoReason ?? null,
   };
   await tolerant(undefined, async () => {
     await db
@@ -78,7 +81,7 @@ export async function joinSourceOf(db: DbOrTx, membershipId: number): Promise<{ 
   });
 }
 
-/** Only for a declined request: it never became a membership, so it gives its place in the code's use count back. */
+/** Only for a declined or removed request: it never became a membership, so it gives its place in the code's use count back. */
 export async function deleteJoinSource(db: DbOrTx, membershipId: number): Promise<void> {
   await tolerant(undefined, async () => {
     await db.delete(groupMemberSources).where(eq(groupMemberSources.membershipId, membershipId));
@@ -116,6 +119,7 @@ export async function joinSourcesOf(membershipIds: readonly number[], db: DbOrTx
           membershipId: groupMemberSources.membershipId,
           joinedVia: groupMemberSources.joinedVia,
           joinedAt: groupMemberSources.joinedAt,
+          autoReason: groupMemberSources.autoReason,
           linkLabel: groupInviteLinks.label,
           inviteEmail: groupEmailInvites.email,
           syllabusTitle: syllabi.title,
@@ -127,7 +131,12 @@ export async function joinSourcesOf(membershipIds: readonly number[], db: DbOrTx
         .leftJoin(syllabi, eq(syllabi.id, syllabusJoinRequests.syllabusId))
         .where(inArray(groupMemberSources.membershipId, ids));
       for (const r of rows) {
-        out.set(r.membershipId, { joinedVia: r.joinedVia, joinedAt: r.joinedAt, detail: r.linkLabel || r.inviteEmail || r.syllabusTitle || null });
+        out.set(r.membershipId, {
+          joinedVia: r.joinedVia,
+          joinedAt: r.joinedAt,
+          detail: r.linkLabel || r.inviteEmail || r.syllabusTitle || null,
+          autoReason: r.autoReason,
+        });
       }
     }
     return out;
