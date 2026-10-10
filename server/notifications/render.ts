@@ -2,6 +2,7 @@ import { pickAnnouncementText } from "../../shared/announcements";
 import type { EmailMessage } from "../_core/email";
 import type { ServerLocale } from "../_core/locale";
 import { isEventType, type EventData, type EventType } from "./events";
+import { buildRiskDigestEmail, retakeAssignedInApp, riskDigestInApp, studentAssessmentsPath, teacherGrowthPath } from "./growthTemplates";
 import {
   aiAlertText,
   aiGradeInAppText,
@@ -157,6 +158,14 @@ export function renderNotification<E extends EventType>(event: E, data: EventDat
       const text = pickAnnouncementText(d.texts, d.language, locale);
       if (!text) throw new Error("ANNOUNCEMENT_WITHOUT_TEXT");
       return { title: text.title, body: text.body, path: d.url, email: null };
+    }
+    case "GROWTH_RISK_DIGEST": {
+      const d = data as EventData["GROWTH_RISK_DIGEST"];
+      return { ...riskDigestInApp(locale, d), path: teacherGrowthPath, email: buildRiskDigestEmail({ ...d, to, locale, appUrl }) };
+    }
+    case "RETAKE_ASSIGNED": {
+      const d = data as EventData["RETAKE_ASSIGNED"];
+      return { ...retakeAssignedInApp(locale, d), path: studentAssessmentsPath, email: null };
     }
     default:
       throw new Error(`No renderer for ${String(event)}`);

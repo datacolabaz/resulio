@@ -36,3 +36,21 @@ export type MasteryStatus = (typeof MASTERY_STATUSES)[number];
 
 export const MASTERY_TRENDS = ["UP", "DOWN", "FLAT", "NEW"] as const;
 export type MasteryTrend = (typeof MASTERY_TRENDS)[number];
+
+export const RISK_LEVELS = ["NONE", "WATCH", "MEDIUM", "HIGH"] as const;
+export type RiskLevel = (typeof RISK_LEVELS)[number];
+
+export const RISK_CODES = ["SCORE_DROP", "REPEATED_TOPIC_MISTAKES", "MISSED_EXAMS", "LOW_TOPIC_MASTERY"] as const;
+export type RiskCode = (typeof RISK_CODES)[number];
+
+/** One explainable signal: what fired, the measured value, and how many of the 0–100 score points it gave. */
+export interface RiskReason {
+  code: RiskCode;
+  value: number;
+  points: number;
+  /** Topic labels behind the signal, when it is about topics. */
+  topics?: string[];
+}
+
+export const RISK_ACTION_TYPES = ["RETAKE", "MATERIAL", "NOTE", "REPORT", "DISMISS"] as const;
+export type RiskActionType = (typeof RISK_ACTION_TYPES)[number];

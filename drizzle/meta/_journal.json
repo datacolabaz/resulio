@@ -323,6 +323,13 @@
       "when": 1791662259317,
       "tag": "0049_growth_topic_mastery",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "5",
+      "when": 1791662277646,
+      "tag": "0050_growth_risk",
+      "breakpoints": true
     }
   ]
 }
