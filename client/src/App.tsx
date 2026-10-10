@@ -54,6 +54,7 @@ const SyllabusDetailPage = lazyPage(() => import("@/pages/teacher/syllabus/Sylla
 const SyllabusListPage = lazyPage(() => import("@/pages/teacher/syllabus/SyllabusList").then((m) => ({ default: m.SyllabusListPage })));
 const SyllabusImportPage = lazyPage(() => import("@/pages/teacher/syllabus/SyllabusImportPage"));
 const PublicSyllabusPage = lazyPage(() => import("@/pages/PublicSyllabusPage"));
+const StudentGrowthPage = lazyPage(() => import("@/pages/student/StudentGrowth").then((m) => ({ default: m.StudentGrowthPage })));
 const GrowthReportPage = lazyPage(() => import("@/pages/GrowthReport").then((m) => ({ default: m.GrowthReportPage })));
 const GrowthPage = lazyPage(() => import("@/pages/teacher/growth/GrowthPage").then((m) => ({ default: m.GrowthPage })));
 const QuestionImportPage = lazyPage(() => import("@/pages/teacher/QuestionImport").then((m) => ({ default: m.QuestionImportPage })));
@@ -203,6 +204,7 @@ function Router() {
       <Route path="/student/results">{student(<StudentResults />)}</Route>
       <Route path="/student/results/:id">{student(<StudentResultDetail />)}</Route>
       <Route path="/student/progress">{student(<StudentProgress />)}</Route>
+      <Route path="/student/growth">{student(<StudentGrowthPage />)}</Route>
       <Route path="/student/syllabus">{student(<MySyllabi />)}</Route>
       <Route path="/student/syllabus/:id/lessons/:lessonId">{student(<LessonPlayer />)}</Route>
       <Route path="/student/syllabus/:id">{student(<SyllabusPathPage />)}</Route>
