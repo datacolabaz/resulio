@@ -2109,7 +2109,8 @@ export const studentTopicMastery = mysqlTable(
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },
   (t) => [
-    primaryKey({ columns: [t.workspaceId, t.studentId, t.dimension, t.topicKey] }),
+    // MySQL identifiers stop at 64 characters; the generated name would be 65.
+    primaryKey({ name: "student_topic_mastery_pk", columns: [t.workspaceId, t.studentId, t.dimension, t.topicKey] }),
     index("student_topic_mastery_topic_idx").on(t.workspaceId, t.dimension, t.topicKey),
     index("student_topic_mastery_student_idx").on(t.studentId),
   ],

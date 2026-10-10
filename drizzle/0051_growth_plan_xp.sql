@@ -1,4 +1,4 @@
-CREATE TABLE `group_growth_settings` (
+CREATE TABLE IF NOT EXISTS `group_growth_settings` (
 	`groupId` varchar(32) NOT NULL,
 	`selfPractice` boolean NOT NULL DEFAULT false,
 	`updatedBy` int,
@@ -6,7 +6,7 @@ CREATE TABLE `group_growth_settings` (
 	CONSTRAINT `group_growth_settings_groupId` PRIMARY KEY(`groupId`)
 );
 --> statement-breakpoint
-CREATE TABLE `released_topic_levels` (
+CREATE TABLE IF NOT EXISTS `released_topic_levels` (
 	`workspaceId` varchar(32) NOT NULL,
 	`studentId` int NOT NULL,
 	`topicKey` varchar(128) NOT NULL,
@@ -15,7 +15,7 @@ CREATE TABLE `released_topic_levels` (
 	CONSTRAINT `released_topic_levels_workspaceId_studentId_topicKey_pk` PRIMARY KEY(`workspaceId`,`studentId`,`topicKey`)
 );
 --> statement-breakpoint
-CREATE TABLE `review_plan_items` (
+CREATE TABLE IF NOT EXISTS `review_plan_items` (
 	`id` varchar(32) NOT NULL,
 	`planId` varchar(32) NOT NULL,
 	`dayKey` varchar(10) NOT NULL,
@@ -28,10 +28,11 @@ CREATE TABLE `review_plan_items` (
 	`rolloverCount` int NOT NULL DEFAULT 0,
 	`refId` varchar(64),
 	`doneAt` timestamp,
-	CONSTRAINT `review_plan_items_id` PRIMARY KEY(`id`)
+	CONSTRAINT `review_plan_items_id` PRIMARY KEY(`id`),
+	INDEX `review_plan_items_plan_idx` (`planId`,`dayKey`)
 );
 --> statement-breakpoint
-CREATE TABLE `review_plans` (
+CREATE TABLE IF NOT EXISTS `review_plans` (
 	`id` varchar(32) NOT NULL,
 	`workspaceId` varchar(32) NOT NULL,
 	`studentId` int NOT NULL,
@@ -43,10 +44,11 @@ CREATE TABLE `review_plans` (
 	`dailyMinutes` int NOT NULL,
 	`createdAt` timestamp NOT NULL DEFAULT (now()),
 	`completedAt` timestamp,
-	CONSTRAINT `review_plans_id` PRIMARY KEY(`id`)
+	CONSTRAINT `review_plans_id` PRIMARY KEY(`id`),
+	INDEX `review_plans_student_idx` (`workspaceId`,`studentId`,`status`)
 );
 --> statement-breakpoint
-CREATE TABLE `student_growth_settings` (
+CREATE TABLE IF NOT EXISTS `student_growth_settings` (
 	`workspaceId` varchar(32) NOT NULL,
 	`studentId` int NOT NULL,
 	`dailyMinutes` int NOT NULL DEFAULT 30,
@@ -55,7 +57,7 @@ CREATE TABLE `student_growth_settings` (
 	CONSTRAINT `student_growth_settings_workspaceId_studentId_pk` PRIMARY KEY(`workspaceId`,`studentId`)
 );
 --> statement-breakpoint
-CREATE TABLE `student_xp` (
+CREATE TABLE IF NOT EXISTS `student_xp` (
 	`studentId` int NOT NULL,
 	`xp` int NOT NULL DEFAULT 0,
 	`level` int NOT NULL DEFAULT 0,
@@ -66,7 +68,7 @@ CREATE TABLE `student_xp` (
 	CONSTRAINT `student_xp_studentId` PRIMARY KEY(`studentId`)
 );
 --> statement-breakpoint
-CREATE TABLE `xp_events` (
+CREATE TABLE IF NOT EXISTS `xp_events` (
 	`id` varchar(32) NOT NULL,
 	`studentId` int NOT NULL,
 	`workspaceId` varchar(32) NOT NULL,
@@ -75,9 +77,6 @@ CREATE TABLE `xp_events` (
 	`refKey` varchar(191) NOT NULL,
 	`createdAt` timestamp NOT NULL DEFAULT (now()),
 	CONSTRAINT `xp_events_id` PRIMARY KEY(`id`),
-	CONSTRAINT `xp_events_ref_uq` UNIQUE(`studentId`,`refKey`)
+	CONSTRAINT `xp_events_ref_uq` UNIQUE(`studentId`,`refKey`),
+	INDEX `xp_events_student_idx` (`studentId`,`createdAt`)
 );
---> statement-breakpoint
-CREATE INDEX `review_plan_items_plan_idx` ON `review_plan_items` (`planId`,`dayKey`);--> statement-breakpoint
-CREATE INDEX `review_plans_student_idx` ON `review_plans` (`workspaceId`,`studentId`,`status`);--> statement-breakpoint
-CREATE INDEX `xp_events_student_idx` ON `xp_events` (`studentId`,`createdAt`);
