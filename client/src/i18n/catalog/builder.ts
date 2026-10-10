@@ -62,8 +62,17 @@ export const builder = {
   "builder.targetsSaved": ["Təyinatlar yadda saxlandı", "Assignments saved", "Назначения сохранены"],
   "builder.noGroups": ["Qrup yoxdur.", "No groups.", "Групп нет."],
   "builder.createGroup": ["Qrup yaradın", "Create a group", "Создайте группу"],
-  "builder.individualStudents": ["Fərdi tələbələr", "Individual students", "Отдельные студенты"],
-  "builder.noActiveStudents": ["Qruplarınızda aktiv tələbə yoxdur.", "Your groups have no active students.", "В ваших группах нет активных студентов."],
+  "builder.participants": ["İştirakçılar", "Participants", "Участники"],
+  "builder.groupWhole": [
+    "Qrupa sonradan qoşulanlar da imtahanı avtomatik görür.",
+    "Students who join the group later see the exam automatically.",
+    "Студенты, позже вступившие в группу, увидят экзамен автоматически.",
+  ],
+  "builder.groupPartial": [
+    "İmtahan yalnız seçilən tələbələrə təyin olunacaq; qrupa sonradan qoşulanlar onu avtomatik görməyəcək.",
+    "The exam is assigned to the checked students only; students who join the group later won't see it automatically.",
+    "Экзамен назначается только отмеченным студентам; вступившие в группу позже не увидят его автоматически.",
+  ],
   "builder.overridesTitle": ["Bu təyinat üçün fərdi qaydalar", "Custom rules for this assignment", "Особые правила для назначения"],
   "builder.overridesToggle": [
     "Seçilmiş qrup və tələbələr üçün ümumi qaydaları əvəz et (boş sahə = ümumi qayda)",

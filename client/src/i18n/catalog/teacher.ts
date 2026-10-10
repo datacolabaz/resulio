@@ -512,7 +512,31 @@ export const teacher = {
   ],
   "modules.answerKeySaveFailed": ["Tapşırıq saxlandı, amma cavab açarı saxlanmadı.", "The task was saved, but the answer key was not.", "Задание сохранено, но ключ ответов — нет."],
   "modules.noGroups": ["Qrup yoxdur", "No groups", "Групп нет"],
-  "modules.noStudents": ["Tələbə yoxdur", "No students", "Студентов нет"],
+  "modules.materialGroupWhole": [
+    "Qrupa sonradan qoşulanlar da materialı avtomatik görür.",
+    "Students who join the group later see the material automatically.",
+    "Студенты, позже вступившие в группу, увидят материал автоматически.",
+  ],
+  "modules.materialGroupPartial": [
+    "Material yalnız seçilən tələbələrə görünəcək; qrupa sonradan qoşulanlar onu avtomatik görməyəcək.",
+    "Only the checked students will see the material; students who join the group later won't see it automatically.",
+    "Материал увидят только отмеченные студенты; вступившие в группу позже не увидят его автоматически.",
+  ],
+  "modules.taskGroupWhole": [
+    "Qrupa sonradan qoşulanlar da tapşırığı avtomatik alır.",
+    "Students who join the group later get the task automatically.",
+    "Студенты, позже вступившие в группу, получат задание автоматически.",
+  ],
+  "modules.taskGroupPartial": [
+    "Tapşırıq yalnız seçilən tələbələrə göndəriləcək; qrupa sonradan qoşulanlar onu avtomatik almayacaq.",
+    "Only the checked students get the task; students who join the group later won't get it automatically.",
+    "Задание получат только отмеченные студенты; вступившие в группу позже не получат его автоматически.",
+  ],
+  "modules.taskGroupsOnlyHint": [
+    "Məhdud tapşırıq seçilmiş qrupların bütün üzvlərinə, sonradan qoşulanlar da daxil olmaqla, açıqdır; bu rejimdə ayrı tələbə seçilmir.",
+    "A restricted task is open to every member of the selected groups, including later joiners; individual students can't be picked in this mode.",
+    "Закрытое задание открыто всем участникам выбранных групп, включая вступивших позже; отдельных студентов в этом режиме выбрать нельзя.",
+  ],
   "modules.questionBank": ["Sual bankı", "Question bank", "Банк вопросов"],
   "modules.allTypes": ["Bütün növlər", "All types", "Все типы"],
   "modules.allSources": ["Bütün mənbələr", "All sources", "Все источники"],

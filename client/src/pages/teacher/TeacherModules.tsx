@@ -1,6 +1,7 @@
 import { PlaceBadge } from "@/components/ActivityBlocks";
 import { AppShell, EmptyState, Loading, Panel, Pill } from "@/components/AppShell";
 import { MultiFileUpload, SingleFileUpload } from "@/components/FileUpload";
+import { GroupStudentPicker, useGroupStudentTargets } from "@/components/GroupStudentPicker";
 import { draftFromQuestion, QuestionEditor } from "@/components/QuestionEditor";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ShareBox, ShareFunnelSummary } from "@/components/ShareBox";
@@ -16,6 +17,7 @@ import { QuestionPreview } from "@/components/questionBank/QuestionPreview";
 import { bankLabel, SectionPicker, SectionSelect, TopicManagerDialog, TopicSelect, useTopics } from "@/components/questionBank/Topics";
 import { t } from "@/i18n/messages";
 import { errorText, fmtDateTime, fromLocalInput, questionTypeLabel, subscriptionLabel, toLocalInput } from "@/lib/format";
+import { recipientsPayload } from "@/lib/groupStudentSelection";
 import { fileDownloadUrl } from "@/lib/uploadFile";
 import { trpc } from "@/lib/trpc";
 import { QUESTION_TYPES } from "@shared/assessment";
@@ -26,50 +28,6 @@ import { Link } from "wouter";
 
 const fieldLabel = "text-foreground-secondary";
 const filterSelect = "rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground";
-
-function RecipientPicker({
-  groupIds,
-  studentIds,
-  onChange,
-  groupsOnly = false,
-}: {
-  groupIds: string[];
-  studentIds: number[];
-  onChange: (v: { groupIds: string[]; studentIds: number[] }) => void;
-  groupsOnly?: boolean;
-}) {
-  const groups = trpc.teacher.groups.list.useQuery();
-  const students = trpc.teacher.students.useQuery();
-  const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
-  return (
-    <div className={`grid gap-3 ${groupsOnly ? "" : "sm:grid-cols-2"}`}>
-      <fieldset>
-        <legend className="mb-1 text-sm text-foreground-secondary">{t("common.groups")}</legend>
-        <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border p-2">
-          {(groups.data ?? []).map((g) => (
-            <label key={g.id} className="flex items-center gap-2 text-sm">
-              <input type="checkbox" className="accent-link" checked={groupIds.includes(g.id)} onChange={() => onChange({ groupIds: toggle(groupIds, g.id), studentIds })} />
-              <span className="min-w-0 break-words">{g.name}</span>
-            </label>
-          ))}
-          {!groups.data?.length && <div className="text-xs text-muted-foreground">{t("modules.noGroups")}</div>}
-        </div>
-      </fieldset>
-      {!groupsOnly && <fieldset>
-        <legend className="mb-1 text-sm text-foreground-secondary">{t("common.students")}</legend>
-        <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border p-2">
-          {(students.data ?? []).map((s) => (
-            <label key={s.id} className="flex items-center gap-2 text-sm">
-              <input type="checkbox" className="accent-link" checked={studentIds.includes(s.id)} onChange={() => onChange({ groupIds, studentIds: toggle(studentIds, s.id) })} />
-              <span className="min-w-0 break-words">{s.name ?? s.email}</span>
-            </label>
-          ))}
-          {!students.data?.length && <div className="text-xs text-muted-foreground">{t("modules.noStudents")}</div>}
-        </div>
-      </fieldset>}
-    </div>
-  );
-}
 
 type TaskAccessMode = "PUBLIC" | "GROUPS";
 
@@ -125,11 +83,12 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
     description: initial?.description ?? "",
     instructions: initial?.instructions ?? "",
     deadline: initial ? toLocalInput(initial.deadline) : "",
-    groupIds: initial?.groupIds ?? ([] as string[]),
-    studentIds: initial?.studentIds ?? ([] as number[]),
     attachments: (initial?.attachments ?? []).map((a) => ({ ...a, mimeType: "" })),
     accessMode: initial?.accessMode ?? ("PUBLIC" as TaskAccessMode),
   });
+  // A restricted task ignores individual students, so leftovers from open-link days don't reopen as picks.
+  const targets = useGroupStudentTargets(initial && { groupIds: initial.groupIds, studentIds: initial.accessMode === "GROUPS" ? [] : initial.studentIds });
+  const groupsOnly = f.accessMode === "GROUPS";
   const done = () => { void utils.teacher.tasks.list.invalidate(); onOpenChange(false); };
   const create = trpc.teacher.tasks.create.useMutation({ onError: (e) => toast.error(errorText(e)) });
   const update = trpc.teacher.tasks.update.useMutation({ onError: (e) => toast.error(errorText(e)) });
@@ -158,7 +117,7 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
   // Saving the form marks an AI draft as reviewed.
   const keyNeedsSave = keyAvailable && (keyText.trim() !== (keyQ.data?.text ?? "").trim() || keyQ.data?.source === "AI_DRAFT");
   const deadline = fromLocalInput(f.deadline);
-  const missingGroups = f.accessMode === "GROUPS" && !f.groupIds.length;
+  const missingGroups = groupsOnly && !targets.selection.groupIds.length;
   const submit = async () => {
     if (!deadline) return;
     const attachments = f.attachments.map(({ fileId, name, size }) => ({ fileId, name, size }));
@@ -167,8 +126,7 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
       description: f.description,
       instructions: f.instructions,
       deadline,
-      groupIds: f.groupIds,
-      studentIds: f.studentIds,
+      ...recipientsPayload(targets.selection, targets.students, { kept: targets.kept, groupsOnly }),
       attachments,
       accessMode: f.accessMode,
     };
@@ -189,7 +147,7 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-w-2xl">
         <DialogHeader><DialogTitle>{initial ? t("modules.editTaskTitle") : t("modules.newTaskTitle")}</DialogTitle></DialogHeader>
         <DialogBody className="grid content-start gap-3">
           <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("common.name") })}</span><Input required value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></label>
@@ -242,7 +200,16 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
             )}
           </div>
           <AccessModePicker value={f.accessMode} onChange={(accessMode) => setF({ ...f, accessMode })} />
-          <RecipientPicker groupIds={f.groupIds} studentIds={f.studentIds} groupsOnly={f.accessMode === "GROUPS"} onChange={(v) => setF({ ...f, ...v })} />
+          <GroupStudentPicker
+            groups={targets.groups}
+            students={targets.students}
+            value={targets.selection}
+            onChange={targets.setSelection}
+            groupsOnly={groupsOnly}
+            keptCount={targets.kept.length}
+            hints={groupsOnly ? { whole: t("modules.taskGroupsOnlyHint"), partial: t("modules.taskGroupsOnlyHint") } : { whole: t("modules.taskGroupWhole"), partial: t("modules.taskGroupPartial") }}
+            summary
+          />
           {missingGroups && <p role="alert" className="text-xs text-destructive">{t("modules.accessGroupsRequired")}</p>}
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" className="mt-0.5 accent-link" checked={notifyStudents} onChange={(e) => setNotifyStudents(e.target.checked)} />
@@ -255,7 +222,7 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
           <Button
-            disabled={f.title.trim().length < 2 || !deadline || missingGroups || create.isPending || update.isPending || saveKey.isPending || draftKey.isPending}
+            disabled={f.title.trim().length < 2 || !deadline || missingGroups || !targets.ready || create.isPending || update.isPending || saveKey.isPending || draftKey.isPending}
             onClick={() => void submit()}
           >
             {t("common.save")}
@@ -464,7 +431,7 @@ export function AssignmentsPage() {
           </div>
         )}
       </div>
-      <AssignmentFormDialog open={open} onOpenChange={setOpen} />
+      {open && <AssignmentFormDialog open onOpenChange={setOpen} />}
       {editing && <AssignmentFormDialog open onOpenChange={(v) => !v && setEditing(null)} initial={editing} />}
     </AppShell>
   );
@@ -631,15 +598,14 @@ function MaterialFormDialog({ open, onOpenChange, initial }: { open: boolean; on
     subject: initial?.subject ?? "",
     topic: initial?.topic ?? "",
     file: initial?.fileId ? { fileId: initial.fileId, name: initial.fileName, size: 0, mimeType: "" } : null,
-    groupIds: initial?.groupIds ?? ([] as string[]),
-    studentIds: initial?.studentIds ?? ([] as number[]),
   });
+  const targets = useGroupStudentTargets(initial);
   const done = () => { void utils.teacher.tasks.materials.invalidate(); onOpenChange(false); };
   const create = trpc.teacher.tasks.createMaterial.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
   const update = trpc.teacher.tasks.updateMaterial.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-w-2xl">
         <DialogHeader><DialogTitle>{initial ? t("modules.editMaterialTitle") : t("modules.newMaterialTitle")}</DialogTitle></DialogHeader>
         <DialogBody className="grid content-start gap-3">
           <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("common.name") })}</span><Input required value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></label>
@@ -652,12 +618,20 @@ function MaterialFormDialog({ open, onOpenChange, initial }: { open: boolean; on
             <p className={`mb-1 text-sm ${fieldLabel}`}>{t("common.required", { label: t("modules.fileName") })}</p>
             <SingleFileUpload context="material" value={f.file} onChange={(file) => setF({ ...f, file })} />
           </div>
-          <RecipientPicker groupIds={f.groupIds} studentIds={f.studentIds} onChange={(v) => setF({ ...f, ...v })} />
+          <GroupStudentPicker
+            groups={targets.groups}
+            students={targets.students}
+            value={targets.selection}
+            onChange={targets.setSelection}
+            keptCount={targets.kept.length}
+            hints={{ whole: t("modules.materialGroupWhole"), partial: t("modules.materialGroupPartial") }}
+            summary
+          />
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
           <Button
-            disabled={f.title.trim().length < 2 || !f.file || create.isPending || update.isPending}
+            disabled={f.title.trim().length < 2 || !f.file || !targets.ready || create.isPending || update.isPending}
             onClick={() => {
               if (!f.file) return;
               const payload = {
@@ -669,8 +643,7 @@ function MaterialFormDialog({ open, onOpenChange, initial }: { open: boolean; on
                 fileId: f.file.fileId,
                 mimeType: f.file.mimeType || null,
                 sizeBytes: f.file.size || null,
-                groupIds: f.groupIds,
-                studentIds: f.studentIds,
+                ...recipientsPayload(targets.selection, targets.students, { kept: targets.kept }),
               };
               if (initial) update.mutate({ id: initial.id, patch: payload });
               else create.mutate(payload);
@@ -777,7 +750,7 @@ function MaterialsTab() {
           ))}
         </div>
       )}
-      <MaterialFormDialog open={open} onOpenChange={setOpen} />
+      {open && <MaterialFormDialog open onOpenChange={setOpen} />}
       {editing && <MaterialFormDialog open onOpenChange={(v) => !v && setEditing(null)} initial={editing} />}
     </div>
   );

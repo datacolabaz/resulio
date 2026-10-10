@@ -120,10 +120,13 @@ async function me(user: NonNullable<Awaited<ReturnType<typeof db.getUserByOpenId
   };
 }
 
-/** Validates the recipients belong to this teacher and returns who they reach (group members only, for a GROUPS-restricted task). */
-async function assertRecipients(scope: TeacherScope, groupIds: string[], studentIds: number[], accessMode: TaskAccessMode = "PUBLIC") {
+/**
+ * Validates the recipients belong to this teacher and returns who they reach (group members only, for a GROUPS-restricted task).
+ * `alreadyRecipients`: on edit, students already on the row (e.g. joined via the share link) may stay.
+ */
+async function assertRecipients(scope: TeacherScope, groupIds: string[], studentIds: number[], accessMode: TaskAccessMode = "PUBLIC", alreadyRecipients: readonly number[] = []) {
   for (const g of groupIds) await groups.assertGroupOwner(scope, g);
-  const own = new Set(await groups.teacherStudentIds(scope));
+  const own = new Set([...(await groups.teacherStudentIds(scope)), ...alreadyRecipients]);
   if (!studentIds.every((s) => own.has(s))) throw new AppError("FORBIDDEN");
   const fromGroups = await groups.activeStudentIdsOfGroups(groupIds);
   return rosterStudentIds({ accessMode, groupIds, studentIds }, fromGroups);
@@ -614,7 +617,7 @@ async function assertPatchedRecipients(
   current: { groupIds: string[]; studentIds: number[] },
   patch: { groupIds?: string[]; studentIds?: number[] },
 ) {
-  return assertRecipients(scope, patch.groupIds ?? current.groupIds, patch.studentIds ?? current.studentIds);
+  return assertRecipients(scope, patch.groupIds ?? current.groupIds, patch.studentIds ?? current.studentIds, "PUBLIC", current.studentIds);
 }
 
 const teacherTasksRouter = router({
@@ -660,7 +663,7 @@ const teacherTasksRouter = router({
       const studentIds = input.patch.studentIds ?? current.studentIds;
       assertAccessGroups(accessMode, groupIds);
       const touchesRecipients = input.patch.groupIds !== undefined || input.patch.studentIds !== undefined || accessMode !== current.accessMode;
-      if (touchesRecipients) await assertRecipients(ctx.scope, groupIds, studentIds, accessMode);
+      if (touchesRecipients) await assertRecipients(ctx.scope, groupIds, studentIds, accessMode, current.studentIds);
       return tasks.updateAssignment(ctx.scope, input.id, input.patch, { notify: input.notifyStudents });
     }),
   remove: teacherProcedure.input(z.object({ id: entityId })).mutation(async ({ ctx, input }) => {
