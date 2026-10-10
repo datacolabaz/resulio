@@ -6,7 +6,7 @@ import { fileDownloadUrl } from "@/lib/uploadFile";
 import type { SyllabusItemKind } from "@shared/syllabus";
 import { Download, ExternalLink, FolderOpen, Lightbulb } from "lucide-react";
 import { useState } from "react";
-import { Markdown, TheoryView, type MaterialRef, type VideoSignal } from "./TheoryView";
+import { Markdown, MaterialRefLink, TheoryView, type MaterialRef, type VideoSignal } from "./TheoryView";
 
 type Content = Record<string, unknown>;
 const str = (c: Content, k: string) => (typeof c[k] === "string" ? (c[k] as string) : "");
@@ -133,15 +133,7 @@ export function StudentItemView({
       const href = safeHref(str(content, "url"));
       return (
         <div className="space-y-2 text-sm">
-          {m &&
-            (m.fileId ? (
-              <a href={fileDownloadUrl(m.fileId)} className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 hover:bg-muted">
-                <FolderOpen className="h-4 w-4" aria-hidden />
-                {m.title}
-              </a>
-            ) : (
-              <p className="inline-flex items-center gap-2"><FolderOpen className="h-4 w-4" aria-hidden />{m.title}</p>
-            ))}
+          {m && <MaterialRefLink m={m} className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 hover:bg-muted" />}
           {!m && typeof content.materialId === "string" && <p className="text-muted-foreground">{t("syllabus.theory.materialRef")}</p>}
           {href && (
             <a href={href} target="_blank" rel="noopener noreferrer nofollow" className="inline-flex items-center gap-1 break-all text-link underline">

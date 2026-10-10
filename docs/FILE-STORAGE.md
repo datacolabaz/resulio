@@ -12,6 +12,10 @@ Reads prefer the MySQL copy when it is there, so both kinds work side by side an
 working while (or without ever) being moved. Credentials are only ever environment variables on the
 API service, never stored in the database.
 
+Material files above 8 MB skip the API: the browser uploads them straight to R2 with short-lived
+signed URLs, and the API records the file only after checking the object (limits per kind, the
+per-teacher quota, the bucket CORS rule and the lifecycle rule: `docs/MATERIALS.md`, "Large uploads").
+
 ## Downloads and access
 
 `GET /api/files/:id` always runs the app's access check first (workspace member, student the task
@@ -45,7 +49,9 @@ reaches, public share page, …), exactly as before. Then, for a file in R2:
 
    The frontend service needs nothing. Railway redeploys; from then on new uploads go to R2
    (Admin → Files & storage shows "New uploads go to Cloudflare R2").
-6. Upload a file in the app and download it again to check. To roll back, remove the variables (or set
+6. For large material uploads, add the bucket's CORS policy and the lifecycle rule from
+   `docs/MATERIALS.md` ("R2 setup for direct uploads"). Without them uploads up to 8 MB still work.
+7. Upload a file in the app and download it again to check. To roll back, remove the variables (or set
    `FILE_STORAGE_BACKEND=db`): new uploads go back to MySQL. Files already in R2 still need the R2
    variables to be read, so keep them while any exist.
 

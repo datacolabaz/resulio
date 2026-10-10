@@ -25,6 +25,7 @@ import { sharedFileDownloadUrl } from "@/lib/uploadFile";
 import { visitorId } from "@/lib/visitor";
 import { useSharePageMeta } from "@/seo/usePageMeta";
 import { groupPageTitle } from "@shared/groupLinks";
+import { linkHost } from "@shared/materialTemplates";
 import type { GroupType } from "@shared/groupType";
 import type { ClassScheduleEntry } from "@shared/schedule";
 import { DEFAULT_SHARE_CAMPAIGN, parseShareCampaign, parseShareSource, type ShareTargetType } from "@shared/shareTracking";
@@ -466,25 +467,62 @@ export function PublicMaterialPage() {
   const { user, loading } = useAuth();
   const material = trpc.public.material.useQuery({ shareCode }, { enabled: shareCode.length >= 4, retry: false });
   const claim = trpc.student.claimMaterial.useMutation();
-  const m = material.data;
-  const { channel, campaign, visitorId: vid } = useShareAttribution("MATERIAL", shareCode, Boolean(m));
+  const page = material.data;
+  const m = page?.material;
+  const { channel, campaign, visitorId: vid } = useShareAttribution("MATERIAL", shareCode, Boolean(page));
   const returnTo = `/material/${shareCode}${window.location.search}`;
   return (
     <Card>
-      {material.isLoading ? <p role="status" className="mt-4 text-sm text-muted-foreground">{t("common.loading")}</p> : !m ? (
+      {material.isLoading ? <p role="status" className="mt-4 text-sm text-muted-foreground">{t("common.loading")}</p> : !page ? (
         <p role="alert" className="mt-4 text-sm text-destructive">{t("public.material.notFound")}</p>
+      ) : !m ? (
+        <>
+          <h1 className="mt-4 break-words text-xl font-semibold">
+            {page.access === "SIGN_IN_REQUIRED" ? t("public.material.signInTitle") : t("public.material.noAccessTitle")}
+          </h1>
+          <p className="mt-3 text-sm text-foreground-secondary">
+            {page.access === "SIGN_IN_REQUIRED" ? t("public.material.signInBody") : t("public.material.noAccessBody")}
+          </p>
+          {user?.email && page.access === "DENIED" && (
+            <p className="mt-3 break-words text-xs text-muted-foreground">{t("public.task.signedInAs", { email: user.email })}</p>
+          )}
+          <div className="mt-6">
+            {loading ? null : (
+              <>
+                <Button className="w-full" variant={user ? "outline" : "default"} onClick={() => startLogin(returnTo)}>
+                  {user ? t("public.task.switchAccount") : t("common.signInGoogle")}
+                </Button>
+                {!user && <EmailSignIn />}
+              </>
+            )}
+          </div>
+        </>
       ) : (
         <>
+          {page.visibility === "RECIPIENTS" && (
+            <p className="mt-4 text-xs font-medium uppercase tracking-wide text-link">{t("public.material.restrictedNote")}</p>
+          )}
           <h1 className="mt-4 break-words text-2xl font-semibold">{m.title}</h1>
-          {m.description && <p className="mt-3 break-words text-sm text-foreground-secondary">{m.description}</p>}
+          {m.description && <p className="mt-3 whitespace-pre-line break-words text-sm text-foreground-secondary">{m.description}</p>}
           <p className="mt-3 text-sm text-muted-foreground">{[m.subject, m.topic].filter(Boolean).join(" · ")}</p>
-          {m.fileId && (
+          {m.url ? (
             <a
-              href={sharedFileDownloadUrl(m.fileId, { targetType: "MATERIAL", shareCode, channel, campaign, visitorId: vid })}
-              className="mt-3 inline-block rounded-lg border border-border bg-muted px-3 py-1.5 text-sm text-link underline-offset-2 hover:underline"
+              href={m.url}
+              target="_blank"
+              rel="noopener noreferrer nofollow"
+              className="mt-3 inline-block max-w-full break-all rounded-lg border border-border bg-muted px-3 py-1.5 text-sm text-link underline-offset-2 hover:underline"
             >
-              {t("common.download")}: {m.fileName}
+              {t("public.material.openLink")}: {linkHost(m.url)}
             </a>
+          ) : (
+            m.fileId && (
+              <a
+                href={sharedFileDownloadUrl(m.fileId, { targetType: "MATERIAL", shareCode, channel, campaign, visitorId: vid })}
+                className="mt-3 inline-block rounded-lg border border-border bg-muted px-3 py-1.5 text-sm text-link underline-offset-2 hover:underline"
+              >
+                {t("common.download")}: {m.fileName}
+              </a>
+            )
           )}
           <div className="mt-6">
             {loading ? null : !user ? (
@@ -492,6 +530,8 @@ export function PublicMaterialPage() {
                 <Button className="w-full" onClick={() => startLogin(returnTo)}>{t("common.signInGoogle")}</Button>
                 <EmailSignIn />
               </>
+            ) : page.access === "OWNER" ? (
+              <p className="text-sm text-foreground-secondary" role="status">{t("public.material.ownerNote")}</p>
             ) : claim.isSuccess ? (
               <div className="space-y-3 text-sm" role="status">
                 <p className="text-success">{t("public.material.claimed")}</p>

@@ -94,7 +94,7 @@ export function openTasksForJoin<T extends Pick<Task, "id" | "groupIds" | "deadl
     .sort((a, b) => a.deadline.getTime() - b.deadline.getTime());
 }
 
-async function memberRows(groupIds: string[]): Promise<MemberRow[]> {
+export async function memberRows(groupIds: string[]): Promise<MemberRow[]> {
   if (!groupIds.length) return [];
   return requireDb()
     .select({ groupId: groupMembers.groupId, userId: groupMembers.userId, status: groupMembers.status, membershipRole: groupMembers.membershipRole })
@@ -103,7 +103,7 @@ async function memberRows(groupIds: string[]): Promise<MemberRow[]> {
 }
 
 /** Who the notice says it is from: the workspace's public name, else the teacher's name, else the workspace title. */
-async function senderName(workspaceId: string, teacherId: number): Promise<string> {
+export async function senderName(workspaceId: string, teacherId: number): Promise<string> {
   const db = requireDb();
   const [ws] = await db.select({ display: providerWorkspaces.publicDisplayName, title: providerWorkspaces.title }).from(providerWorkspaces).where(eq(providerWorkspaces.id, workspaceId)).limit(1);
   if (ws?.display.trim()) return ws.display.trim();

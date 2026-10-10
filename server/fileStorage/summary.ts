@@ -124,6 +124,8 @@ export async function storageSummary() {
     totalFiles: n(total?.count),
     totalBytes: n(total?.bytes),
     softQuotaBytes: settings["storage.softQuotaBytes"] || null,
+    materialUploadLimitsMb: settings["storage.materialUploadLimitsMb"] ?? null,
+    workspaceQuotaBytes: settings["storage.workspaceQuotaBytes"] || null,
     backend: {
       uploadsTo: uploadBackend(),
       r2Configured: !!r2,

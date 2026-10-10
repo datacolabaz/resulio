@@ -23,6 +23,9 @@ import { sweepExpiredAttempts } from "../modules/attempts";
 import { runPendingLinkJoinBackfill } from "../modules/groupJoin";
 import { groupLinkPreview, groupPreviewRoute } from "../modules/groupLinkPreview";
 import { runGroupProfileBackfill } from "../modules/groupProfiles";
+import { runUploadSweep } from "../materials/directUpload";
+import { runMaterialMetaBackfill } from "../materials/meta";
+import { runScheduledMaterialSweep } from "../materials/notify";
 import { sweepResultEmails } from "../modules/resultEmail";
 import { resumeAnnouncements } from "../notifications/announcements";
 import { startNotificationWorker } from "../notifications/dispatcher";
@@ -53,6 +56,37 @@ function startAttemptSweeper() {
       running = false;
     }
   }, SWEEP_INTERVAL_MS).unref();
+}
+
+const UPLOAD_SWEEP_MS = 15 * 60_000;
+
+/** Scheduled materials going live (every 30 s) and abandoned direct uploads (every 15 min). */
+function startMaterialSweepers() {
+  if (!getDb()) return;
+  let publishing = false;
+  setInterval(async () => {
+    if (publishing) return;
+    publishing = true;
+    try {
+      await runScheduledMaterialSweep();
+    } catch (error) {
+      console.error("[Materials] Scheduled publish sweep failed", error);
+    } finally {
+      publishing = false;
+    }
+  }, SWEEP_INTERVAL_MS).unref();
+  let cleaning = false;
+  setInterval(async () => {
+    if (cleaning) return;
+    cleaning = true;
+    try {
+      await runUploadSweep();
+    } catch (error) {
+      console.error("[Materials] Upload cleanup failed", error);
+    } finally {
+      cleaning = false;
+    }
+  }, UPLOAD_SWEEP_MS).unref();
 }
 
 const SYLLABUS_RECONCILE_MS = 2 * 60_000;
@@ -149,7 +183,9 @@ async function startServer() {
   logWebPushStatus();
   void resumeAnnouncements();
   startSyllabusProgression();
+  startMaterialSweepers();
   if (getDb()) {
+    runMaterialMetaBackfill().catch((error) => console.error("[Materials] meta backfill failed", error instanceof Error ? error.message : error));
     runPendingLinkJoinBackfill().catch((error) => console.error("[Groups] Pending join backfill failed", error instanceof Error ? error.message : error));
     runModuleDetailsBackfills().catch((error) => console.error("[Syllabus] module details backfill failed", error instanceof Error ? error.message : error));
     runGroupProfileBackfill().catch((error) => console.error("[Groups] group type backfill failed", error instanceof Error ? error.message : error));

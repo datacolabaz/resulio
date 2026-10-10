@@ -307,6 +307,25 @@ export const app = {
     "Чтобы открыть раздел ученика, сначала вступите в группу (по ссылке или коду).",
   ],
   "public.material.goToMaterials": ["Materiallarım →", "My materials →", "Мои материалы →"],
+  "public.material.signInTitle": ["Bu material məhduddur", "This material is restricted", "Это материал с ограниченным доступом"],
+  "public.material.signInBody": [
+    "Materialı görmək üçün daxil olun. Yalnız müəllimin seçdiyi qruplar və tələbələr giriş əldə edə bilər.",
+    "Sign in to view this material. Only the groups and students the teacher selected can open it.",
+    "Войдите, чтобы открыть материал. Доступ есть только у групп и учеников, выбранных преподавателем.",
+  ],
+  "public.material.noAccessTitle": ["Bu materiala girişiniz yoxdur", "You don't have access to this material", "У вас нет доступа к этому материалу"],
+  "public.material.noAccessBody": [
+    "Bu material yalnız müəllimin seçdiyi qruplar və tələbələr üçün açıqdır. Siz də olmalısınızsa, müəlliminizlə əlaqə saxlayın.",
+    "This material is only open to the groups and students the teacher selected. If you should be one of them, contact your teacher.",
+    "Этот материал доступен только группам и ученикам, выбранным преподавателем. Если вы должны быть среди них, свяжитесь с преподавателем.",
+  ],
+  "public.material.restrictedNote": ["Yalnız seçilmiş qruplar və tələbələr üçün", "Only for the selected groups and students", "Только для выбранных групп и учеников"],
+  "public.material.ownerNote": [
+    "Siz bu materialın müəllimisiniz — tələbələr bu səhifəni belə görür.",
+    "You are this material's teacher — this is how students see this page.",
+    "Вы преподаватель этого материала — так эту страницу видят ученики.",
+  ],
+  "public.material.openLink": ["Linki aç", "Open link", "Открыть ссылку"],
 
   "welcome.greeting": ["Xoş gəldiniz", "Welcome", "Добро пожаловать"],
   "welcome.greetingName": ["Xoş gəldiniz, {name}", "Welcome, {name}", "Добро пожаловать, {name}"],
@@ -405,6 +424,7 @@ export const app = {
   "settings.event.SYLLABUS_AT_RISK_DIGEST": ["Gündəlik xülasə: risk altında olan tələbələr", "Daily digest: students at risk", "Ежедневная сводка: студенты в зоне риска"],
   "settings.event.TASK_ASSIGNED": ["Mənə yeni tapşırıq verildi", "A new task was assigned to me", "Мне выдано новое задание"],
   "settings.event.TASK_UPDATED": ["Tapşırığın son tarixi dəyişdi", "A task's deadline changed", "Изменён срок задания"],
+  "settings.event.MATERIAL_SHARED": ["Sizinlə yeni material paylaşıldı", "A new material was shared with you", "С вами поделились новым материалом"],
   "settings.event.EXAM_RESULT_READY": ["İmtahan nəticəsi (müəllim seçibsə)", "Exam result (if the teacher chose to send it)", "Результат экзамена (если преподаватель включил отправку)"],
   "settings.partner": ["Partner proqramı", "Partner programme", "Партнёрская программа"],
   "settings.partnerStatus": ["Status: {status}", "Status: {status}", "Статус: {status}"],

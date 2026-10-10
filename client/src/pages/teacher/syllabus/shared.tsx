@@ -84,7 +84,7 @@ export function useSyllabusRefresh(id: string) {
 
 export function useMaterials() {
   const q = trpc.teacher.tasks.materials.useQuery(undefined, { staleTime: 60_000 });
-  const list = (q.data ?? []).map((m) => ({ id: m.id, title: m.title, fileId: m.fileId ?? null }));
+  const list = (q.data ?? []).map((m) => ({ id: m.id, title: m.title, fileId: m.fileId ?? null, url: m.meta.url }));
   return { list, byId: new Map(list.map((m) => [m.id, m])) };
 }
 

@@ -15,6 +15,14 @@ import {
   varchar,
 } from "drizzle-orm/mysql-core";
 import {
+  CONTENT_ENTITY_TYPES,
+  MATERIAL_STATUSES,
+  MATERIAL_VISIBILITIES,
+  TAG_TYPES,
+  type MaterialKind,
+  type MaterialTemplate,
+} from "../shared/materialTemplates";
+import {
   ACTIVITY_ENTITY_TYPES,
   ATTEMPT_STATUSES,
   DEFAULT_INACTIVITY_MINUTES,
@@ -900,6 +908,112 @@ export const materials = mysqlTable(
     uploadedAt: timestamp("uploadedAt").defaultNow().notNull(),
   },
   (t) => [index("materials_workspace_idx").on(t.providerWorkspaceId)],
+);
+
+/**
+ * Template, kind, publishing and filterable details of a material (and of a task created from the
+ * material form). A side table so `materials`/`tasks` stay as they are; a material without a row
+ * reads as a published GENERAL file shared by link (see server/materials/meta.ts, docs/MATERIALS.md).
+ * Filterable fields are plain indexed columns holding codes (or text typed under "Digər");
+ * everything nobody searches by sits in `extra`.
+ */
+export const contentMeta = mysqlTable(
+  "content_meta",
+  {
+    entityType: mysqlEnum("entityType", CONTENT_ENTITY_TYPES).notNull(),
+    entityId: id("entityId").notNull(),
+    workspaceId: id("workspaceId").notNull(),
+    template: varchar("template", { length: 24 }).$type<MaterialTemplate>().notNull(),
+    kind: varchar("kind", { length: 16 }).$type<MaterialKind>().notNull(),
+    status: mysqlEnum("status", MATERIAL_STATUSES).notNull().default("PUBLISHED"),
+    /** Null = visible as soon as it is published. */
+    publishAt: timestamp("publishAt"),
+    visibility: mysqlEnum("visibility", MATERIAL_VISIBILITIES).notNull().default("LINK"),
+    notify: boolean("notify").notNull().default(true),
+    /** When publishing was handled (notices sent or skipped); null while a draft or scheduled. */
+    notifiedAt: timestamp("notifiedAt"),
+    url: varchar("url", { length: 2048 }),
+    urlHost: varchar("urlHost", { length: 255 }),
+    dueAt: timestamp("dueAt"),
+    estimatedMinutes: int("estimatedMinutes"),
+    subjectKey: varchar("subjectKey", { length: 120 }).notNull().default(""),
+    gradeLevel: varchar("gradeLevel", { length: 32 }).notNull().default(""),
+    direction: varchar("direction", { length: 64 }).notNull().default(""),
+    examType: varchar("examType", { length: 64 }).notNull().default(""),
+    skill: varchar("skill", { length: 32 }).notNull().default(""),
+    level: varchar("level", { length: 32 }).notNull().default(""),
+    difficulty: varchar("difficulty", { length: 16 }).notNull().default(""),
+    language: varchar("language", { length: 64 }).notNull().default(""),
+    extra: json("extra").$type<Record<string, unknown>>().notNull(),
+    schemaVersion: int("schemaVersion").notNull().default(1),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.entityType, t.entityId] }),
+    index("content_meta_template_idx").on(t.workspaceId, t.template),
+    index("content_meta_subject_idx").on(t.workspaceId, t.subjectKey),
+    index("content_meta_exam_idx").on(t.workspaceId, t.examType),
+    index("content_meta_skill_idx").on(t.workspaceId, t.skill),
+    index("content_meta_level_idx").on(t.workspaceId, t.level),
+    index("content_meta_direction_idx").on(t.workspaceId, t.direction),
+    index("content_meta_publish_idx").on(t.status, t.publishAt, t.notifiedAt),
+  ],
+);
+
+/** Topics and technologies, shared by a workspace's materials and tasks. `nameKey` = tagKey(name). */
+export const contentTags = mysqlTable(
+  "content_tags",
+  {
+    id: id("id").primaryKey(),
+    workspaceId: id("workspaceId").notNull(),
+    type: mysqlEnum("type", TAG_TYPES).notNull(),
+    name: varchar("name", { length: 60 }).notNull(),
+    nameKey: varchar("nameKey", { length: 60 }).notNull(),
+    /** The question bank subject/section of the same name, when there is one. */
+    questionTopicId: id("questionTopicId"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex("content_tags_key_unique").on(t.workspaceId, t.type, t.nameKey)],
+);
+
+export const contentTagLinks = mysqlTable(
+  "content_tag_links",
+  {
+    entityType: mysqlEnum("entityType", CONTENT_ENTITY_TYPES).notNull(),
+    entityId: id("entityId").notNull(),
+    tagId: id("tagId").notNull(),
+    position: int("position").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.entityType, t.entityId, t.tagId] }), index("content_tag_links_tag_idx").on(t.tagId)],
+);
+
+export const UPLOAD_SESSION_STATUSES = ["PENDING", "COMPLETED", "ABORTED", "EXPIRED"] as const;
+
+/**
+ * A browser→R2 upload in progress (server/materials/directUpload.ts). The `files` row is only
+ * written once the object is verified; PENDING rows past `expiresAt` are cleaned up by a sweeper.
+ */
+export const uploadSessions = mysqlTable(
+  "upload_sessions",
+  {
+    id: id("id").primaryKey(),
+    workspaceId: id("workspaceId").notNull(),
+    userId: int("userId").notNull(),
+    fileId: id("fileId").notNull(),
+    fileName: varchar("fileName", { length: 255 }).notNull(),
+    mimeType: varchar("mimeType", { length: 127 }).notNull(),
+    sizeBytes: bigint("sizeBytes", { mode: "number" }).notNull(),
+    bucket: varchar("bucket", { length: 63 }).notNull(),
+    objectKey: varchar("objectKey", { length: 512 }).notNull(),
+    /** S3 multipart upload id; null for a single PUT. */
+    multipartId: varchar("multipartId", { length: 1024 }),
+    partSize: int("partSize"),
+    status: mysqlEnum("status", UPLOAD_SESSION_STATUSES).notNull().default("PENDING"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    expiresAt: timestamp("expiresAt").notNull(),
+  },
+  (t) => [index("upload_sessions_status_idx").on(t.status, t.expiresAt), index("upload_sessions_workspace_idx").on(t.workspaceId, t.status)],
 );
 
 /**
@@ -1872,6 +1986,9 @@ export type Result = typeof results.$inferSelect;
 export type ResultItem = typeof resultItems.$inferSelect;
 export type AssessmentAssignment = typeof assessmentAssignments.$inferSelect;
 export type FileRow = typeof files.$inferSelect;
+export type MaterialRow = typeof materials.$inferSelect;
+export type ContentMetaRow = typeof contentMeta.$inferSelect;
+export type UploadSession = typeof uploadSessions.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
 export type TaskSubmission = typeof taskSubmissions.$inferSelect;
 export type SubmissionAiReview = typeof submissionAiReviews.$inferSelect;

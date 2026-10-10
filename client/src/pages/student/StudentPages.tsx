@@ -27,6 +27,7 @@ import { normalizeJoinInput, resolveJoinInput } from "@/lib/joinInput";
 import { itemStatus, liveStatus } from "@/lib/status";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { fileDownloadUrl, type UploadedFile } from "@/lib/uploadFile";
+import { linkHost } from "@shared/materialTemplates";
 import { safeReturnPath } from "@/lib/syllabusLearn";
 import { ArrowLeft, CheckCircle2, Clock, History, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -666,6 +667,7 @@ export function StudentTasks() {
 
 export function StudentMaterials() {
   const list = trpc.student.materials.useQuery();
+  const openLink = trpc.student.openMaterialLink.useMutation();
   return (
     <AppShell area="learning">
       {!list.data ? <Loading /> : !list.data.length ? (
@@ -676,10 +678,22 @@ export function StudentMaterials() {
             <Panel key={m.id} title={m.title}>
               <p className="break-words text-sm text-foreground-secondary">{m.description}</p>
               <p className="mt-2 break-words text-xs text-muted-foreground">{[m.subject, m.topic].filter(Boolean).join(" · ")}</p>
-              {m.fileId && (
-                <a href={fileDownloadUrl(m.fileId)} className="mt-2 inline-block rounded-lg border border-border bg-muted px-2 py-1 text-xs text-link underline-offset-2 hover:underline">
-                  {m.fileName}
+              {m.meta.url ? (
+                <a
+                  href={m.meta.url}
+                  target="_blank"
+                  rel="noopener noreferrer nofollow"
+                  onClick={() => openLink.mutate({ id: m.id })}
+                  className="mt-2 inline-block max-w-full break-all rounded-lg border border-border bg-muted px-2 py-1 text-xs text-link underline-offset-2 hover:underline"
+                >
+                  {t("public.material.openLink")}: {linkHost(m.meta.url)}
                 </a>
+              ) : (
+                m.fileId && (
+                  <a href={fileDownloadUrl(m.fileId)} className="mt-2 inline-block rounded-lg border border-border bg-muted px-2 py-1 text-xs text-link underline-offset-2 hover:underline">
+                    {m.fileName}
+                  </a>
+                )
               )}
             </Panel>
           ))}

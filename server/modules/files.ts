@@ -1,9 +1,11 @@
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { fileObjects, files, materials, tasks, type FileRow } from "../../drizzle/schema";
+import { fileObjects, files, materials, tasks, type FileRow, type MaterialRow } from "../../drizzle/schema";
 import type { ShareCampaign, ShareChannel } from "../../shared/shareTracking";
 import { requireDb } from "../db";
 import { objectKeyFor, objectStore, uploadBackend } from "../fileStorage/r2";
+import { materialReachesStudent, materialsUsingFile, openByLink } from "../materials/access";
+import { visibleToStudents, withMeta, type ContentMetaView } from "../materials/meta";
 import { managedWorkspaces } from "./access";
 import { recordEvent } from "./activity";
 import { AppError } from "./errors";
@@ -43,9 +45,10 @@ export function extensionOf(fileName: string): string {
 }
 
 /** Throws FILE_TOO_LARGE / FILE_TYPE_NOT_ALLOWED; otherwise returns the mime type to store. */
-export function assertAllowedUpload(fileName: string, sizeBytes: number): string {
+export function assertAllowedUpload(fileName: string, sizeBytes: number, types: Record<string, string> = ALLOWED_FILE_TYPES): string {
   if (sizeBytes > MAX_FILE_BYTES) throw new AppError("FILE_TOO_LARGE");
-  const mimeType = ALLOWED_FILE_TYPES[extensionOf(fileName)];
+  const ext = extensionOf(fileName);
+  const mimeType = Object.prototype.hasOwnProperty.call(types, ext) ? types[ext] : undefined;
   if (!mimeType) throw new AppError("FILE_TYPE_NOT_ALLOWED");
   return mimeType;
 }
@@ -64,8 +67,10 @@ export async function saveFile(input: {
   fileName: string;
   buffer: Buffer;
   isPublic: boolean;
+  /** Extension → type map; the default list unless the context allows more (material uploads). */
+  allowedTypes?: Record<string, string>;
 }): Promise<SavedFile> {
-  const mimeType = assertAllowedUpload(input.fileName, input.buffer.byteLength);
+  const mimeType = assertAllowedUpload(input.fileName, input.buffer.byteLength, input.allowedTypes);
   const id = nanoid();
   const name = input.fileName.slice(0, 255);
   const row = {
@@ -127,32 +132,44 @@ async function tasksAttaching(file: FileRow) {
   return workspaceTasks.filter((task) => task.attachments.some((a) => a.fileId === file.id));
 }
 
-/** The file is their own upload, a task attachment on a task that reaches them, or used in syllabus content they can open now. */
-async function studentCanReach(file: FileRow, studentId: number, attachedTo: Awaited<ReturnType<typeof tasksAttaching>>) {
+type MaterialsOfFile = Array<MaterialRow & { meta: ContentMetaView }>;
+
+/**
+ * The file is their own upload, a task attachment on a task that reaches them, the file of a
+ * visible material that reaches them, or used in syllabus content (directly or through a
+ * referenced material) they can open now.
+ */
+async function studentCanReach(file: FileRow, studentId: number, attachedTo: Awaited<ReturnType<typeof tasksAttaching>>, usedBy: MaterialsOfFile) {
   if (file.uploadedBy === studentId) return true;
-  if (attachedTo.length) {
+  if (attachedTo.length || usedBy.length) {
     const groupIds = await activeGroupIdsOfStudent(studentId);
     if (attachedTo.some((task) => taskReachesStudent(task, studentId, groupIds))) return true;
+    if (usedBy.some((m) => visibleToStudents(m.meta) && materialReachesStudent(m, studentId, groupIds))) return true;
   }
   // Loaded lazily: the syllabus modules import the task core, which imports this module.
-  const { studentMayDownloadSyllabusFile } = await import("../syllabus/fileAccess");
-  return studentMayDownloadSyllabusFile(studentId, file);
+  const { studentMayDownloadSyllabusFile, studentMayOpenSyllabusMaterial } = await import("../syllabus/fileAccess");
+  if (await studentMayDownloadSyllabusFile(studentId, file)) return true;
+  for (const m of usedBy) if (await studentMayOpenSyllabusMaterial(studentId, m)) return true;
+  return false;
 }
 
 /**
- * OPEN: servable without a session (a material file, or an attachment of an open-link task).
- * ALLOWED: this signed-in user may download it. SIGN_IN_REQUIRED / DENIED otherwise — e.g. an
- * attachment of a group-restricted task, for a visitor who isn't signed in or isn't in its groups.
+ * OPEN: servable without a session (the file of a visible material shared by link, or an
+ * attachment of an open-link task). ALLOWED: this signed-in user may download it.
+ * SIGN_IN_REQUIRED / DENIED otherwise — e.g. an attachment of a group-restricted task, or the file
+ * of a draft, scheduled or recipients-only material, for a visitor who may not see it.
  */
 export async function downloadAccess(file: FileRow, userId: number | null): Promise<"OPEN" | "ALLOWED" | "SIGN_IN_REQUIRED" | "DENIED"> {
   const attachedTo = await tasksAttaching(file);
+  const usedBy: MaterialsOfFile = await withMeta(await materialsUsingFile(file.id));
   if (file.isPublic) {
-    const [material] = await requireDb().select({ id: materials.id }).from(materials).where(eq(materials.fileId, file.id)).limit(1);
-    if (fileOpenToAnyone(true, attachedTo, Boolean(material))) return "OPEN";
+    if (usedBy.length) {
+      if (usedBy.some((m) => openByLink(m.meta)) || (attachedTo.length > 0 && fileOpenToAnyone(true, attachedTo, false))) return "OPEN";
+    } else if (fileOpenToAnyone(true, attachedTo, false)) return "OPEN";
   }
   if (userId === null) return "SIGN_IN_REQUIRED";
   if (await teacherOwnsWorkspace(file.workspaceId, userId)) return "ALLOWED";
-  if (await studentCanReach(file, userId, attachedTo)) return "ALLOWED";
+  if (await studentCanReach(file, userId, attachedTo, usedBy)) return "ALLOWED";
   return "DENIED";
 }
 

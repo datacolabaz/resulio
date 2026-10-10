@@ -247,6 +247,7 @@ describe("dispatcher", () => {
           wrongCount: 2,
           penalty: { ratio: 4, wrongCount: 2, penaltyPoints: 0.5 },
         },
+        MATERIAL_SHARED: { materialId: "m1", title: "Excel", excerpt: "VLOOKUP", from: "Müəllim" },
         GROUP_MEMBER_JOINED: { groupId: "g1", groupName: "G", studentName: "A" },
         SYLLABUS_JOIN_REQUESTED: { requestId: "r1", syllabusId: "s1", syllabusTitle: "S", studentName: "A", groupName: null },
         SYLLABUS_JOIN_DECIDED: { requestId: "r1", syllabusTitle: "S", decision: "ACCEPTED" as const, groupName: "G", note: null, path: "/student" },

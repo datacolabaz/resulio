@@ -1,7 +1,9 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { files, materials, submissionAiReviews, taskSubmissions, tasks, type SubmissionAiReview, type Task, type TaskAccessMode, type TaskSubmission } from "../../drizzle/schema";
+import { files, submissionAiReviews, taskSubmissions, tasks, type SubmissionAiReview, type Task, type TaskAccessMode, type TaskSubmission } from "../../drizzle/schema";
+import type { MaterialDetails } from "../../shared/materialTemplates";
 import { sendEmailInBackground } from "../_core/email";
+import { deleteMeta, saveMeta } from "../materials/meta";
 import { requireDb } from "../db";
 import { dispatch } from "../notifications/dispatcher";
 import { managedWorkspaces, type TeacherScope } from "./access";
@@ -72,12 +74,25 @@ export async function listForWorkspace(workspaceId: string) {
 /** `notify` false: the teacher unticked "Tələbələrə bildiriş göndər" for this save. */
 export interface SaveOptions {
   notify?: boolean;
+  /** Template details of a task made from the material form ("Tapşırıq kimi yarat"). */
+  meta?: MaterialDetails;
 }
+
+const TASK_META_PUBLISHING = { status: "PUBLISHED", publishAt: null, visibility: "LINK", notify: true, url: null } as const;
 
 export async function createAssignment(scope: TeacherScope, input: AssignmentInput, opts: SaveOptions = {}) {
   const db = requireDb();
   const id = nanoid();
-  await db.insert(tasks).values({ id, providerWorkspaceId: scope.workspaceId, createdBy: scope.userId, shareCode: newShareCode(), ...input });
+  const values = { id, providerWorkspaceId: scope.workspaceId, createdBy: scope.userId, shareCode: newShareCode(), ...input };
+  const meta = opts.meta;
+  if (meta) {
+    await db.transaction(async (tx) => {
+      await tx.insert(tasks).values(values);
+      await saveMeta(tx, { type: "TASK", id, workspaceId: scope.workspaceId }, meta, TASK_META_PUBLISHING);
+    });
+  } else {
+    await db.insert(tasks).values(values);
+  }
   const row = await assignmentOf(scope, id);
   notifyTaskSaved({ task: row, before: null, notify: opts.notify ?? true, teacherId: scope.userId });
   return row;
@@ -91,6 +106,7 @@ export async function createAssignment(scope: TeacherScope, input: AssignmentInp
 export async function updateAssignment(scope: TeacherScope, id: string, patch: Partial<AssignmentInput>, opts: SaveOptions = {}) {
   const before = await assignmentOf(scope, id);
   if (Object.keys(patch).length) await requireDb().update(tasks).set(patch).where(eq(tasks.id, id));
+  if (opts.meta) await saveMeta(requireDb(), { type: "TASK", id, workspaceId: scope.workspaceId }, opts.meta, TASK_META_PUBLISHING);
   const row = await assignmentOf(scope, id);
   notifyTaskSaved({ task: row, before, notify: opts.notify ?? true, teacherId: scope.userId });
   return row;
@@ -103,6 +119,7 @@ export async function deleteAssignment(scope: TeacherScope, id: string) {
   await db.delete(submissionAiReviews).where(eq(submissionAiReviews.taskId, id));
   await db.delete(taskSubmissions).where(eq(taskSubmissions.taskId, id));
   await db.delete(tasks).where(eq(tasks.id, id));
+  await deleteMeta(db, "TASK", id);
   return { ok: true };
 }
 
@@ -317,69 +334,15 @@ export async function claimAssignment(userId: number, userName: string | null, s
 // Materials
 // ---------------------------------------------------------------------------
 
-export interface MaterialInput {
-  title: string;
-  description: string;
-  subject: string;
-  topic: string;
-  fileName: string;
-  fileId: string | null;
-  mimeType: string | null;
-  sizeBytes: number | null;
-  groupIds: string[];
-  studentIds: number[];
-}
-
-/** Throws NOT_FOUND if the material doesn't exist or belongs to another workspace. */
-export async function materialOf(scope: TeacherScope, id: string) {
-  const [row] = await requireDb()
-    .select()
-    .from(materials)
-    .where(and(eq(materials.id, id), eq(materials.providerWorkspaceId, scope.workspaceId)))
-    .limit(1);
-  if (!row) throw new AppError("NOT_FOUND");
-  return row;
-}
-
-export async function listMaterialsForWorkspace(workspaceId: string) {
-  return requireDb().select().from(materials).where(eq(materials.providerWorkspaceId, workspaceId)).orderBy(materials.uploadedAt);
-}
-
-export async function createMaterial(scope: TeacherScope, input: MaterialInput) {
-  const db = requireDb();
-  const id = nanoid();
-  await db.insert(materials).values({ id, providerWorkspaceId: scope.workspaceId, createdBy: scope.userId, shareCode: newShareCode(), ...input });
-  return materialOf(scope, id);
-}
-
-export async function updateMaterial(scope: TeacherScope, id: string, patch: Partial<MaterialInput>) {
-  await materialOf(scope, id);
-  if (Object.keys(patch).length) await requireDb().update(materials).set(patch).where(eq(materials.id, id));
-  return materialOf(scope, id);
-}
-
-export async function deleteMaterial(scope: TeacherScope, id: string) {
-  await materialOf(scope, id);
-  await requireDb().delete(materials).where(eq(materials.id, id));
-  return { ok: true };
-}
-
-export async function studentMaterials(studentId: number, groupIds: string[]) {
-  const rows = await requireDb().select().from(materials);
-  return rows.filter((m) => m.studentIds.includes(studentId) || m.groupIds.some((g) => groupIds.includes(g)));
-}
-
-export async function materialByShareCode(shareCode: string) {
-  const [row] = await requireDb().select().from(materials).where(eq(materials.shareCode, shareCode)).limit(1);
-  return row ?? null;
-}
-
-export async function claimMaterial(userId: number, shareCode: string) {
-  const db = requireDb();
-  const [row] = await db.select().from(materials).where(eq(materials.shareCode, shareCode)).limit(1);
-  if (!row) throw new AppError("NOT_FOUND");
-  if (!row.studentIds.includes(userId)) {
-    await db.update(materials).set({ studentIds: [...row.studentIds, userId] }).where(eq(materials.id, row.id));
-  }
-  return { id: row.id };
-}
+// Moved to server/materials/service.ts (templates, publishing, visibility); re-exported for existing callers.
+export {
+  claimMaterial,
+  createMaterial,
+  deleteMaterial,
+  listMaterialsForWorkspace,
+  materialByShareCode,
+  materialOf,
+  studentMaterials,
+  updateMaterial,
+  type MaterialInput,
+} from "../materials/service";

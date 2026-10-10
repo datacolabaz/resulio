@@ -5,6 +5,7 @@ import { t } from "@/i18n/messages";
 import { errorText } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import type { LimitValue } from "@shared/aiUsage";
+import { DEFAULT_UPLOAD_LIMITS_MB, MAX_UPLOAD_LIMIT_MB, SIZE_CLASSES, type SizeClass } from "@shared/materialTemplates";
 import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { GIB, isValidOptional, NoAccess, parseOptionalNumber, useAdmin } from "./adminShared";
@@ -112,6 +113,59 @@ function SoftQuotaEditor({ current, readOnly }: { current: number | null; readOn
   );
 }
 
+type UploadLimits = Partial<Record<SizeClass, number>> | null;
+
+function UploadLimitsEditor({ limits, quotaBytes, readOnly }: { limits: UploadLimits; quotaBytes: number | null; readOnly: boolean }) {
+  const quotaId = useId();
+  const saved = useSettingsSaved();
+  const showLimits = (l: UploadLimits) => Object.fromEntries(SIZE_CLASSES.map((c) => [c, l?.[c] ? String(l[c]) : ""])) as Record<SizeClass, string>;
+  const showGb = (bytes: number | null) => (bytes ? String(Math.round((bytes / GIB) * 100) / 100) : "");
+  const [mb, setMb] = useState(showLimits(limits));
+  const [quota, setQuota] = useState(showGb(quotaBytes));
+  useEffect(() => setMb(showLimits(limits)), [limits]);
+  useEffect(() => setQuota(showGb(quotaBytes)), [quotaBytes]);
+  const values = SIZE_CLASSES.map((c) => [c, parseOptionalNumber(mb[c])] as const);
+  const validMb = (v: number | null) => v === null || (Number.isInteger(v) && v >= 1 && v <= MAX_UPLOAD_LIMIT_MB);
+  const limitsValid = values.every(([, v]) => validMb(v));
+  const gb = parseOptionalNumber(quota);
+  const bytes = gb === null || !Number.isFinite(gb) ? gb : Math.round(gb * GIB);
+  const set = values.filter(([, v]) => v !== null);
+  const save = trpc.admin.storage.setUploadLimits.useMutation({ onSuccess: saved, onError: (e) => toast.error(errorText(e)) });
+  return (
+    <form
+      className="space-y-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (limitsValid && isValidOptional(bytes)) save.mutate({ materialUploadLimitsMb: set.length ? Object.fromEntries(set) : null, workspaceQuotaBytes: bytes || null });
+      }}
+    >
+      <p className="text-sm text-muted-foreground">{t("admin.uploads.limitsIntro")}</p>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {values.map(([c, v]) => (
+          <label key={c} className="block">
+            <span className={fieldLabel}>{t(`admin.uploads.class.${c}`)}</span>
+            <Input
+              inputMode="numeric"
+              value={mb[c]}
+              disabled={readOnly}
+              onChange={(e) => setMb((prev) => ({ ...prev, [c]: e.target.value }))}
+              placeholder={String(DEFAULT_UPLOAD_LIMITS_MB[c])}
+              aria-invalid={!validMb(v)}
+              className="mt-1"
+            />
+          </label>
+        ))}
+      </div>
+      <label htmlFor={quotaId} className="block sm:w-64">
+        <span className={fieldLabel}>{t("admin.uploads.quota")}</span>
+        <Input id={quotaId} inputMode="decimal" value={quota} disabled={readOnly} onChange={(e) => setQuota(e.target.value)} placeholder={t("admin.settings.notSet")} className="mt-1" />
+      </label>
+      <p className="text-xs text-muted-foreground">{t("admin.uploads.quotaHint")}</p>
+      {!readOnly && <Button type="submit" disabled={!limitsValid || !isValidOptional(bytes) || save.isPending}>{t("common.save")}</Button>}
+    </form>
+  );
+}
+
 /** Platform-wide values kept in `platform_settings`. Secrets never live here — only in the environment. */
 export default function AdminSettingsPage() {
   const { can } = useAdmin();
@@ -125,6 +179,8 @@ export default function AdminSettingsPage() {
   const s = settings.data;
   if (aiView ? !s : !storage.data) return <Loading />;
   const softQuota = s ? s["storage.softQuotaBytes"] : (storage.data?.softQuotaBytes ?? null);
+  const uploadLimits = s ? s["storage.materialUploadLimitsMb"] : (storage.data?.materialUploadLimitsMb ?? null);
+  const workspaceQuota = s ? s["storage.workspaceQuotaBytes"] : (storage.data?.workspaceQuotaBytes ?? null);
 
   return (
     <div className="space-y-5">
@@ -150,6 +206,11 @@ export default function AdminSettingsPage() {
       {storageView && (
         <Panel title={t("admin.settings.storageTitle")}>
           <SoftQuotaEditor current={softQuota} readOnly={!can("storage.manage")} />
+        </Panel>
+      )}
+      {storageView && (
+        <Panel title={t("admin.settings.uploadsTitle")}>
+          <UploadLimitsEditor limits={uploadLimits} quotaBytes={workspaceQuota} readOnly={!can("storage.manage")} />
         </Panel>
       )}
     </div>
