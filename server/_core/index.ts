@@ -35,6 +35,7 @@ import { runModuleDetailsBackfills } from "../syllabus/moduleDetailsBackfill";
 import { runDailyDigest, runDailyRetention } from "../syllabus/analytics";
 import { flushDueNotices } from "../syllabus/notify";
 import { installSyllabusHooks, reconcileDirty } from "../syllabus/progression";
+import { startGrowthJobs } from "../growth/jobs";
 
 const SWEEP_INTERVAL_MS = 30_000;
 
@@ -184,6 +185,7 @@ async function startServer() {
   void resumeAnnouncements();
   startSyllabusProgression();
   startMaterialSweepers();
+  startGrowthJobs();
   if (getDb()) {
     runMaterialMetaBackfill().catch((error) => console.error("[Materials] meta backfill failed", error instanceof Error ? error.message : error));
     runJoinSourceBackfill().catch((error) => console.error("[Groups] join source backfill failed", error instanceof Error ? error.message : error));

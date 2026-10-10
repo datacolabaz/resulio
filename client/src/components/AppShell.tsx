@@ -36,6 +36,7 @@ import {
   Moon,
   Plus,
   Presentation,
+  Radar,
   Settings,
   Shield,
   Sun,
@@ -70,6 +71,7 @@ const TEACHER_NAV: { href: string; key: MessageKey; icon: typeof LayoutDashboard
   { href: "/teacher/library", key: "nav.materials", icon: FolderOpen },
   { href: "/teacher/results", key: "nav.results", icon: ListChecks },
   { href: "/teacher/analytics", key: "nav.analytics", icon: LineChart },
+  { href: "/teacher/growth", key: "nav.growth", icon: Radar },
   { href: "/teacher/usage", key: "nav.usage", icon: Gauge },
   { href: "/partner", key: "nav.referral", icon: Handshake },
   { href: "/settings", key: "nav.settings", icon: Settings },
@@ -196,7 +198,10 @@ export function AppShell({
     seenNewest.current = newestNote;
   }, [newestNote, area, utils]);
   const syllabusFlag = trpc.teacher.syllabus.enabled.useQuery(undefined, { enabled: area === "teaching", staleTime: 5 * 60_000 });
-  const teacherNav = syllabusFlag.data?.enabled ? TEACHER_NAV : TEACHER_NAV.filter((i) => i.href !== "/teacher/syllabus");
+  const growthFlag = trpc.teacher.growth.enabled.useQuery(undefined, { enabled: area === "teaching", staleTime: 5 * 60_000 });
+  const teacherNav = TEACHER_NAV.filter(
+    (i) => (i.href !== "/teacher/syllabus" || syllabusFlag.data?.enabled) && (i.href !== "/teacher/growth" || growthFlag.data?.enabled),
+  );
   const studentSyllabus = trpc.student.syllabus.enabled.useQuery(undefined, { enabled: area === "learning", staleTime: 5 * 60_000 });
   const studentNav = studentSyllabus.data?.enabled ? STUDENT_NAV : STUDENT_NAV.filter((i) => i.href !== "/student/syllabus");
   const drawerOpen = open && !desktop;

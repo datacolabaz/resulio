@@ -77,6 +77,7 @@ import { questionBankFilter, questionImportRouter, questionTopicsRouter, section
 import { store } from "./resulioStore";
 import { announceGroupJoin } from "./syllabus/notify";
 import { publicSyllabusProcedure, studentSyllabusRouter, teacherSyllabusRouter } from "./syllabus/router";
+import { studentGrowthRouter, teacherGrowthRouter } from "./growth/router";
 import { SHARE_CAMPAIGNS, SHARE_CHANNELS, SHARE_TARGET_TYPES, VISITOR_ID_PATTERN } from "../shared/shareTracking";
 import {
   MATERIAL_KINDS,
@@ -843,6 +844,7 @@ const teacherRouter = router({
   ai: teacherAiRouter,
   tasks: teacherTasksRouter,
   syllabus: teacherSyllabusRouter,
+  growth: teacherGrowthRouter,
 });
 
 // ---------------------------------------------------------------------------
@@ -1046,6 +1048,7 @@ const studentRouter = router({
       return result;
     }),
   syllabus: studentSyllabusRouter,
+  growth: studentGrowthRouter,
 });
 
 // ---------------------------------------------------------------------------
