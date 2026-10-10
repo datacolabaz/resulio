@@ -133,7 +133,8 @@ export async function setTargets(scope: TeacherScope, id: string, targets: Targe
     if (owned.length !== groupIds.length) throw new AppError("FORBIDDEN");
   }
   if (studentIds.length) {
-    const own = new Set(await teacherStudentIds(scope));
+    // A student already assigned individually may stay after leaving the teacher's groups.
+    const own = new Set([...(await teacherStudentIds(scope)), ...(await getTargets(id, db)).studentIds]);
     if (!studentIds.every((s) => own.has(s))) throw new AppError("FORBIDDEN");
   }
   const syllabusOwned = new Set(await syllabusAssignmentIds(id));

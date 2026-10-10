@@ -1,17 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { dateRangeError, existingAccess, selectionFromPreset, type ExistingGrant } from "../client/src/lib/grantSelection";
 import {
-  dateRangeError,
   emptySelection,
-  existingAccess,
   isChecked,
-  planGrant,
+  planSelection as planGrant,
   searchStudents,
-  selectionFromPreset,
   setStudentChecked,
   toggleGroup,
-  type ExistingGrant,
   type PickStudent,
-} from "../client/src/lib/grantSelection";
+} from "../client/src/lib/groupStudentSelection";
 import * as db from "./db";
 import * as groups from "./modules/groups";
 import { AppError } from "./modules/errors";

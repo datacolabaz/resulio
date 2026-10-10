@@ -1,4 +1,5 @@
 import { AppShell, ChoiceChip, ErrorNote, Loading, Panel, Pill } from "@/components/AppShell";
+import { GroupStudentPicker, useGroupStudentTargets } from "@/components/GroupStudentPicker";
 import { draftFromQuestion, QuestionEditor } from "@/components/QuestionEditor";
 import { QuestionPreview } from "@/components/questionBank/QuestionPreview";
 import { bankLabel, SectionPicker, sectionsOf, subjectsOf, TopicSelect, useTopics, type TopicRow } from "@/components/questionBank/Topics";
@@ -11,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { t, type MessageKey } from "@/i18n/messages";
 import { errorText, fmtDuration, fromLocalInput, questionTypeLabel, releaseLabel, reviewLabel, toLocalInput, typeLabel } from "@/lib/format";
+import { recipientsPayload } from "@/lib/groupStudentSelection";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { CLOSED_QUESTION_TYPES, DEFAULT_WRONG_PENALTY, QUESTION_TYPES, type AssessmentType, type QuestionType } from "@shared/assessment";
 import { builderPath, safeSyllabusEditorPath } from "@/lib/syllabusLearn";
@@ -652,23 +654,18 @@ function AiDialog({ open, onOpenChange, assessmentId }: { open: boolean; onOpenC
 }
 
 function ParticipantsStep({ a, onNext }: { a: Detail; onNext: () => void }) {
-  const groups = trpc.teacher.groups.list.useQuery();
-  const students = trpc.teacher.students.useQuery();
+  const targets = useGroupStudentTargets(a.targets);
   const invalidate = useInvalidateDetail(a.id);
-  const [groupIds, setGroupIds] = useState<string[]>(a.targets.groupIds);
-  const [studentIds, setStudentIds] = useState<number[]>(a.targets.studentIds);
   const [useOverrides, setUseOverrides] = useState(false);
   const [ov, setOv] = useState({ availableFrom: "", availableUntil: "", durationMinutes: "", attempts: "" });
   const save = trpc.teacher.assessments.setTargets.useMutation({
     onSuccess: () => { toast.success(t("builder.targetsSaved")); void invalidate(); onNext(); },
     onError: (e) => toast.error(errorText(e)),
   });
-  const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
-
   const submit = () =>
     save.mutate({
       id: a.id,
-      targets: { groupIds, studentIds },
+      targets: recipientsPayload(targets.selection, targets.students, { kept: targets.kept }),
       overrides: useOverrides
         ? {
             availableFrom: fromLocalInput(ov.availableFrom),
@@ -681,44 +678,23 @@ function ParticipantsStep({ a, onNext }: { a: Detail; onNext: () => void }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title={t("common.groups")}>
-          {!groups.data?.length ? (
-            <p className="text-sm text-muted-foreground">
-              {t("builder.noGroups")} <Link href="/teacher/groups" className="text-link underline-offset-4 hover:underline">{t("builder.createGroup")}</Link>
-            </p>
-          ) : (
-            <ul className="space-y-2">
-              {groups.data.map((g) => (
-                <li key={g.id}>
-                  <label className="flex items-center gap-3 rounded-xl border px-3 py-2 text-sm">
-                    <input type="checkbox" className="accent-link" checked={groupIds.includes(g.id)} onChange={() => setGroupIds(toggle(groupIds, g.id))} />
-                    <span className="min-w-0 flex-1 break-words">{g.name}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground">{t("common.studentsCount", { count: g.studentCount })}</span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Panel>
-        <Panel title={t("builder.individualStudents")}>
-          {!students.data?.length ? (
-            <p className="text-sm text-muted-foreground">{t("builder.noActiveStudents")}</p>
-          ) : (
-            <ul className="max-h-80 space-y-2 overflow-y-auto">
-              {students.data.map((s) => (
-                <li key={s.id}>
-                  <label className="flex items-center gap-3 rounded-xl border px-3 py-2 text-sm">
-                    <input type="checkbox" className="accent-link" checked={studentIds.includes(s.id)} onChange={() => setStudentIds(toggle(studentIds, s.id))} />
-                    <span className="min-w-0 flex-1 break-words">{s.name ?? s.email}</span>
-                    <span className="max-w-[40%] truncate text-xs text-muted-foreground" title={s.groups.join(", ")}>{s.groups.join(", ")}</span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Panel>
-      </div>
+      <Panel title={t("builder.participants")}>
+        {targets.ready && !targets.groups.length ? (
+          <p className="text-sm text-muted-foreground">
+            {t("builder.noGroups")} <Link href="/teacher/groups" className="text-link underline-offset-4 hover:underline">{t("builder.createGroup")}</Link>
+          </p>
+        ) : (
+          <GroupStudentPicker
+            groups={targets.groups}
+            students={targets.students}
+            value={targets.selection}
+            onChange={targets.setSelection}
+            keptCount={targets.kept.length}
+            hints={{ whole: t("builder.groupWhole"), partial: t("builder.groupPartial") }}
+            summary
+          />
+        )}
+      </Panel>
 
       <Panel title={t("builder.overridesTitle")}>
         <label className="flex items-center gap-2 text-sm">
@@ -737,7 +713,7 @@ function ParticipantsStep({ a, onNext }: { a: Detail; onNext: () => void }) {
 
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={onNext}>{t("common.skip")}</Button>
-        <Button disabled={save.isPending} onClick={submit}>{t("common.saveAndContinue")}</Button>
+        <Button disabled={save.isPending || !targets.ready} onClick={submit}>{t("common.saveAndContinue")}</Button>
       </div>
     </div>
   );
