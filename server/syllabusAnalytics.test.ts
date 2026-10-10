@@ -203,7 +203,14 @@ const attempt = (studentId: number, attemptNo: number, pct: number) => ({ assess
  * Orxan (access 3 days ago, not started). Leyla: individual grant 29 days ago, never started.
  */
 function classData(): AnalyticsData {
-  const S = (studentId: number, name: string, groupIds: string[], accessSince = day("01")) => ({ studentId, name, access: "ACTIVE" as const, accessSince, groupIds });
+  const S = (studentId: number, name: string, groupIds: string[], accessSince = day("01")) => ({
+    studentId,
+    name,
+    access: "ACTIVE" as const,
+    accessSince,
+    groupIds,
+    via: { groupIds, individual: !groupIds.length },
+  });
   return {
     currentVersionId: "v1",
     structures: new Map([["v1", STRUCTURE]]),
@@ -471,7 +478,31 @@ describe("analytics population", () => {
       names: new Map(),
       now: NOW,
     });
-    expect(res.students).toEqual([{ studentId: 10, name: "—", access: "ACTIVE", accessSince: day("03"), groupIds: ["g"] }]);
+    expect(res.students).toEqual([{ studentId: 10, name: "—", access: "ACTIVE", accessSince: day("03"), groupIds: ["g"], via: { groupIds: ["g"], individual: true } }]);
+  });
+
+  it("records only the grants behind the best state as the way in", () => {
+    const res = buildPopulation({
+      workspaceId: "ws1",
+      grants: [grant({ studentId: 10, endsAt: day("10") }), grant({ groupId: "g" }), grant({ groupId: "h", startsAt: day("31") })],
+      enrollments: [{ studentId: 11, viaGroupId: null }],
+      groups: [
+        { id: "g", name: "G", workspaceId: "ws1" },
+        { id: "h", name: "H", workspaceId: "ws1" },
+      ],
+      members: [
+        { groupId: "g", userId: 10 },
+        { groupId: "h", userId: 10 },
+        { groupId: "h", userId: 12 },
+      ],
+      names: new Map(),
+      now: NOW,
+    });
+    expect(res.students.map((s) => [s.studentId, s.access, s.via])).toEqual([
+      [10, "ACTIVE", { groupIds: ["g"], individual: false }],
+      [12, "PENDING", { groupIds: ["h"], individual: false }],
+      [11, "NONE", { groupIds: [], individual: false }],
+    ]);
   });
 });
 

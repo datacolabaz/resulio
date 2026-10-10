@@ -22,6 +22,8 @@ export interface PopulationStudent {
   accessSince: Date | null;
   /** Granted groups of this teacher the student belongs to. */
   groupIds: string[];
+  /** The grants behind `access`: groups of this teacher and/or an individual grant. Empty for NONE. */
+  via: { groupIds: string[]; individual: boolean };
 }
 
 export interface EnrollmentRow {
@@ -350,6 +352,7 @@ function studentFacts(data: AnalyticsData, x: Indexes, s: PopulationStudent, th:
     name: s.name,
     groupIds: s.groupIds,
     access: s.access,
+    via: s.via,
     enrolled: !!e,
     completed: e?.status === "COMPLETED",
     completedAt: e?.completedAt ?? null,

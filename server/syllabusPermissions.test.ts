@@ -267,6 +267,16 @@ describe("teacher isolation", () => {
     expect(await codeOf(caller(user(99)).teacher.syllabus.grants({ id: "syl1" }))).toBe("NOT_FOUND:NOT_FOUND");
     expect(await codeOf(caller(user(99)).teacher.syllabus.preview({ id: "syl1" }))).toBe("NOT_FOUND:NOT_FOUND");
     expect(await codeOf(caller(user(99)).teacher.syllabus.publishPreview({ id: "syl1" }))).toBe("NOT_FOUND:NOT_FOUND");
+    expect(await codeOf(caller(user(99)).teacher.syllabus.roster({ id: "syl1" }))).toBe("NOT_FOUND:NOT_FOUND");
+  });
+
+  it("the card's student list needs a teacher workspace, the feature flag and a sane limit", async () => {
+    m.access.resolveWorkspace.mockResolvedValue(null);
+    expect(await codeOf(caller(user(STUDENT)).teacher.syllabus.roster({ id: "syl1" }))).toBe("FORBIDDEN:NO_WORKSPACE");
+    m.access.resolveWorkspace.mockResolvedValue({ id: "ws_teacher", ownerUserId: 7 } as never);
+    expect(await codeOf(caller(user(7)).teacher.syllabus.roster({ id: "syl1", limit: 500 }))).toMatch(/^BAD_REQUEST:/);
+    m.availability.assertSyllabusEnabled.mockRejectedValue(new AppError("SYLLABUS_NOT_AVAILABLE"));
+    expect(await codeOf(caller(user(7)).teacher.syllabus.roster({ id: "syl1" }))).toBe("FORBIDDEN:SYLLABUS_NOT_AVAILABLE");
   });
 });
 

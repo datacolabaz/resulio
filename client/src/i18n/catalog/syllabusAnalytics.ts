@@ -102,7 +102,7 @@ export const syllabusAnalytics = {
   "sa.funnel.MODULE_COMPLETED": ["Modul tamamlanıb", "Module completed", "Модуль завершён"],
 
   "sa.students": ["Tələbələr", "Students", "Студенты"],
-  "sa.search": ["Adla axtar", "Search by name", "Поиск по имени"],
+  "sa.search": ["Ad və ya qrupla axtar", "Search by name or group", "Поиск по имени или группе"],
   "sa.filter": ["Filtr", "Filter", "Фильтр"],
   "sa.filter.all": ["Hamısı", "All", "Все"],
   "sa.filter.atRisk": ["Risk altında", "At risk", "В зоне риска"],
@@ -241,4 +241,40 @@ export const syllabusAnalytics = {
   ],
   "sa.settings.reset": ["Standart dəyərlər", "Restore defaults", "По умолчанию"],
   "sa.settings.saved": ["Risk qaydaları yadda saxlanıldı", "Risk rules saved", "Правила риска сохранены"],
+
+  // Syllabus card: who the counts are, and the list behind them
+  "syllabus.card.groups": ["{count} qrup", "{count} {count|group|groups}", "{count} {count|группа|группы|групп}"],
+  "syllabus.card.groupsHint": ["Giriş verilmiş qruplar", "Groups with access", "Группы с доступом"],
+  "syllabus.card.individual": ["{count} fərdi", "{count} individual", "{count} {count|личный|личных|личных}"],
+  "syllabus.card.individualHint": [
+    "Ayrıca (qrupdan kənar) giriş verilmiş tələbələr",
+    "Students given access one by one (not through a group)",
+    "Студенты с личным доступом (не через группу)",
+  ],
+  "syllabus.card.students": ["{count} tələbə", "{count} {count|student|students}", "{count} {count|студент|студента|студентов}"],
+  "syllabus.card.studentsHint": [
+    "İndi girişi olan tələbələr: qrup üzvləri və fərdi girişlər, hər biri bir dəfə sayılır",
+    "Students with access now: group members and individual grants, each counted once",
+    "Студенты с доступом сейчас: участники групп и личные доступы, каждый считается один раз",
+  ],
+  "syllabus.card.progressHint": [
+    "Syllabus-u açmış tələbələrin orta irəliləyişi",
+    "Average progress of students who opened the syllabus",
+    "Средний прогресс студентов, открывших силлабус",
+  ],
+  "syllabus.card.showStudents": ["Tələbələri göstər: {title}", "Show students: {title}", "Показать студентов: {title}"],
+  "syllabus.roster.summary": [
+    "{active} girişi var · {pending} gözləyir · {ended} bitib",
+    "{active} with access · {pending} scheduled · {ended} ended",
+    "{active} с доступом · {pending} ожидают · {ended} закончился",
+  ],
+  "syllabus.roster.sort": ["Sırala", "Sort", "Сортировка"],
+  "syllabus.roster.sort.progress": ["İrəliləyiş", "Progress", "Прогресс"],
+  "syllabus.roster.sort.activity": ["Son aktivlik", "Last activity", "Активность"],
+  "syllabus.roster.individual": ["Fərdi", "Individual", "Личный доступ"],
+  "syllabus.roster.noAccess": ["Giriş yoxdur", "No access", "Нет доступа"],
+  "syllabus.roster.notOpened": ["Hələ açmayıb", "Not opened yet", "Ещё не открыл(а)"],
+  "syllabus.roster.empty": ["Hələ heç kimə giriş verilməyib.", "Nobody has access yet.", "Доступа пока ни у кого нет."],
+  "syllabus.roster.more": ["və daha {count} nəfər", "and {count} more", "и ещё {count}"],
+  "syllabus.roster.viewAll": ["Hamısına bax", "View all", "Смотреть всех"],
 } as const satisfies Record<string, Entry>;

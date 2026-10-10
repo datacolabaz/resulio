@@ -11,6 +11,7 @@ import { Archive, ArchiveRestore, BookOpen, EllipsisVertical, EyeOff, FileUp, Li
 import { useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation } from "wouter";
+import { CardStats } from "./CardStudents";
 import { DeleteSyllabusDialog } from "./DeleteSyllabusDialog";
 import { ImportDialog, importFailureText, importPath } from "./ImportDialog";
 import { NewRequestsBadge, PendingRequestsInbox, useCopyShareLink, usePendingJoinRequests } from "./ShareAndRequests";
@@ -271,31 +272,22 @@ function SyllabusListBody() {
           )}
           <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {visible.map((s) => (
-              <li key={s.id} className="relative">
-                <Link
-                  href={`/teacher/syllabus/${s.id}`}
-                  className="flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card transition-colors hover:border-link focus-visible:outline-2 focus-visible:outline-link"
-                >
+              <li key={s.id} className="relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card transition-colors hover:border-link">
+                <Link href={`/teacher/syllabus/${s.id}`} className="flex flex-1 flex-col rounded-2xl focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-link">
                   {s.coverFileId ? (
                     <img src={fileDownloadUrl(s.coverFileId)} alt="" className="h-32 w-full object-cover" />
                   ) : (
                     <div className="flex h-32 items-center justify-center bg-muted text-muted-foreground"><BookOpen className="h-8 w-8" aria-hidden /></div>
                   )}
-                  <div className="flex flex-1 flex-col gap-2 p-4">
+                  <div className="flex flex-1 flex-col gap-2 p-4 pb-3">
                     <div className="flex flex-wrap items-center gap-2">
-                      <SyllabusVisibilityBadges syllabus={s} activeGrants={s.activeGrantCount} />
+                      <SyllabusVisibilityBadges syllabus={s} activeGrants={s.liveGrantCount} />
                     </div>
                     <div className="break-words font-semibold">{s.title}</div>
                     {(s.subject || s.level) && <div className="text-sm text-muted-foreground">{[s.subject, s.level].filter(Boolean).join(" · ")}</div>}
-                    <div className="mt-auto flex flex-wrap gap-x-4 gap-y-1 pt-2 text-xs text-foreground-secondary">
-                      <span>{t("syllabus.count.modules", { count: s.moduleCount })}</span>
-                      <span>{t("syllabus.count.lessons", { count: s.lessonCount })}</span>
-                      <span>{t("syllabus.count.grants", { count: s.activeGrantCount })}</span>
-                      <span>{t("syllabus.count.enrolled", { count: s.enrolledCount })}</span>
-                      {s.enrolledCount > 0 && <span>{t("syllabus.count.avgProgress", { pct: s.averageProgressPct })}</span>}
-                    </div>
                   </div>
                 </Link>
+                <CardStats s={s} />
                 <NewRequestsBadge syllabusId={s.id} count={openRequests(s.id)} className="absolute left-2 top-2" />
                 <CardMenu s={s} onDelete={() => setDeleting(s.id)} />
               </li>

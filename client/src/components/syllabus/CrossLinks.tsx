@@ -95,12 +95,12 @@ export function TeacherHomeSyllabi() {
               <Link href={`/teacher/syllabus/${s.id}`} className="min-w-0 flex-1 hover:underline">
                 <div className="break-words font-medium">{s.title}</div>
                 <div className="text-xs text-muted-foreground">
-                  {t("syllabus.count.lessons", { count: s.lessonCount })} · {t("syllabus.count.enrolled", { count: s.enrolledCount })}
+                  {t("syllabus.count.lessons", { count: s.lessonCount })} · {t("syllabus.card.students", { count: s.roster.students })}
                   {s.enrolledCount > 0 ? ` · ${t("syllabus.count.avgProgress", { pct: s.averageProgressPct })}` : ""}
                 </div>
               </Link>
               <span className="flex flex-wrap gap-1.5">
-                <SyllabusVisibilityBadges syllabus={s} activeGrants={s.activeGrantCount} />
+                <SyllabusVisibilityBadges syllabus={s} activeGrants={s.liveGrantCount} />
               </span>
             </li>
           ))}

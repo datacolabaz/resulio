@@ -19,14 +19,17 @@ import {
   type RiskThresholdKey,
 } from "@shared/syllabusAnalytics";
 import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Info, Lightbulb, RefreshCw, Settings2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
+import { useSearch } from "wouter";
 import type { Tree } from "./SyllabusDetail";
 import { fieldLabel, GrantStateBadge, selectCls, toastError } from "./shared";
 
 type Data = RouterOutputs["teacher"]["syllabus"]["analytics"];
 type StudentRow = Data["students"][number];
+
+const STUDENTS_ID = "sa-students";
 
 const pctText = (v: number | null | undefined) => (v === null || v === undefined ? "—" : `${Math.round(v)}%`);
 const numText = (v: number | null | undefined) => (v === null || v === undefined ? "—" : String(v));
@@ -39,6 +42,13 @@ export function AnalyticsTab({ tree, next, onStep }: { tree: Tree; next?: Teache
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [timelineFor, setTimelineFor] = useState<StudentRow | null>(null);
   const q = trpc.teacher.syllabus.analytics.useQuery({ id, groupId }, { staleTime: 60_000, enabled: !!tree.syllabus.currentVersionId });
+  const focus = new URLSearchParams(useSearch()).get("focus");
+  const loaded = !!q.data;
+  useEffect(() => {
+    if (!loaded || focus !== "students") return;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    document.getElementById(STUDENTS_ID)?.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" });
+  }, [loaded, focus]);
   const empty = <EmptyState title={t("track.emptyTitle")} body={t("track.emptyBody")} action={next && onStep ? <NextStepButton step={next} onSelect={onStep} /> : undefined} />;
   if (!tree.syllabus.currentVersionId) return empty;
   if (q.error) return <ErrorNote error={q.error} />;
@@ -243,28 +253,40 @@ function StudentTable({ rows, groupName, onTimeline }: { rows: StudentRow[]; gro
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "risk", dir: -1 });
   const onSort = (key: SortKey) => setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === "name" ? 1 : -1 }));
+  const sourceOf = (r: StudentRow) => {
+    const groups = (r.via.groupIds.length ? r.via.groupIds : r.groupIds).map((g) => groupName.get(g) ?? "").filter(Boolean);
+    return [...groups, ...(r.via.individual ? [t("syllabus.roster.individual")] : [])].join(", ");
+  };
   const visible = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase();
     const get = sortValue[sort.key];
+    const hit = (r: StudentRow) => !needle || r.name.toLocaleLowerCase().includes(needle) || sourceOf(r).toLocaleLowerCase().includes(needle);
     return rows
-      .filter((r) => matches[filter](r) && (!needle || r.name.toLocaleLowerCase().includes(needle)))
+      .filter((r) => matches[filter](r) && hit(r))
       .sort((a, b) => {
         const x = get(a);
         const y = get(b);
         const c = typeof x === "string" ? x.localeCompare(y as string) : x - (y as number);
         return c * sort.dir || a.name.localeCompare(b.name);
       });
-  }, [rows, filter, search, sort]);
+  }, [rows, filter, search, sort, groupName]);
   const counts = useMemo(() => Object.fromEntries(FILTERS.map((f) => [f, rows.filter(matches[f]).length])) as Record<Filter, number>, [rows]);
 
   return (
-    <Panel title={t("sa.students")}>
+    <Panel title={t("sa.students")} id={STUDENTS_ID} className="scroll-mt-4">
       {!rows.length ? (
         <p className="text-sm text-muted-foreground">{t("sa.noStudents")}</p>
       ) : (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <Input className="h-9 w-full sm:w-60" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("sa.search")} aria-label={t("sa.search")} />
+            <Input
+              type="search"
+              className="h-9 w-full sm:w-64"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t("sa.search")}
+              aria-label={t("sa.search")}
+            />
             <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("sa.filter")}>
               {FILTERS.map((f) => (
                 <ChoiceChip key={f} selected={filter === f} aria-pressed={filter === f} onClick={() => setFilter(f)}>
@@ -296,10 +318,11 @@ function StudentTable({ rows, groupName, onTimeline }: { rows: StudentRow[]; gro
                       <td className="py-2 pr-3">
                         <div className="break-words font-medium">{r.name}</div>
                         <div className="mt-0.5 flex flex-wrap gap-1">
+                          {r.access === "NONE" && <StatusBadge tone="neutral">{t("syllabus.roster.noAccess")}</StatusBadge>}
                           {r.access !== "NONE" && r.access !== "ACTIVE" && <GrantStateBadge state={r.access} />}
                           {r.completed && <StatusBadge tone="success">{t("sa.completedBadge")}</StatusBadge>}
                         </div>
-                        {r.groupIds.length > 0 && <div className="text-xs text-muted-foreground">{r.groupIds.map((g) => groupName.get(g) ?? "").filter(Boolean).join(", ")}</div>}
+                        {sourceOf(r) && <div className="text-xs text-muted-foreground">{sourceOf(r)}</div>}
                       </td>
                       <td className="py-2 pr-3">
                         {r.enrolled ? (
