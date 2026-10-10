@@ -41,6 +41,7 @@ import { ownedSyllabus } from "./access";
 import { applyLegacyPatch } from "./legacyModuleDetails";
 import { draftModuleDetails, purgeModuleDetails, saveDraftModuleDetails } from "./moduleDetails";
 import { cloneContainer, createContainer, deleteContainers, syncContainer } from "./practiceTasks";
+import { rosterSummaries } from "./roster";
 import { draftTiming, patchDraftTiming, purgeTiming, withCourse, withModuleDuration } from "./timing";
 
 /**
@@ -185,27 +186,24 @@ export async function listSyllabi(scope: TeacherScope) {
   const rows = await db.select().from(syllabi).where(eq(syllabi.providerWorkspaceId, scope.workspaceId)).orderBy(asc(syllabi.createdAt));
   if (!rows.length) return [];
   const ids = rows.map((r) => r.id);
-  const [moduleCounts, lessonCounts, enrollmentStats, grantCounts, versions] = await Promise.all([
+  const [moduleCounts, lessonCounts, rosters, versions] = await Promise.all([
     db.select({ id: syllabusModules.syllabusId, n: sql<number>`count(*)` }).from(syllabusModules).where(and(inArray(syllabusModules.syllabusId, ids), isNull(syllabusModules.deletedAt))).groupBy(syllabusModules.syllabusId),
     db.select({ id: syllabusLessons.syllabusId, n: sql<number>`count(*)` }).from(syllabusLessons).where(and(inArray(syllabusLessons.syllabusId, ids), isNull(syllabusLessons.deletedAt))).groupBy(syllabusLessons.syllabusId),
-    db
-      .select({ id: syllabusEnrollments.syllabusId, n: sql<number>`count(*)`, avg: sql<number>`coalesce(avg(${syllabusEnrollments.progressPct}), 0)` })
-      .from(syllabusEnrollments)
-      .where(inArray(syllabusEnrollments.syllabusId, ids))
-      .groupBy(syllabusEnrollments.syllabusId),
-    db.select({ id: syllabusAccessGrants.syllabusId, n: sql<number>`count(*)` }).from(syllabusAccessGrants).where(and(inArray(syllabusAccessGrants.syllabusId, ids), eq(syllabusAccessGrants.status, "ACTIVE"))).groupBy(syllabusAccessGrants.syllabusId),
+    rosterSummaries(scope.workspaceId, ids),
     db.select({ id: syllabusVersions.id, label: syllabusVersions.label }).from(syllabusVersions).where(inArray(syllabusVersions.syllabusId, ids)),
   ]);
   const count = (list: Array<{ id: string; n: number }>, id: string) => Number(list.find((x) => x.id === id)?.n ?? 0);
   return rows.map((r) => {
-    const e = enrollmentStats.find((x) => x.id === r.id);
+    const roster = rosters.get(r.id)!;
     return {
       ...r,
       moduleCount: count(moduleCounts, r.id),
       lessonCount: count(lessonCounts, r.id),
-      activeGrantCount: count(grantCounts, r.id),
-      enrolledCount: Number(e?.n ?? 0),
-      averageProgressPct: Math.round(Number(e?.avg ?? 0) * 10) / 10,
+      /** Groups + individual grants that give access now or later (what makes it "visible to students"). */
+      liveGrantCount: roster.groups + roster.individual,
+      roster,
+      enrolledCount: roster.enrolled,
+      averageProgressPct: roster.averageProgressPct,
       currentVersionLabel: versions.find((v) => v.id === r.currentVersionId)?.label ?? null,
     };
   });

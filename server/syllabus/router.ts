@@ -27,6 +27,7 @@ import * as joinRequests from "./joinRequests";
 import * as learning from "./learning";
 import * as links from "./links";
 import * as publishing from "./publishing";
+import * as roster from "./roster";
 import * as sample from "./sample";
 import * as shareLinks from "./shareLinks";
 import * as teacherViews from "./teacherViews";
@@ -300,6 +301,11 @@ export const teacherSyllabusRouter = router({
     .input(z.object({ id: entityId, studentId }))
     .query(({ ctx, input }) => analytics.studentTimeline(ctx.scope, input.id, input.studentId)),
   analyticsSettings: syllabusTeacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => analytics.getSettings(ctx.scope, input.id)),
+  /** Students behind the counts on a syllabus card; loaded only when the teacher opens the list. */
+  roster: syllabusTeacherProcedure
+    .use(rateLimit("syllabusRoster", 120, MINUTE))
+    .input(z.object({ id: entityId, sort: z.enum(roster.ROSTER_SORTS).default("progress"), limit: z.number().int().min(1).max(roster.ROSTER_LIMIT_MAX).default(roster.ROSTER_LIMIT_DEFAULT) }))
+    .query(({ ctx, input }) => roster.syllabusRoster(ctx.scope, input.id, input)),
   saveAnalyticsSettings: syllabusTeacherProcedure
     .input(z.object({ id: entityId, settings: analyticsSettingsSchema }))
     .mutation(({ ctx, input }) => analytics.saveSettings(ctx.scope, input.id, input.settings)),

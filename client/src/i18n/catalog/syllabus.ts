@@ -66,7 +66,7 @@ export const syllabus = {
   "syllabus.modules.title": ["Modullar", "Modules", "Модули"],
   "syllabus.modules.expandAll": ["Hamısını aç", "Expand all", "Развернуть все"],
   "syllabus.modules.collapseAll": ["Hamısını bağla", "Collapse all", "Свернуть все"],
-  "syllabus.modules.toggleAll": ["Bütün modulları aç və ya bağla", "Expand or collapse all modules", "Развернуть или свернуть все модули"],  "syllabus.count.grants": ["{count} aktiv giriş", "{count} active {count|grant|grants}", "{count} {count|активный доступ|активных доступа|активных доступов}"],
+  "syllabus.modules.toggleAll": ["Bütün modulları aç və ya bağla", "Expand or collapse all modules", "Развернуть или свернуть все модули"],
   "syllabus.count.enrolled": ["{count} tələbə", "{count} {count|student|students}", "{count} {count|студент|студента|студентов}"],
   "syllabus.count.avgProgress": ["Orta irəliləyiş {pct}%", "Average progress {pct}%", "Средний прогресс {pct}%"],
   "syllabus.minutes": ["{count} dəq", "{count} min", "{count} мин"],

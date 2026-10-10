@@ -79,7 +79,7 @@ export async function saveSettings(scope: TeacherScope, syllabusId: string, sett
 // Loading: a fixed number of indexed queries per syllabus, whatever the class size
 // ---------------------------------------------------------------------------
 
-type GrantRow = Parameters<typeof grantState>[0] & { groupId: string | null; studentId: number | null; grantedAt: Date };
+export type GrantRow = Parameters<typeof grantState>[0] & { groupId: string | null; studentId: number | null; grantedAt: Date };
 
 /**
  * Pure: who the syllabus reaches. Students of the teacher's own granted groups (active student
@@ -100,14 +100,18 @@ export function buildPopulation(input: {
   const membersOf = new Map<string, number[]>();
   for (const m of input.members) if (own.has(m.groupId)) (membersOf.get(m.groupId) ?? membersOf.set(m.groupId, []).get(m.groupId)!).push(m.userId);
 
-  const reached = new Map<number, { state: SyllabusGrantState; since: Date | null; groupIds: Set<string> }>();
+  const reached = new Map<number, { state: SyllabusGrantState; since: Date | null; groupIds: Set<string>; viaGroups: Set<string>; individual: boolean }>();
   for (const g of input.grants) {
     if (g.groupId && !own.has(g.groupId)) continue;
     const state = grantState(g, input.now);
     const since = state === "ACTIVE" ? (g.startsAt ?? g.grantedAt) : null;
     for (const id of g.studentId ? [g.studentId] : (membersOf.get(g.groupId!) ?? [])) {
-      const prev = reached.get(id) ?? { state, since, groupIds: new Set<string>() };
-      if (STATE_RANK[state] < STATE_RANK[prev.state]) prev.state = state;
+      const prev = reached.get(id) ?? { state, since, groupIds: new Set<string>(), viaGroups: new Set<string>(), individual: false };
+      if (STATE_RANK[state] < STATE_RANK[prev.state]) Object.assign(prev, { state, viaGroups: new Set<string>(), individual: false });
+      if (state === prev.state) {
+        if (g.groupId) prev.viaGroups.add(g.groupId);
+        else prev.individual = true;
+      }
       if (since && (!prev.since || since < prev.since)) prev.since = since;
       if (g.groupId) prev.groupIds.add(g.groupId);
       reached.set(id, prev);
@@ -120,12 +124,20 @@ export function buildPopulation(input: {
     const via = viaOf.get(id);
     const groupIds = new Set(r?.groupIds ?? []);
     if (via && own.has(via)) groupIds.add(via);
-    return { studentId: id, name: input.names.get(id) ?? "—", access: r?.state ?? "NONE", accessSince: r?.since ?? null, groupIds: [...groupIds] };
+    return {
+      studentId: id,
+      name: input.names.get(id) ?? "—",
+      access: r?.state ?? "NONE",
+      accessSince: r?.since ?? null,
+      groupIds: [...groupIds],
+      via: { groupIds: [...(r?.viaGroups ?? [])], individual: r?.individual ?? false },
+    };
   });
   return { students, groups: groups.map((g) => ({ id: g.id, name: g.name })) };
 }
 
-async function population(syllabus: Syllabus, db: DbOrTx) {
+/** The population of one syllabus, read from its own rows only (see `buildPopulation`). */
+export async function population(syllabus: Syllabus, db: DbOrTx) {
   const [grants, enrollments] = await Promise.all([
     store.grantsForSyllabus(syllabus.id, db),
     db.select().from(syllabusEnrollments).where(eq(syllabusEnrollments.syllabusId, syllabus.id)),
@@ -143,7 +155,7 @@ async function population(syllabus: Syllabus, db: DbOrTx) {
   const nameRows = ids.length ? await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, ids)) : [];
   const names = new Map(nameRows.map((n) => [n.id, n.name?.trim() || "—"]));
   const built = buildPopulation({ workspaceId: syllabus.providerWorkspaceId, grants, enrollments, groups, members, names, now: new Date() });
-  return { ...built, enrollments };
+  return { ...built, enrollments, grants };
 }
 
 export async function loadAnalyticsData(syllabus: Syllabus, db: DbOrTx = requireDb()): Promise<AnalyticsData> {

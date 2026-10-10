@@ -71,7 +71,7 @@ export function DeleteSyllabusDialog({
           ) : (
             <>
               {s.currentVersionId && <p className="rounded-xl border border-border bg-muted p-3 text-sm">{t("syllabus.delete.published")}</p>}
-              {s.activeGrantCount > 0 && <p className="rounded-xl border border-border bg-muted p-3 text-sm">{t("syllabus.delete.grants", { count: s.activeGrantCount })}</p>}
+              {s.liveGrantCount > 0 && <p className="rounded-xl border border-border bg-muted p-3 text-sm">{t("syllabus.delete.grants", { count: s.liveGrantCount })}</p>}
             </>
           )}
         </DialogBody>
