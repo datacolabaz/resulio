@@ -1,7 +1,7 @@
 import { AppShell, EmptyState, ErrorNote, Loading } from "@/components/AppShell";
 import { StatusBadge, type Tone } from "@/components/StatusBadge";
 import { t, type MessageKey } from "@/i18n/messages";
-import { errorText } from "@/lib/format";
+import { errorText, fmtDateTime } from "@/lib/format";
 import { publishState, type PublishShape, type SyllabusVisibility } from "@/lib/syllabusPublishState";
 import { trpc } from "@/lib/trpc";
 import type { SyllabusGrantState, SyllabusItemKind } from "@shared/syllabus";
@@ -84,7 +84,18 @@ export function useSyllabusRefresh(id: string) {
 
 export function useMaterials() {
   const q = trpc.teacher.tasks.materials.useQuery(undefined, { staleTime: 60_000 });
-  const list = (q.data ?? []).map((m) => ({ id: m.id, title: m.title, fileId: m.fileId ?? null, url: m.meta.url }));
+  const now = Date.now();
+  // Drafts and scheduled materials stay hidden from students until published, so say so in the pickers.
+  const state = (m: { meta: { status: string; publishAt: Date | null } }) =>
+    m.meta.status === "DRAFT"
+      ? t("material.card.draft")
+      : m.meta.publishAt && new Date(m.meta.publishAt).getTime() > now
+        ? t("material.card.scheduled", { date: fmtDateTime(m.meta.publishAt) })
+        : null;
+  const list = (q.data ?? []).map((m) => {
+    const note = state(m);
+    return { id: m.id, title: note ? `${m.title} (${note})` : m.title, fileId: m.fileId ?? null, url: m.meta.url };
+  });
   return { list, byId: new Map(list.map((m) => [m.id, m])) };
 }
 

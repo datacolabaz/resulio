@@ -92,6 +92,8 @@ export interface FieldDef {
   showIf?: { key: FieldKey; values: readonly string[] };
   /** Pre-filled for a new material of this template. */
   defaultValue?: string;
+  /** Secondary: the form shows it under "Ətraflı seçimlər" instead of the main area. */
+  more?: boolean;
 }
 
 export interface TemplateDef {
@@ -102,9 +104,24 @@ export interface TemplateDef {
   submissionByDefault?: boolean;
 }
 
-const minutes: FieldDef = { key: "estimatedMinutes", type: "number", min: 1, max: 6000 };
+const minutes: FieldDef = { key: "estimatedMinutes", type: "number", min: 1, max: 6000, more: true };
 const dueAt: FieldDef = { key: "dueAt", type: "date" };
+const laterDueAt: FieldDef = { ...dueAt, more: true };
 const topics: FieldDef = { key: "topics", type: "tags" };
+const moreTopics: FieldDef = { ...topics, more: true };
+const prerequisites: FieldDef = { key: "prerequisites", type: "textarea", max: 1000, more: true };
+const repoUrl: FieldDef = { key: "repoUrl", type: "url", more: true };
+const itPurpose: FieldDef = { key: "purpose", type: "select", optionSet: "itPurpose", more: true };
+const feedbackFormat: FieldDef = { key: "feedbackFormat", type: "select", optionSet: "feedbackFormat", more: true };
+const submissionFields: readonly FieldDef[] = [
+  { key: "instructions", type: "textarea", max: 5000 },
+  { key: "submissionFormat", type: "select", optionSet: "submissionFormat" },
+  dueAt,
+  { key: "gradingCriteria", type: "textarea", max: 5000 },
+  minutes,
+  { key: "maxScore", type: "number", min: 1, max: 1000, more: true },
+  moreTopics,
+];
 
 export const TEMPLATES: Record<MaterialTemplate, TemplateDef> = {
   GENERAL: { kinds: ["FILE", "LINK", "VIDEO", "PRESENTATION", "OTHER"], fields: [topics, minutes] },
@@ -125,36 +142,36 @@ export const TEMPLATES: Record<MaterialTemplate, TemplateDef> = {
       { key: "subject", type: "text", max: 120 },
       { ...topics, label: "topic" },
       { key: "difficulty", type: "select", optionSet: "difficulty" },
-      { key: "questionCount", type: "number", min: 1, max: 1000 },
-      { key: "durationMin", type: "number", min: 1, max: 600 },
-      { key: "targetScore", type: "text", max: 32 },
-      dueAt,
+      { key: "questionCount", type: "number", min: 1, max: 1000, more: true },
+      { key: "durationMin", type: "number", min: 1, max: 600, more: true },
+      { key: "targetScore", type: "text", max: 32, more: true },
+      laterDueAt,
     ],
   },
   IT: {
     kinds: ["LINK", "CODE", "FILE", "VIDEO", "DATASET", "PRESENTATION", "TASK", "OTHER"],
     fields: [
       { key: "direction", type: "select", optionSet: "itDirection", allowOther: true },
+      { key: "level", type: "select", optionSet: "itLevel" },
       { key: "technologies", type: "tags" },
       topics,
-      { key: "level", type: "select", optionSet: "itLevel" },
-      { key: "purpose", type: "select", optionSet: "itPurpose" },
+      itPurpose,
       minutes,
-      { key: "prerequisites", type: "textarea", max: 1000 },
-      { key: "repoUrl", type: "url" },
+      prerequisites,
+      repoUrl,
     ],
   },
   DATA_ANALYTICS: {
     kinds: ["DATASET", "FILE", "LINK", "CODE", "VIDEO", "PRESENTATION", "TASK", "OTHER"],
     fields: [
       { key: "direction", type: "select", optionSet: "itDirection", allowOther: true, defaultValue: "DATA_ANALYTICS" },
+      { key: "level", type: "select", optionSet: "itLevel" },
       { key: "technologies", type: "tags" },
       topics,
-      { key: "level", type: "select", optionSet: "itLevel" },
-      { key: "purpose", type: "select", optionSet: "itPurpose" },
+      itPurpose,
       minutes,
-      { key: "prerequisites", type: "textarea", max: 1000 },
-      { key: "repoUrl", type: "url" },
+      prerequisites,
+      repoUrl,
     ],
   },
   IELTS: {
@@ -164,11 +181,11 @@ export const TEMPLATES: Record<MaterialTemplate, TemplateDef> = {
       { key: "module", type: "select", optionSet: "ieltsModule" },
       { key: "taskType", type: "select", optionSet: "ieltsTaskType" },
       { key: "targetBand", type: "number", min: 1, max: 9, step: 0.5 },
-      { key: "level", type: "select", optionSet: "cefr", label: "cefr" },
-      topics,
+      { key: "level", type: "select", optionSet: "cefr", label: "cefr", more: true },
+      moreTopics,
       minutes,
-      dueAt,
-      { key: "feedbackFormat", type: "select", optionSet: "feedbackFormat" },
+      laterDueAt,
+      feedbackFormat,
     ],
   },
   LANGUAGE: {
@@ -179,36 +196,12 @@ export const TEMPLATES: Record<MaterialTemplate, TemplateDef> = {
       { key: "level", type: "select", optionSet: "cefr", label: "cefr" },
       topics,
       minutes,
-      dueAt,
-      { key: "feedbackFormat", type: "select", optionSet: "feedbackFormat" },
+      laterDueAt,
+      feedbackFormat,
     ],
   },
-  PROJECT: {
-    kinds: ["TASK", "FILE", "LINK", "CODE", "DATASET", "OTHER"],
-    submissionByDefault: true,
-    fields: [
-      { key: "instructions", type: "textarea", max: 5000 },
-      { key: "submissionFormat", type: "select", optionSet: "submissionFormat" },
-      dueAt,
-      { key: "gradingCriteria", type: "textarea", max: 5000 },
-      minutes,
-      { key: "maxScore", type: "number", min: 1, max: 1000 },
-      topics,
-    ],
-  },
-  PRACTICE: {
-    kinds: ["TASK", "FILE", "LINK", "CODE", "DATASET", "OTHER"],
-    submissionByDefault: true,
-    fields: [
-      { key: "instructions", type: "textarea", max: 5000 },
-      { key: "submissionFormat", type: "select", optionSet: "submissionFormat" },
-      dueAt,
-      { key: "gradingCriteria", type: "textarea", max: 5000 },
-      minutes,
-      { key: "maxScore", type: "number", min: 1, max: 1000 },
-      topics,
-    ],
-  },
+  PROJECT: { kinds: ["TASK", "FILE", "LINK", "CODE", "DATASET", "OTHER"], submissionByDefault: true, fields: submissionFields },
+  PRACTICE: { kinds: ["TASK", "FILE", "LINK", "CODE", "DATASET", "OTHER"], submissionByDefault: true, fields: submissionFields },
 };
 
 export const isTemplate = (v: unknown): v is MaterialTemplate => typeof v === "string" && (MATERIAL_TEMPLATES as readonly string[]).includes(v);
@@ -374,10 +367,7 @@ export function compactValues(template: MaterialTemplate, values: MaterialValues
   for (const def of TEMPLATES[template].fields) {
     const v = values[def.key];
     if (v === undefined || v === null || v === "" || (Array.isArray(v) && !v.length)) continue;
-    if (def.showIf) {
-      const other = values[def.showIf.key];
-      if (typeof other !== "string" || !def.showIf.values.includes(other)) continue;
-    }
+    if (!fieldShown(def, values)) continue;
     out[def.key] = v;
   }
   return out;
@@ -498,4 +488,114 @@ export function kindFromMime(mimeType: string | null | undefined): MaterialKind 
   if (m.includes("spreadsheet") || m.includes("ms-excel") || m === "text/csv") return "DATASET";
   if (m.startsWith("video/")) return "VIDEO";
   return "FILE";
+}
+
+// ---------------------------------------------------------------------------
+// Form helpers (pure; the dialog in TeacherModules.tsx uses them)
+// ---------------------------------------------------------------------------
+
+/** "Tapşırıq kimi yarat": the save goes to Tasks (submissions, deadline, grading) instead of materials. */
+export function savesAsTask(kind: MaterialKind, submissionRequired: boolean): boolean {
+  return kind === "TASK" || submissionRequired;
+}
+
+export const hasField = (template: MaterialTemplate, key: FieldKey) => TEMPLATES[template].fields.some((f) => f.key === key);
+
+/** Whether `def` applies with the current values (its `showIf` condition). */
+export function fieldShown(def: FieldDef, values: MaterialValues): boolean {
+  if (!def.showIf) return true;
+  const other = values[def.showIf.key];
+  return typeof other === "string" && def.showIf.values.includes(other);
+}
+
+/** The template's fields for one part of the form; `promote` moves secondary fields into the main part. */
+export function fieldsFor(template: MaterialTemplate, section: "main" | "more", values: MaterialValues, promote: readonly FieldKey[] = []): FieldDef[] {
+  return TEMPLATES[template].fields.filter((d) => {
+    const main = !d.more || promote.includes(d.key);
+    return (section === "main") === main && fieldShown(d, values);
+  });
+}
+
+const CATEGORY_TEMPLATE: Record<string, MaterialTemplate> = {
+  SCHOOL: "SCHOOL_LESSON",
+  EARLY_CHILDHOOD: "SCHOOL_LESSON",
+  UNIVERSITY_PREP: "ACADEMIC_PREP",
+  GRADUATION_EXAM: "ACADEMIC_PREP",
+  INTERNATIONAL_EXAM: "IELTS",
+  LANGUAGE: "LANGUAGE",
+  IT: "IT",
+};
+
+/** A template the subject text clearly asks for ("IELTS Writing" → IELTS), else null. */
+export function templateFromSubject(subject: string): MaterialTemplate | null {
+  const key = normalizeForMatch(subject);
+  if (/\bielts\b/.test(key)) return "IELTS";
+  if (/\bdata\b|\banalit/.test(key)) return "DATA_ANALYTICS";
+  return null;
+}
+
+/** A new material's template: the selected groups' subject, then the workspace category, then the last one used. */
+export function defaultTemplate(input: { groupSubjects: readonly string[]; teachingCategory: string | null | undefined; lastUsed: string | null | undefined }): MaterialTemplate {
+  for (const s of input.groupSubjects) {
+    const hit = templateFromSubject(s);
+    if (hit) return hit;
+  }
+  const byCategory = input.teachingCategory ? CATEGORY_TEMPLATE[input.teachingCategory] : undefined;
+  if (byCategory) return byCategory;
+  return isTemplate(input.lastUsed) ? input.lastUsed : "GENERAL";
+}
+
+export interface ProfileGroup {
+  groupType: string;
+  subject: string;
+  grade: string;
+  level: string | null;
+}
+
+const DIRECTION_WORDS: Array<[RegExp, string]> = [
+  [/\bdata science\b/, "DATA_SCIENCE"],
+  [/\bdata\b|\banalit/, "DATA_ANALYTICS"],
+  [/\bfront ?end\b/, "FRONTEND"],
+  [/\bback ?end\b/, "BACKEND"],
+  [/\bdevops\b/, "DEVOPS"],
+  [/\bui\b|\bux\b|\bdizayn\b|\bdesign\b/, "UI_UX"],
+];
+
+function directionOf(subject: string): string {
+  const key = normalizeForMatch(subject);
+  return DIRECTION_WORDS.find(([re]) => re.test(key))?.[1] ?? subject.trim();
+}
+
+/** The single value all groups share, or null when they differ or any is empty. */
+function shared<T>(list: readonly T[]): T | null {
+  if (!list.length || list.some((v) => !v)) return null;
+  return list.every((v) => v === list[0]) ? list[0] : null;
+}
+
+/**
+ * Values the selected groups' profiles suggest for the empty fields of this template. School
+ * groups give subject and grade; course groups give direction and level. Filled only when every
+ * selected group agrees, and never over what the teacher has typed.
+ */
+export function prefillFromGroups(template: MaterialTemplate, groups: readonly ProfileGroup[], values: MaterialValues): MaterialValues {
+  const type = shared(groups.map((g) => g.groupType));
+  if (!type) return {};
+  const out: MaterialValues = {};
+  const empty = (key: FieldKey) => hasField(template, key) && (values[key] === undefined || values[key] === "");
+  const subject = shared(groups.map((g) => g.subject.trim()));
+  if (type === "SCHOOL") {
+    const grade = shared(groups.map((g) => g.grade.trim()));
+    if (subject && empty("subject")) out.subject = subject;
+    if (grade && empty("grade")) out.grade = grade;
+    return out;
+  }
+  if (subject && empty("direction")) out.direction = directionOf(subject);
+  if (subject && empty("subject")) out.subject = subject;
+  const level = shared(groups.map((g) => (g.level ?? "").trim()));
+  const levelDef = TEMPLATES[template].fields.find((f) => f.key === "level");
+  if (level && levelDef?.optionSet && empty("level")) {
+    const code = level === "PROFESSIONAL" ? "ADVANCED" : level.toUpperCase();
+    if ((OPTION_SETS[levelDef.optionSet] as readonly string[]).includes(code)) out.level = code;
+  }
+  return out;
 }

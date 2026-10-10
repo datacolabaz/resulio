@@ -556,7 +556,7 @@ export const teacher = {
   "modules.materialName": ["Materialın adı", "Material name", "Название материала"],
   "modules.materialSharing": ["Paylaşım", "Sharing", "Доступ"],
   "modules.advancedOptions": ["Ətraflı seçimlər", "More options", "Дополнительно"],
-  "modules.advancedOptionsHint": ["Təsvir, fənn, mövzu", "Description, subject, topic", "Описание, предмет, тема"],
+  "modules.advancedOptionsHint": ["Əlavə sahələr, təsvir, kim aça bilər, paylaşım vaxtı, bildiriş", "More fields, description, who can open it, when to share, notifications", "Дополнительные поля, описание, доступ, время публикации, уведомления"],
   "modules.plan": ["Paket", "Plan", "Тариф"],
   "modules.planNote": [
     "Paket bu tədris məkanına aiddir, şəxsi hesabınıza deyil. Beta müddətində bütün əsas funksiyalar pulsuzdur.",

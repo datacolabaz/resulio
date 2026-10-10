@@ -6,6 +6,7 @@ import { ResultPenalty } from "@/components/ResultPenalty";
 import { StatusBadge, toneSurface } from "@/components/StatusBadge";
 import { ContinueLearning } from "@/components/syllabus/CrossLinks";
 import { MyJoinRequests } from "@/components/syllabus/MyJoinRequests";
+import { MaterialLinkButton, MaterialMeta } from "@/components/materials/MaterialMeta";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -27,7 +28,6 @@ import { normalizeJoinInput, resolveJoinInput } from "@/lib/joinInput";
 import { itemStatus, liveStatus } from "@/lib/status";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { fileDownloadUrl, type UploadedFile } from "@/lib/uploadFile";
-import { linkHost } from "@shared/materialTemplates";
 import { safeReturnPath } from "@/lib/syllabusLearn";
 import { ArrowLeft, CheckCircle2, Clock, History, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -668,6 +668,11 @@ export function StudentTasks() {
 export function StudentMaterials() {
   const list = trpc.student.materials.useQuery();
   const openLink = trpc.student.openMaterialLink.useMutation();
+  // Notification links point at one material: /student/materials?material=<id>.
+  const focusId = new URLSearchParams(useSearch()).get("material");
+  useEffect(() => {
+    if (focusId && list.data) document.getElementById(`material-${focusId}`)?.scrollIntoView({ block: "center" });
+  }, [focusId, list.data]);
   return (
     <AppShell area="learning">
       {!list.data ? <Loading /> : !list.data.length ? (
@@ -675,22 +680,15 @@ export function StudentMaterials() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {list.data.map((m) => (
-            <Panel key={m.id} title={m.title}>
-              <p className="break-words text-sm text-foreground-secondary">{m.description}</p>
-              <p className="mt-2 break-words text-xs text-muted-foreground">{[m.subject, m.topic].filter(Boolean).join(" · ")}</p>
+            <Panel key={m.id} id={`material-${m.id}`} title={m.title} className={focusId === m.id ? "ring-2 ring-link" : ""}>
+              {m.description && <p className="break-words text-sm text-foreground-secondary">{m.description}</p>}
+              {m.subject && <p className="mt-1 break-words text-xs text-muted-foreground">{m.subject}</p>}
+              <MaterialMeta meta={m.meta} />
               {m.meta.url ? (
-                <a
-                  href={m.meta.url}
-                  target="_blank"
-                  rel="noopener noreferrer nofollow"
-                  onClick={() => openLink.mutate({ id: m.id })}
-                  className="mt-2 inline-block max-w-full break-all rounded-lg border border-border bg-muted px-2 py-1 text-xs text-link underline-offset-2 hover:underline"
-                >
-                  {t("public.material.openLink")}: {linkHost(m.meta.url)}
-                </a>
+                <MaterialLinkButton url={m.meta.url} onOpen={() => openLink.mutate({ id: m.id })} />
               ) : (
                 m.fileId && (
-                  <a href={fileDownloadUrl(m.fileId)} className="mt-2 inline-block rounded-lg border border-border bg-muted px-2 py-1 text-xs text-link underline-offset-2 hover:underline">
+                  <a href={fileDownloadUrl(m.fileId)} className="mt-2 inline-block max-w-full break-all rounded-lg border border-border bg-muted px-2 py-1 text-xs text-link underline-offset-2 hover:underline">
                     {m.fileName}
                   </a>
                 )
