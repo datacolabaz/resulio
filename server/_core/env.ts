@@ -111,6 +111,13 @@ export const ENV = {
       .map((s) => s.trim())
       .filter(Boolean);
   },
+  /** Workspaces with the Growth Engine (risk radar, weakness map, review plan) on: ids or "*". Empty = DB flag only. */
+  get growthEnabledWorkspaces(): string[] {
+    return envString("GROWTH_ENGINE_ENABLED_WORKSPACES")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  },
   /** Max AI pre-reviews per workspace in a rolling 24 hours. */
   get aiReviewDailyLimit() {
     const n = Number.parseInt(envString("AI_REVIEW_DAILY_LIMIT"), 10);

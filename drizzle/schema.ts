@@ -51,6 +51,7 @@ import { SYLLABUS_IMPORT_STATUSES, type SyllabusImportDetail } from "../shared/s
 import { JOIN_REQUEST_STATUSES, JOIN_REQUEST_TYPES } from "../shared/syllabusJoin";
 import type { ClassScheduleEntry } from "../shared/schedule";
 import { GROUP_TYPES } from "../shared/groupType";
+import { GROWTH_DIMENSIONS, TOPIC_KEY_MAX, type EvidenceOrigin } from "../shared/growth";
 import { SHARE_CHANNELS, SHARE_EVENT_TYPES, SHARE_TARGET_TYPES } from "../shared/shareTracking";
 import {
   APPROVAL_DECISIONS,
@@ -2014,6 +2015,123 @@ export const questionImportItems = mysqlTable(
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },
   (t) => [index("question_import_items_job_idx").on(t.jobId, t.position)],
+);
+
+// ---------------------------------------------------------------------------
+// Growth Engine (docs/GROWTH-ENGINE.md). Side tables only: results, attempts and users stay as they are.
+// ---------------------------------------------------------------------------
+
+/**
+ * A teacher's mapping of a free-text topic (as frozen on old result items) to a question bank
+ * section, or just a cleaner label for it. `aliasKey` = nameKey(text). No row = resolved automatically.
+ */
+export const topicAliases = mysqlTable(
+  "topic_aliases",
+  {
+    workspaceId: id("workspaceId").notNull(),
+    aliasKey: varchar("aliasKey", { length: 120 }).notNull(),
+    label: varchar("label", { length: 120 }).notNull(),
+    questionTopicId: id("questionTopicId"),
+    updatedBy: int("updatedBy"),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.workspaceId, t.aliasKey] })],
+);
+
+/**
+ * Per result and canonical topic (or skill): the graded evidence of one attempt. Rebuilt from
+ * result_items whenever the result or the topic mapping changes, so it is safe to delete and redo.
+ * The source of the weakness map, trends and risk signals.
+ */
+export const resultTopicStats = mysqlTable(
+  "result_topic_stats",
+  {
+    resultId: id("resultId").notNull(),
+    dimension: mysqlEnum("dimension", GROWTH_DIMENSIONS).notNull(),
+    topicKey: varchar("topicKey", { length: TOPIC_KEY_MAX }).notNull(),
+    workspaceId: id("workspaceId").notNull(),
+    studentId: int("studentId").notNull(),
+    assessmentId: id("assessmentId").notNull(),
+    origin: varchar("origin", { length: 16 }).$type<EvidenceOrigin>().notNull(),
+    questionTopicId: id("questionTopicId"),
+    label: varchar("label", { length: 120 }).notNull(),
+    completedAt: timestamp("completedAt").notNull(),
+    questionCount: int("questionCount").notNull(),
+    correctCount: int("correctCount").notNull(),
+    wrongCount: int("wrongCount").notNull(),
+    unansweredCount: int("unansweredCount").notNull(),
+    pendingCount: int("pendingCount").notNull(),
+    earned: double("earned").notNull(),
+    possible: double("possible").notNull(),
+    /** Points of the wrong (not unanswered) items: what the wrong-answer penalty applies to. */
+    wrongPoints: double("wrongPoints").notNull(),
+    computedAt: timestamp("computedAt").defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.resultId, t.dimension, t.topicKey] }),
+    index("result_topic_stats_student_idx").on(t.workspaceId, t.studentId, t.completedAt),
+    index("result_topic_stats_topic_idx").on(t.workspaceId, t.dimension, t.topicKey),
+  ],
+);
+
+/** Materialized mastery per student and topic in one workspace, from every non-voided result (teacher view). */
+export const studentTopicMastery = mysqlTable(
+  "student_topic_mastery",
+  {
+    workspaceId: id("workspaceId").notNull(),
+    studentId: int("studentId").notNull(),
+    dimension: mysqlEnum("dimension", GROWTH_DIMENSIONS).notNull(),
+    topicKey: varchar("topicKey", { length: TOPIC_KEY_MAX }).notNull(),
+    questionTopicId: id("questionTopicId"),
+    label: varchar("label", { length: 120 }).notNull(),
+    /** 0–100 after recency weighting and shrinkage toward the student's overall accuracy. */
+    mastery: double("mastery").notNull(),
+    rawPct: double("rawPct").notNull(),
+    evidenceCount: int("evidenceCount").notNull(),
+    examCount: int("examCount").notNull(),
+    trend: varchar("trend", { length: 8 }).notNull(),
+    trendDelta: double("trendDelta"),
+    status: varchar("status", { length: 16 }).notNull(),
+    lastEvidenceAt: timestamp("lastEvidenceAt").notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.workspaceId, t.studentId, t.dimension, t.topicKey] }),
+    index("student_topic_mastery_topic_idx").on(t.workspaceId, t.dimension, t.topicKey),
+    index("student_topic_mastery_student_idx").on(t.studentId),
+  ],
+);
+
+/** Students whose growth data must be recomputed (new result, regrade, topic mapping). Reconciled by a sweeper. */
+export const growthDirty = mysqlTable(
+  "growth_dirty",
+  {
+    workspaceId: id("workspaceId").notNull(),
+    studentId: int("studentId").notNull(),
+    reason: varchar("reason", { length: 32 }).notNull(),
+    dirtyAt: timestamp("dirtyAt", { fsp: 3 }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.workspaceId, t.studentId] }), index("growth_dirty_at_idx").on(t.dirtyAt)],
+);
+
+/**
+ * Assessments the Growth Engine generated (an individual retake or a student's practice test). They
+ * are ordinary assessments; this row only keeps them out of group averages and the teacher's list.
+ */
+export const assessmentOrigins = mysqlTable(
+  "assessment_origins",
+  {
+    assessmentId: id("assessmentId").primaryKey(),
+    workspaceId: id("workspaceId").notNull(),
+    studentId: int("studentId").notNull(),
+    origin: varchar("origin", { length: 16 }).$type<EvidenceOrigin>().notNull(),
+    topicKeys: json("topicKeys").$type<string[]>().notNull(),
+    /** What it was created from, e.g. "risk" or a review plan item id. */
+    sourceRef: varchar("sourceRef", { length: 64 }),
+    createdBy: int("createdBy").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [index("assessment_origins_student_idx").on(t.workspaceId, t.studentId, t.origin)],
 );
 
 export type Syllabus = typeof syllabi.$inferSelect;

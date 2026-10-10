@@ -118,7 +118,9 @@ export type AppErrorCode =
   | "DIRECT_UPLOAD_UNAVAILABLE"
   | "STORAGE_QUOTA_EXCEEDED"
   | "UPLOAD_NOT_PENDING"
-  | "UPLOAD_INCOMPLETE";
+  | "UPLOAD_INCOMPLETE"
+  | "GROWTH_NOT_AVAILABLE"
+  | "GROWTH_DB_NOT_READY";
 
 export class AppError extends Error {
   constructor(public readonly code: AppErrorCode) {
@@ -242,6 +244,8 @@ const HTTP: Partial<Record<AppErrorCode, TRPCError["code"]>> = {
   STORAGE_QUOTA_EXCEEDED: "PAYLOAD_TOO_LARGE",
   UPLOAD_NOT_PENDING: "CONFLICT",
   UPLOAD_INCOMPLETE: "BAD_REQUEST",
+  GROWTH_NOT_AVAILABLE: "FORBIDDEN",
+  GROWTH_DB_NOT_READY: "PRECONDITION_FAILED",
 };
 
 /** Where an unexpected error happened, for the server log only (never sent to the client). */

@@ -54,6 +54,7 @@ const SyllabusDetailPage = lazyPage(() => import("@/pages/teacher/syllabus/Sylla
 const SyllabusListPage = lazyPage(() => import("@/pages/teacher/syllabus/SyllabusList").then((m) => ({ default: m.SyllabusListPage })));
 const SyllabusImportPage = lazyPage(() => import("@/pages/teacher/syllabus/SyllabusImportPage"));
 const PublicSyllabusPage = lazyPage(() => import("@/pages/PublicSyllabusPage"));
+const GrowthPage = lazyPage(() => import("@/pages/teacher/growth/GrowthPage").then((m) => ({ default: m.GrowthPage })));
 const QuestionImportPage = lazyPage(() => import("@/pages/teacher/QuestionImport").then((m) => ({ default: m.QuestionImportPage })));
 const QuestionImportReviewPage = lazyPage(() => import("@/pages/teacher/QuestionImport").then((m) => ({ default: m.QuestionImportReviewPage })));
 
@@ -181,6 +182,7 @@ function Router() {
       <Route path="/teacher/results">{teacher(<ResultsPage />)}</Route>
       <Route path="/teacher/results/:id">{teacher(<ResultDetailPage />)}</Route>
       <Route path="/teacher/analytics">{teacher(<AnalyticsPage />)}</Route>
+      <Route path="/teacher/growth">{teacher(<GrowthPage />)}</Route>
       <Route path="/teacher/usage">{teacher(<UsagePage />)}</Route>
       <Route path="/teacher/ksq"><Redirect to="/teacher/assessments?type=KSQ" /></Route>
       <Route path="/teacher/bsq"><Redirect to="/teacher/assessments?type=BSQ" /></Route>
