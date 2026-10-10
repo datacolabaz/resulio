@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { t } from "@/i18n/messages";
 import { errorText, fmtDateTime, groupFactsLine, groupLevelLabel, liveLabel } from "@/lib/format";
 import { LEVEL_OPTIONS, typeDraftOf, typeFieldKeys, typePayload, type LevelChoice } from "@/lib/groupForm";
+import { joinSourceLabel } from "@/lib/joinSource";
 import { liveStatus } from "@/lib/status";
 import { trpc } from "@/lib/trpc";
 import { GROUP_CLASS_MAX, GROUP_LEVEL_MAX, GROUP_TYPES, type GroupType } from "@shared/groupType";
@@ -630,6 +631,7 @@ function InviteDialog({
   joinPolicy,
   codeActive,
   codeExpiresAt,
+  codeUsage,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -638,10 +640,14 @@ function InviteDialog({
   joinPolicy: JoinPolicy;
   codeActive: boolean;
   codeExpiresAt: string | Date | null;
+  codeUsage: { uses: number; maxUses: number | null };
 }) {
   const utils = trpc.useUtils();
   const [email, setEmail] = useState("");
   const [expiryInput, setExpiryInput] = useState(() => (codeExpiresAt ? new Date(codeExpiresAt).toISOString().slice(0, 10) : ""));
+  const [maxUsesInput, setMaxUsesInput] = useState(() => (codeUsage.maxUses === null ? "" : String(codeUsage.maxUses)));
+  const maxUses = Number(maxUsesInput);
+  const maxUsesValid = Number.isInteger(maxUses) && maxUses >= 1 && maxUses <= 10_000;
   const onGroupChange = () => void utils.teacher.groups.invalidate();
   const shareFunnel = trpc.teacher.groups.shareFunnel.useQuery({ groupId }, { enabled: open });
   const add = trpc.teacher.groups.addMember.useMutation({
@@ -651,6 +657,7 @@ function InviteDialog({
   const setPolicy = trpc.teacher.groups.setJoinPolicy.useMutation({ onSuccess: onGroupChange, onError: (e) => toast.error(errorText(e)) });
   const setActive = trpc.teacher.groups.setInviteCodeActive.useMutation({ onSuccess: onGroupChange, onError: (e) => toast.error(errorText(e)) });
   const setExpiry = trpc.teacher.groups.setInviteCodeExpiry.useMutation({ onSuccess: onGroupChange, onError: (e) => toast.error(errorText(e)) });
+  const setMaxUses = trpc.teacher.groups.setInviteCodeMaxUses.useMutation({ onSuccess: onGroupChange, onError: (e) => toast.error(errorText(e)) });
   const regenerate = trpc.teacher.groups.regenerateInviteCode.useMutation({
     onSuccess: () => { toast.success(t("groups.codeRegenerated")); setExpiryInput(""); onGroupChange(); },
     onError: (e) => toast.error(errorText(e)),
@@ -683,6 +690,11 @@ function InviteDialog({
               <code className="rounded bg-muted px-2 py-1 font-mono text-sm">{inviteCode}</code>
               <Button variant="outline" size="sm" onClick={() => void copyCode()}>{t("groups.copyCode")}</Button>
             </div>
+            <p className="mt-2 text-xs text-foreground-secondary">
+              {codeUsage.maxUses === null
+                ? t("groups.codeUses", { uses: codeUsage.uses })
+                : t("groups.codeUsesOfMax", { uses: codeUsage.uses, max: codeUsage.maxUses })}
+            </p>
             <ShareFunnelSummary data={shareFunnel.data} />
 
             <div className="mt-3 rounded-xl border p-3">
@@ -735,6 +747,42 @@ function InviteDialog({
                   {t("groups.codeExpiryClear")}
                 </Button>
               )}
+            </div>
+
+            <div className="mt-3 rounded-xl border p-3">
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="flex-1 text-sm">
+                  <span className={fieldLabel}>{t("groups.codeMaxUsesLabel")}</span>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={10_000}
+                    placeholder={t("groups.codeMaxUsesPlaceholder")}
+                    value={maxUsesInput}
+                    onChange={(e) => setMaxUsesInput(e.target.value)}
+                  />
+                </label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={setMaxUses.isPending || !maxUsesValid || maxUses === codeUsage.maxUses}
+                  onClick={() => setMaxUses.mutate({ groupId, maxUses })}
+                >
+                  {t("groups.codeExpirySet")}
+                </Button>
+                {codeUsage.maxUses !== null && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={setMaxUses.isPending}
+                    onClick={() => { setMaxUsesInput(""); setMaxUses.mutate({ groupId, maxUses: null }); }}
+                  >
+                    {t("groups.codeMaxUsesClear")}
+                  </Button>
+                )}
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">{t("groups.codeMaxUsesHint")}</p>
             </div>
 
             <Button
@@ -828,6 +876,7 @@ export function GroupDetailPage() {
                           <th scope="col" className="py-2">{t("common.name")}</th>
                           <th scope="col">{t("common.email")}</th>
                           <th scope="col">{t("groups.joined")}</th>
+                          <th scope="col">{t("groups.joinedVia")}</th>
                           <th scope="col"><span className="sr-only">{t("groups.remove")}</span></th>
                         </tr>
                       </thead>
@@ -837,6 +886,13 @@ export function GroupDetailPage() {
                             <td className="break-words py-2 pr-3">{m.name ?? "—"}</td>
                             <td className="break-all pr-3 text-muted-foreground">{m.email}</td>
                             <td className="whitespace-nowrap pr-3 text-muted-foreground">{fmtDateTime(m.joinedAt)}</td>
+                            <td
+                              className="pr-3 text-foreground-secondary"
+                              title={m.joinSource ? [m.joinSource.detail, fmtDateTime(m.joinSource.joinedAt)].filter(Boolean).join(" · ") : undefined}
+                            >
+                              <div>{joinSourceLabel(m.joinSource?.joinedVia)}</div>
+                              {m.joinSource?.detail && <div className="break-words text-xs text-muted-foreground">{m.joinSource.detail}</div>}
+                            </td>
                             <td className="text-right">
                               <Button
                                 size="sm"
@@ -973,6 +1029,7 @@ export function GroupDetailPage() {
             joinPolicy={g.joinPolicy}
             codeActive={g.codeActive}
             codeExpiresAt={g.codeExpiresAt}
+            codeUsage={g.codeUsage}
           />
           {editOpen && <GroupFormDialog open={editOpen} onOpenChange={setEditOpen} initial={g} />}
         </div>

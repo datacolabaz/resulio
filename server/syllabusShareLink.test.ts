@@ -762,7 +762,7 @@ describe("accepting and rejecting", () => {
     const id = await requestAs(STRANGER, "GROUP", "soon");
     expect((await teacher().joinRequestCounts()).find((c) => c.syllabusId === "syl1")?.count).toBe(1);
     expect(await teacher().decideJoinRequest({ requestId: id, decision: "ACCEPTED", note: "Welcome" })).toEqual({ id, status: "ACCEPTED", accessGranted: false });
-    expect(m.groups.addMemberById).toHaveBeenCalledWith({ workspaceId: "ws_teacher", userId: OWNER }, "soon", STRANGER);
+    expect(m.groups.addMemberById).toHaveBeenCalledWith({ workspaceId: "ws_teacher", userId: OWNER }, "soon", STRANGER, id);
     expect(m.notifyTasks).toHaveBeenCalledWith("soon", STRANGER);
     expect(m.announce).toHaveBeenCalledWith("soon", STRANGER);
     expect(mem.members.get(STRANGER)).toEqual(["soon"]);

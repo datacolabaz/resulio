@@ -21,6 +21,11 @@ export const format = {
     "This invite code/link is no longer active. Ask your teacher for a new link.",
     "Этот код/ссылка-приглашение больше не активен. Попросите у преподавателя новую ссылку.",
   ],
+  "error.INVITE_CODE_LIMIT_REACHED": [
+    "Bu dəvət kodu/linki ilə qoşulma limiti dolub. Müəllimdən yeni link istəyin.",
+    "This invite code/link has reached its join limit. Ask your teacher for a new link.",
+    "Лимит вступлений по этому коду/ссылке исчерпан. Попросите у преподавателя новую ссылку.",
+  ],
   "error.INVITE_CODE_EXPIRED": [
     "Bu dəvət kodunun/linkinin müddəti bitib. Müəllimdən yeni link istəyin.",
     "This invite code/link has expired. Ask your teacher for a new link.",

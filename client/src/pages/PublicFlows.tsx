@@ -137,11 +137,17 @@ function useGroupPageMeta(g: { name: string; groupType: GroupType; subject: stri
 }
 
 /** Why the group's invite link turns people away right now, shown before anyone signs in or presses Join. */
-function InviteRejectionNote({ rejection }: { rejection: "INVITE_CODE_INACTIVE" | "INVITE_CODE_EXPIRED" | "GROUP_NOT_ACCEPTING" }) {
+const REJECTION_TEXT = {
+  INVITE_CODE_INACTIVE: "public.join.codeInactive",
+  INVITE_CODE_EXPIRED: "public.join.codeExpired",
+  INVITE_CODE_LIMIT_REACHED: "public.join.codeLimitReached",
+} as const;
+
+function InviteRejectionNote({ rejection }: { rejection: keyof typeof REJECTION_TEXT | "GROUP_NOT_ACCEPTING" }) {
   if (rejection === "GROUP_NOT_ACCEPTING") return <p role="alert" className="text-sm text-muted-foreground">{t("public.join.notAccepting")}</p>;
   return (
     <div className="space-y-3">
-      <p role="alert" className="text-sm text-destructive">{t(rejection === "INVITE_CODE_EXPIRED" ? "public.join.codeExpired" : "public.join.codeInactive")}</p>
+      <p role="alert" className="text-sm text-destructive">{t(REJECTION_TEXT[rejection])}</p>
       <Button asChild className="w-full" variant="outline"><Link href="/student/groups">{t("public.myGroups")}</Link></Button>
     </div>
   );

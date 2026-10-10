@@ -6,6 +6,7 @@ import type { ClassScheduleEntry } from "../../shared/schedule";
 import { requireDb, type DbOrTx } from "../db";
 import type { TeacherScope } from "./access";
 import { AppError } from "./errors";
+import { codeUsage, joinSourcesOf, recordJoinSource, setCodeMaxUses, type JoinSourceInput } from "./groupJoinSources";
 import { groupProfileOf, saveProfile, withProfiles } from "./groupProfiles";
 
 export type GroupFormat = (typeof GROUP_FORMATS)[number];
@@ -112,8 +113,9 @@ export async function renameGroup(scope: TeacherScope, groupId: string, patch: P
 
 export async function groupMembersList(scope: TeacherScope, groupId: string) {
   await assertGroupOwner(scope, groupId);
-  return requireDb()
+  const rows = await requireDb()
     .select({
+      membershipId: groupMembers.id,
       studentId: groupMembers.userId,
       status: groupMembers.status,
       joinedAt: groupMembers.joinedAt,
@@ -125,6 +127,34 @@ export async function groupMembersList(scope: TeacherScope, groupId: string) {
     .innerJoin(users, eq(users.id, groupMembers.userId))
     .where(eq(groupMembers.groupId, groupId))
     .orderBy(groupMembers.status, users.name);
+  const sources = await joinSourcesOf(rows.map((r) => r.membershipId));
+  return rows.map(({ membershipId, ...r }) => ({ ...r, joinSource: sources.get(membershipId) ?? null }));
+}
+
+/**
+ * Makes an existing user an ACTIVE student of the group on the teacher's behalf and records why
+ * (added by e-mail, or an accepted syllabus join request).
+ */
+async function addMemberAs(scope: TeacherScope, groupId: string, student: { id: number }, source: Pick<JoinSourceInput, "joinedVia" | "sourceId">) {
+  const db = requireDb();
+  const ws = await workspaceOwnerOf(scope.workspaceId, db);
+  if (ws.ownerUserId === student.id) throw new AppError("CANNOT_JOIN_OWN_GROUP");
+  return db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(groupMembers)
+      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, student.id)))
+      .limit(1)
+      .for("update");
+    if (existing?.status === "ACTIVE") throw new AppError("ALREADY_MEMBER");
+    if (existing) {
+      await tx.update(groupMembers).set({ status: "ACTIVE" }).where(eq(groupMembers.id, existing.id));
+    } else {
+      await tx.insert(groupMembers).values({ groupId, userId: student.id, membershipRole: "STUDENT", status: "ACTIVE" });
+    }
+    await recordJoinSource(tx, { groupId, userId: student.id, ...source, actorUserId: scope.userId });
+    return { studentId: student.id, status: "ACTIVE" as const };
+  });
 }
 
 export async function workspaceOwnerOf(workspaceId: string, db: DbOrTx) {
@@ -139,54 +169,30 @@ export async function addMemberByEmail(scope: TeacherScope, groupId: string, ema
   await assertGroupOwner(scope, groupId);
   const [student] = await db.select().from(users).where(eq(users.email, email.trim().toLowerCase())).limit(1);
   if (!student) throw new AppError("STUDENT_NOT_FOUND");
-  const ws = await workspaceOwnerOf(scope.workspaceId, db);
-  if (ws.ownerUserId === student.id) throw new AppError("CANNOT_JOIN_OWN_GROUP");
-  const [existing] = await db
-    .select()
-    .from(groupMembers)
-    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, student.id)))
-    .limit(1);
-  if (existing?.status === "ACTIVE") throw new AppError("ALREADY_MEMBER");
-  if (existing) {
-    await db.update(groupMembers).set({ status: "ACTIVE" }).where(eq(groupMembers.id, existing.id));
-  } else {
-    await db.insert(groupMembers).values({ groupId, userId: student.id, membershipRole: "STUDENT", status: "ACTIVE" });
-  }
-  return { studentId: student.id, status: "ACTIVE" as const };
+  return addMemberAs(scope, groupId, student, { joinedVia: "TEACHER_ADDED" });
 }
 
-/** Same as addMemberByEmail for a known user id (an accepted syllabus join request). */
-export async function addMemberById(scope: TeacherScope, groupId: string, studentId: number) {
+/** Same as addMemberByEmail for a known user id: an accepted syllabus join request (`requestId`). */
+export async function addMemberById(scope: TeacherScope, groupId: string, studentId: number, requestId?: string) {
   const db = requireDb();
   await assertGroupOwner(scope, groupId);
   const [student] = await db.select({ id: users.id }).from(users).where(eq(users.id, studentId)).limit(1);
   if (!student) throw new AppError("STUDENT_NOT_FOUND");
-  const ws = await workspaceOwnerOf(scope.workspaceId, db);
-  if (ws.ownerUserId === student.id) throw new AppError("CANNOT_JOIN_OWN_GROUP");
-  const [existing] = await db
-    .select()
-    .from(groupMembers)
-    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, student.id)))
-    .limit(1);
-  if (existing?.status === "ACTIVE") throw new AppError("ALREADY_MEMBER");
-  if (existing) {
-    await db.update(groupMembers).set({ status: "ACTIVE" }).where(eq(groupMembers.id, existing.id));
-  } else {
-    await db.insert(groupMembers).values({ groupId, userId: student.id, membershipRole: "STUDENT", status: "ACTIVE" });
-  }
-  return { studentId: student.id, status: "ACTIVE" as const };
+  return addMemberAs(scope, groupId, student, requestId ? { joinedVia: "SYLLABUS_REQUEST", sourceId: requestId } : { joinedVia: "TEACHER_ADDED" });
 }
 
-export type InviteCodeRejection = "INVITE_CODE_INACTIVE" | "INVITE_CODE_EXPIRED" | "GROUP_NOT_ACCEPTING";
+export type InviteCodeRejection = "INVITE_CODE_INACTIVE" | "INVITE_CODE_EXPIRED" | "INVITE_CODE_LIMIT_REACHED" | "GROUP_NOT_ACCEPTING";
 
 /** Why the group's invite code / `/join/<code>` link would refuse a new join at `now`, or null if it lets people in. */
 export function inviteCodeRejection(
   group: { codeActive: boolean; codeExpiresAt: Date | null; joinPolicy: GroupJoinPolicy },
   now = new Date(),
+  usage: { uses: number; maxUses: number | null } = { uses: 0, maxUses: null },
 ): InviteCodeRejection | null {
   if (!group.codeActive) return "INVITE_CODE_INACTIVE";
   if (group.codeExpiresAt && group.codeExpiresAt.getTime() <= now.getTime()) return "INVITE_CODE_EXPIRED";
   if (group.joinPolicy === "MANUAL") return "GROUP_NOT_ACCEPTING";
+  if (usage.maxUses !== null && usage.uses >= usage.maxUses) return "INVITE_CODE_LIMIT_REACHED";
   return null;
 }
 
@@ -204,34 +210,41 @@ export interface LinkJoin {
  * A valid link is all it takes: the membership is ACTIVE at once, nobody approves it. A PENDING
  * row left over from the retired approval policy is activated by the same visit, since the
  * student has just presented a valid link again.
+ *
+ * One transaction holding the group row lock, so joins through the same code run one at a time:
+ * an optional use cap (`group_code_limits`) can never be overshot by simultaneous joins.
  */
 export async function joinByInvite(userId: number, inviteCode: string): Promise<LinkJoin & { status: "ACTIVE"; activatedPending: boolean }> {
-  const db = requireDb();
-  const [group] = await db.select().from(groups).where(eq(groups.inviteCode, inviteCode)).limit(1);
-  if (!group) throw new AppError("INVITE_NOT_FOUND");
-  const rejection = inviteCodeRejection(group);
-  if (rejection) throw new AppError(rejection);
-  const ws = await workspaceOwnerOf(group.providerWorkspaceId, db);
-  if (ws.ownerUserId === userId) throw new AppError("CANNOT_JOIN_OWN_GROUP");
-  const [existing] = await db
-    .select()
-    .from(groupMembers)
-    .where(and(eq(groupMembers.groupId, group.id), eq(groupMembers.userId, userId)))
-    .limit(1);
-  if (existing?.status === "ACTIVE") throw new AppError("ALREADY_MEMBER");
-  const base = { groupId: group.id, groupName: group.name, ownerUserId: ws.ownerUserId, userId, status: "ACTIVE" as const };
-  if (existing) {
-    // Conditional, so of two simultaneous visits only one reports the activation (and notifies).
-    const [res] = await db
-      .update(groupMembers)
-      .set({ status: "ACTIVE" })
-      .where(and(eq(groupMembers.id, existing.id), eq(groupMembers.status, "PENDING")));
+  return requireDb().transaction(async (tx) => {
+    const [group] = await tx.select().from(groups).where(eq(groups.inviteCode, inviteCode)).limit(1).for("update");
+    if (!group) throw new AppError("INVITE_NOT_FOUND");
+    const rejection = inviteCodeRejection(group, new Date(), await codeUsage(tx, group.id, group.inviteCode));
+    if (rejection) throw new AppError(rejection);
+    const ws = await workspaceOwnerOf(group.providerWorkspaceId, tx);
+    if (ws.ownerUserId === userId) throw new AppError("CANNOT_JOIN_OWN_GROUP");
+    const [existing] = await tx
+      .select()
+      .from(groupMembers)
+      .where(and(eq(groupMembers.groupId, group.id), eq(groupMembers.userId, userId)))
+      .limit(1);
+    if (existing?.status === "ACTIVE") throw new AppError("ALREADY_MEMBER");
+    const base = { groupId: group.id, groupName: group.name, ownerUserId: ws.ownerUserId, userId, status: "ACTIVE" as const };
+    const source = { groupId: group.id, userId, joinedVia: "GROUP_CODE_LINK" as const, sourceId: group.inviteCode, actorUserId: userId };
+    if (existing) {
+      // Conditional, so of two simultaneous visits only one reports the activation (and notifies).
+      const [res] = await tx
+        .update(groupMembers)
+        .set({ status: "ACTIVE" })
+        .where(and(eq(groupMembers.id, existing.id), eq(groupMembers.status, "PENDING")));
+      if (res.affectedRows !== 1) throw new AppError("ALREADY_MEMBER");
+      await recordJoinSource(tx, source);
+      return { ...base, membershipId: existing.id, activatedPending: true };
+    }
+    const [res] = await tx.insert(groupMembers).ignore().values({ groupId: group.id, userId, membershipRole: "STUDENT", status: "ACTIVE" });
     if (res.affectedRows !== 1) throw new AppError("ALREADY_MEMBER");
-    return { ...base, membershipId: existing.id, activatedPending: true };
-  }
-  const [res] = await db.insert(groupMembers).ignore().values({ groupId: group.id, userId, membershipRole: "STUDENT", status: "ACTIVE" });
-  if (res.affectedRows !== 1) throw new AppError("ALREADY_MEMBER");
-  return { ...base, membershipId: Number(res.insertId), activatedPending: false };
+    await recordJoinSource(tx, source);
+    return { ...base, membershipId: Number(res.insertId), activatedPending: false };
+  });
 }
 
 export interface PendingJoinCandidate {
@@ -301,6 +314,7 @@ export async function activatePendingLinkJoins(now = new Date()): Promise<LinkJo
       .set({ status: "ACTIVE" })
       .where(and(eq(groupMembers.id, p.membershipId), eq(groupMembers.status, "PENDING")));
     if (res.affectedRows === 1) {
+      await recordJoinSource(db, { groupId: p.groupId, userId: p.userId, joinedVia: "GROUP_CODE_LINK", sourceId: p.inviteCode, actorUserId: p.userId, at: now });
       activated.push({ membershipId: p.membershipId, groupId: p.groupId, groupName: p.groupName, ownerUserId: p.ownerUserId, userId: p.userId });
     }
   }
@@ -327,6 +341,18 @@ export async function setInviteCodeActive(scope: TeacherScope, groupId: string, 
   await assertGroupOwner(scope, groupId);
   await requireDb().update(groups).set({ codeActive: active }).where(eq(groups.id, groupId));
   return { ok: true, codeActive: active };
+}
+
+/** How many joined through the current code (removed students included) and the cap, if any. */
+export async function inviteCodeUsage(scope: TeacherScope, groupId: string) {
+  const group = await assertGroupOwner(scope, groupId);
+  return codeUsage(requireDb(), group.id, group.inviteCode);
+}
+
+/** Caps joins through the current code; a new code starts counting from zero. Null = unlimited. */
+export async function setInviteCodeMaxUses(scope: TeacherScope, groupId: string, maxUses: number | null) {
+  await assertGroupOwner(scope, groupId);
+  return { ok: await setCodeMaxUses(groupId, maxUses), maxUses };
 }
 
 export async function setInviteCodeExpiry(scope: TeacherScope, groupId: string, expiresAt: Date | null) {
@@ -394,7 +420,7 @@ export async function publicInvite(inviteCode: string): Promise<PublicGroupPrevi
     language: group.language,
     format: group.format,
     joinPolicy: group.joinPolicy,
-    rejection: inviteCodeRejection(group),
+    rejection: inviteCodeRejection(group, new Date(), await codeUsage(db, group.id, inviteCode)),
     description: group.description,
     startDate: group.scheduleVisible ? group.startDate : null,
     classSchedule: group.scheduleVisible ? group.classSchedule : [],
@@ -405,11 +431,13 @@ export async function publicInvite(inviteCode: string): Promise<PublicGroupPrevi
 
 export async function approveMember(scope: TeacherScope, groupId: string, studentId: number) {
   await assertGroupOwner(scope, groupId);
-  const [res] = await requireDb()
+  const db = requireDb();
+  const [res] = await db
     .update(groupMembers)
     .set({ status: "ACTIVE" })
-    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, studentId)));
+    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, studentId), eq(groupMembers.status, "PENDING")));
   if (res.affectedRows !== 1) throw new AppError("NOT_FOUND");
+  await recordJoinSource(db, { groupId, userId: studentId, joinedVia: "TEACHER_APPROVED", actorUserId: scope.userId });
   return { ok: true };
 }
 

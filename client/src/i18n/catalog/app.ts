@@ -211,6 +211,11 @@ export const app = {
     "This invite link has been turned off by the teacher. Ask your teacher for a new link to join.",
     "Эта ссылка-приглашение отключена преподавателем. Попросите у преподавателя новую ссылку.",
   ],
+  "public.join.codeLimitReached": [
+    "Bu dəvət linki ilə qoşulma limiti dolub. Qoşulmaq üçün müəllimdən yeni link istəyin.",
+    "This invite link has reached its join limit. Ask your teacher for a new link to join.",
+    "Лимит вступлений по этой ссылке исчерпан. Попросите у преподавателя новую ссылку.",
+  ],
   "public.join.codeExpired": [
     "Bu dəvət linkinin vaxtı bitib. Qoşulmaq üçün müəllimdən yeni link istəyin.",
     "This invite link has expired. Ask your teacher for a new link to join.",

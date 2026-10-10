@@ -5,13 +5,16 @@ import {
   assessmentStudentProgress,
   attempts,
   groupMembers,
+  groups,
   results,
   studentActivityEvents,
   taskSubmissions,
   users,
   type Assessment,
+  type AssessmentAssignment,
   type TaskAccessMode,
 } from "../../drizzle/schema";
+import type { GroupJoinSource } from "../../shared/groupJoinSource";
 import type { ShareChannel } from "../../shared/shareTracking";
 import {
   INACTIVITY_THRESHOLDS,
@@ -24,6 +27,7 @@ import type { TeacherScope } from "./access";
 import { ownedAssessment, resolveAssignment } from "./assessments";
 import { participantState, throttleElapsed } from "./engine";
 import { AppError } from "./errors";
+import { joinSourcesOf } from "./groupJoinSources";
 import { activeStudentIdsOfGroups } from "./groups";
 import * as shareTracking from "./shareTracking";
 import { syllabusOwnedAssignments } from "./syllabusLinks";
@@ -325,12 +329,43 @@ function participantsFor(assessment: Assessment, data: Awaited<ReturnType<typeof
   });
 }
 
+/** Why a student is on an exam's roster: a member of an assigned group (and how they joined it), or picked individually. */
+export type RosterSource =
+  | { kind: "GROUP"; groupName: string; joinedVia: GroupJoinSource | null; joinedAt: Date; detail: string | null }
+  | { kind: "INDIVIDUAL"; assignedAt: Date };
+
+/** Per student: the assigned group they joined first, else their individual assignment. */
+async function rosterSourcesFor(assignments: AssessmentAssignment[], db: DbOrTx): Promise<Map<number, RosterSource>> {
+  const out = new Map<number, RosterSource>();
+  const groupIds = [...new Set(assignments.flatMap((r) => (r.groupId ? [r.groupId] : [])))];
+  if (groupIds.length) {
+    const memberships = await db
+      .select({ id: groupMembers.id, userId: groupMembers.userId, joinedAt: groupMembers.joinedAt, groupName: groups.name })
+      .from(groupMembers)
+      .innerJoin(groups, eq(groups.id, groupMembers.groupId))
+      .where(and(inArray(groupMembers.groupId, groupIds), eq(groupMembers.status, "ACTIVE"), eq(groupMembers.membershipRole, "STUDENT")))
+      .orderBy(groupMembers.joinedAt);
+    const sources = await joinSourcesOf(memberships.map((m) => m.id), db);
+    for (const m of memberships) {
+      if (out.has(m.userId)) continue;
+      const s = sources.get(m.id);
+      out.set(m.userId, { kind: "GROUP", groupName: m.groupName, joinedVia: s?.joinedVia ?? null, joinedAt: s?.joinedAt ?? m.joinedAt, detail: s?.detail ?? null });
+    }
+  }
+  for (const r of assignments) {
+    if (r.studentId && !out.has(r.studentId)) out.set(r.studentId, { kind: "INDIVIDUAL", assignedAt: r.assignedAt });
+  }
+  return out;
+}
+
 /** `/teacher/assessments/:id/participants` */
 export async function assessmentParticipants(scope: TeacherScope, assessmentId: string) {
   const db = requireDb();
   const a = await ownedAssessment(scope, assessmentId, db);
   const now = new Date();
-  const participants = participantsFor(a, await loadParticipantData([a.id], db), now);
+  const data = await loadParticipantData([a.id], db);
+  const participants = participantsFor(a, data, now);
+  const sources = await rosterSourcesFor(data.assignments, db);
   return {
     assessment: {
       id: a.id,
@@ -341,7 +376,7 @@ export async function assessmentParticipants(scope: TeacherScope, assessmentId: 
     },
     serverNow: now,
     summary: summarize(participants),
-    participants,
+    participants: participants.map((p) => ({ ...p, rosterSource: p.onRoster ? (sources.get(p.studentId) ?? null) : null })),
   };
 }
 

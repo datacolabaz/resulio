@@ -368,7 +368,7 @@ const teacherGroupsRouter = router({
   detail: teacherProcedure.input(z.object({ id: entityId })).query(async ({ ctx, input }) => {
     const group = await groups.teacherGroup(ctx.scope, input.id);
     const members = await groups.groupMembersList(ctx.scope, input.id);
-    return { ...group, members };
+    return { ...group, members, codeUsage: await groups.inviteCodeUsage(ctx.scope, input.id) };
   }),
   addMember: teacherProcedure
     .use(rateLimit("addMember", 60, MINUTE))
@@ -406,6 +406,9 @@ const teacherGroupsRouter = router({
   setInviteCodeExpiry: teacherProcedure
     .input(z.object({ groupId: entityId, expiresAt: timestampIso().nullable() }))
     .mutation(({ ctx, input }) => groups.setInviteCodeExpiry(ctx.scope, input.groupId, input.expiresAt === null ? null : new Date(input.expiresAt))),
+  setInviteCodeMaxUses: teacherProcedure
+    .input(z.object({ groupId: entityId, maxUses: z.number().int().min(1).max(10_000).nullable() }))
+    .mutation(({ ctx, input }) => groups.setInviteCodeMaxUses(ctx.scope, input.groupId, input.maxUses)),
   emailInviteList: teacherProcedure
     .input(z.object({ groupId: entityId }))
     .query(({ ctx, input }) => groupEmailInvites.listEmailInvites(ctx.scope, input.groupId)),

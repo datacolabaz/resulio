@@ -7,6 +7,7 @@ import type { ClassScheduleEntry } from "../../shared/schedule";
 import { requireDb } from "../db";
 import type { TeacherScope } from "./access";
 import { AppError } from "./errors";
+import { recordJoinSource } from "./groupJoinSources";
 import { groupProfileOf } from "./groupProfiles";
 import { assertGroupOwner, type GroupFormat } from "./groups";
 
@@ -320,6 +321,7 @@ const mysqlRedeemStore: RedeemStore = {
         .insert(groupMembers)
         .values({ groupId, userId, membershipRole: "STUDENT", status: "ACTIVE" })
         .onDuplicateKeyUpdate({ set: { status: "ACTIVE" } });
+      await recordJoinSource(tx, { groupId, userId, joinedVia: "SINGLE_USE_LINK", sourceId: linkId, actorUserId: userId, at: now });
       return true;
     });
   },

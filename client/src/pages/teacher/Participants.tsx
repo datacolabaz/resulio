@@ -3,7 +3,8 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { Input } from "@/components/ui/input";
 import { t } from "@/i18n/messages";
 import { attemptLabel } from "@/lib/attemptLabel";
-import { errorText, fmtDateTime, fmtDuration, fmtRelative } from "@/lib/format";
+import { errorText, fmtDateTime, fmtDay, fmtDuration, fmtRelative } from "@/lib/format";
+import { joinSourceLabel } from "@/lib/joinSource";
 import { PARTICIPANT_STATUS, participantLabel } from "@/lib/status";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { INACTIVITY_THRESHOLDS, type ParticipantState } from "@shared/assessment";
@@ -65,6 +66,17 @@ function RowDetail({ p, now }: { p: Row; now: number }) {
     default:
       return <div>{t("participants.notOpened")}</div>;
   }
+}
+
+/** Why the student is on this exam: "Qrup: X · kod linki ilə · 09.10.2026", or an individual pick. */
+function RosterSourceLine({ source }: { source: Row["rosterSource"] }) {
+  if (!source) return null;
+  const text =
+    source.kind === "GROUP"
+      ? t("participants.viaGroup", { group: source.groupName, via: joinSourceLabel(source.joinedVia), date: fmtDay(source.joinedAt) })
+      : t("participants.viaIndividual", { date: fmtDay(source.assignedAt) });
+  const title = source.kind === "GROUP" ? [source.detail, fmtDateTime(source.joinedAt)].filter(Boolean).join(" · ") : fmtDateTime(source.assignedAt);
+  return <div className="break-words text-xs text-muted-foreground" title={title}>{text}</div>;
 }
 
 function ResultCell({ p }: { p: Row }) {
@@ -158,6 +170,7 @@ export function ParticipantsReport({ id }: { id: string }) {
                   <div className="break-words font-medium">{p.name}</div>
                   {p.email && <div className="break-all text-xs text-muted-foreground">{p.email}</div>}
                   {!p.onRoster && <div className="text-xs text-warning">{t("participants.offRoster")}</div>}
+                  <RosterSourceLine source={p.rosterSource} />
                 </div>
                 <StatusBadge tone={st.tone} icon={st.icon}>{participantLabel(p.state)}</StatusBadge>
                 <div className="space-y-0.5 text-xs text-foreground-secondary">

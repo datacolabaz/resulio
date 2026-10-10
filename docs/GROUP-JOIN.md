@@ -1,13 +1,37 @@
 # Joining a group
 
-| Path | Who can use it | Result |
-| --- | --- | --- |
-| Group invite code / `/join/<code>` link (shared by Telegram, WhatsApp, QR, copy; the student "join with code" box opens the same page) | any signed-in user except the workspace owner | **ACTIVE at once**, no approval |
-| Single-use invite link `/g/<token>` | the first signed-in user to redeem it | ACTIVE at once |
-| E-mail invite `/invite/<token>` | the invited address only | ACTIVE at once |
-| Teacher adds an existing user by e-mail | teacher | ACTIVE at once |
+| Path | Who can use it | Result | Recorded as |
+| --- | --- | --- | --- |
+| Group invite code / `/join/<code>` link (shared by Telegram, WhatsApp, QR, copy; the student "join with code" box opens the same page) | **any number** of signed-in users except the workspace owner, up to the optional cap | **ACTIVE at once**, no approval | `GROUP_CODE_LINK` |
+| Single-use invite link `/g/<token>` | the first signed-in user to redeem it | ACTIVE at once | `SINGLE_USE_LINK` |
+| E-mail invite `/invite/<token>` | the invited address only | ACTIVE at once | `EMAIL_INVITE` |
+| Teacher adds an existing user by e-mail | teacher | ACTIVE at once | `TEACHER_ADDED` |
+| Teacher accepts a syllabus join request for the group | teacher | ACTIVE at once | `SYLLABUS_REQUEST` |
+| Teacher approves a request left PENDING by the retired approval policy | teacher | ACTIVE | `TEACHER_APPROVED` |
 
-There is no search-and-request path; every self-join goes through one of the links above.
+There is no search-and-request path; every self-join goes through one of the links above. An exam's
+share link never adds anyone: an exam's participants are the ACTIVE students of its assigned groups
+(late joiners included), the students picked individually, and anyone who already has an attempt.
+
+## Join provenance
+
+Every path above writes one `group_member_sources` row per membership (`groupJoinSources.recordJoinSource`;
+migration **0043**): `joinedVia`, `joinedAt`, `sourceId` (single-use link id, e-mail invite
+id, syllabus request id or the invite code used) and `actorUserId` (the student for self-joins, the
+teacher for adds and approvals). Rows are kept when a member is removed. Memberships older than the
+table get one from the startup backfill (`runJoinSourceBackfill`, `backfilled = 1`): a redeemed
+single-use link, an accepted e-mail invite, an accepted syllabus request (each within 10 minutes of the
+membership row), the teacher's "joined via the invite link" notice for that membership, or a share
+tracking JOINED event on the current code — otherwise `UNKNOWN` ("Naməlum"). The group's member list
+("Qoşulma yolu") and the exam participants list ("Qrup: X · Qrup kodu/linki · 09.10.2026") show it.
+
+## Code use cap
+
+`group_code_limits.maxUses` (teacher: Invite → "Maksimum qoşulma sayı"; empty = unlimited) caps joins
+through the **current** code — removed students still count, a regenerated code starts from zero.
+`joinByInvite` runs in one transaction holding the group row lock (`SELECT … FOR UPDATE`), so
+simultaneous joins can't overshoot it; a full code answers `INVITE_CODE_LIMIT_REACHED`, and the join
+page says so before sign-in.
 
 ## Group invite code / link
 

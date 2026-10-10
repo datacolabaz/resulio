@@ -22,6 +22,7 @@ import { getDb, warnIfGoogleAuthSchemaMissing } from "../db";
 import { sweepExpiredAttempts } from "../modules/attempts";
 import { runPendingLinkJoinBackfill } from "../modules/groupJoin";
 import { groupLinkPreview, groupPreviewRoute } from "../modules/groupLinkPreview";
+import { runJoinSourceBackfill } from "../modules/groupJoinSources";
 import { runGroupProfileBackfill } from "../modules/groupProfiles";
 import { runUploadSweep } from "../materials/directUpload";
 import { runMaterialMetaBackfill } from "../materials/meta";
@@ -186,7 +187,10 @@ async function startServer() {
   startMaterialSweepers();
   if (getDb()) {
     runMaterialMetaBackfill().catch((error) => console.error("[Materials] meta backfill failed", error instanceof Error ? error.message : error));
-    runPendingLinkJoinBackfill().catch((error) => console.error("[Groups] Pending join backfill failed", error instanceof Error ? error.message : error));
+    runPendingLinkJoinBackfill()
+      .catch((error) => console.error("[Groups] Pending join backfill failed", error instanceof Error ? error.message : error))
+      .then(() => runJoinSourceBackfill())
+      .catch((error) => console.error("[Groups] join source backfill failed", error instanceof Error ? error.message : error));
     runModuleDetailsBackfills().catch((error) => console.error("[Syllabus] module details backfill failed", error instanceof Error ? error.message : error));
     runGroupProfileBackfill().catch((error) => console.error("[Groups] group type backfill failed", error instanceof Error ? error.message : error));
   }
