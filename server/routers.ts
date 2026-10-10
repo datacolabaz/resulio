@@ -415,8 +415,8 @@ const teacherGroupsRouter = router({
     .input(z.object({ id: entityId }))
     .query(({ ctx, input }) => analytics.groupAnalytics(ctx.scope, input.id)),
   setJoinPolicy: teacherProcedure
-    .input(z.object({ groupId: entityId, joinPolicy: z.enum(JOIN_POLICIES) }))
-    .mutation(({ ctx, input }) => groups.setJoinPolicy(ctx.scope, input.groupId, input.joinPolicy)),
+    .input(z.object({ groupId: entityId, joinPolicy: z.enum(JOIN_POLICIES), autoApproveKnown: z.boolean().optional() }))
+    .mutation(({ ctx, input }) => groups.setJoinPolicy(ctx.scope, input.groupId, input.joinPolicy, input.autoApproveKnown)),
   regenerateInviteCode: teacherProcedure
     .use(rateLimit("regenerateInviteCode", 10, MINUTE))
     .input(z.object({ groupId: entityId }))
@@ -916,8 +916,9 @@ const studentRouter = router({
     .mutation(async ({ ctx, input }) => {
       const code = input.inviteCode.toUpperCase();
       const joined = await groups.joinByInvite(ctx.user.id, code);
-      if (joined.status === "ACTIVE") groupJoin.afterLinkJoin(joined, ctx.user.name ?? null, groupJoin.linkJoinKey(joined.membershipId));
-      else if (joined.newRequest) groupJoin.afterJoinRequest(joined, ctx.user.name ?? null);
+      if (joined.status === "ACTIVE") {
+        groupJoin.afterLinkJoin(joined, ctx.user.name ?? null, groupJoin.linkJoinKey(joined.membershipId), joined.autoKnown);
+      } else if (joined.newRequest) groupJoin.afterJoinRequest(joined, ctx.user.name ?? null);
       // A request is the recipient going through with the link too; the approval doesn't change which channel brought them.
       await shareTracking.recordShareEvent({
         targetType: "GROUP",

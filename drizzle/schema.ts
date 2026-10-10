@@ -172,9 +172,8 @@ export const GROUP_FORMATS = ["ONLINE", "IN_PERSON", "HYBRID"] as const;
 /**
  * AUTO: `joinByInvite` (the group's invite code / `/join/<code>` link) activates membership
  * immediately. MANUAL: self-join is refused outright — the teacher must add every student with
- * `addMemberByEmail`. The former APPROVAL policy (link joins waited as PENDING) was retired in
- * migration 0032, which moved those groups to AUTO; see `activatePendingLinkJoins` for the
- * requests that were still waiting.
+ * `addMemberByEmail`. The APPROVAL policy is stored beside this column in `group_join_settings`
+ * (see shared/groupJoinPolicy.effectiveJoinPolicy).
  */
 export const GROUP_JOIN_POLICIES = ["AUTO", "MANUAL"] as const;
 
@@ -297,6 +296,8 @@ export const groupMemberSources = mysqlTable(
     actorUserId: int("actorUserId"),
     joinedAt: timestamp("joinedAt").notNull(),
     backfilled: boolean("backfilled").notNull().default(false),
+    /** Why the system admitted a code/link join without the teacher under APPROVAL ("KNOWN_STUDENT"); null otherwise. */
+    autoReason: varchar("autoReason", { length: 32 }),
   },
   (t) => [
     index("group_member_sources_code_idx").on(t.groupId, t.joinedVia, t.sourceId),
@@ -319,6 +320,8 @@ export const groupCodeLimits = mysqlTable("group_code_limits", {
 export const groupJoinSettings = mysqlTable("group_join_settings", {
   groupId: id("groupId").primaryKey(),
   approvalRequired: boolean("approvalRequired").notNull().default(false),
+  /** Under APPROVAL: a student already known to the group's owner is admitted at once (groupJoinApproval.knownStudentReason). */
+  autoApproveKnown: boolean("autoApproveKnown").notNull().default(true),
   updatedBy: int("updatedBy"),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

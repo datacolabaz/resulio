@@ -62,8 +62,9 @@ export interface EventData {
   /**
    * To the group's teacher: a student joined through an invite link (informational), or with
    * `pending` (absent on older rows) asked to join through the group code and waits for approval.
+   * `autoKnown`: the group asks for approval, but the student was let in as already the teacher's.
    */
-  GROUP_MEMBER_JOINED: { groupId: string; groupName: string; studentName: string | null; pending?: boolean };
+  GROUP_MEMBER_JOINED: { groupId: string; groupName: string; studentName: string | null; pending?: boolean; autoKnown?: boolean };
   /** To the student: the teacher approved or declined their group code request. */
   GROUP_JOIN_DECIDED: { groupId: string; groupName: string; decision: "APPROVED" | "DECLINED" };
   /** To the teacher: a student asked, from the syllabus share page, to join a group (`groupName`) or to take part individually (null). */

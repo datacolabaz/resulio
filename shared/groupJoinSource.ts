@@ -24,9 +24,19 @@ export type GroupJoinSource = (typeof GROUP_JOIN_SOURCES)[number];
 
 export const isGroupJoinSource = (v: string): v is GroupJoinSource => (GROUP_JOIN_SOURCES as readonly string[]).includes(v);
 
-/** What the teacher sees about one membership's origin. `detail` is a link label, invited e-mail or syllabus title. */
+/**
+ * `group_member_sources.autoReason` of a code/link join that the APPROVAL policy let straight in
+ * because the group's owner already knew the student (server groupJoinApproval.knownStudentReason).
+ */
+export const KNOWN_STUDENT = "KNOWN_STUDENT";
+
+/**
+ * What the teacher sees about one membership's origin. `detail` is a link label, invited e-mail or
+ * syllabus title; `autoReason` says why the system admitted it without the teacher (KNOWN_STUDENT) or is null.
+ */
 export interface JoinSourceView {
   joinedVia: GroupJoinSource;
   joinedAt: Date;
   detail: string | null;
+  autoReason: string | null;
 }

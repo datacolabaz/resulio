@@ -22,15 +22,21 @@ function onActivated(groupId: string, userId: number) {
  * What a student joining through an invite link triggers besides the ACTIVE membership row itself
  * (group tasks, materials, syllabi, the group board and analytics all follow from that row on
  * read): the student's one TASK_ASSIGNED notice for the group's open tasks, and the teacher's
- * informational GROUP_MEMBER_JOINED notice. Both run in the background.
+ * informational GROUP_MEMBER_JOINED notice. Both run in the background. `autoKnown`: the group
+ * asks for approval but let this student in as already the teacher's, which the notice says.
  */
-export function afterLinkJoin(join: Pick<LinkJoin, "groupId" | "groupName" | "ownerUserId" | "userId">, studentName: string | null, dedupeKey: string) {
+export function afterLinkJoin(
+  join: Pick<LinkJoin, "groupId" | "groupName" | "ownerUserId" | "userId">,
+  studentName: string | null,
+  dedupeKey: string,
+  autoKnown = false,
+) {
   onActivated(join.groupId, join.userId);
   dispatch({
     event: "GROUP_MEMBER_JOINED",
     userId: join.ownerUserId,
     dedupeKey,
-    data: { groupId: join.groupId, groupName: join.groupName, studentName },
+    data: { groupId: join.groupId, groupName: join.groupName, studentName, ...(autoKnown ? { autoKnown: true } : {}) },
   });
 }
 

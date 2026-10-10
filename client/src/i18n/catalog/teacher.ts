@@ -229,6 +229,17 @@ export const teacher = {
     "Students who join by code/link are added right away, no approval needed; you get a notification for each join.",
     "Вступившие по коду/ссылке сразу добавляются в группу без одобрения; о каждом вступлении вы получаете уведомление.",
   ],
+  "groups.autoApproveKnown": [
+    "Əvvəl mənim tələbəm olanları avtomatik qəbul et",
+    "Admit my former and current students automatically",
+    "Автоматически принимать тех, кто уже был моим студентом",
+  ],
+  "groups.autoApproveKnownHint": [
+    "Başqa qrupunuzda olan və ya olmuş, yaxud syllabus-unuza qəbul edilmiş tələbə sorğusuz qoşulur. Son 24 saatda rədd etdiyiniz tələbə yenə gözləyir.",
+    "A student who is or was in another of your groups, or was admitted to one of your syllabi, joins without a request. Someone you declined in the last 24 hours still waits.",
+    "Студент, который состоит или состоял в другой вашей группе или был допущен к вашему силлабусу, вступает без запроса. Отклонённый вами за последние 24 часа по-прежнему ждёт.",
+  ],
+  "groups.autoAdmittedKnown": ["avtomatik qəbul edildi (tanış tələbə)", "admitted automatically (known student)", "принят(а) автоматически (знакомый студент)"],
   "groups.joinPolicyHint.MANUAL": ["Kod/link ilə özbaşına qoşulma bağlıdır — tələbələri yalnız siz əlavə edə bilərsiniz.", "Self-join by code/link is turned off — only you can add students.", "Самостоятельное вступление по коду/ссылке отключено — добавлять студентов можете только вы."],
   "groups.codeActiveLabel": ["Kod/link aktivdir", "Code/link is active", "Код/ссылка активны"],
   "groups.codeActiveHint": ["Söndürsəniz, kod və link dərhal işləməyi dayandırır (dəyəri dəyişmədən).", "Turning this off stops the code and link working immediately, without changing their value.", "Если выключить, код и ссылка сразу перестают работать (без изменения значения)."],
