@@ -6349,8 +6349,8 @@
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {
-        "student_topic_mastery_workspaceId_studentId_dimension_topicKey_pk": {
-          "name": "student_topic_mastery_workspaceId_studentId_dimension_topicKey_pk",
+        "student_topic_mastery_pk": {
+          "name": "student_topic_mastery_pk",
           "columns": [
             "workspaceId",
             "studentId",

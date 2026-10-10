@@ -32,9 +32,16 @@ function parseColumn(line) {
 }
 
 function apply(stmt) {
-  const s = stmt.trim().replace(/;$/, "");
+  const s = stmt
+    .split("\n")
+    .filter(line => !/^\s*--/.test(line))
+    .join("\n")
+    .trim()
+    .replace(/;$/, "");
   if (!s) return;
-  if (/^(INSERT|UPDATE|DELETE|SET)\b/i.test(s)) return;
+  // Guarded DDL (SET @x = IF(..., 'CREATE INDEX ...', 'DO 0'); PREPARE/EXECUTE) only repairs a half-applied
+  // migration; the same index is declared inline in its CREATE TABLE, which is what the replay checks.
+  if (/^(INSERT|UPDATE|DELETE|SET|PREPARE|EXECUTE|DEALLOCATE)\b/i.test(s)) return;
   let m;
   if ((m = s.match(/^CREATE TABLE (?:IF NOT EXISTS )?`([^`]+)` \(([\s\S]*)\)$/))) {
     const t = { columns: {}, pk: null, unique: {}, indexes: {} };
@@ -44,6 +51,7 @@ function apply(stmt) {
       let c;
       if ((c = line.match(/^CONSTRAINT `([^`]+)` PRIMARY KEY\((.*)\)$/))) t.pk = cols(c[2]).join(",");
       else if ((c = line.match(/^CONSTRAINT `([^`]+)` UNIQUE\((.*)\)$/))) t.unique[c[1]] = cols(c[2]).join(",");
+      else if ((c = line.match(/^(?:INDEX|KEY) `([^`]+)` \((.*)\)$/))) t.indexes[c[1]] = cols(c[2]).join(",");
       else if (line.startsWith("`")) {
         const col = parseColumn(line);
         t.columns[col.name] = col;
