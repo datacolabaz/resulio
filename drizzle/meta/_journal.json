@@ -330,6 +330,13 @@
       "when": 1791662277646,
       "tag": "0050_growth_risk",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "5",
+      "when": 1791662308107,
+      "tag": "0051_growth_plan_xp",
+      "breakpoints": true
     }
   ]
 }

@@ -122,7 +122,9 @@ export type AppErrorCode =
   | "GROWTH_NOT_AVAILABLE"
   | "GROWTH_DB_NOT_READY"
   | "GROWTH_NOT_ENOUGH_QUESTIONS"
-  | "GROWTH_PARENT_REPORTS_OFF";
+  | "GROWTH_PARENT_REPORTS_OFF"
+  | "GROWTH_PRACTICE_OFF"
+  | "GROWTH_PRACTICE_LIMIT";
 
 export class AppError extends Error {
   constructor(public readonly code: AppErrorCode) {
@@ -250,6 +252,8 @@ const HTTP: Partial<Record<AppErrorCode, TRPCError["code"]>> = {
   GROWTH_DB_NOT_READY: "PRECONDITION_FAILED",
   GROWTH_NOT_ENOUGH_QUESTIONS: "PRECONDITION_FAILED",
   GROWTH_PARENT_REPORTS_OFF: "FORBIDDEN",
+  GROWTH_PRACTICE_OFF: "FORBIDDEN",
+  GROWTH_PRACTICE_LIMIT: "TOO_MANY_REQUESTS",
 };
 
 /** Where an unexpected error happened, for the server log only (never sent to the client). */

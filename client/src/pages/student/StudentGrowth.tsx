@@ -3,12 +3,13 @@ import { MasteryBadge, MasteryBar, MasteryCell, TrendMark } from "@/components/g
 import { t } from "@/i18n/messages";
 import { trpc } from "@/lib/trpc";
 import { Target } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
+import { StudentPlan } from "./StudentPlan";
 
 const selectClass = "mt-1 w-full max-w-sm rounded-lg border border-input bg-card px-3 py-2 text-foreground";
 
 /** The student's own topic map; "Prioritet mövzu" instead of the teacher's "kritik zəiflik". */
-export function StudentGrowthPage({ extra }: { extra?: (groupId: string) => ReactNode }) {
+export function StudentGrowthPage() {
   const enabled = trpc.student.growth.enabled.useQuery(undefined, { staleTime: 5 * 60_000 });
   const spaces = trpc.student.growth.spaces.useQuery(undefined, { enabled: !!enabled.data?.enabled });
   const [groupId, setGroupId] = useState("");
@@ -38,8 +39,8 @@ export function StudentGrowthPage({ extra }: { extra?: (groupId: string) => Reac
                 </select>
               </label>
             )}
+            {groupId && <StudentPlan groupId={groupId} />}
             {groupId && <StudentMap groupId={groupId} />}
-            {groupId && extra?.(groupId)}
           </>
         )}
       </div>

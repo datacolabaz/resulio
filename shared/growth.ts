@@ -52,5 +52,17 @@ export interface RiskReason {
   topics?: string[];
 }
 
+export const PLAN_STATUSES = ["ACTIVE", "COMPLETED", "REPLACED"] as const;
+export type PlanStatus = (typeof PLAN_STATUSES)[number];
+/** Where the plan's end date came from: the nearest assigned exam, the student's target exam date, or two weeks. */
+export const PLAN_TARGET_SOURCES = ["EXAM", "TARGET_DATE", "DEFAULT"] as const;
+export type PlanTargetSource = (typeof PLAN_TARGET_SOURCES)[number];
+export const PLAN_ITEM_KINDS = ["MATERIAL", "PRACTICE", "REVIEW"] as const;
+export type PlanItemKind = (typeof PLAN_ITEM_KINDS)[number];
+export const PLAN_ITEM_STATUSES = ["TODO", "DONE", "SKIPPED"] as const;
+export type PlanItemStatus = (typeof PLAN_ITEM_STATUSES)[number];
+export const XP_TYPES = ["ITEM_DONE", "PRACTICE_DONE", "WEEK_COMPLETE", "STATUS_UP", "STREAK_DAY"] as const;
+export type XpType = (typeof XP_TYPES)[number];
+
 export const RISK_ACTION_TYPES = ["RETAKE", "MATERIAL", "NOTE", "REPORT", "DISMISS"] as const;
 export type RiskActionType = (typeof RISK_ACTION_TYPES)[number];

@@ -51,7 +51,20 @@ import { SYLLABUS_IMPORT_STATUSES, type SyllabusImportDetail } from "../shared/s
 import { JOIN_REQUEST_STATUSES, JOIN_REQUEST_TYPES } from "../shared/syllabusJoin";
 import type { ClassScheduleEntry } from "../shared/schedule";
 import { GROUP_TYPES } from "../shared/groupType";
-import { GROWTH_DIMENSIONS, TOPIC_KEY_MAX, type EvidenceOrigin, type RiskActionType, type RiskLevel, type RiskReason } from "../shared/growth";
+import {
+  GROWTH_DIMENSIONS,
+  TOPIC_KEY_MAX,
+  type EvidenceOrigin,
+  type MasteryStatus,
+  type PlanItemKind,
+  type PlanItemStatus,
+  type PlanStatus,
+  type PlanTargetSource,
+  type RiskActionType,
+  type RiskLevel,
+  type RiskReason,
+  type XpType,
+} from "../shared/growth";
 import { SHARE_CHANNELS, SHARE_EVENT_TYPES, SHARE_TARGET_TYPES } from "../shared/shareTracking";
 import {
   APPROVAL_DECISIONS,
@@ -2190,6 +2203,83 @@ export const reportShares = mysqlTable("report_shares", {
   viewCount: int("viewCount").default(0).notNull(),
   lastViewedAt: timestamp("lastViewedAt"),
 }, (t) => [uniqueIndex("report_shares_token_uq").on(t.tokenHash), index("report_shares_student_idx").on(t.workspaceId, t.studentId)]);
+
+/** A student's personal review plan in one workspace; one ACTIVE at a time, older ones REPLACED or COMPLETED. */
+export const reviewPlans = mysqlTable("review_plans", {
+  id: id("id").primaryKey(),
+  workspaceId: id("workspaceId").notNull(),
+  studentId: int("studentId").notNull(),
+  status: varchar("status", { length: 12 }).$type<PlanStatus>().notNull(),
+  startDay: varchar("startDay", { length: 10 }).notNull(),
+  targetDay: varchar("targetDay", { length: 10 }).notNull(),
+  targetSource: varchar("targetSource", { length: 12 }).$type<PlanTargetSource>().notNull(),
+  targetRef: varchar("targetRef", { length: 64 }),
+  dailyMinutes: int("dailyMinutes").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  completedAt: timestamp("completedAt"),
+}, (t) => [index("review_plans_student_idx").on(t.workspaceId, t.studentId, t.status)]);
+
+export const reviewPlanItems = mysqlTable("review_plan_items", {
+  id: id("id").primaryKey(),
+  planId: id("planId").notNull(),
+  dayKey: varchar("dayKey", { length: 10 }).notNull(),
+  position: int("position").notNull(),
+  topicKey: varchar("topicKey", { length: TOPIC_KEY_MAX }).notNull(),
+  label: varchar("label", { length: 120 }).notNull(),
+  kind: varchar("kind", { length: 10 }).$type<PlanItemKind>().notNull(),
+  minutes: int("minutes").notNull(),
+  status: varchar("status", { length: 8 }).$type<PlanItemStatus>().notNull(),
+  rolloverCount: int("rolloverCount").default(0).notNull(),
+  /** The practice assessment started from this item. */
+  refId: varchar("refId", { length: 64 }),
+  doneAt: timestamp("doneAt"),
+}, (t) => [index("review_plan_items_plan_idx").on(t.planId, t.dayKey)]);
+
+export const studentGrowthSettings = mysqlTable("student_growth_settings", {
+  workspaceId: id("workspaceId").notNull(),
+  studentId: int("studentId").notNull(),
+  dailyMinutes: int("dailyMinutes").default(30).notNull(),
+  reminders: boolean("reminders").default(true).notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (t) => [primaryKey({ columns: [t.workspaceId, t.studentId] })]);
+
+/** Personal XP ledger; `refKey` makes every award idempotent. Never ranked against other students. */
+export const xpEvents = mysqlTable("xp_events", {
+  id: id("id").primaryKey(),
+  studentId: int("studentId").notNull(),
+  workspaceId: id("workspaceId").notNull(),
+  type: varchar("type", { length: 16 }).$type<XpType>().notNull(),
+  points: int("points").notNull(),
+  refKey: varchar("refKey", { length: 191 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => [uniqueIndex("xp_events_ref_uq").on(t.studentId, t.refKey), index("xp_events_student_idx").on(t.studentId, t.createdAt)]);
+
+export const studentXp = mysqlTable("student_xp", {
+  studentId: int("studentId").primaryKey(),
+  xp: int("xp").default(0).notNull(),
+  level: int("level").default(0).notNull(),
+  streak: int("streak").default(0).notNull(),
+  longestStreak: int("longestStreak").default(0).notNull(),
+  lastActiveDay: varchar("lastActiveDay", { length: 10 }),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+/** Topic levels the student has already been able to see (released results only); level-up XP counts from here. */
+export const releasedTopicLevels = mysqlTable("released_topic_levels", {
+  workspaceId: id("workspaceId").notNull(),
+  studentId: int("studentId").notNull(),
+  topicKey: varchar("topicKey", { length: TOPIC_KEY_MAX }).notNull(),
+  status: varchar("status", { length: 16 }).$type<MasteryStatus>().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (t) => [primaryKey({ columns: [t.workspaceId, t.studentId, t.topicKey] })]);
+
+/** Per-group Growth switches set by the teacher; self-practice is off until turned on. */
+export const groupGrowthSettings = mysqlTable("group_growth_settings", {
+  groupId: id("groupId").primaryKey(),
+  selfPractice: boolean("selfPractice").default(false).notNull(),
+  updatedBy: int("updatedBy"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
 
 /** Per-workspace Growth Engine switches. No row means the defaults. */
 export const growthSettings = mysqlTable("growth_settings", {
