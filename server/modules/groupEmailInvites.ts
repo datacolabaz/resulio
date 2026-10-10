@@ -5,6 +5,7 @@ import { groupEmailInvites, groupMembers, groups, providerWorkspaces, type Group
 import { requireDb, type DbOrTx } from "../db";
 import type { TeacherScope } from "./access";
 import { AppError } from "./errors";
+import { recordJoinSource } from "./groupJoinSources";
 import { groupProfileOf } from "./groupProfiles";
 import { assertGroupOwner, workspaceOwnerOf } from "./groups";
 
@@ -165,6 +166,7 @@ export async function acceptEmailInvite(userId: number, userEmail: string, token
     } else {
       await db.insert(groupMembers).values({ groupId: invite.groupId, userId, membershipRole: "STUDENT", status: "ACTIVE" });
     }
+    await recordJoinSource(db, { groupId: invite.groupId, userId, joinedVia: "EMAIL_INVITE", sourceId: invite.id, actorUserId: userId });
   }
   await db.update(groupEmailInvites).set({ status: "ACCEPTED", acceptedAt: new Date() }).where(eq(groupEmailInvites.id, invite.id));
   return { groupId: invite.groupId, groupName: group.name };

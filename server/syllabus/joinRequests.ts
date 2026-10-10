@@ -218,7 +218,7 @@ export async function decideJoinRequest(scope: TeacherScope, requestId: string, 
   try {
     if (group) {
       try {
-        await addMemberById(scope, group.id, request.studentId);
+        await addMemberById(scope, group.id, request.studentId, request.id);
         notifyOpenTasksOnJoin(group.id, request.studentId);
         announceGroupJoin(group.id, request.studentId);
       } catch (error) {

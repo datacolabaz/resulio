@@ -22,6 +22,7 @@ import {
   type MaterialKind,
   type MaterialTemplate,
 } from "../shared/materialTemplates";
+import type { GroupJoinSource } from "../shared/groupJoinSource";
 import {
   ACTIVITY_ENTITY_TYPES,
   ATTEMPT_STATUSES,
@@ -277,6 +278,38 @@ export const groupInviteLinks = mysqlTable(
   },
   (t) => [index("group_invite_links_group_idx").on(t.groupId, t.createdAt)],
 );
+
+/**
+ * How each group membership came to be: one row per `group_members.id`, beside it (add-only
+ * migrations). Kept after the member is removed, so the use count of a group code stays honest.
+ * `sourceId` is the single-use link id, e-mail invite id, syllabus join request id or the invite
+ * code used; `actorUserId` is the student for self-joins and the teacher for adds and approvals.
+ * Memberships older than migration 0043 get a row from the startup backfill (`backfilled`).
+ */
+export const groupMemberSources = mysqlTable(
+  "group_member_sources",
+  {
+    membershipId: int("membershipId").primaryKey(),
+    groupId: id("groupId").notNull(),
+    userId: int("userId").notNull(),
+    joinedVia: varchar("joinedVia", { length: 32 }).$type<GroupJoinSource>().notNull(),
+    sourceId: varchar("sourceId", { length: 64 }),
+    actorUserId: int("actorUserId"),
+    joinedAt: timestamp("joinedAt").notNull(),
+    backfilled: boolean("backfilled").notNull().default(false),
+  },
+  (t) => [
+    index("group_member_sources_code_idx").on(t.groupId, t.joinedVia, t.sourceId),
+    index("group_member_sources_user_idx").on(t.userId),
+  ],
+);
+
+/** Optional cap on joins through a group's current invite code; no row or NULL = unlimited. Beside `study_groups` (add-only migrations). */
+export const groupCodeLimits = mysqlTable("group_code_limits", {
+  groupId: id("groupId").primaryKey(),
+  maxUses: int("maxUses"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
 
 export const partnerProfiles = mysqlTable("partner_profiles", {
   id: int("id").autoincrement().primaryKey(),
