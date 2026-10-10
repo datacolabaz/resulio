@@ -163,6 +163,10 @@ export function JoinGroupPage() {
     onSuccess: async (res) => {
       // The learning-area guard reads the session, so it must know about the new membership first.
       await Promise.all([utils.auth.me.invalidate(), utils.student.groups.invalidate()]);
+      if (res.status === "PENDING") {
+        toast.success(t("public.join.requestSentToast", { group: res.groupName }));
+        return;
+      }
       toast.success(t("public.join.joinedToast", { group: res.groupName }));
       navigate(`/student/groups?group=${encodeURIComponent(res.groupId)}`);
     },
@@ -170,6 +174,9 @@ export function JoinGroupPage() {
   const g = invite.data;
   const { channel, campaign, visitorId: vid } = useShareAttribution("GROUP", inviteCode, Boolean(g));
   useGroupPageMeta(g && !g.rejection ? g : null);
+  const approval = g?.joinPolicy === "APPROVAL";
+  // Under AUTO a waiting request is turned into a membership by joining again, so only the other policies show it as waiting.
+  const waiting = join.data?.status === "PENDING" || (!!user && g?.viewerStatus === "PENDING" && g.joinPolicy !== "AUTO");
   return (
     <Card>
       <h1 className="mt-4 text-xl font-semibold">{t("public.join.title")}</h1>
@@ -182,16 +189,23 @@ export function JoinGroupPage() {
           <GroupPreviewDetails g={g} />
           {!!g.description && <p className="mt-3 text-sm">{g.description}</p>}
           <div className="mt-6">
-            {loading ? null : join.isSuccess ? (
+            {loading ? null : waiting ? (
+              <div className="space-y-3 text-sm" role="status" data-testid="join-request-sent">
+                <p className="text-foreground">{t("public.join.requestSent")}</p>
+                <Button asChild className="w-full" variant="outline"><Link href="/student/groups">{t("public.myGroups")}</Link></Button>
+              </div>
+            ) : join.isSuccess ? (
               <div className="space-y-3 text-sm" role="status">
                 <p className="text-success">{t("public.invite.joined")}</p>
                 <Link href={`/student/groups?group=${encodeURIComponent(join.data.groupId)}`} className="text-link underline-offset-4 hover:underline">{t("public.myGroups")}</Link>
               </div>
+            ) : user && g.viewerStatus === "ACTIVE" ? (
+              <JoinErrorNote error={new Error("ALREADY_MEMBER")} />
             ) : g.rejection ? (
               <InviteRejectionNote rejection={g.rejection} />
             ) : !user ? (
               <>
-                <p className="mb-3 text-xs text-muted-foreground">{t("public.join.instantNote")}</p>
+                <p className="mb-3 text-xs text-muted-foreground">{t(approval ? "public.join.approvalNote" : "public.join.instantNote")}</p>
                 <Button className="w-full" onClick={() => startLogin(`/join/${inviteCode}${window.location.search}`)}>{t("common.signInGoogle")}</Button>
                 <EmailSignIn />
               </>
@@ -199,9 +213,9 @@ export function JoinGroupPage() {
               <JoinErrorNote error={join.error} />
             ) : (
               <>
-                <p className="mb-3 text-xs text-muted-foreground">{t("public.join.instantNote")}</p>
+                <p className="mb-3 text-xs text-muted-foreground">{t(approval ? "public.join.approvalNote" : "public.join.instantNote")}</p>
                 <Button className="w-full" disabled={join.isPending} onClick={() => join.mutate({ inviteCode, channel, campaign, visitorId: vid })}>
-                  {t("public.join.joinNow")}
+                  {t(approval ? "public.join.sendRequest" : "public.join.joinNow")}
                 </Button>
               </>
             )}

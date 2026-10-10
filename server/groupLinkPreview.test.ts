@@ -149,6 +149,13 @@ describe("group link preview lookup (the join pages' own gates)", () => {
     expect(await groupLinkPreview("code", CODE)).toBeNull();
   });
 
+  it("shows the group's name for a code whose joins wait for the teacher's approval", async () => {
+    m.publicInvite.mockResolvedValue({ ...COURSE, ...PRIVATE, joinPolicy: "APPROVAL", rejection: null });
+    expect(await groupLinkPreview("code", CODE)).toEqual(COURSE);
+    m.publicInvite.mockResolvedValue({ ...COURSE, ...PRIVATE, joinPolicy: "APPROVAL", rejection: "INVITE_CODE_LIMIT_REACHED" });
+    expect(await groupLinkPreview("code", CODE)).toBeNull();
+  });
+
   it("shows a single-use link only while unused, unrevoked and unexpired, as an anonymous viewer", async () => {
     m.publicInviteLinkPreview.mockResolvedValue({ state: "ACTIVE", linkId: "l1", group: { ...COURSE, ...PRIVATE } });
     expect(await groupLinkPreview("link", LINK)).toEqual(COURSE);

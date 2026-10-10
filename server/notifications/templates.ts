@@ -480,10 +480,57 @@ const GROUP_JOINED: Record<ServerLocale, { title: string; body: (name: string, g
   },
 };
 
-export function groupMemberJoinedInApp(locale: ServerLocale, d: { groupName: string; studentName: string | null }) {
+const GROUP_JOIN_REQUESTED: Record<ServerLocale, { title: string; body: (name: string, group: string) => string }> = {
+  az: {
+    title: "Yeni qoşulma sorğusu",
+    body: (n, g) => `${n} qrup kodu linki ilə «${g}» qrupuna qoşulmaq istəyir. Sorğular bölməsində təsdiq edin və ya rədd edin.`,
+  },
+  en: {
+    title: "New join request",
+    body: (n, g) => `${n} wants to join “${g}” through the group code link. Approve or decline it under Requests.`,
+  },
+  ru: {
+    title: "Новая заявка на вступление",
+    body: (n, g) => `${n} хочет вступить в группу «${g}» по ссылке с кодом группы. Одобрите или отклоните её в разделе «Запросы».`,
+  },
+};
+
+export function groupMemberJoinedInApp(locale: ServerLocale, d: { groupName: string; studentName: string | null; pending?: boolean }) {
   const tx = GROUP_JOINED[locale];
   const name = d.studentName?.trim() ? cleanTitle(d.studentName, 60) : tx.someone;
-  return { title: tx.title, body: tx.body(name, cleanTitle(d.groupName, 80)) };
+  const group = cleanTitle(d.groupName, 80);
+  if (d.pending) return { title: GROUP_JOIN_REQUESTED[locale].title, body: GROUP_JOIN_REQUESTED[locale].body(name, group) };
+  return { title: tx.title, body: tx.body(name, group) };
+}
+
+export const teacherGroupRequestsPath = (groupId: string) => `${teacherGroupPath(groupId)}?tab=requests`;
+export const studentGroupPath = (groupId: string) => `/student/groups?group=${encodeURIComponent(groupId)}`;
+
+const GROUP_JOIN_DECIDED: Record<ServerLocale, { approved: string; declined: string; approvedBody: (g: string) => string; declinedBody: (g: string) => string }> = {
+  az: {
+    approved: "Qrupa qəbul olundunuz",
+    declined: "Qoşulma sorğunuza cavab verildi",
+    approvedBody: (g) => `Müəllim «${g}» qrupuna qoşulma sorğunuzu təsdiq etdi. Qrupun imtahan və tapşırıqları artıq sizə açıqdır.`,
+    declinedBody: (g) => `Müəllim «${g}» qrupuna qoşulma sorğunuzu hələlik qəbul etmədi.`,
+  },
+  en: {
+    approved: "You're in the group",
+    declined: "Your join request was answered",
+    approvedBody: (g) => `The teacher approved your request to join “${g}”. The group's exams and tasks are now open to you.`,
+    declinedBody: (g) => `The teacher didn't accept your request to join “${g}” for now.`,
+  },
+  ru: {
+    approved: "Вы приняты в группу",
+    declined: "На вашу заявку ответили",
+    approvedBody: (g) => `Преподаватель одобрил вашу заявку на вступление в группу «${g}». Экзамены и задания группы уже открыты для вас.`,
+    declinedBody: (g) => `Преподаватель пока не принял вашу заявку на вступление в группу «${g}».`,
+  },
+};
+
+export function groupJoinDecidedInApp(locale: ServerLocale, d: { groupName: string; decision: "APPROVED" | "DECLINED" }) {
+  const tx = GROUP_JOIN_DECIDED[locale];
+  const g = cleanTitle(d.groupName, 80);
+  return d.decision === "APPROVED" ? { title: tx.approved, body: tx.approvedBody(g) } : { title: tx.declined, body: tx.declinedBody(g) };
 }
 
 export const teacherJoinRequestsPath = (syllabusId: string) => `/teacher/syllabus/${encodeURIComponent(syllabusId)}?tab=requests`;

@@ -249,6 +249,7 @@ describe("dispatcher", () => {
         },
         MATERIAL_SHARED: { materialId: "m1", title: "Excel", excerpt: "VLOOKUP", from: "Müəllim" },
         GROUP_MEMBER_JOINED: { groupId: "g1", groupName: "G", studentName: "A" },
+        GROUP_JOIN_DECIDED: { groupId: "g1", groupName: "G", decision: "APPROVED" as const },
         SYLLABUS_JOIN_REQUESTED: { requestId: "r1", syllabusId: "s1", syllabusTitle: "S", studentName: "A", groupName: null },
         SYLLABUS_JOIN_DECIDED: { requestId: "r1", syllabusTitle: "S", decision: "ACCEPTED" as const, groupName: "G", note: null, path: "/student" },
         ANNOUNCEMENT: { announcementId: 1, language: "AUTO" as const, texts: { az: { title: "T", body: "B" } }, url: "/" },

@@ -19,7 +19,9 @@ import {
   buildTaskAssignedEmail,
   buildTaskUpdatedEmail,
   gradeInAppText,
+  groupJoinDecidedInApp,
   groupMemberJoinedInApp,
+  studentGroupPath,
   studentTaskPath,
   taskAssignedInApp,
   taskAssignedPath,
@@ -36,6 +38,7 @@ import {
   teacherAnalyticsPath,
   teacherApprovalsPath,
   teacherGroupPath,
+  teacherGroupRequestsPath,
   teacherJoinRequestsPath,
 } from "./templates";
 
@@ -135,7 +138,11 @@ export function renderNotification<E extends EventType>(event: E, data: EventDat
     }
     case "GROUP_MEMBER_JOINED": {
       const d = data as EventData["GROUP_MEMBER_JOINED"];
-      return { ...groupMemberJoinedInApp(locale, d), path: teacherGroupPath(d.groupId), email: null };
+      return { ...groupMemberJoinedInApp(locale, d), path: d.pending ? teacherGroupRequestsPath(d.groupId) : teacherGroupPath(d.groupId), email: null };
+    }
+    case "GROUP_JOIN_DECIDED": {
+      const d = data as EventData["GROUP_JOIN_DECIDED"];
+      return { ...groupJoinDecidedInApp(locale, d), path: d.decision === "APPROVED" ? studentGroupPath(d.groupId) : "/student/groups", email: null };
     }
     case "SYLLABUS_JOIN_REQUESTED": {
       const d = data as EventData["SYLLABUS_JOIN_REQUESTED"];

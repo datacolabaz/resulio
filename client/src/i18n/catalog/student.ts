@@ -71,6 +71,11 @@ export const student = {
   "student.noGroups": ["Hələ heç bir qrupa qoşulmamısınız.", "You have not joined any groups yet.", "Вы пока не состоите ни в одной группе."],
   "student.member": ["Üzv", "Member", "Участник"],
   "student.awaitingApproval": ["Təsdiq gözləyir", "Awaiting approval", "Ожидает одобрения"],
+  "student.awaitingApprovalHint": [
+    "Müəllim təsdiq edəndə qrupa daxil olacaqsınız və bildiriş alacaqsınız.",
+    "You'll join the group, and get a notification, once the teacher approves.",
+    "Вы вступите в группу и получите уведомление, когда преподаватель одобрит заявку.",
+  ],
   "student.groupProgress": ["Bu qrupdakı proqresim", "Progress in this group", "Прогресс в этой группе"],
   "student.taskSubmitted": ["Təhvil verildi", "Submitted", "Сдано"],
   "student.answerLabel": ["Cavabınız (istəyə görə fayl da əlavə edin)", "Your answer (you can also attach a file)", "Ваш ответ (можно также приложить файл)"],

@@ -420,6 +420,7 @@ export function StudentGroups() {
                         )}
                       </span>
                     </div>
+                    {g.status !== "ACTIVE" && <p className="mt-1 text-xs text-muted-foreground">{t("student.awaitingApprovalHint")}</p>}
                     {progressId === g.id && g.status === "ACTIVE" && (
                       <>
                         <GroupProgressPanel groupId={g.id} />

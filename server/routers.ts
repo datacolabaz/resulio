@@ -24,7 +24,8 @@ import { clearNamedCookie } from "./_core/cookies";
 import { ENV } from "./_core/env";
 import { requestMeta } from "./_core/requestMeta";
 import { systemRouter } from "./_core/systemRouter";
-import { GROUP_FORMATS, GROUP_JOIN_POLICIES, PROVIDER_TYPES, PUSH_PLATFORMS, TASK_ACCESS_MODES, UI_CONTEXTS, type TaskAccessMode } from "../drizzle/schema";
+import { GROUP_FORMATS, PROVIDER_TYPES, PUSH_PLATFORMS, TASK_ACCESS_MODES, UI_CONTEXTS, type TaskAccessMode } from "../drizzle/schema";
+import { JOIN_POLICIES } from "../shared/groupJoinPolicy";
 import { adminRouter } from "./adminRouter";
 import { myAiQuota } from "./aiUsage/limits";
 import {
@@ -382,10 +383,30 @@ const teacherGroupsRouter = router({
   approveMember: teacherProcedure
     .input(z.object({ groupId: entityId, studentId: z.number().int().positive() }))
     .mutation(async ({ ctx, input }) => {
-      const result = await groups.approveMember(ctx.scope, input.groupId, input.studentId);
-      taskNotify.notifyOpenTasksOnJoin(input.groupId, input.studentId);
-      announceGroupJoin(input.groupId, input.studentId);
-      return result;
+      const result = await groups.approveRequests(ctx.scope, input.groupId, [input.studentId]);
+      if (!result.approved.length) throw new AppError("NOT_FOUND");
+      groupJoin.afterJoinDecisions(result.group, result.approved, "APPROVED");
+      return { ok: true };
+    }),
+  /** Approve or decline waiting code/link requests, one or many; ids no longer waiting are skipped. */
+  decideRequests: teacherProcedure
+    .use(rateLimit("decideJoinRequests", 60, MINUTE))
+    .input(
+      z.object({
+        groupId: entityId,
+        studentIds: z.array(z.number().int().positive()).min(1).max(groups.MAX_JOIN_DECISIONS),
+        decision: z.enum(["APPROVED", "DECLINED"]),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (input.decision === "APPROVED") {
+        const { group, approved } = await groups.approveRequests(ctx.scope, input.groupId, input.studentIds);
+        groupJoin.afterJoinDecisions(group, approved, "APPROVED");
+        return { decided: approved.length };
+      }
+      const { group, declined } = await groups.declineRequests(ctx.scope, input.groupId, input.studentIds);
+      groupJoin.afterJoinDecisions(group, declined, "DECLINED");
+      return { decided: declined.length };
     }),
   removeMember: teacherProcedure
     .input(z.object({ groupId: entityId, studentId: z.number().int().positive() }))
@@ -394,7 +415,7 @@ const teacherGroupsRouter = router({
     .input(z.object({ id: entityId }))
     .query(({ ctx, input }) => analytics.groupAnalytics(ctx.scope, input.id)),
   setJoinPolicy: teacherProcedure
-    .input(z.object({ groupId: entityId, joinPolicy: z.enum(GROUP_JOIN_POLICIES) }))
+    .input(z.object({ groupId: entityId, joinPolicy: z.enum(JOIN_POLICIES) }))
     .mutation(({ ctx, input }) => groups.setJoinPolicy(ctx.scope, input.groupId, input.joinPolicy)),
   regenerateInviteCode: teacherProcedure
     .use(rateLimit("regenerateInviteCode", 10, MINUTE))
@@ -895,7 +916,9 @@ const studentRouter = router({
     .mutation(async ({ ctx, input }) => {
       const code = input.inviteCode.toUpperCase();
       const joined = await groups.joinByInvite(ctx.user.id, code);
-      groupJoin.afterLinkJoin(joined, ctx.user.name ?? null, groupJoin.linkJoinKey(joined.membershipId));
+      if (joined.status === "ACTIVE") groupJoin.afterLinkJoin(joined, ctx.user.name ?? null, groupJoin.linkJoinKey(joined.membershipId));
+      else if (joined.newRequest) groupJoin.afterJoinRequest(joined, ctx.user.name ?? null);
+      // A request is the recipient going through with the link too; the approval doesn't change which channel brought them.
       await shareTracking.recordShareEvent({
         targetType: "GROUP",
         targetId: code,
@@ -1056,7 +1079,7 @@ const publicRouter = router({
   invite: publicProcedure
     .use(rateLimit("publicInvite", 60, MINUTE))
     .input(z.object({ inviteCode: z.string().trim().min(4).max(32) }))
-    .query(({ input }) => groups.publicInvite(input.inviteCode.toUpperCase())),
+    .query(({ ctx, input }) => groups.publicInvite(input.inviteCode.toUpperCase(), ctx.user?.id ?? null)),
   emailInvite: publicProcedure
     .use(rateLimit("publicEmailInvite", 60, MINUTE))
     .input(z.object({ token: z.string().trim().min(16).max(128) }))

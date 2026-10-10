@@ -2,16 +2,32 @@
 
 | Path | Who can use it | Result | Recorded as |
 | --- | --- | --- | --- |
-| Group invite code / `/join/<code>` link (shared by Telegram, WhatsApp, QR, copy; the student "join with code" box opens the same page) | **any number** of signed-in users except the workspace owner, up to the optional cap | **ACTIVE at once**, no approval | `GROUP_CODE_LINK` |
-| Single-use invite link `/g/<token>` | the first signed-in user to redeem it | ACTIVE at once | `SINGLE_USE_LINK` |
-| E-mail invite `/invite/<token>` | the invited address only | ACTIVE at once | `EMAIL_INVITE` |
+| Group invite code / `/join/<code>` link (shared by Telegram, WhatsApp, QR, copy; the student "join with code" box opens the same page) | **any number** of signed-in users except the workspace owner, up to the optional cap | depends on the group's **join policy**: ACTIVE at once (`AUTO`), a PENDING request for the teacher (`APPROVAL`), or refused (`MANUAL`) | `GROUP_CODE_LINK` |
+| Single-use invite link `/g/<token>` | the first signed-in user to redeem it | ACTIVE at once, whatever the policy | `SINGLE_USE_LINK` |
+| E-mail invite `/invite/<token>` | the invited address only | ACTIVE at once, whatever the policy | `EMAIL_INVITE` |
 | Teacher adds an existing user by e-mail | teacher | ACTIVE at once | `TEACHER_ADDED` |
 | Teacher accepts a syllabus join request for the group | teacher | ACTIVE at once | `SYLLABUS_REQUEST` |
-| Teacher approves a request left PENDING by the retired approval policy | teacher | ACTIVE | `TEACHER_APPROVED` |
+| Teacher approves a code request (`APPROVAL`) | teacher | ACTIVE | `GROUP_CODE_LINK`, actor = the teacher |
+| Teacher approves a PENDING row with no recorded source (left from before migration 0032) | teacher | ACTIVE | `TEACHER_APPROVED` |
 
 There is no search-and-request path; every self-join goes through one of the links above. An exam's
 share link never adds anyone: an exam's participants are the ACTIVE students of its assigned groups
 (late joiners included), the students picked individually, and anyone who already has an attempt.
+
+## Join policy
+
+| Policy | Teacher sees (group form and Invite dialog) | Group code / link |
+| --- | --- | --- |
+| `AUTO` (default) | "Kod/linklə dərhal qoşulma" + the warning that the link admits anyone who has it | ACTIVE at once |
+| `APPROVAL` | "Link ilə gələnlər müəllimin təsdiqini gözləyir" + the neutral note "Link ilə gələnlər siz təsdiq edənə qədər qrupa daxil olmur…" | PENDING request |
+| `MANUAL` | "Yalnız müəllimin manual əlavə etdiyi tələbələr" | refused (`GROUP_NOT_ACCEPTING`) |
+
+Stored without touching `study_groups`: its `joinPolicy` enum keeps `AUTO`/`MANUAL`, and
+`group_join_settings.approvalRequired` (migration **0044**) turns `AUTO` into `APPROVAL`
+(`shared/groupJoinPolicy.effectiveJoinPolicy`; `MANUAL` wins). `groups.setJoinPolicy` writes both
+in one transaction. Before 0044 is applied every group reads as `AUTO`/`MANUAL` as before, and
+choosing `APPROVAL` fails rather than silently admitting. Changing the policy leaves waiting
+requests for the teacher; under `AUTO` a waiting student who opens a valid link again is activated.
 
 ## Join provenance
 
@@ -33,6 +49,11 @@ through the **current** code — removed students still count, a regenerated cod
 simultaneous joins can't overshoot it; a full code answers `INVITE_CODE_LIMIT_REACHED`, and the join
 page says so before sign-in.
 
+Under `APPROVAL` a **request counts as a use when it is made** (its `GROUP_CODE_LINK` source row is
+written with the request). So the cap bounds how many people can be waiting plus admitted, an
+approval never fails on the cap, and a student who already asked still reads "request sent" when the
+code is full. A declined request deletes its source row and so frees its place.
+
 ## Group invite code / link
 
 `student.join` → `groups.joinByInvite`. Refused, with a message on the join page (shown before
@@ -42,35 +63,52 @@ sign-in when the preview already knows it), when:
 - the teacher turned the code off — `INVITE_CODE_INACTIVE`;
 - its expiry date has passed — `INVITE_CODE_EXPIRED`;
 - the group's join policy is **MANUAL** (only the teacher adds students) — `GROUP_NOT_ACCEPTING`;
+- the code's cap is used up — `INVITE_CODE_LIMIT_REACHED`;
 - the user owns the group's workspace — `CANNOT_JOIN_OWN_GROUP`;
-- the user is already an active member — `ALREADY_MEMBER`.
+- the user is already an active member — `ALREADY_MEMBER`;
+- under `APPROVAL`, the teacher declined this user's request less than 24 hours ago —
+  `JOIN_REQUEST_COOLDOWN` (neutral text: "try again later").
 
-Otherwise the membership is created ACTIVE, and `groupJoin.afterLinkJoin` sends the student one
+**AUTO**: the membership is created ACTIVE, and `groupJoin.afterLinkJoin` sends the student one
 `TASK_ASSIGNED` for the group's open tasks and the teacher an informational `GROUP_MEMBER_JOINED`
 ("X joined the group via the invite link"). Group tasks, materials, syllabi (group grants), the group
 board and analytics all derive from the ACTIVE row on read, so nothing else has to run. The student
 lands on `/student/groups?group=<id>` with that group opened.
 
-Join policies are `AUTO` (default) and `MANUAL`. The former `APPROVAL` policy, under which link
-joins waited as PENDING for the teacher, was removed in migration **0032**, which also moved every
-`APPROVAL` group to `AUTO`.
+**APPROVAL**: the join page says "Link ilə gələnlər müəllimin təsdiqini gözləyir" and the button reads
+"Sorğu göndər". The visit leaves one PENDING row (`INSERT IGNORE` on the unique group/user index,
+inside the row lock: ten simultaneous students give ten requests, a double click gives one) and the
+page shows "Sorğunuz göndərildi, müəllim təsdiq edəndə qrupa daxil olacaqsınız." — also on later
+visits (`public.invite` returns the viewer's own `viewerStatus`). The teacher gets
+`GROUP_MEMBER_JOINED` with `pending: true` ("Yeni qoşulma sorğusu", once per request, dedupe
+`group-join-request:<membershipId>`) linking to `/teacher/groups/<id>?tab=requests`. A PENDING
+member reaches nothing: every roster read (exam targets and participants, tasks, materials, syllabus
+group grants and roster, group board, analytics, announcements) filters `status = ACTIVE`. The
+student's "Qruplarım" shows the group as "Təsdiq gözləyir".
 
-## Requests still PENDING from the approval era
+## Requests tab
 
-Only `joinByInvite` under `APPROVAL` ever created PENDING rows, so every one of them came from the
-group's code/link. They are handled in two ways:
+`teacher.groups.decideRequests` (`APPROVED` | `DECLINED`, 1–200 students; the per-row buttons and
+the select-all bulk actions both use it; `approveMember` remains for the single approve):
 
-1. **Startup backfill** (`groups.activatePendingLinkJoins`, run once per server start by
-   `groupJoin.runPendingLinkJoinBackfill`): a PENDING row is activated — with the same
-   `TASK_ASSIGNED` / `GROUP_MEMBER_JOINED` notices — only if share tracking recorded this student
-   joining through the group's **current** code (`share_events` `JOINED`, target = that code) **and**
-   that link would still let them in now (code active, not expired, group not MANUAL). Each row is
-   flipped by a conditional UPDATE, so several instances starting together never activate or notify
-   twice. Later starts find nothing: no new PENDING rows are created any more.
-2. **On the next visit**: a student whose request is still PENDING and who opens a valid link again
-   is activated immediately by `joinByInvite`.
+- **Approve** (`groups.approveRequests`): the PENDING row turns ACTIVE by a conditional UPDATE, so a
+  double click or two teachers' tabs approve once. The source stays `GROUP_CODE_LINK` (same code)
+  with the approving teacher as actor. Like any late joiner, the student is on the group's assigned
+  exams at once (NOT_STARTED) and gets `TASK_ASSIGNED` for open tasks and the syllabus notices, plus
+  `GROUP_JOIN_DECIDED` "Qrupa qəbul olundunuz" linking to the group.
+- **Decline** (`groups.declineRequests`): the PENDING row and its source row are deleted (the code's
+  place is freed), `group_join_declines` records who declined when, and the student gets a neutral
+  `GROUP_JOIN_DECIDED` ("Qoşulma sorğunuza cavab verildi"; it never says "rejected"). The same
+  student can't ask this group again for 24 hours (`JOIN_REQUEST_COOLDOWN_MS`), which also stops
+  request spam; the `joinGroup` rate limit (10/min per user) applies as before.
 
-Everything else stays PENDING for the teacher to approve or remove as before (the Requests tab is
-unchanged): requests made with a code that has since been regenerated, deactivated or expired, in a
-group now closed to self-join, or made before share tracking existed (migration 0013) and therefore
-without a recorded link join.
+Only the group's owner can decide (`NOT_FOUND` for anyone else); ids that are not waiting are skipped.
+The group card and the tab show the number of waiting requests.
+
+## History
+
+Migration **0032** removed an earlier `APPROVAL` policy and moved its groups to `AUTO`; its leftover
+PENDING rows were activated at startup when share tracking showed a valid link join. That startup
+pass (`activatePendingLinkJoins`) is gone: it would now approve new requests behind the teacher's
+back. Leftover rows without a recorded source stay in the Requests tab and approve as
+`TEACHER_APPROVED`.

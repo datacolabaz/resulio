@@ -17,7 +17,8 @@ const pick = (g: { name: string; groupType: string; subject: string; grade: stri
 /**
  * Link-preview facts of a group invitation, through the same public previews the join pages use,
  * so their gates apply unchanged. Only a link that would let someone join right now gets a card:
- * the group's code while active, unexpired and accepting joins; a single-use link while unused,
+ * the group's code while active, unexpired and accepting joins or join requests (the approval
+ * policy shows the group's name too); a single-use link while unused,
  * unrevoked and unexpired; an e-mail invite while pending. Anything else is null, like unknown.
  */
 export async function groupLinkPreview(kind: GroupLinkKind, rawKey: string): Promise<GroupLinkPreview | null> {
