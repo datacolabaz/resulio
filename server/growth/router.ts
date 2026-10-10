@@ -6,6 +6,8 @@ import * as actions from "./actions";
 import { assertGrowthEnabled, growthEnabledFor, studentGrowthGroups } from "./availability";
 import * as reports from "./reports";
 import { RETAKE_MAX, RETAKE_MIN } from "./retake";
+import * as planStore from "./planStore";
+import * as practice from "./practice";
 import * as riskStore from "./riskStore";
 import * as studentView from "./studentView";
 import * as topicHealth from "./topicHealth";
@@ -78,6 +80,11 @@ export const teacherGrowthRouter = router({
     .use(rateLimit("growthRetake", 10, MINUTE))
     .input(studentInput.extend({ topicKeys: topicKeys, count: z.number().int().min(RETAKE_MIN).max(RETAKE_MAX) }))
     .mutation(({ ctx, input }) => actions.createRetake(ctx.scope, input)),
+  groupPractice: growthTeacherProcedure.query(({ ctx }) => practice.groupPracticeSettings(ctx.scope)),
+  setGroupPractice: growthTeacherProcedure
+    .use(rateLimit("growthSettings", 20, MINUTE))
+    .input(z.object({ groupId: entityId, enabled: z.boolean() }))
+    .mutation(({ ctx, input }) => practice.setGroupPractice(ctx.scope, input.groupId, input.enabled)),
   reportShares: growthTeacherProcedure.input(studentInput).query(({ ctx, input }) => reports.activeShares(ctx.scope, input.studentId)),
   createReport: growthTeacherProcedure
     .use(rateLimit("growthReport", 10, MINUTE))
@@ -99,4 +106,29 @@ export const studentGrowthRouter = router({
   enabled: studentProcedure.query(async ({ ctx }) => ({ enabled: (await studentGrowthGroups(ctx.user.id)).length > 0 })),
   spaces: growthStudentProcedure.query(({ ctx }) => studentView.studentSpaces(ctx.user.id)),
   weakness: growthStudentProcedure.input(z.object({ groupId: entityId })).query(({ ctx, input }) => studentView.studentWeaknessMap(ctx.user.id, input.groupId)),
+  plan: growthStudentProcedure.input(z.object({ groupId: entityId })).query(({ ctx, input }) => planStore.getPlan(ctx.user.id, input.groupId)),
+  createPlan: growthStudentProcedure
+    .use(rateLimit("growthPlanCreate", 10, MINUTE))
+    .input(z.object({ groupId: entityId, dailyMinutes: z.number().int().min(10).max(180) }))
+    .mutation(({ ctx, input }) => planStore.createPlan(ctx.user.id, input.groupId, input.dailyMinutes)),
+  completeItem: growthStudentProcedure
+    .use(rateLimit("growthPlanItem", 120, MINUTE))
+    .input(z.object({ itemId: entityId }))
+    .mutation(({ ctx, input }) => planStore.completeItem(ctx.user.id, input.itemId)),
+  completePlan: growthStudentProcedure
+    .use(rateLimit("growthPlanItem", 120, MINUTE))
+    .input(z.object({ planId: entityId }))
+    .mutation(({ ctx, input }) => planStore.completePlan(ctx.user.id, input.planId)),
+  saveSettings: growthStudentProcedure
+    .use(rateLimit("growthStudentSettings", 20, MINUTE))
+    .input(z.object({ groupId: entityId, dailyMinutes: z.number().int().min(10).max(180).optional(), reminders: z.boolean().optional() }))
+    .mutation(({ ctx, input }) => planStore.saveStudentSettings(ctx.user.id, input.groupId, { dailyMinutes: input.dailyMinutes, reminders: input.reminders })),
+  startPractice: growthStudentProcedure
+    .use(rateLimit("growthPractice", 5, MINUTE))
+    .input(z.object({ groupId: entityId, topicKey: z.string().trim().min(1).max(128), itemId: entityId.nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      const started = await practice.startPractice(ctx.user.id, input);
+      if (input.itemId) await planStore.linkPracticeToItem(ctx.user.id, input.itemId, started.assessmentId);
+      return started;
+    }),
 });

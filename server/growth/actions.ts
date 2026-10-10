@@ -1,7 +1,6 @@
 import { and, desc, eq, gt, inArray, isNotNull, ne, or } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
-  assessmentOrigins,
   assessmentQuestions,
   assessments,
   questionMeta,
@@ -17,13 +16,13 @@ import { isSectionKey, isTextKey, sectionIdOfKey, TEXT_KEY_PREFIX, type RiskActi
 import { requireDb } from "../db";
 import { materialOf, updateMaterial } from "../materials/service";
 import type { TeacherScope } from "../modules/access";
-import { addQuestionsToAssessment, createAssessment, publish, setTargets, updateSchedule } from "../modules/assessments";
 import { AppError } from "../modules/errors";
 import { assertTeacherHasStudent, teacherStudents } from "../modules/groups";
 import { dayKey } from "../modules/motivation";
 import { dispatch } from "../notifications/dispatcher";
 import { isDismissed } from "./risk";
 import { dismissRisk, growthSettingsOf, risksOf } from "./riskStore";
+import { createPersonalTest } from "./personalTest";
 import { pickRetakeQuestions, RETAKE_MIN, type RetakeCandidate } from "./retake";
 import { studentResults } from "./store";
 import { topicNameKey } from "./topics";
@@ -180,25 +179,17 @@ export async function createRetake(scope: TeacherScope, input: { studentId: numb
   const { ids, reusedSeen } = pickRetakeQuestions(await retakeCandidates(scope.workspaceId, input.studentId, input.topicKeys), input.count);
   if (ids.length < RETAKE_MIN) throw new AppError("GROWTH_NOT_ENOUGH_QUESTIONS");
   const labels = (await studentMastery(scope.workspaceId, [input.studentId], db)).filter((m) => input.topicKeys.includes(m.topicKey)).map((m) => m.label);
-  const title = `Fərdi təkrar: ${labels.join(", ") || "mövzular"}`.slice(0, 255);
-  const now = new Date();
-  const a = await createAssessment(scope, {
-    type: "EXAM",
-    settings: { title, durationSeconds: Math.max(600, ids.length * 120), attemptsAllowed: 1, showCorrectAnswers: true, showExplanations: true },
-  });
-  await db.insert(assessmentOrigins).values({
-    assessmentId: a.id,
-    workspaceId: scope.workspaceId,
+  const assessmentId = await createPersonalTest(scope, {
     studentId: input.studentId,
     origin: "RETAKE",
     topicKeys: input.topicKeys,
+    questionIds: ids,
+    title: `Fərdi təkrar: ${labels.join(", ") || "mövzular"}`,
+    days: RETAKE_DAYS,
     sourceRef: "risk",
     createdBy: scope.userId,
   });
-  await addQuestionsToAssessment(scope, a.id, ids);
-  await updateSchedule(scope, a.id, { startAt: now, endAt: new Date(now.getTime() + RETAKE_DAYS * DAY_MS), timezone: "Asia/Baku" });
-  await publish(scope, a.id);
-  await setTargets(scope, a.id, { groupIds: [], studentIds: [input.studentId] });
+  const a = { id: assessmentId };
   await logAction(scope, input.studentId, "RETAKE", a.id);
   const [teacher] = await db.select({ name: users.name }).from(users).where(eq(users.id, scope.userId)).limit(1);
   dispatch({

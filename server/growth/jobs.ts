@@ -8,6 +8,7 @@ import { growthEnabledFor, growthWorkspaceIds } from "./availability";
 import { markDirty, markMissingStats, onStudentRecomputed, reconcileGrowth, recomputeNow } from "./store";
 import { markMissingMastery, writeMastery } from "./weakness";
 import { dailyRiskPass, writeRisk } from "./riskStore";
+import { dailyPlanPass, onPracticeAttempt } from "./planStore";
 
 let stepsRegistered = false;
 
@@ -20,6 +21,7 @@ export function registerGrowthSteps() {
     await writeRisk(workspaceId, studentId);
   });
   onGrowthDaily(dailyRiskPass);
+  onGrowthDaily(dailyPlanPass);
 }
 
 /**
@@ -61,6 +63,7 @@ export async function handleGrowthEvent(event: LearningEvent) {
     if (!target || !(await growthEnabledFor(target.workspaceId))) return;
     await markDirty(target.workspaceId, [target.studentId], event.type === "ATTEMPT_FINISHED" ? "attempt" : "regrade");
     await recomputeNow(target.workspaceId, target.studentId);
+    if (event.type === "ATTEMPT_FINISHED") await onPracticeAttempt(event.attemptId);
   } catch (error) {
     if (isSchemaBehind(error)) return;
     throw error;

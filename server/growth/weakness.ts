@@ -5,6 +5,8 @@ import type { TeacherScope } from "../modules/access";
 import { activeStudentIdsOfGroups, assertGroupOwner, assertTeacherHasStudent } from "../modules/groups";
 import { masteryRows, topGains, type MasteryRow, type StatRow } from "./mastery";
 import { markDirty } from "./store";
+import { statusUpXp } from "./xp";
+import { awardXp } from "./xpStore";
 import { UNTAGGED_TOPIC_KEY, type MasteryStatus } from "../../shared/growth";
 
 /** Weakness map: materialized mastery per student and topic, and the teacher's group and student views of it. */
@@ -38,12 +40,21 @@ export async function studentStats(workspaceId: string, studentId: number, db: D
 export async function writeMastery(workspaceId: string, studentId: number) {
   const db = requireDb();
   const rows = masteryRows(await studentStats(workspaceId, studentId, db));
+  const before = new Map(
+    (await studentMastery(workspaceId, [studentId], db)).filter((m) => m.dimension === "TOPIC").map((m) => [m.topicKey, m.status]),
+  );
   await db.transaction(async (tx) => {
     await tx.delete(studentTopicMastery).where(and(eq(studentTopicMastery.workspaceId, workspaceId), eq(studentTopicMastery.studentId, studentId)));
     for (let i = 0; i < rows.length; i += INSERT_CHUNK) {
       await tx.insert(studentTopicMastery).values(rows.slice(i, i + INSERT_CHUNK).map((r) => ({ ...r, workspaceId, studentId })));
     }
   });
+  // A topic moving up earns XP once per topic and level; moving down never costs any.
+  for (const r of rows) {
+    if (r.dimension !== "TOPIC") continue;
+    const points = statusUpXp(before.get(r.topicKey) ?? null, r.status);
+    if (points > 0) await awardXp({ studentId, workspaceId, type: "STATUS_UP", points, refKey: `status:${workspaceId}:${r.topicKey}:${r.status}` });
+  }
 }
 
 /** Students with tagged evidence but no mastery rows yet (stats written before this step existed). */
