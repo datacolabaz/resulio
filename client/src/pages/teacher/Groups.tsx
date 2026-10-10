@@ -13,13 +13,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { t } from "@/i18n/messages";
 import { errorText, fmtDateTime, groupFactsLine, groupLevelLabel, liveLabel } from "@/lib/format";
 import { LEVEL_OPTIONS, typeDraftOf, typeFieldKeys, typePayload, type LevelChoice } from "@/lib/groupForm";
+import { groupCodeNotice } from "@/lib/groupCodeNotice";
 import { joinSourceLabel } from "@/lib/joinSource";
 import { liveStatus } from "@/lib/status";
 import { trpc } from "@/lib/trpc";
 import { GROUP_CLASS_MAX, GROUP_LEVEL_MAX, GROUP_TYPES, type GroupType } from "@shared/groupType";
 import { GROUP_LANGUAGES, WEEK_DAYS, type ClassScheduleEntry, type GroupLanguage, type WeekDay } from "@shared/schedule";
 import { SHARE_SOURCE_PARAM } from "@shared/shareTracking";
-import { BookOpen, School } from "lucide-react";
+import { AlertTriangle, BookOpen, Info, School } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useParams, useSearch } from "wouter";
@@ -623,6 +624,22 @@ function InviteLinksSection({ groupId }: { groupId: string }) {
   );
 }
 
+function GroupCodeNoticeCallout(props: Parameters<typeof groupCodeNotice>[0]) {
+  const notice = groupCodeNotice(props);
+  const open = notice === "OPEN" || notice === "LIMIT_REACHED";
+  const Icon = open ? AlertTriangle : Info;
+  return (
+    <p
+      role="note"
+      data-notice={notice}
+      className={`mb-3 flex items-start gap-2 rounded-xl border p-3 text-xs text-foreground ${open ? "border-warning/40 bg-warning-surface" : "bg-muted"}`}
+    >
+      <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${open ? "text-warning" : "text-muted-foreground"}`} aria-hidden />
+      <span className="min-w-0 break-words">{t(`groups.codeNotice.${notice}`, { uses: props.codeUsage.uses, max: props.codeUsage.maxUses ?? 0 })}</span>
+    </p>
+  );
+}
+
 function InviteDialog({
   open,
   onOpenChange,
@@ -679,6 +696,7 @@ function InviteDialog({
           <section aria-labelledby="invite-link">
             <h3 id="invite-link" className="mb-1 text-sm font-medium">{t("groups.inviteByLink")}</h3>
             <p className="mb-2 text-xs text-muted-foreground">{t("groups.inviteByLinkMultiUse")}</p>
+            <GroupCodeNoticeCallout joinPolicy={joinPolicy} codeActive={codeActive} codeExpiresAt={codeExpiresAt} codeUsage={codeUsage} />
             <ShareBox
               path={`/join/${inviteCode}`}
               fileName={`resulio-group-${inviteCode}`}
