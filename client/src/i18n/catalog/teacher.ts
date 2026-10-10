@@ -177,6 +177,26 @@ export const teacher = {
     "Пусто — без ограничений. Когда лимит исчерпан, код/ссылка больше никого не принимает; новый код считает с нуля.",
   ],
   "groups.codeMaxUsesClear": ["Limiti sil", "Remove limit", "Убрать лимит"],
+  "groups.codeNotice.OPEN": [
+    "Qrup kodu linki çoxnəfərlikdir və paylaşıla bilər. Bu linkdən qoşulan şəxs avtomatik qrupa və qrupa bağlı aktiv imtahanlara daxil ola bilər. Daha nəzarətli qəbul üçün link limiti və ya əl ilə təsdiq aktivləşdirin.",
+    "The group code link is multi-use and can be passed on. Anyone who joins through it is added to the group automatically and gets the group's active exams. For tighter control, set a join limit or switch the join policy to teacher-added students only.",
+    "Ссылка с кодом группы многоразовая, её можно переслать. Вступивший по ней автоматически попадает в группу и получает её активные экзамены. Для более строгого контроля задайте лимит вступлений или разрешите только добавление преподавателем.",
+  ],
+  "groups.codeNotice.LIMIT_REACHED": [
+    "Qrup kodu linkinin limiti dolub ({uses} / {max}): link paylaşılsa belə, yeni şəxs qrupa və qrupa bağlı imtahanlara daxil ola bilməz. Yenidən açmaq üçün limiti artırın və ya silin.",
+    "The group code link has reached its limit ({uses} / {max}): even if it is shared, nobody new can join the group or get its exams. Raise or remove the limit to reopen it.",
+    "Лимит ссылки с кодом группы исчерпан ({uses} / {max}): даже если её перешлют, новые люди не попадут ни в группу, ни к её экзаменам. Чтобы открыть снова, увеличьте или уберите лимит.",
+  ],
+  "groups.codeNotice.SELF_JOIN_OFF": [
+    "Qrup kodu linki hazırda heç kimi qəbul etmir: qoşulma qaydası yalnız müəllimin əlavə etdiyi tələbələrdir. Linki açan şəxs nə qrupa, nə də qrupa bağlı imtahanlara daxil olur — tələbələri siz əlavə edirsiniz.",
+    "The group code link admits nobody right now: the join policy is teacher-added students only. Someone who opens it gets into neither the group nor its exams — you add students yourself.",
+    "Ссылка с кодом группы сейчас никого не принимает: по правилу вступления студентов добавляет только преподаватель. Открывший её не попадёт ни в группу, ни к её экзаменам — студентов добавляете вы.",
+  ],
+  "groups.codeNotice.CODE_OFF": [
+    "Qrup kodu linki deaktivdir və ya müddəti bitib: bu linklə heç kim qrupa və qrupa bağlı imtahanlara daxil ola bilməz.",
+    "The group code link is turned off or has expired: nobody can join the group or get its exams through it.",
+    "Ссылка с кодом группы выключена или истекла: по ней никто не попадёт ни в группу, ни к её экзаменам.",
+  ],
   "groups.joinedVia": ["Qoşulma yolu", "Joined via", "Способ вступления"],
   "joinSource.GROUP_CODE_LINK": ["Qrup kodu/linki", "Group code/link", "Код/ссылка группы"],
   "joinSource.SINGLE_USE_LINK": ["Birdəfəlik link", "Single-use link", "Одноразовая ссылка"],
