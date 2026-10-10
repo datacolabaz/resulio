@@ -553,6 +553,10 @@ export const teacher = {
   "modules.noMaterials": ["Material yoxdur", "No materials", "Материалов нет"],
   "modules.noMaterialsBody": ["Qrupla paylaşmaq üçün material əlavə edin.", "Add material to share with a group.", "Добавьте материал, чтобы поделиться с группой."],
   "modules.fileName": ["Fayl", "File", "Файл"],
+  "modules.materialName": ["Materialın adı", "Material name", "Название материала"],
+  "modules.materialSharing": ["Paylaşım", "Sharing", "Доступ"],
+  "modules.advancedOptions": ["Ətraflı seçimlər", "More options", "Дополнительно"],
+  "modules.advancedOptionsHint": ["Təsvir, fənn, mövzu", "Description, subject, topic", "Описание, предмет, тема"],
   "modules.plan": ["Paket", "Plan", "Тариф"],
   "modules.planNote": [
     "Paket bu tədris məkanına aiddir, şəxsi hesabınıza deyil. Beta müddətində bütün əsas funksiyalar pulsuzdur.",

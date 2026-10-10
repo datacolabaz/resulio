@@ -86,6 +86,26 @@ export function planSelection(sel: Selection, students: readonly PickStudent[], 
   return { groupIds, studentIds, partialGroupIds, studentCount: viaGroup.size + studentIds.length };
 }
 
+export interface ShareSummary {
+  /** Names of the groups saved whole, in the order given. */
+  groupNames: string[];
+  /** Students reached through those groups. */
+  groupStudents: number;
+  /** Students saved one by one (partial groups and individual picks). */
+  students: number;
+}
+
+/** "Data Analitika, Proqramlaşdırma qruplarındakı 28 tələbəyə" / "yalnız seçilmiş 6 tələbəyə". */
+export function shareSummary(plan: SelectionPlan, groups: readonly { id: string; name: string }[]): ShareSummary {
+  const groupNames = plan.groupIds.map((id) => groups.find((g) => g.id === id)?.name).filter((n): n is string => !!n);
+  return { groupNames, groupStudents: plan.studentCount - plan.studentIds.length, students: plan.studentIds.length };
+}
+
+/** Selected groups some of whose students the teacher unchecked (saved as individual students). */
+export function uncheckedCount(sel: Selection, students: readonly PickStudent[]): number {
+  return sel.excluded.filter((id) => students.some((s) => s.id === id && s.groupIds.some((g) => sel.groupIds.includes(g)))).length;
+}
+
 /**
  * Saved targets back into the picker. A group that is not saved but has some (not all) of its
  * uncovered members saved individually reopens as a partial group, the group explaining the most

@@ -1,13 +1,14 @@
 import { PlaceBadge } from "@/components/ActivityBlocks";
 import { AppShell, EmptyState, Loading, Panel, Pill } from "@/components/AppShell";
 import { MultiFileUpload, SingleFileUpload } from "@/components/FileUpload";
-import { GroupStudentPicker, useGroupStudentTargets } from "@/components/GroupStudentPicker";
+import { CompactGroupStudentPicker, GroupStudentPicker, useGroupStudentTargets } from "@/components/GroupStudentPicker";
 import { draftFromQuestion, QuestionEditor } from "@/components/QuestionEditor";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ShareBox, ShareFunnelSummary } from "@/components/ShareBox";
 import { MaterialUsageBadge, useMaterialSyllabusUsage } from "@/components/syllabus/CrossLinks";
 import { SubmissionReview } from "@/components/SubmissionReview";
 import { TaskEngagementList } from "@/components/TaskEngagementList";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -607,26 +608,40 @@ function MaterialFormDialog({ open, onOpenChange, initial }: { open: boolean; on
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader><DialogTitle>{initial ? t("modules.editMaterialTitle") : t("modules.newMaterialTitle")}</DialogTitle></DialogHeader>
-        <DialogBody className="grid content-start gap-3">
-          <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("common.name") })}</span><Input required value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></label>
-          <label className="text-sm"><span className={fieldLabel}>{t("common.description")}</span><Textarea rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="text-sm"><span className={fieldLabel}>{t("common.subject")}</span><Input value={f.subject} onChange={(e) => setF({ ...f, subject: e.target.value })} /></label>
-            <label className="text-sm"><span className={fieldLabel}>{t("common.topic")}</span><Input value={f.topic} onChange={(e) => setF({ ...f, topic: e.target.value })} /></label>
-          </div>
+        <DialogBody className="grid content-start gap-4">
+          <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("modules.materialName") })}</span><Input required value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></label>
           <div>
             <p className={`mb-1 text-sm ${fieldLabel}`}>{t("common.required", { label: t("modules.fileName") })}</p>
             <SingleFileUpload context="material" value={f.file} onChange={(file) => setF({ ...f, file })} />
           </div>
-          <GroupStudentPicker
-            groups={targets.groups}
-            students={targets.students}
-            value={targets.selection}
-            onChange={targets.setSelection}
-            keptCount={targets.kept.length}
-            hints={{ whole: t("modules.materialGroupWhole"), partial: t("modules.materialGroupPartial") }}
-            summary
-          />
+          <section aria-labelledby="material-sharing" className="grid gap-2 border-t pt-3">
+            <h3 id="material-sharing" className="text-sm font-semibold">{t("modules.materialSharing")}</h3>
+            <CompactGroupStudentPicker
+              groups={targets.groups}
+              students={targets.students}
+              value={targets.selection}
+              onChange={targets.setSelection}
+              keptCount={targets.kept.length}
+              hints={{ whole: t("modules.materialGroupWhole"), partial: t("modules.materialGroupPartial") }}
+            />
+          </section>
+          <Accordion type="single" collapsible defaultValue={initial?.description || initial?.subject || initial?.topic ? "details" : undefined}>
+            <AccordionItem value="details" className="rounded-lg border px-3 last:border-b">
+              <AccordionTrigger className="py-3">
+                <span className="min-w-0">
+                  <span className="block">{t("modules.advancedOptions")}</span>
+                  <span className="block text-xs font-normal text-muted-foreground">{t("modules.advancedOptionsHint")}</span>
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="grid gap-3">
+                <label className="text-sm"><span className={fieldLabel}>{t("common.description")}</span><Textarea rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="text-sm"><span className={fieldLabel}>{t("common.subject")}</span><Input value={f.subject} onChange={(e) => setF({ ...f, subject: e.target.value })} /></label>
+                  <label className="text-sm"><span className={fieldLabel}>{t("common.topic")}</span><Input value={f.topic} onChange={(e) => setF({ ...f, topic: e.target.value })} /></label>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
@@ -634,19 +649,17 @@ function MaterialFormDialog({ open, onOpenChange, initial }: { open: boolean; on
             disabled={f.title.trim().length < 2 || !f.file || !targets.ready || create.isPending || update.isPending}
             onClick={() => {
               if (!f.file) return;
+              const file = { fileName: f.file.name, fileId: f.file.fileId, mimeType: f.file.mimeType || null, sizeBytes: f.file.size || null };
               const payload = {
                 title: f.title,
                 description: f.description,
                 subject: f.subject,
                 topic: f.topic,
-                fileName: f.file.name,
-                fileId: f.file.fileId,
-                mimeType: f.file.mimeType || null,
-                sizeBytes: f.file.size || null,
                 ...recipientsPayload(targets.selection, targets.students, { kept: targets.kept }),
               };
-              if (initial) update.mutate({ id: initial.id, patch: payload });
-              else create.mutate(payload);
+              // An unchanged file keeps its stored type and size (the form only knows its name).
+              if (initial) update.mutate({ id: initial.id, patch: f.file.fileId === initial.fileId ? payload : { ...payload, ...file } });
+              else create.mutate({ ...payload, ...file });
             }}
           >
             {t("common.save")}
