@@ -51,7 +51,7 @@ import { SYLLABUS_IMPORT_STATUSES, type SyllabusImportDetail } from "../shared/s
 import { JOIN_REQUEST_STATUSES, JOIN_REQUEST_TYPES } from "../shared/syllabusJoin";
 import type { ClassScheduleEntry } from "../shared/schedule";
 import { GROUP_TYPES } from "../shared/groupType";
-import { GROWTH_DIMENSIONS, TOPIC_KEY_MAX, type EvidenceOrigin } from "../shared/growth";
+import { GROWTH_DIMENSIONS, TOPIC_KEY_MAX, type EvidenceOrigin, type RiskActionType, type RiskLevel, type RiskReason } from "../shared/growth";
 import { SHARE_CHANNELS, SHARE_EVENT_TYPES, SHARE_TARGET_TYPES } from "../shared/shareTracking";
 import {
   APPROVAL_DECISIONS,
@@ -2133,6 +2133,74 @@ export const assessmentOrigins = mysqlTable(
   },
   (t) => [index("assessment_origins_student_idx").on(t.workspaceId, t.studentId, t.origin)],
 );
+
+/** Current risk of a student in a workspace: fixed-weight score, level and the signals behind it. */
+export const studentRisk = mysqlTable("student_risk", {
+  workspaceId: id("workspaceId").notNull(),
+  studentId: int("studentId").notNull(),
+  score: int("score").notNull(),
+  level: varchar("level", { length: 8 }).$type<RiskLevel>().notNull(),
+  reasons: json("reasons").$type<RiskReason[]>().notNull(),
+  computedAt: timestamp("computedAt").notNull(),
+  /** The teacher dismissed it: hidden until this time unless the score rises well above dismissedScore. */
+  dismissedUntil: timestamp("dismissedUntil"),
+  dismissedScore: int("dismissedScore"),
+}, (t) => [primaryKey({ columns: [t.workspaceId, t.studentId] }), index("student_risk_level_idx").on(t.workspaceId, t.level)]);
+
+/** One risk score per student per Baku day, for the trend and the "newly high" digest. */
+export const riskHistory = mysqlTable("risk_history", {
+  workspaceId: id("workspaceId").notNull(),
+  studentId: int("studentId").notNull(),
+  dayKey: varchar("dayKey", { length: 10 }).notNull(),
+  score: int("score").notNull(),
+  level: varchar("level", { length: 8 }).$type<RiskLevel>().notNull(),
+}, (t) => [primaryKey({ columns: [t.workspaceId, t.studentId, t.dayKey] }), index("risk_history_day_idx").on(t.workspaceId, t.dayKey)]);
+
+/** What the teacher did about a student's risk (retake, material, note, parent report, dismiss). */
+export const riskActions = mysqlTable("risk_actions", {
+  id: id("id").primaryKey(),
+  workspaceId: id("workspaceId").notNull(),
+  studentId: int("studentId").notNull(),
+  type: varchar("type", { length: 16 }).$type<RiskActionType>().notNull(),
+  refId: varchar("refId", { length: 64 }),
+  createdBy: int("createdBy").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => [index("risk_actions_student_idx").on(t.workspaceId, t.studentId, t.createdAt)]);
+
+/** Private teacher notes about a student; never shown to the student or in parent reports. */
+export const teacherStudentNotes = mysqlTable("teacher_student_notes", {
+  id: id("id").primaryKey(),
+  workspaceId: id("workspaceId").notNull(),
+  studentId: int("studentId").notNull(),
+  body: text("body").notNull(),
+  createdBy: int("createdBy").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => [index("teacher_student_notes_student_idx").on(t.workspaceId, t.studentId, t.createdAt)]);
+
+/** Read-only parent report links. Only the SHA-256 of the token is stored. */
+export const reportShares = mysqlTable("report_shares", {
+  id: id("id").primaryKey(),
+  workspaceId: id("workspaceId").notNull(),
+  studentId: int("studentId").notNull(),
+  tokenHash: varchar("tokenHash", { length: 64 }).notNull(),
+  createdBy: int("createdBy").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  revokedAt: timestamp("revokedAt"),
+  viewCount: int("viewCount").default(0).notNull(),
+  lastViewedAt: timestamp("lastViewedAt"),
+}, (t) => [uniqueIndex("report_shares_token_uq").on(t.tokenHash), index("report_shares_student_idx").on(t.workspaceId, t.studentId)]);
+
+/** Per-workspace Growth Engine switches. No row means the defaults. */
+export const growthSettings = mysqlTable("growth_settings", {
+  workspaceId: id("workspaceId").primaryKey(),
+  riskEnabled: boolean("riskEnabled").default(true).notNull(),
+  digestEnabled: boolean("digestEnabled").default(true).notNull(),
+  /** The teacher's consent to share progress with parents by link or e-mail. Off until turned on. */
+  parentReports: boolean("parentReports").default(false).notNull(),
+  updatedBy: int("updatedBy"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
 
 export type Syllabus = typeof syllabi.$inferSelect;
 export type SyllabusModuleRow = typeof syllabusModules.$inferSelect;

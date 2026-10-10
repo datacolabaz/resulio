@@ -30,6 +30,8 @@ export const EVENT_TYPES = [
   "SYLLABUS_JOIN_REQUESTED",
   "SYLLABUS_JOIN_DECIDED",
   "ANNOUNCEMENT",
+  "GROWTH_RISK_DIGEST",
+  "RETAKE_ASSIGNED",
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -76,6 +78,10 @@ export interface EventData {
   SYLLABUS_JOIN_DECIDED: { requestId: string; syllabusTitle: string; decision: "ACCEPTED" | "REJECTED"; groupName: string | null; note: string | null; path: string; accessGranted?: boolean };
   /** An admin's platform announcement (announcements.ts); the recipient's language is picked at render time. */
   ANNOUNCEMENT: { announcementId: number; language: AnnouncementLanguage; texts: AnnouncementTexts; url: string };
+  /** To the teacher, once a day: students who moved to high risk today (`names` holds at most five). */
+  GROWTH_RISK_DIGEST: { count: number; names: string[] };
+  /** To the student: the teacher assigned a personal retake on these topics. */
+  RETAKE_ASSIGNED: { assessmentId: string; topics: string[]; from: string };
 }
 
 export interface ExamResultNotice {
@@ -134,6 +140,9 @@ export const EVENTS: Record<EventType, EventDefinition> = {
   SYLLABUS_JOIN_REQUESTED: { channels: ["IN_APP", "PUSH"] },
   SYLLABUS_JOIN_DECIDED: { channels: ["IN_APP", "PUSH"] },
   ANNOUNCEMENT: { channels: ["IN_APP", "PUSH"] },
+  // Growth Engine: daily teacher digest like the syllabus one; a retake is in-app and push.
+  GROWTH_RISK_DIGEST: { channels: ["IN_APP", "EMAIL"], defaultOff: ["EMAIL"] },
+  RETAKE_ASSIGNED: { channels: ["IN_APP", "PUSH"] },
 };
 
 export const isEventType = (v: string): v is EventType => (EVENT_TYPES as readonly string[]).includes(v);

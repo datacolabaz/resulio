@@ -77,7 +77,7 @@ import { questionBankFilter, questionImportRouter, questionTopicsRouter, section
 import { store } from "./resulioStore";
 import { announceGroupJoin } from "./syllabus/notify";
 import { publicSyllabusProcedure, studentSyllabusRouter, teacherSyllabusRouter } from "./syllabus/router";
-import { studentGrowthRouter, teacherGrowthRouter } from "./growth/router";
+import { publicGrowthReport, studentGrowthRouter, teacherGrowthRouter } from "./growth/router";
 import { SHARE_CAMPAIGNS, SHARE_CHANNELS, SHARE_TARGET_TYPES, VISITOR_ID_PATTERN } from "../shared/shareTracking";
 import {
   MATERIAL_KINDS,
@@ -1056,6 +1056,7 @@ const studentRouter = router({
 // ---------------------------------------------------------------------------
 
 const publicRouter = router({
+  growthReport: publicGrowthReport,
   exam: publicProcedure
     .use(rateLimit("publicExam", 60, MINUTE))
     .input(z.object({ shareCode: z.string().trim().min(4).max(32) }))

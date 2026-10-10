@@ -8,6 +8,8 @@ import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { TopicMappingTab } from "./TopicMapping";
 import { WeaknessMapTab } from "./WeaknessMap";
+import { RiskRadarTab } from "./RiskRadar";
+import { GrowthSettingsTab } from "./GrowthSettings";
 
 /** Teacher Growth Engine page; the nav item and this page show only while the `growth_engine` flag is on. */
 export function GrowthPage() {
@@ -19,16 +21,20 @@ export function GrowthPage() {
       ) : !flag.data.enabled ? (
         <EmptyState title={t("nav.growth")} body={t("error.GROWTH_NOT_AVAILABLE")} />
       ) : (
-        <Tabs defaultValue="weakness" className="min-h-screen">
+        <Tabs defaultValue="risk" className="min-h-screen">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <TabsList className="h-auto flex-wrap">
+              <TabsTrigger value="risk">{t("growth.tab.risk")}</TabsTrigger>
               <TabsTrigger value="weakness">{t("growth.tab.weakness")}</TabsTrigger>
               <TabsTrigger value="topics">{t("growth.tab.topics")}</TabsTrigger>
+              <TabsTrigger value="settings">{t("growth.tab.settings")}</TabsTrigger>
             </TabsList>
             <RecomputeButton />
           </div>
+          <TabsContent value="risk" className="pt-3"><RiskRadarTab /></TabsContent>
           <TabsContent value="weakness" className="pt-3"><WeaknessMapTab /></TabsContent>
           <TabsContent value="topics" className="pt-3"><TopicMappingTab /></TabsContent>
+          <TabsContent value="settings" className="pt-3"><GrowthSettingsTab /></TabsContent>
         </Tabs>
       )}
     </AppShell>

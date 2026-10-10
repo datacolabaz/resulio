@@ -1,13 +1,19 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { rateLimit, router, studentProcedure, teacherProcedure } from "../_core/trpc";
+import { publicProcedure, rateLimit, router, studentProcedure, teacherProcedure } from "../_core/trpc";
 import { isSchemaBehind } from "../syllabus/availability";
+import * as actions from "./actions";
 import { assertGrowthEnabled, growthEnabledFor, studentGrowthGroups } from "./availability";
+import * as reports from "./reports";
+import { RETAKE_MAX, RETAKE_MIN } from "./retake";
+import * as riskStore from "./riskStore";
 import * as topicHealth from "./topicHealth";
 import * as weakness from "./weakness";
 
 const MINUTE = 60_000;
 const entityId = z.string().trim().min(1).max(32);
+const studentInput = z.object({ studentId: z.number().int().positive() });
+const topicKeys = z.array(z.string().trim().min(1).max(128)).min(1).max(5);
 
 /** Growth tables not migrated yet → GROWTH_DB_NOT_READY instead of a 500. */
 const tablesGuard = async <T extends { ok: boolean; error?: { cause?: unknown } }>(path: string, result: T) => {
@@ -43,7 +49,50 @@ export const teacherGrowthRouter = router({
   studentWeakness: growthTeacherProcedure
     .input(z.object({ studentId: z.number().int().positive() }))
     .query(({ ctx, input }) => weakness.studentWeakness(ctx.scope, input.studentId)),
+
+  settings: growthTeacherProcedure.query(({ ctx }) => riskStore.growthSettingsOf(ctx.scope.workspaceId)),
+  updateSettings: growthTeacherProcedure
+    .use(rateLimit("growthSettings", 20, MINUTE))
+    .input(z.object({ riskEnabled: z.boolean().optional(), digestEnabled: z.boolean().optional(), parentReports: z.boolean().optional() }))
+    .mutation(({ ctx, input }) => riskStore.updateGrowthSettings(ctx.scope.workspaceId, ctx.scope.userId, input)),
+  riskList: growthTeacherProcedure.input(z.object({ groupId: entityId.nullable() })).query(({ ctx, input }) => actions.riskList(ctx.scope, input.groupId)),
+  riskDetail: growthTeacherProcedure.input(studentInput).query(({ ctx, input }) => actions.riskDetail(ctx.scope, input.studentId)),
+  dismissRisk: growthTeacherProcedure.use(rateLimit("growthAction", 60, MINUTE)).input(studentInput).mutation(({ ctx, input }) => actions.dismiss(ctx.scope, input.studentId)),
+  addNote: growthTeacherProcedure
+    .use(rateLimit("growthAction", 60, MINUTE))
+    .input(studentInput.extend({ body: z.string().trim().min(1).max(2000) }))
+    .mutation(({ ctx, input }) => actions.addNote(ctx.scope, input.studentId, input.body)),
+  deleteNote: growthTeacherProcedure
+    .use(rateLimit("growthAction", 60, MINUTE))
+    .input(z.object({ noteId: entityId }))
+    .mutation(({ ctx, input }) => actions.deleteNote(ctx.scope, input.noteId)),
+  shareMaterial: growthTeacherProcedure
+    .use(rateLimit("growthAction", 60, MINUTE))
+    .input(studentInput.extend({ materialId: entityId }))
+    .mutation(({ ctx, input }) => actions.shareMaterial(ctx.scope, input.studentId, input.materialId)),
+  retakePreview: growthTeacherProcedure
+    .input(studentInput.extend({ topicKeys: topicKeys }))
+    .query(({ ctx, input }) => actions.retakePreview(ctx.scope, input.studentId, input.topicKeys)),
+  createRetake: growthTeacherProcedure
+    .use(rateLimit("growthRetake", 10, MINUTE))
+    .input(studentInput.extend({ topicKeys: topicKeys, count: z.number().int().min(RETAKE_MIN).max(RETAKE_MAX) }))
+    .mutation(({ ctx, input }) => actions.createRetake(ctx.scope, input)),
+  reportShares: growthTeacherProcedure.input(studentInput).query(({ ctx, input }) => reports.activeShares(ctx.scope, input.studentId)),
+  createReport: growthTeacherProcedure
+    .use(rateLimit("growthReport", 10, MINUTE))
+    .input(studentInput.extend({ email: z.string().trim().email().max(255).nullable(), locale: z.enum(["az", "en", "ru"]) }))
+    .mutation(({ ctx, input }) => reports.createReportShare(ctx.scope, input)),
+  revokeReport: growthTeacherProcedure
+    .use(rateLimit("growthAction", 60, MINUTE))
+    .input(z.object({ id: entityId }))
+    .mutation(({ ctx, input }) => reports.revokeShare(ctx.scope, input.id)),
 });
+
+/** Parent report behind a share token; the token itself is the credential. */
+export const publicGrowthReport = publicProcedure
+  .use(rateLimit("publicGrowthReport", 30, MINUTE))
+  .input(z.object({ token: z.string().trim().min(16).max(128) }))
+  .query(({ input }) => reports.publicReport(input.token));
 
 export const studentGrowthRouter = router({
   enabled: studentProcedure.query(async ({ ctx }) => ({ enabled: (await studentGrowthGroups(ctx.user.id)).length > 0 })),

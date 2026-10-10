@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, isNotNull, isNull, like, notInArray, or, s
 import { nanoid } from "nanoid";
 import {
   assessmentAssignments,
+  assessmentOrigins,
   assessmentQuestions,
   assessments,
   assessmentVersions,
@@ -26,6 +27,7 @@ import {
   type Targets,
 } from "../../shared/assessment";
 import { requireDb, type DbOrTx } from "../db";
+import { isMissingTable } from "../notifications/preferences";
 import type { TeacherScope } from "./access";
 import { liveStatus, toStudentQuestion, type FrozenQuestion } from "./engine";
 import { AppError } from "./errors";
@@ -608,8 +610,23 @@ export async function listForTeacher(scope: TeacherScope, filter: { type?: Asses
   const conds = [eq(assessments.providerWorkspaceId, scope.workspaceId)];
   if (filter.type) conds.push(eq(assessments.type, filter.type));
   const rows = await requireDb().select().from(assessments).where(and(...conds)).orderBy(desc(assessments.createdAt));
+  const generated = await generatedAssessmentIds(scope.workspaceId);
   const now = new Date();
-  return rows.map((a) => summary(a, now)).filter((s) => (filter.liveStatus ? s.liveStatus === filter.liveStatus : true));
+  return rows
+    .filter((a) => !generated.has(a.id))
+    .map((a) => summary(a, now))
+    .filter((s) => (filter.liveStatus ? s.liveStatus === filter.liveStatus : true));
+}
+
+/** Personal retakes and practice tests (Growth Engine); they live in the student's view, not the teacher's list. */
+async function generatedAssessmentIds(workspaceId: string): Promise<Set<string>> {
+  try {
+    const rows = await requireDb().select({ id: assessmentOrigins.assessmentId }).from(assessmentOrigins).where(eq(assessmentOrigins.workspaceId, workspaceId));
+    return new Set(rows.map((r) => r.id));
+  } catch (error) {
+    if (isMissingTable(error)) return new Set();
+    throw error;
+  }
 }
 
 /** Full teacher view including the draft answer key. Never exposed to students. */

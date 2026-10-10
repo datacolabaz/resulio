@@ -54,6 +54,7 @@ const SyllabusDetailPage = lazyPage(() => import("@/pages/teacher/syllabus/Sylla
 const SyllabusListPage = lazyPage(() => import("@/pages/teacher/syllabus/SyllabusList").then((m) => ({ default: m.SyllabusListPage })));
 const SyllabusImportPage = lazyPage(() => import("@/pages/teacher/syllabus/SyllabusImportPage"));
 const PublicSyllabusPage = lazyPage(() => import("@/pages/PublicSyllabusPage"));
+const GrowthReportPage = lazyPage(() => import("@/pages/GrowthReport").then((m) => ({ default: m.GrowthReportPage })));
 const GrowthPage = lazyPage(() => import("@/pages/teacher/growth/GrowthPage").then((m) => ({ default: m.GrowthPage })));
 const QuestionImportPage = lazyPage(() => import("@/pages/teacher/QuestionImport").then((m) => ({ default: m.QuestionImportPage })));
 const QuestionImportReviewPage = lazyPage(() => import("@/pages/teacher/QuestionImport").then((m) => ({ default: m.QuestionImportReviewPage })));
@@ -151,6 +152,7 @@ function Router() {
       <Route path="/join/:inviteCode" component={JoinGroupPage} />
       <Route path="/invite/:token" component={PublicEmailInvitePage} />
       <Route path="/g/:token" component={InviteLinkPage} />
+      <Route path="/report/:token" component={GrowthReportPage} />
       <Route path="/exam/:shareCode" component={PublicExamPage} />
       <Route path="/task/:shareCode" component={PublicTaskPage} />
       <Route path="/material/:shareCode" component={PublicMaterialPage} />

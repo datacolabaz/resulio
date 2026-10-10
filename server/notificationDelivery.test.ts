@@ -253,6 +253,8 @@ describe("dispatcher", () => {
         SYLLABUS_JOIN_REQUESTED: { requestId: "r1", syllabusId: "s1", syllabusTitle: "S", studentName: "A", groupName: null },
         SYLLABUS_JOIN_DECIDED: { requestId: "r1", syllabusTitle: "S", decision: "ACCEPTED" as const, groupName: "G", note: null, path: "/student" },
         ANNOUNCEMENT: { announcementId: 1, language: "AUTO" as const, texts: { az: { title: "T", body: "B" } }, url: "/" },
+        GROWTH_RISK_DIGEST: { count: 7, names: ["A", "B"] },
+        RETAKE_ASSIGNED: { assessmentId: "a1", topics: ["Kəsrlər"], from: "Müəllim" },
       }[event];
       const rendered = renderNotification(event, data, { locale: "az", email: "a@b.c" }, "https://resulio.co");
       expect(rendered.title.length).toBeGreaterThan(0);

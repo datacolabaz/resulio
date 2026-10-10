@@ -50,6 +50,11 @@ export function mountSpa(app: Express, distPath: string, opts: PreviewSources = 
       return;
     }
     res.set("Cache-Control", "no-cache");
+    if (req.path.startsWith("/report/")) {
+      // Parent report links carry a secret token in the path.
+      res.set("X-Robots-Tag", "noindex, nofollow");
+      res.set("Referrer-Policy", "no-referrer");
+    }
     if (isLinkPreviewPath(req.path)) {
       res.set("X-Robots-Tag", "noindex, nofollow");
       try {

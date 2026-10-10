@@ -7,6 +7,7 @@ import { isSchemaBehind } from "../syllabus/availability";
 import { growthEnabledFor, growthWorkspaceIds } from "./availability";
 import { markDirty, markMissingStats, onStudentRecomputed, reconcileGrowth, recomputeNow } from "./store";
 import { markMissingMastery, writeMastery } from "./weakness";
+import { dailyRiskPass, writeRisk } from "./riskStore";
 
 let stepsRegistered = false;
 
@@ -15,6 +16,10 @@ export function registerGrowthSteps() {
   if (stepsRegistered) return;
   stepsRegistered = true;
   onStudentRecomputed(writeMastery);
+  onStudentRecomputed(async (workspaceId, studentId) => {
+    await writeRisk(workspaceId, studentId);
+  });
+  onGrowthDaily(dailyRiskPass);
 }
 
 /**
