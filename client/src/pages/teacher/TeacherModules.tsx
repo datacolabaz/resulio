@@ -1,14 +1,15 @@
 import { PlaceBadge } from "@/components/ActivityBlocks";
 import { AppShell, EmptyState, Loading, Panel, Pill } from "@/components/AppShell";
-import { MultiFileUpload, SingleFileUpload } from "@/components/FileUpload";
-import { CompactGroupStudentPicker, GroupStudentPicker, useGroupStudentTargets } from "@/components/GroupStudentPicker";
+import { MultiFileUpload } from "@/components/FileUpload";
+import { GroupStudentPicker, useGroupStudentTargets } from "@/components/GroupStudentPicker";
+import { MaterialFormDialog, type MaterialInitial } from "@/components/materials/MaterialFormDialog";
+import { MaterialLinkButton, MaterialMeta } from "@/components/materials/MaterialMeta";
 import { draftFromQuestion, QuestionEditor } from "@/components/QuestionEditor";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ShareBox, ShareFunnelSummary } from "@/components/ShareBox";
 import { MaterialUsageBadge, useMaterialSyllabusUsage } from "@/components/syllabus/CrossLinks";
 import { SubmissionReview } from "@/components/SubmissionReview";
 import { TaskEngagementList } from "@/components/TaskEngagementList";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -579,97 +580,6 @@ function QuestionBankTab() {
   );
 }
 
-interface MaterialInitial {
-  id: string;
-  title: string;
-  description: string;
-  subject: string;
-  topic: string;
-  fileName: string;
-  fileId: string | null;
-  groupIds: string[];
-  studentIds: number[];
-}
-
-function MaterialFormDialog({ open, onOpenChange, initial }: { open: boolean; onOpenChange: (v: boolean) => void; initial?: MaterialInitial }) {
-  const utils = trpc.useUtils();
-  const [f, setF] = useState({
-    title: initial?.title ?? "",
-    description: initial?.description ?? "",
-    subject: initial?.subject ?? "",
-    topic: initial?.topic ?? "",
-    file: initial?.fileId ? { fileId: initial.fileId, name: initial.fileName, size: 0, mimeType: "" } : null,
-  });
-  const targets = useGroupStudentTargets(initial);
-  const done = () => { void utils.teacher.tasks.materials.invalidate(); onOpenChange(false); };
-  const create = trpc.teacher.tasks.createMaterial.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
-  const update = trpc.teacher.tasks.updateMaterial.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader><DialogTitle>{initial ? t("modules.editMaterialTitle") : t("modules.newMaterialTitle")}</DialogTitle></DialogHeader>
-        <DialogBody className="grid content-start gap-4">
-          <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("modules.materialName") })}</span><Input required value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></label>
-          <div>
-            <p className={`mb-1 text-sm ${fieldLabel}`}>{t("common.required", { label: t("modules.fileName") })}</p>
-            <SingleFileUpload context="material" value={f.file} onChange={(file) => setF({ ...f, file })} />
-          </div>
-          <section aria-labelledby="material-sharing" className="grid gap-2 border-t pt-3">
-            <h3 id="material-sharing" className="text-sm font-semibold">{t("modules.materialSharing")}</h3>
-            <CompactGroupStudentPicker
-              groups={targets.groups}
-              students={targets.students}
-              value={targets.selection}
-              onChange={targets.setSelection}
-              keptCount={targets.kept.length}
-              hints={{ whole: t("modules.materialGroupWhole"), partial: t("modules.materialGroupPartial") }}
-            />
-          </section>
-          <Accordion type="single" collapsible defaultValue={initial?.description || initial?.subject || initial?.topic ? "details" : undefined}>
-            <AccordionItem value="details" className="rounded-lg border px-3 last:border-b">
-              <AccordionTrigger className="py-3">
-                <span className="min-w-0">
-                  <span className="block">{t("modules.advancedOptions")}</span>
-                  <span className="block text-xs font-normal text-muted-foreground">{t("modules.advancedOptionsHint")}</span>
-                </span>
-              </AccordionTrigger>
-              <AccordionContent className="grid gap-3">
-                <label className="text-sm"><span className={fieldLabel}>{t("common.description")}</span><Textarea rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="text-sm"><span className={fieldLabel}>{t("common.subject")}</span><Input value={f.subject} onChange={(e) => setF({ ...f, subject: e.target.value })} /></label>
-                  <label className="text-sm"><span className={fieldLabel}>{t("common.topic")}</span><Input value={f.topic} onChange={(e) => setF({ ...f, topic: e.target.value })} /></label>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        </DialogBody>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
-          <Button
-            disabled={f.title.trim().length < 2 || !f.file || !targets.ready || create.isPending || update.isPending}
-            onClick={() => {
-              if (!f.file) return;
-              const file = { fileName: f.file.name, fileId: f.file.fileId, mimeType: f.file.mimeType || null, sizeBytes: f.file.size || null };
-              const payload = {
-                title: f.title,
-                description: f.description,
-                subject: f.subject,
-                topic: f.topic,
-                ...recipientsPayload(targets.selection, targets.students, { kept: targets.kept }),
-              };
-              // An unchanged file keeps its stored type and size (the form only knows its name).
-              if (initial) update.mutate({ id: initial.id, patch: f.file.fileId === initial.fileId ? payload : { ...payload, ...file } });
-              else create.mutate({ ...payload, ...file });
-            }}
-          >
-            {t("common.save")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function MaterialsTab() {
   const utils = trpc.useUtils();
   const list = trpc.teacher.tasks.materials.useQuery();
@@ -705,13 +615,18 @@ function MaterialsTab() {
                 </button>
               }
             >
-              <p className="break-words text-sm text-foreground-secondary">{m.description}</p>
-              <p className="mt-2 break-words text-xs text-muted-foreground">{[m.subject, m.topic].filter(Boolean).join(" · ")}</p>
+              {m.description && <p className="line-clamp-3 break-words text-sm text-foreground-secondary">{m.description}</p>}
+              {m.subject && <p className="mt-1 break-words text-xs text-muted-foreground">{m.subject}</p>}
+              <MaterialMeta meta={m.meta} />
               <MaterialUsageBadge count={syllabusUsage.get(m.id)} />
-              {m.fileId && (
-                <a href={fileDownloadUrl(m.fileId)} className="mt-2 inline-block rounded-lg border border-border bg-muted px-2 py-1 text-xs text-link underline-offset-2 hover:underline">
-                  {m.fileName}
-                </a>
+              {m.meta.url ? (
+                <MaterialLinkButton url={m.meta.url} />
+              ) : (
+                m.fileId && (
+                  <a href={fileDownloadUrl(m.fileId)} className="mt-2 inline-block max-w-full break-all rounded-lg border border-border bg-muted px-2 py-1 text-xs text-link underline-offset-2 hover:underline">
+                    {m.fileName}
+                  </a>
+                )
               )}
               {activityId === m.id && (
                 !activityQ.data ? <Loading /> : !activityQ.data.eligible.length ? (

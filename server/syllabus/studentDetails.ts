@@ -11,6 +11,7 @@ import {
 } from "../../drizzle/schema";
 import { MAX_ATTEMPTS_LIMIT, type RetryPolicy, type SyllabusGrantState } from "../../shared/syllabus";
 import { requireDb } from "../db";
+import { loadMetaRows } from "../materials/meta";
 import { visibilityForResults } from "../modules/attempts";
 import { autoGradeEnabledForTasks } from "../modules/autoGrade";
 import { AppError } from "../modules/errors";
@@ -159,10 +160,13 @@ export async function lessonUnlockedAt(enrollmentId: string, lessonId: string) {
 export async function referencedMaterials(workspaceId: string, contents: ReadonlyArray<{ kind: ItemStub["kind"]; content: Record<string, unknown> }>) {
   const ids = [...new Set(contents.flatMap((c) => contentRefs(c.kind, c.content).materialIds))];
   if (!ids.length) return [];
-  return requireDb()
+  const rows = await requireDb()
     .select({ id: materials.id, title: materials.title, fileId: materials.fileId })
     .from(materials)
     .where(and(inArray(materials.id, ids), eq(materials.providerWorkspaceId, workspaceId)));
+  // A link material has no file; the lesson opens its URL instead.
+  const meta = await loadMetaRows("MATERIAL", rows.map((r) => r.id));
+  return rows.map((r) => ({ ...r, url: meta.get(r.id)?.url ?? null }));
 }
 
 // ---------------------------------------------------------------------------

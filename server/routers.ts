@@ -38,6 +38,9 @@ import {
   teacherProcedure,
 } from "./_core/trpc";
 import * as db from "./db";
+import * as directUpload from "./materials/directUpload";
+import * as materialService from "./materials/service";
+import * as materialTags from "./materials/tags";
 import { canEnterContext, defaultContext, ensurePartnerProfile, resolveAccess, type TeacherScope } from "./modules/access";
 import * as activity from "./modules/activity";
 import { adminView } from "./modules/admin/authz";
@@ -74,6 +77,19 @@ import { store } from "./resulioStore";
 import { announceGroupJoin } from "./syllabus/notify";
 import { publicSyllabusProcedure, studentSyllabusRouter, teacherSyllabusRouter } from "./syllabus/router";
 import { SHARE_CAMPAIGNS, SHARE_CHANNELS, SHARE_TARGET_TYPES, VISITOR_ID_PATTERN } from "../shared/shareTracking";
+import {
+  MATERIAL_KINDS,
+  MATERIAL_STATUSES,
+  MATERIAL_VISIBILITIES,
+  MAX_UPLOAD_LIMIT_MB,
+  MB,
+  TAG_TYPES,
+  materialDetailsSchema,
+  materialUrlSchema,
+  type MaterialDetails,
+  type MaterialStatus,
+  type MaterialVisibility,
+} from "../shared/materialTemplates";
 
 const MINUTE = 60_000;
 const assessmentId = z.string().min(1).max(32);
@@ -604,7 +620,8 @@ const materialFields = {
   description: z.string().trim().max(5000),
   subject: z.string().trim().max(120),
   topic: z.string().trim().max(120),
-  fileName: z.string().trim().min(1).max(255),
+  /** Empty for a link material (exactly one of a file or `url`). */
+  fileName: z.string().trim().max(255),
   fileId: z.string().trim().min(1).max(32).nullable(),
   mimeType: z.string().trim().max(127).nullable(),
   sizeBytes: z.number().int().nonnegative().nullable(),
@@ -617,6 +634,7 @@ const materialInput = z.object({
   description: materialFields.description.default(""),
   subject: materialFields.subject.default(""),
   topic: materialFields.topic.default(""),
+  fileName: materialFields.fileName.default(""),
   fileId: materialFields.fileId.default(null),
   mimeType: materialFields.mimeType.default(null),
   sizeBytes: materialFields.sizeBytes.default(null),
@@ -625,6 +643,20 @@ const materialInput = z.object({
 
 /** No defaults here: zod 4 fills omitted keys with their defaults even inside .partial(), which would wipe the file and text of every patch that leaves them out. */
 const materialPatch = z.object(materialFields).partial();
+
+/** Template details and publishing; each part left out keeps its current value (create: the defaults). */
+const materialSaveInput = {
+  url: z.union([z.literal(""), materialUrlSchema]).nullable().optional(),
+  meta: materialDetailsSchema.optional(),
+  status: z.enum(MATERIAL_STATUSES).optional(),
+  publishAt: timestampDate().nullable().optional(),
+  visibility: z.enum(MATERIAL_VISIBILITIES).optional(),
+  notifyStudents: z.boolean().optional(),
+};
+
+function materialSaveOptions(input: { url?: string | null; meta?: MaterialDetails; status?: MaterialStatus; publishAt?: Date | null; visibility?: MaterialVisibility; notifyStudents?: boolean }) {
+  return { details: input.meta, url: input.url, status: input.status, publishAt: input.publishAt, visibility: input.visibility, notify: input.notifyStudents };
+}
 
 /** Resolves the recipients a patch currently points at, falling back to the row's own groupIds/studentIds when the patch doesn't touch them. */
 async function assertPatchedRecipients(
@@ -661,16 +693,16 @@ const teacherTasksRouter = router({
     .mutation(({ ctx, input }) => answerKey.draftAnswerKeyForTeacher(ctx.scope, input)),
   /** `notifyStudents` false: no notices for this save ("Tələbələrə bildiriş göndər" unticked). */
   create: teacherProcedure
-    .input(assignmentInput.extend({ notifyStudents: z.boolean().default(true) }))
+    .input(assignmentInput.extend({ notifyStudents: z.boolean().default(true), meta: materialDetailsSchema.optional() }))
     .mutation(async ({ ctx, input }) => {
-      const { notifyStudents, ...fields } = input;
+      const { notifyStudents, meta, ...fields } = input;
       const accessMode = fields.accessMode ?? "PUBLIC";
       assertAccessGroups(accessMode, fields.groupIds);
       await assertRecipients(ctx.scope, fields.groupIds, fields.studentIds, accessMode);
-      return tasks.createAssignment(ctx.scope, { ...fields, accessMode }, { notify: notifyStudents });
+      return tasks.createAssignment(ctx.scope, { ...fields, accessMode }, { notify: notifyStudents, meta });
     }),
   update: teacherProcedure
-    .input(z.object({ id: entityId, patch: assignmentInput.partial(), notifyStudents: z.boolean().default(true) }))
+    .input(z.object({ id: entityId, patch: assignmentInput.partial(), notifyStudents: z.boolean().default(true), meta: materialDetailsSchema.optional() }))
     .mutation(async ({ ctx, input }) => {
       const current = await tasks.assignmentOf(ctx.scope, input.id);
       const accessMode = input.patch.accessMode ?? current.accessMode;
@@ -679,7 +711,7 @@ const teacherTasksRouter = router({
       assertAccessGroups(accessMode, groupIds);
       const touchesRecipients = input.patch.groupIds !== undefined || input.patch.studentIds !== undefined || accessMode !== current.accessMode;
       if (touchesRecipients) await assertRecipients(ctx.scope, groupIds, studentIds, accessMode, current.studentIds);
-      return tasks.updateAssignment(ctx.scope, input.id, input.patch, { notify: input.notifyStudents });
+      return tasks.updateAssignment(ctx.scope, input.id, input.patch, { notify: input.notifyStudents, meta: input.meta });
     }),
   remove: teacherProcedure.input(z.object({ id: entityId })).mutation(async ({ ctx, input }) => {
     const result = await tasks.deleteAssignment(ctx.scope, input.id);
@@ -690,20 +722,37 @@ const teacherTasksRouter = router({
   activity: teacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => activity.taskActivity(ctx.scope, input.id)),
   materials: teacherProcedure.query(({ ctx }) => tasks.listMaterialsForWorkspace(ctx.scope.workspaceId)),
   createMaterial: teacherProcedure
-    .input(materialInput)
+    .input(materialInput.extend(materialSaveInput))
     .mutation(async ({ ctx, input }) => {
-      await assertRecipients(ctx.scope, input.groupIds, input.studentIds);
-      return tasks.createMaterial(ctx.scope, input);
+      const { url, meta, status, publishAt, visibility, notifyStudents, ...fields } = input;
+      await assertRecipients(ctx.scope, fields.groupIds, fields.studentIds);
+      return tasks.createMaterial(ctx.scope, fields, materialSaveOptions({ url, meta, status, publishAt, visibility, notifyStudents }));
     }),
   updateMaterial: teacherProcedure
-    .input(z.object({ id: entityId, patch: materialPatch }))
+    .input(z.object({ id: entityId, patch: materialPatch, ...materialSaveInput }))
     .mutation(async ({ ctx, input }) => {
       const current = await tasks.materialOf(ctx.scope, input.id);
       if (input.patch.groupIds !== undefined || input.patch.studentIds !== undefined) {
         await assertPatchedRecipients(ctx.scope, current, input.patch);
       }
-      return tasks.updateMaterial(ctx.scope, input.id, input.patch);
+      return tasks.updateMaterial(ctx.scope, input.id, input.patch, materialSaveOptions(input));
     }),
+  /** Tag suggestions for the material/task form: tags used in this workspace, then question bank subjects and sections. */
+  suggestTags: teacherProcedure
+    .input(z.object({ type: z.enum(TAG_TYPES), query: z.string().max(60).default("") }))
+    .query(({ ctx, input }) => materialTags.suggestTags(ctx.scope.workspaceId, input.type, input.query)),
+  /** Large material files straight to R2 (server/materials/directUpload.ts). */
+  uploadConfig: teacherProcedure.query(({ ctx }) => directUpload.uploadConfig(ctx.scope.workspaceId)),
+  startUpload: teacherProcedure
+    .use(rateLimit("startUpload", 20, MINUTE))
+    .input(z.object({ fileName: z.string().trim().min(1).max(255), sizeBytes: z.number().int().positive().max(MAX_UPLOAD_LIMIT_MB * MB), kind: z.enum(MATERIAL_KINDS) }))
+    .mutation(({ ctx, input }) => directUpload.startUpload(ctx.scope, input)),
+  uploadPartUrls: teacherProcedure
+    .use(rateLimit("uploadPartUrls", 120, MINUTE))
+    .input(z.object({ sessionId: entityId, partNumbers: z.array(z.number().int().min(1).max(10_000)).min(1).max(directUpload.MAX_PART_URLS_PER_CALL) }))
+    .mutation(({ ctx, input }) => directUpload.partUrls(ctx.scope, input.sessionId, input.partNumbers)),
+  completeUpload: teacherProcedure.input(z.object({ sessionId: entityId })).mutation(({ ctx, input }) => directUpload.completeUpload(ctx.scope, input.sessionId)),
+  abortUpload: teacherProcedure.input(z.object({ sessionId: entityId })).mutation(({ ctx, input }) => directUpload.abortUpload(ctx.scope, input.sessionId)),
   removeMaterial: teacherProcedure.input(z.object({ id: entityId })).mutation(({ ctx, input }) => tasks.deleteMaterial(ctx.scope, input.id)),
   /** Who among the students this material reaches has viewed and/or downloaded it. */
   materialActivity: teacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => activity.materialActivity(ctx.scope, input.id)),
@@ -922,10 +971,20 @@ const studentRouter = router({
       return tasks.submitAssignment(ctx.user.id, groupIds, input.assignmentId, input.files, input.answerText);
     }),
   materials: studentProcedure.query(async ({ ctx }) => {
+    // Only visible materials are listed, so drafts and scheduled ones are never marked "viewed".
     const rows = await tasks.studentMaterials(ctx.user.id, await groups.activeGroupIdsOfStudent(ctx.user.id));
     await activity.markMaterialsViewed(rows.map((r) => ({ id: r.id, providerWorkspaceId: r.providerWorkspaceId })), ctx.user.id);
     return rows;
   }),
+  /** A link material was opened (counts with downloads in the teacher's "who opened it" report). */
+  openMaterialLink: studentProcedure
+    .use(rateLimit("openMaterialLink", 60, MINUTE))
+    .input(z.object({ id: entityId }))
+    .mutation(async ({ ctx, input }) => {
+      const m = await materialService.reachableMaterial(ctx.user.id, await groups.activeGroupIdsOfStudent(ctx.user.id), input.id);
+      await activity.recordEvent(db.requireDb(), { userId: ctx.user.id, workspaceId: m.providerWorkspaceId, groupId: null, entityType: "MATERIAL", entityId: m.id, eventType: "MATERIAL_DOWNLOADED", metadata: { link: true } });
+      return { ok: true };
+    }),
   /** Self-enrolling via a teacher's share link: adds the student as an individual recipient. */
   claimTask: studentProcedure
     .use(rateLimit("claimTask", 20, MINUTE))
@@ -947,7 +1006,7 @@ const studentRouter = router({
     .use(rateLimit("claimMaterial", 20, MINUTE))
     .input(z.object({ shareCode: z.string().trim().min(4).max(32) }).merge(shareAttribution))
     .mutation(async ({ ctx, input }) => {
-      const result = await tasks.claimMaterial(ctx.user.id, input.shareCode);
+      const result = await tasks.claimMaterial(ctx.user.id, input.shareCode, await groups.activeGroupIdsOfStudent(ctx.user.id));
       await shareTracking.recordShareEvent({
         targetType: "MATERIAL",
         targetId: input.shareCode,
@@ -987,11 +1046,9 @@ const publicRouter = router({
   material: publicProcedure
     .use(rateLimit("publicMaterial", 60, MINUTE))
     .input(z.object({ shareCode: z.string().trim().min(4).max(32) }))
-    .query(async ({ input }) => {
-      const m = await tasks.materialByShareCode(input.shareCode);
-      return m
-        ? { id: m.id, title: m.title, description: m.description, subject: m.subject, topic: m.topic, fileName: m.fileName, fileId: m.fileId }
-        : null;
+    .query(async ({ ctx, input }) => {
+      const viewer = ctx.user ? { userId: ctx.user.id, groupIds: await groups.activeGroupIdsOfStudent(ctx.user.id) } : null;
+      return materialService.publicMaterial(input.shareCode, viewer);
     }),
   invite: publicProcedure
     .use(rateLimit("publicInvite", 60, MINUTE))

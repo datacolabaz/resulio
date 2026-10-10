@@ -7,7 +7,30 @@ import { videoEmbedUrl, videoProviderOf, type VideoProvider } from "@shared/syll
 import { Download, ExternalLink, FileText, FolderOpen } from "lucide-react";
 import { useEffect, useMemo, useRef, type ReactNode, type RefObject } from "react";
 
-export type MaterialRef = { title: string; fileId: string | null };
+/** A library material a lesson points at: its file, or (link materials) its URL. */
+export type MaterialRef = { title: string; fileId: string | null; url?: string | null };
+
+/** The material as a download or an external link; just its name when it has neither (any more). */
+export function MaterialRefLink({ m, className }: { m: MaterialRef; className: string }) {
+  const href = m.url ? safeHref(m.url) : null;
+  if (href) {
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer nofollow" className={className}>
+        <ExternalLink className="h-4 w-4 shrink-0" aria-hidden />
+        <span className="min-w-0 break-all">{m.title}</span>
+      </a>
+    );
+  }
+  if (m.fileId) {
+    return (
+      <a href={fileDownloadUrl(m.fileId)} className={className}>
+        <FolderOpen className="h-4 w-4 shrink-0" aria-hidden />
+        <span className="min-w-0 break-words">{m.title}</span>
+      </a>
+    );
+  }
+  return <p className="inline-flex items-center gap-2 text-sm"><FolderOpen className="h-4 w-4" aria-hidden />{m.title}</p>;
+}
 
 function InlineNodes({ nodes }: { nodes: Inline[] }) {
   return (
@@ -264,11 +287,8 @@ export function TheoryBlockView({
     case "material": {
       const m = materials?.get(s("materialId"));
       if (!m) return <p className="text-sm text-muted-foreground">{t("syllabus.theory.materialRef")}</p>;
-      return m.fileId ? (
-        <FileLink fileId={m.fileId} name={m.title} icon={<FolderOpen className="h-4 w-4 shrink-0" aria-hidden />} />
-      ) : (
-        <p className="inline-flex items-center gap-2 text-sm"><FolderOpen className="h-4 w-4" aria-hidden />{m.title}</p>
-      );
+      if (m.fileId && !m.url) return <FileLink fileId={m.fileId} name={m.title} icon={<FolderOpen className="h-4 w-4 shrink-0" aria-hidden />} />;
+      return <MaterialRefLink m={m} className="inline-flex max-w-full items-center gap-1 text-sm text-link underline" />;
     }
     case "table": {
       const rows = Array.isArray(block.rows) ? (block.rows as string[][]) : [];

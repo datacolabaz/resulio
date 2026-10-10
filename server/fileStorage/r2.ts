@@ -1,4 +1,15 @@
-import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  ListPartsCommand,
+  PutObjectCommand,
+  S3Client,
+  UploadPartCommand,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 /**
@@ -150,6 +161,103 @@ export function createR2Store(config: R2Config, client?: S3Like, presign?: Presi
       return config.publicBaseUrl ? `${config.publicBaseUrl}/${key.split("/").map(encodeURIComponent).join("/")}` : null;
     },
   };
+}
+
+/**
+ * Browser→bucket uploads: short-lived signed URLs for one object of an exact size and type, plus
+ * the multipart calls around them. The app never streams these bytes itself.
+ */
+export interface UploadSigner {
+  bucket: string;
+  /** PUT URL bound to the object key, Content-Type and Content-Length. */
+  presignPut(key: string, opts: { contentType: string; contentLength: number; expiresIn: number }): Promise<string>;
+  createMultipart(key: string, contentType: string): Promise<string>;
+  /** PUT URL for one part, bound to its exact length. */
+  presignPart(key: string, uploadId: string, partNumber: number, contentLength: number, expiresIn: number): Promise<string>;
+  /** Completes with the parts the bucket has (ListParts), so the browser never has to read ETags. */
+  completeMultipart(key: string, uploadId: string): Promise<number>;
+  abortMultipart(key: string, uploadId: string): Promise<void>;
+  /** Size and Content-Type of the stored object, or null when it does not exist. */
+  head(key: string): Promise<{ size: number; contentType: string } | null>;
+  remove(key: string): Promise<void>;
+}
+
+type PresignAny = (client: S3Like, command: unknown, opts: { expiresIn: number; signableHeaders?: Set<string> }) => Promise<string>;
+
+export function createUploadSigner(config: R2Config, client?: S3Like, presign?: PresignAny): UploadSigner {
+  const s3: S3Like =
+    client ??
+    new S3Client({
+      region: "auto",
+      endpoint: config.endpoint,
+      forcePathStyle: true,
+      credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey },
+      // A checksum the SDK would add to a presigned PUT can't be produced by the browser.
+      requestChecksumCalculation: "WHEN_REQUIRED",
+      responseChecksumValidation: "WHEN_REQUIRED",
+    });
+  const sign: PresignAny = presign ?? ((c, command, opts) => getSignedUrl(c as S3Client, command as PutObjectCommand, opts));
+  const Bucket = config.bucket;
+  return {
+    bucket: Bucket,
+    presignPut(key, opts) {
+      const command = new PutObjectCommand({ Bucket, Key: key, ContentType: opts.contentType, ContentLength: opts.contentLength });
+      return sign(s3, command, { expiresIn: opts.expiresIn, signableHeaders: new Set(["content-type", "content-length"]) });
+    },
+    async createMultipart(key, contentType) {
+      const out = (await s3.send(new CreateMultipartUploadCommand({ Bucket, Key: key, ContentType: contentType }))) as { UploadId?: string };
+      if (!out.UploadId) throw new Error("R2 returned no UploadId");
+      return out.UploadId;
+    },
+    presignPart(key, uploadId, partNumber, contentLength, expiresIn) {
+      const command = new UploadPartCommand({ Bucket, Key: key, UploadId: uploadId, PartNumber: partNumber, ContentLength: contentLength });
+      return sign(s3, command, { expiresIn, signableHeaders: new Set(["content-length"]) });
+    },
+    async completeMultipart(key, uploadId) {
+      const parts: { PartNumber: number; ETag: string }[] = [];
+      let marker: string | undefined;
+      for (;;) {
+        const page = (await s3.send(new ListPartsCommand({ Bucket, Key: key, UploadId: uploadId, PartNumberMarker: marker }))) as {
+          Parts?: { PartNumber?: number; ETag?: string }[];
+          IsTruncated?: boolean;
+          NextPartNumberMarker?: string;
+        };
+        for (const p of page.Parts ?? []) if (p.PartNumber && p.ETag) parts.push({ PartNumber: p.PartNumber, ETag: p.ETag });
+        if (!page.IsTruncated || !page.NextPartNumberMarker) break;
+        marker = page.NextPartNumberMarker;
+      }
+      parts.sort((a, b) => a.PartNumber - b.PartNumber);
+      await s3.send(new CompleteMultipartUploadCommand({ Bucket, Key: key, UploadId: uploadId, MultipartUpload: { Parts: parts } }));
+      return parts.length;
+    },
+    async abortMultipart(key, uploadId) {
+      await s3.send(new AbortMultipartUploadCommand({ Bucket, Key: key, UploadId: uploadId }));
+    },
+    async head(key) {
+      try {
+        const out = (await s3.send(new HeadObjectCommand({ Bucket, Key: key }))) as { ContentLength?: number; ContentType?: string };
+        return { size: out.ContentLength ?? 0, contentType: out.ContentType ?? "" };
+      } catch (error) {
+        const status = (error as { $metadata?: { httpStatusCode?: number }; name?: string }) ?? {};
+        if (status.$metadata?.httpStatusCode === 404 || status.name === "NotFound") return null;
+        throw error;
+      }
+    },
+    async remove(key) {
+      await s3.send(new DeleteObjectCommand({ Bucket, Key: key }));
+    },
+  };
+}
+
+let currentSigner: { signature: string; signer: UploadSigner } | null = null;
+
+/** The signer for direct uploads, or null when R2 is off or uploads are kept in MySQL. */
+export function uploadSigner(e: NodeJS.ProcessEnv = process.env): UploadSigner | null {
+  const config = r2ConfigFromEnv(e);
+  if (!config || uploadBackend(e) !== "r2") return null;
+  const signature = JSON.stringify(config);
+  if (currentSigner?.signature !== signature) currentSigner = { signature, signer: createUploadSigner(config) };
+  return currentSigner.signer;
 }
 
 let current: { signature: string; store: ObjectStore } | null = null;

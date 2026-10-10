@@ -212,7 +212,7 @@ async function lessonExtras(o: Opened, lessonId: string, items: LessonItems, con
       }
       return i;
     }),
-    materials: mats.map((m) => ({ id: m.id, title: m.title, fileId: m.fileId ?? null })),
+    materials: mats.map((m) => ({ id: m.id, title: m.title, fileId: m.fileId ?? null, url: m.url ?? null })),
   };
 }
 

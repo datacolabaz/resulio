@@ -23,6 +23,7 @@ export const EVENT_TYPES = [
   "SYLLABUS_AT_RISK_DIGEST",
   "TASK_ASSIGNED",
   "TASK_UPDATED",
+  "MATERIAL_SHARED",
   "EXAM_RESULT_READY",
   "GROUP_MEMBER_JOINED",
   "SYLLABUS_JOIN_REQUESTED",
@@ -53,6 +54,8 @@ export interface EventData {
   TASK_ASSIGNED: { tasks: TaskNoticeItem[]; total: number; from: string };
   /** The deadline of a task the student already had moved. */
   TASK_UPDATED: { taskId: string; title: string; deadline: string; previousDeadline: string };
+  /** A material became visible to the student (published now, or its scheduled time came). Never file names or links. */
+  MATERIAL_SHARED: { materialId: string; title: string; excerpt: string; from: string };
   /** A final, released exam result, for exams whose teacher chose "e-mail results". Never the answers. */
   EXAM_RESULT_READY: ExamResultNotice;
   /** To the group's teacher: a student joined through an invite link. Informational, nothing to approve. */
@@ -115,6 +118,8 @@ export const EVENTS: Record<EventType, EventDefinition> = {
   TASK_ASSIGNED: { channels: ["IN_APP", "EMAIL", "PUSH"] },
   // A moved deadline: in-app by default, e-mail only when the student opts in.
   TASK_UPDATED: { channels: ["IN_APP", "EMAIL", "PUSH"], defaultOff: ["EMAIL"] },
+  // Materials are frequent: in-app and push by default, e-mail only when the student opts in.
+  MATERIAL_SHARED: { channels: ["IN_APP", "EMAIL", "PUSH"], defaultOff: ["EMAIL"] },
   // Only for exams whose teacher ticked "e-mail results"; the in-app "result ready" notice exists already.
   EXAM_RESULT_READY: { channels: ["EMAIL"] },
   GROUP_MEMBER_JOINED: { channels: ["IN_APP", "PUSH"] },

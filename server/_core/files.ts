@@ -6,7 +6,9 @@ import { parseShareCampaign, parseShareSource, VISITOR_ID_PATTERN } from "@share
 import type { User } from "../../drizzle/schema";
 import { tasks } from "../../drizzle/schema";
 import { requireDb } from "../db";
+import { MATERIAL_UPLOAD_TYPES } from "../../shared/materialTemplates";
 import { contentDisposition, r2DownloadMode } from "../fileStorage/r2";
+import { assertWorkspaceQuota } from "../materials/directUpload";
 import { resolveWorkspace } from "../modules/access";
 import { AppError, type AppErrorCode } from "../modules/errors";
 import * as filesModule from "../modules/files";
@@ -45,6 +47,7 @@ async function currentUser(req: Request): Promise<User | null> {
 const STATUS: Partial<Record<AppErrorCode, number>> = {
   FILE_TOO_LARGE: 413,
   FILE_TYPE_NOT_ALLOWED: 400,
+  STORAGE_QUOTA_EXCEEDED: 413,
   FILE_NOT_FOUND: 404,
   NOT_FOUND: 404,
   FORBIDDEN: 403,
@@ -128,6 +131,7 @@ export function registerFileRoutes(app: Express) {
           // user on download anyway (filesModule.downloadAccess). A "submission" file (handled
           // above) is never on a public page, so it stays private.
           isPublic = context === "material" || context === "task-attachment";
+          await assertWorkspaceQuota(workspaceId, uploaded.size);
         }
 
         const saved = await filesModule.saveFile({
@@ -136,6 +140,7 @@ export function registerFileRoutes(app: Express) {
           fileName: uploaded.originalname,
           buffer: uploaded.buffer,
           isPublic,
+          allowedTypes: context === "material" ? MATERIAL_UPLOAD_TYPES : undefined,
         });
         res.json(saved);
       } catch (error) {

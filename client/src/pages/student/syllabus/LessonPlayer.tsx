@@ -102,7 +102,7 @@ function LessonBody({ id, data, path, record }: { id: string; data: Unlocked; pa
   const [kind, setKind] = useState<SyllabusItemKind | undefined>(firstOpen);
   const n = lessonNumbers(path, data.lesson.id);
   const materials = useMemo(() => {
-    const refs: Array<[string, MaterialRef]> = data.materials.map((m) => [m.id, { title: m.title, fileId: m.fileId }]);
+    const refs: Array<[string, MaterialRef]> = data.materials.map((m) => [m.id, { title: m.title, fileId: m.fileId, url: m.url }]);
     return new Map(refs);
   }, [data.materials]);
   const items = data.items.filter((i) => i.kind === kind).sort((a, b) => a.position - b.position);

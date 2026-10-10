@@ -708,6 +708,61 @@ export function buildSyllabusAtRiskEmail(input: RiskDigest & { to: string; local
 }
 
 // ---------------------------------------------------------------------------
+// Materials: shared with the student (on publish, or at the scheduled time)
+// ---------------------------------------------------------------------------
+
+export const studentMaterialsPath = "/student/materials";
+export const studentMaterialPath = (materialId: string) => `${studentMaterialsPath}?material=${encodeURIComponent(materialId)}`;
+
+const MATERIAL_NEW: Record<ServerLocale, { title: (t: string) => string; body: (from: string) => string; heading: string; button: string; footer: string }> = {
+  az: {
+    title: (t) => `Yeni material: ${t}`,
+    body: (f) => (f ? `${f} sizinlə yeni material paylaşdı.` : "Müəlliminiz sizinlə yeni material paylaşdı."),
+    heading: "Sizinlə yeni material paylaşıldı",
+    button: "Materiala keç",
+    footer: "Bu məktub Resulio tərəfindən avtomatik göndərilib, çünki müəlliminiz sizinlə material paylaşdı. Bu bildirişləri Ayarlar → Bildirişlər bölməsində söndürə bilərsiniz.",
+  },
+  en: {
+    title: (t) => `New material: ${t}`,
+    body: (f) => (f ? `${f} shared a new material with you.` : "Your teacher shared a new material with you."),
+    heading: "A new material was shared with you",
+    button: "Open material",
+    footer: "Resulio sent this e-mail automatically because your teacher shared a material with you. You can turn these notices off in Settings → Notifications.",
+  },
+  ru: {
+    title: (t) => `Новый материал: ${t}`,
+    body: (f) => (f ? `${f}: с вами поделились новым материалом.` : "Преподаватель поделился с вами новым материалом."),
+    heading: "С вами поделились новым материалом",
+    button: "Открыть материал",
+    footer: "Это письмо отправлено Resulio автоматически, потому что преподаватель поделился с вами материалом. Эти уведомления можно отключить в Настройки → Уведомления.",
+  },
+};
+
+type MaterialSharedData = { materialId: string; title: string; excerpt: string; from: string };
+
+export function materialSharedInApp(locale: ServerLocale, d: MaterialSharedData) {
+  const tx = MATERIAL_NEW[locale];
+  return { title: tx.title(cleanTitle(d.title, 120)), body: tx.body(cleanTitle(d.from, 120)) };
+}
+
+export function buildMaterialSharedEmail(input: MaterialSharedData & { to: string; locale: ServerLocale; appUrl: string }): EmailMessage {
+  const tx = MATERIAL_NEW[input.locale];
+  const title = cleanTitle(input.title);
+  const excerpt = taskExcerpt(input.excerpt);
+  const intro = tx.body(cleanTitle(input.from, 120));
+  const url = `${input.appUrl}${studentMaterialPath(input.materialId)}`;
+  const html = emailLayout({
+    heading: escapeHtml(tx.heading),
+    paragraphs: [escapeHtml(intro), `<strong>${escapeHtml(title)}</strong>`, ...(excerpt ? [escapeHtml(excerpt)] : [])],
+    buttonLabel: escapeHtml(tx.button),
+    buttonUrl: escapeHtml(url),
+    footer: escapeHtml(tx.footer),
+  });
+  const text = [tx.heading, "", intro, "", title, ...(excerpt ? [excerpt] : []), "", `${tx.button}: ${url}`, "", tx.footer].join("\n");
+  return { to: input.to, subject: tx.title(title), html, text };
+}
+
+// ---------------------------------------------------------------------------
 // Tasks: assigned (one, or the open tasks of a joined group), deadline moved
 // ---------------------------------------------------------------------------
 

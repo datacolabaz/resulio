@@ -9,6 +9,9 @@ import {
   buildAiGradeEmail,
   buildExamResultEmail,
   buildGradeEmail,
+  buildMaterialSharedEmail,
+  materialSharedInApp,
+  studentMaterialPath,
   examResultPath,
   buildSyllabusAccessEmail,
   buildSyllabusAtRiskEmail,
@@ -120,6 +123,10 @@ export function renderNotification<E extends EventType>(event: E, data: EventDat
     case "TASK_UPDATED": {
       const d = data as EventData["TASK_UPDATED"];
       return { ...taskUpdatedInApp(locale, d), path: studentTaskPath(d.taskId), email: buildTaskUpdatedEmail({ ...d, to, locale, appUrl }) };
+    }
+    case "MATERIAL_SHARED": {
+      const d = data as EventData["MATERIAL_SHARED"];
+      return { ...materialSharedInApp(locale, d), path: studentMaterialPath(d.materialId), email: buildMaterialSharedEmail({ ...d, to, locale, appUrl }) };
     }
     case "EXAM_RESULT_READY": {
       const d = data as EventData["EXAM_RESULT_READY"];

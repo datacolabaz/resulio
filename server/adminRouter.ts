@@ -19,6 +19,7 @@ import { storageSummary } from "./fileStorage/summary";
 import { listAudit } from "./modules/admin/audit";
 import { dashboard } from "./modules/admin/dashboard";
 import { getPlatformSettings } from "./platformSettings";
+import { MAX_UPLOAD_LIMIT_MB, SIZE_CLASSES, type SizeClass } from "../shared/materialTemplates";
 import * as roles from "./modules/admin/roles";
 import * as security from "./modules/admin/security";
 import * as adminUsers from "./modules/admin/users";
@@ -112,6 +113,20 @@ export const adminRouter = router({
     setSoftQuota: adminProcedure("storage.manage")
       .input(z.object({ softQuotaBytes: z.number().int().min(0).max(1e15).nullable() }))
       .mutation(({ ctx, input }) => aiAdmin.updateSettings(ctx.admin, { "storage.softQuotaBytes": input.softQuotaBytes })),
+    /** Material upload limits (MB per size class) and the hard per-workspace quota for teacher uploads. */
+    setUploadLimits: adminProcedure("storage.manage")
+      .input(
+        z.object({
+          materialUploadLimitsMb: z
+            .object(Object.fromEntries(SIZE_CLASSES.map((c) => [c, z.number().int().min(1).max(MAX_UPLOAD_LIMIT_MB)])) as Record<SizeClass, z.ZodNumber>)
+            .partial()
+            .nullable(),
+          workspaceQuotaBytes: z.number().int().min(0).max(1e15).nullable(),
+        }),
+      )
+      .mutation(({ ctx, input }) =>
+        aiAdmin.updateSettings(ctx.admin, { "storage.materialUploadLimitsMb": input.materialUploadLimitsMb, "storage.workspaceQuotaBytes": input.workspaceQuotaBytes || null }),
+      ),
     /** Copying MySQL file bytes to R2: status, dry run, background copy / verify job. Never deletes MySQL data. */
     r2: router({
       status: adminProcedure("storage.view").query(() => fileJob.fileMigrationStatus()),
