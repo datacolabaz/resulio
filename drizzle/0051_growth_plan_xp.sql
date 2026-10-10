@@ -6,6 +6,15 @@ CREATE TABLE `group_growth_settings` (
 	CONSTRAINT `group_growth_settings_groupId` PRIMARY KEY(`groupId`)
 );
 --> statement-breakpoint
+CREATE TABLE `released_topic_levels` (
+	`workspaceId` varchar(32) NOT NULL,
+	`studentId` int NOT NULL,
+	`topicKey` varchar(128) NOT NULL,
+	`status` varchar(16) NOT NULL,
+	`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	CONSTRAINT `released_topic_levels_workspaceId_studentId_topicKey_pk` PRIMARY KEY(`workspaceId`,`studentId`,`topicKey`)
+);
+--> statement-breakpoint
 CREATE TABLE `review_plan_items` (
 	`id` varchar(32) NOT NULL,
 	`planId` varchar(32) NOT NULL,

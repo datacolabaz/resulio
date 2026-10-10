@@ -55,6 +55,7 @@ import {
   GROWTH_DIMENSIONS,
   TOPIC_KEY_MAX,
   type EvidenceOrigin,
+  type MasteryStatus,
   type PlanItemKind,
   type PlanItemStatus,
   type PlanStatus,
@@ -2262,6 +2263,15 @@ export const studentXp = mysqlTable("student_xp", {
   lastActiveDay: varchar("lastActiveDay", { length: 10 }),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
+
+/** Topic levels the student has already been able to see (released results only); level-up XP counts from here. */
+export const releasedTopicLevels = mysqlTable("released_topic_levels", {
+  workspaceId: id("workspaceId").notNull(),
+  studentId: int("studentId").notNull(),
+  topicKey: varchar("topicKey", { length: TOPIC_KEY_MAX }).notNull(),
+  status: varchar("status", { length: 16 }).$type<MasteryStatus>().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (t) => [primaryKey({ columns: [t.workspaceId, t.studentId, t.topicKey] })]);
 
 /** Per-group Growth switches set by the teacher; self-practice is off until turned on. */
 export const groupGrowthSettings = mysqlTable("group_growth_settings", {

@@ -1,7 +1,7 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "0551b973-94ac-413c-9684-9699eae83932",
+  "id": "3c1dc26e-019a-4190-9d02-b9c6032007bd",
   "prevId": "2691c60f-dc05-4e67-b58c-330fed8026e5",
   "tables": {
     "ai_model_prices": {
@@ -5074,6 +5074,62 @@
           ]
         }
       },
+      "checkConstraint": {}
+    },
+    "released_topic_levels": {
+      "name": "released_topic_levels",
+      "columns": {
+        "workspaceId": {
+          "name": "workspaceId",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "studentId": {
+          "name": "studentId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "topicKey": {
+          "name": "topicKey",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "onUpdate": true,
+          "default": "(now())"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "released_topic_levels_workspaceId_studentId_topicKey_pk": {
+          "name": "released_topic_levels_workspaceId_studentId_topicKey_pk",
+          "columns": [
+            "workspaceId",
+            "studentId",
+            "topicKey"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
       "checkConstraint": {}
     },
     "report_shares": {

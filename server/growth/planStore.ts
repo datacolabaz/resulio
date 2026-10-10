@@ -5,7 +5,6 @@ import {
   assessmentOrigins,
   assessments,
   attempts,
-  results,
   reviewPlanItems,
   reviewPlans,
   studentGrowthSettings,
@@ -21,7 +20,8 @@ import { topGains } from "./mastery";
 import { buildPlan, planTarget, rollover, type PlanTopic } from "./plan";
 import { practiceGroups } from "./practice";
 import { releasedMastery } from "./studentView";
-import { practiceXp, XP } from "./xp";
+import { syncReleasedXp } from "./releasedXp";
+import { XP } from "./xp";
 import { awardXp, xpSummary } from "./xpStore";
 
 const DEFAULT_MINUTES = 30;
@@ -102,6 +102,7 @@ export async function getPlan(userId: number, groupId: string) {
   const db = requireDb();
   const plan = await activePlan(workspaceId, userId, db);
   const items = plan ? await db.select().from(reviewPlanItems).where(eq(reviewPlanItems.planId, plan.id)).orderBy(asc(reviewPlanItems.dayKey), asc(reviewPlanItems.position)) : [];
+  await syncReleasedXp(workspaceId, userId);
   return {
     plan,
     items,
@@ -164,18 +165,20 @@ export async function linkPracticeToItem(userId: number, itemId: string, assessm
   await requireDb().update(reviewPlanItems).set({ refId: assessmentId }).where(eq(reviewPlanItems.id, itemId));
 }
 
-/** A finished retake or practice: practice XP (more for 70%+), and the plan item it came from is done. */
+/**
+ * A finished retake or practice: practice XP for finishing, and the plan item it came from is done.
+ * The 70%+ bonus waits for the released result (`releasedXp.ts`).
+ */
 export async function onPracticeAttempt(attemptId: string, now = new Date()) {
   const db = requireDb();
   const [row] = await db
-    .select({ studentId: attempts.studentId, assessmentId: attempts.assessmentId, workspaceId: assessmentOrigins.workspaceId, origin: assessmentOrigins.origin, percentage: results.percentage, pending: results.pendingReviewCount })
+    .select({ studentId: attempts.studentId, assessmentId: attempts.assessmentId, workspaceId: assessmentOrigins.workspaceId })
     .from(attempts)
     .innerJoin(assessmentOrigins, eq(assessmentOrigins.assessmentId, attempts.assessmentId))
-    .leftJoin(results, eq(results.attemptId, attempts.id))
     .where(eq(attempts.id, attemptId))
     .limit(1);
   if (!row || row.studentId == null) return;
-  await awardXp({ studentId: row.studentId, workspaceId: row.workspaceId, type: "PRACTICE_DONE", points: practiceXp(row.pending ? null : row.percentage), refKey: `practice:${row.assessmentId}`, activity: true }, now);
+  await awardXp({ studentId: row.studentId, workspaceId: row.workspaceId, type: "PRACTICE_DONE", points: XP.PRACTICE_DONE, refKey: `practice:${row.assessmentId}`, activity: true }, now);
   const linked = await db
     .select({ item: reviewPlanItems, plan: reviewPlans })
     .from(reviewPlanItems)

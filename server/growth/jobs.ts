@@ -9,6 +9,7 @@ import { markDirty, markMissingStats, onStudentRecomputed, reconcileGrowth, reco
 import { markMissingMastery, writeMastery } from "./weakness";
 import { dailyRiskPass, writeRisk } from "./riskStore";
 import { dailyPlanPass, onPracticeAttempt } from "./planStore";
+import { dailyReleasedXpPass, syncReleasedXp } from "./releasedXp";
 
 let stepsRegistered = false;
 
@@ -20,8 +21,12 @@ export function registerGrowthSteps() {
   onStudentRecomputed(async (workspaceId, studentId) => {
     await writeRisk(workspaceId, studentId);
   });
+  onStudentRecomputed(async (workspaceId, studentId) => {
+    await syncReleasedXp(workspaceId, studentId);
+  });
   onGrowthDaily(dailyRiskPass);
   onGrowthDaily(dailyPlanPass);
+  onGrowthDaily(dailyReleasedXpPass);
 }
 
 /**

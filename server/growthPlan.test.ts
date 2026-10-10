@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { addDays, buildPlan, daysBetween, MINUTES, planTarget, planTopics, rollover, type PlanTopic } from "./growth/plan";
 import { weekStart } from "./growth/planStore";
-import { levelOf, levelProgress, nextStreak, practiceXp, statusUpXp, xpForLevel } from "./growth/xp";
+import { levelOf, levelProgress, nextStreak, statusUpXp, xpForLevel } from "./growth/xp";
 
 const topic = (key: string, status: PlanTopic["status"], gain: number, mastery = 40): PlanTopic => ({ topicKey: key, label: key.toUpperCase(), mastery, status, gain });
 
@@ -92,10 +92,7 @@ describe("xp", () => {
     expect(levelProgress(125)).toEqual({ level: 1, xp: 125, from: 50, to: 200, pct: 50 });
   });
 
-  it("gives practice a bonus at 70% and rewards only upward moves", () => {
-    expect(practiceXp(69.9)).toBe(20);
-    expect(practiceXp(70)).toBe(30);
-    expect(practiceXp(null)).toBe(20);
+  it("rewards only upward moves", () => {
     expect(statusUpXp("CRITICAL", "REVIEW")).toBe(30);
     expect(statusUpXp("REVIEW", "STRONG")).toBe(50);
     expect(statusUpXp("CRITICAL", "STRONG")).toBe(80);

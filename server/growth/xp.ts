@@ -24,8 +24,6 @@ export function levelProgress(xp: number) {
   return { level, xp, from, to, pct: Math.round(((xp - from) / (to - from)) * 100) };
 }
 
-export const practiceXp = (percentage: number | null) => XP.PRACTICE_DONE + (percentage != null && percentage >= XP.PRACTICE_GOOD_AT ? XP.PRACTICE_GOOD_BONUS : 0);
-
 /** Points for a topic moving up; 0 for anything else (moving down never costs XP). */
 export function statusUpXp(from: MasteryStatus | null, to: MasteryStatus): number {
   if (from === "CRITICAL" && to === "REVIEW") return XP.CRITICAL_TO_REVIEW;
