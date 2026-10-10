@@ -4,6 +4,7 @@ import { rateLimit, router, studentProcedure, teacherProcedure } from "../_core/
 import { isSchemaBehind } from "../syllabus/availability";
 import { assertGrowthEnabled, growthEnabledFor, studentGrowthGroups } from "./availability";
 import * as topicHealth from "./topicHealth";
+import * as weakness from "./weakness";
 
 const MINUTE = 60_000;
 const entityId = z.string().trim().min(1).max(32);
@@ -38,6 +39,10 @@ export const teacherGrowthRouter = router({
     .input(z.object({ aliasKey: z.string().trim().min(1).max(120) }))
     .mutation(({ ctx, input }) => topicHealth.removeAlias(ctx.scope, input.aliasKey)),
   recompute: growthTeacherProcedure.use(rateLimit("growthRecompute", 3, MINUTE)).mutation(({ ctx }) => topicHealth.recomputeWorkspace(ctx.scope)),
+  groupWeakness: growthTeacherProcedure.input(z.object({ groupId: entityId })).query(({ ctx, input }) => weakness.groupWeakness(ctx.scope, input.groupId)),
+  studentWeakness: growthTeacherProcedure
+    .input(z.object({ studentId: z.number().int().positive() }))
+    .query(({ ctx, input }) => weakness.studentWeakness(ctx.scope, input.studentId)),
 });
 
 export const studentGrowthRouter = router({

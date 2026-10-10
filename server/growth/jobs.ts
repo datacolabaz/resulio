@@ -5,7 +5,17 @@ import { onLearningEvent, type LearningEvent } from "../modules/learningEvents";
 import { dayKey } from "../modules/motivation";
 import { isSchemaBehind } from "../syllabus/availability";
 import { growthEnabledFor, growthWorkspaceIds } from "./availability";
-import { markDirty, markMissingStats, reconcileGrowth, recomputeNow } from "./store";
+import { markDirty, markMissingStats, onStudentRecomputed, reconcileGrowth, recomputeNow } from "./store";
+import { markMissingMastery, writeMastery } from "./weakness";
+
+let stepsRegistered = false;
+
+/** The per-student pipeline after the stats, in order. Later stages append here. */
+export function registerGrowthSteps() {
+  if (stepsRegistered) return;
+  stepsRegistered = true;
+  onStudentRecomputed(writeMastery);
+}
 
 /**
  * Triggers: a finished attempt or a regraded result marks the student dirty and is processed at
@@ -65,6 +75,7 @@ export async function runGrowthDaily(now = new Date()) {
   for (const workspaceId of await growthWorkspaceIds()) {
     try {
       await markMissingStats(workspaceId);
+      await markMissingMastery(workspaceId);
       for (const step of dailySteps) await step(workspaceId, now);
     } catch (error) {
       if (isSchemaBehind(error)) return;
@@ -84,6 +95,7 @@ export function dailyDue(now: Date, last: string | null) {
 
 export function startGrowthJobs() {
   if (!getDb()) return;
+  registerGrowthSteps();
   onLearningEvent(handleGrowthEvent);
   let reconciling = false;
   setInterval(async () => {
@@ -114,7 +126,10 @@ export function startGrowthJobs() {
   // Startup backfill: results that arrived before the flag was on (or before this deploy).
   void (async () => {
     try {
-      for (const workspaceId of await growthWorkspaceIds()) await markMissingStats(workspaceId);
+      for (const workspaceId of await growthWorkspaceIds()) {
+        await markMissingStats(workspaceId);
+        await markMissingMastery(workspaceId);
+      }
     } catch (error) {
       if (!isSchemaBehind(error)) console.error("[Growth] backfill failed", error instanceof Error ? error.message : error);
     }

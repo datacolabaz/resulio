@@ -29,3 +29,10 @@ export const sectionIdOfKey = (key: string) => (isSectionKey(key) ? key.slice(SE
 
 /** Longest canonical key: prefix + a 120-character name key. */
 export const TOPIC_KEY_MAX = 128;
+
+/** CRITICAL is shown to teachers as "kritik zəiflik" and to students as "Prioritet mövzu". */
+export const MASTERY_STATUSES = ["STRONG", "REVIEW", "CRITICAL", "INSUFFICIENT"] as const;
+export type MasteryStatus = (typeof MASTERY_STATUSES)[number];
+
+export const MASTERY_TRENDS = ["UP", "DOWN", "FLAT", "NEW"] as const;
+export type MasteryTrend = (typeof MASTERY_TRENDS)[number];
