@@ -1,6 +1,7 @@
 import { ActivityChart, FirstSubmittersList } from "@/components/ActivityBlocks";
 import { ProgressChart, RankingTable, TopicBars } from "@/components/AnalyticsBlocks";
 import { AppShell, ChoiceChip, EmptyState, ErrorNote, Loading, Panel, Pill, StatCard } from "@/components/AppShell";
+import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { CompactShareLink, ShareBox, ShareFunnelSummary } from "@/components/ShareBox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { GroupSyllabiPanel } from "@/components/syllabus/CrossLinks";
@@ -106,34 +107,19 @@ function GroupActivityTab({ groupId }: { groupId: string }) {
         {!students.length ? (
           <p className="text-sm text-muted-foreground">{t("groups.noStudents")}</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th scope="col" className="py-2">#</th>
-                  <th scope="col">{t("common.student")}</th>
-                  <th scope="col">{t("motivation.col.submitted")}</th>
-                  <th scope="col">{t("motivation.col.onTime")}</th>
-                  <th scope="col">{t("motivation.col.firstPlaces")}</th>
-                  <th scope="col">{t("motivation.col.opened")}</th>
-                  <th scope="col">{t("motivation.col.lastSubmission")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {students.map((s) => (
-                  <tr key={s.studentId}>
-                    <td className="py-2 pr-2 font-semibold">{s.rank}</td>
-                    <td className="break-words pr-3">{s.name ?? s.email ?? `#${s.studentId}`}</td>
-                    <td className="pr-3">{t("motivation.ofTasks", { done: s.submitted, total: q.data.taskCount })}</td>
-                    <td className="pr-3">{s.submitted ? `${s.onTimeRate}%` : "—"}</td>
-                    <td className="pr-3">{s.firstPlaces}</td>
-                    <td className="pr-3">{s.opened}</td>
-                    <td className="whitespace-nowrap text-muted-foreground">{s.lastSubmittedAt ? fmtDateTime(s.lastSubmittedAt) : "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ResponsiveTable
+            rows={students}
+            rowKey={(s) => s.studentId}
+            columns={[
+              { key: "rank", header: "#", thClassName: "py-2", tdClassName: "py-2 pr-2 font-semibold", card: "title", cell: (s) => s.rank, cardCell: (s) => <span className="text-muted-foreground">{s.rank}.</span> },
+              { key: "student", header: t("common.student"), tdClassName: "break-words pr-3", card: "title", cell: (s) => s.name ?? s.email ?? `#${s.studentId}` },
+              { key: "submitted", header: t("motivation.col.submitted"), tdClassName: "pr-3", cell: (s) => t("motivation.ofTasks", { done: s.submitted, total: q.data.taskCount }) },
+              { key: "onTime", header: t("motivation.col.onTime"), tdClassName: "pr-3", cell: (s) => (s.submitted ? `${s.onTimeRate}%` : "—") },
+              { key: "first", header: t("motivation.col.firstPlaces"), tdClassName: "pr-3", cell: (s) => s.firstPlaces },
+              { key: "opened", header: t("motivation.col.opened"), tdClassName: "pr-3", cell: (s) => s.opened },
+              { key: "last", header: t("motivation.col.lastSubmission"), tdClassName: "whitespace-nowrap text-muted-foreground", cell: (s) => (s.lastSubmittedAt ? fmtDateTime(s.lastSubmittedAt) : "—") },
+            ]}
+          />
         )}
       </Panel>
       <Panel title={t("motivation.firstSubmittersTitle")}>
@@ -1031,49 +1017,61 @@ export function GroupDetailPage() {
                 {!active.length ? (
                   <p className="text-sm text-muted-foreground">{t("groups.noStudents")}</p>
                 ) : (
-                  <div className="relative overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="text-left text-xs uppercase text-muted-foreground">
-                        <tr>
-                          <th scope="col" className="py-2">{t("common.name")}</th>
-                          <th scope="col">{t("common.email")}</th>
-                          <th scope="col">{t("groups.joined")}</th>
-                          <th scope="col">{t("groups.joinedVia")}</th>
-                          <th scope="col"><span className="sr-only">{t("groups.remove")}</span></th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {active.map((m) => (
-                          <tr key={m.studentId}>
-                            <td className="break-words py-2 pr-3">{m.name ?? "—"}</td>
-                            <td className="break-all pr-3 text-muted-foreground">{m.email}</td>
-                            <td className="whitespace-nowrap pr-3 text-muted-foreground">{fmtDateTime(m.joinedAt)}</td>
-                            <td
-                              className="pr-3 text-foreground-secondary"
-                              title={m.joinSource ? [m.joinSource.detail, fmtDateTime(m.joinSource.joinedAt)].filter(Boolean).join(" · ") : undefined}
-                            >
-                              <div>{joinSourceLabel(m.joinSource?.joinedVia)}</div>
-                              {m.joinSource?.detail && <div className="break-words text-xs text-muted-foreground">{m.joinSource.detail}</div>}
-                              {m.joinSource?.autoReason === KNOWN_STUDENT && (
-                                <div className="text-xs text-muted-foreground">{t("groups.autoAdmittedKnown")}</div>
-                              )}
-                            </td>
-                            <td className="text-right">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-destructive hover:bg-danger-surface hover:text-destructive"
-                                aria-label={t("groups.removeStudent", { name: m.name ?? m.email ?? "" })}
-                                onClick={() => confirm(t("groups.removeConfirm")) && remove.mutate({ groupId: id, studentId: m.studentId })}
-                              >
-                                {t("groups.remove")}
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <ResponsiveTable
+                    rows={active}
+                    rowKey={(m) => m.studentId}
+                    className="relative overflow-x-auto"
+                    columns={[
+                      {
+                        key: "name",
+                        header: t("common.name"),
+                        thClassName: "py-2",
+                        tdClassName: "break-words py-2 pr-3",
+                        card: "title",
+                        cell: (m) => m.name ?? "—",
+                        cardCell: (m) => (
+                          <>
+                            <div>{m.name ?? "—"}</div>
+                            <div className="break-all text-xs font-normal text-muted-foreground">{m.email}</div>
+                          </>
+                        ),
+                      },
+                      { key: "email", header: t("common.email"), tdClassName: "break-all pr-3 text-muted-foreground", card: "hidden", cell: (m) => m.email },
+                      { key: "joined", header: t("groups.joined"), tdClassName: "whitespace-nowrap pr-3 text-muted-foreground", cell: (m) => fmtDateTime(m.joinedAt) },
+                      {
+                        key: "via",
+                        header: t("groups.joinedVia"),
+                        tdClassName: "pr-3 text-foreground-secondary",
+                        cell: (m) => (
+                          <div title={m.joinSource ? [m.joinSource.detail, fmtDateTime(m.joinSource.joinedAt)].filter(Boolean).join(" · ") : undefined}>
+                            <div>{joinSourceLabel(m.joinSource?.joinedVia)}</div>
+                            {m.joinSource?.detail && <div className="break-words text-xs text-muted-foreground">{m.joinSource.detail}</div>}
+                            {m.joinSource?.autoReason === KNOWN_STUDENT && (
+                              <div className="text-xs text-muted-foreground">{t("groups.autoAdmittedKnown")}</div>
+                            )}
+                          </div>
+                        ),
+                      },
+                      {
+                        key: "remove",
+                        header: t("groups.remove"),
+                        srOnlyHeader: true,
+                        tdClassName: "text-right",
+                        card: "action",
+                        cell: (m) => (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive hover:bg-danger-surface hover:text-destructive"
+                            aria-label={t("groups.removeStudent", { name: m.name ?? m.email ?? "" })}
+                            onClick={() => confirm(t("groups.removeConfirm")) && remove.mutate({ groupId: id, studentId: m.studentId })}
+                          >
+                            {t("groups.remove")}
+                          </Button>
+                        ),
+                      },
+                    ]}
+                  />
                 )}
               </Panel>
             </TabsContent>
@@ -1085,30 +1083,24 @@ export function GroupDetailPage() {
                 {!ga?.history.length ? (
                   <p className="text-sm text-muted-foreground">{t("groups.noExams")}</p>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="text-left text-xs uppercase text-muted-foreground">
-                        <tr>
-                          <th scope="col" className="py-2">{t("common.exam")}</th>
-                          <th scope="col">{t("common.status")}</th>
-                          <th scope="col">{t("common.participation")}</th>
-                          <th scope="col">{t("common.average")}</th>
-                          <th scope="col">{t("common.median")}</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {ga.history.map((h) => (
-                          <tr key={h.id}>
-                            <td className="break-words py-2 pr-3"><Link href={`/teacher/assessments/${h.id}`} className="text-link underline-offset-4 hover:underline">{h.title}</Link></td>
-                            <td className="pr-3"><StatusBadge {...liveStatus(h.liveStatus)}>{liveLabel(h.liveStatus)}</StatusBadge></td>
-                            <td>{h.participationRate}%</td>
-                            <td className="font-semibold">{h.averageScore}%</td>
-                            <td>{h.medianScore}%</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <ResponsiveTable
+                    rows={ga.history}
+                    rowKey={(h) => h.id}
+                    columns={[
+                      {
+                        key: "exam",
+                        header: t("common.exam"),
+                        thClassName: "py-2",
+                        tdClassName: "break-words py-2 pr-3",
+                        card: "title",
+                        cell: (h) => <Link href={`/teacher/assessments/${h.id}`} className="text-link underline-offset-4 hover:underline">{h.title}</Link>,
+                      },
+                      { key: "status", header: t("common.status"), tdClassName: "pr-3", card: "aside", cell: (h) => <StatusBadge {...liveStatus(h.liveStatus)}>{liveLabel(h.liveStatus)}</StatusBadge> },
+                      { key: "participation", header: t("common.participation"), cell: (h) => `${h.participationRate}%` },
+                      { key: "average", header: t("common.average"), tdClassName: "font-semibold", cell: (h) => `${h.averageScore}%`, cardCell: (h) => <span className="font-semibold">{h.averageScore}%</span> },
+                      { key: "median", header: t("common.median"), cell: (h) => `${h.medianScore}%` },
+                    ]}
+                  />
                 )}
               </Panel>
             </TabsContent>
@@ -1117,31 +1109,38 @@ export function GroupDetailPage() {
                 {!ga?.taskProgress.length ? (
                   <p className="text-sm text-muted-foreground">{t("groups.noTasks")}</p>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="text-left text-xs uppercase text-muted-foreground">
-                        <tr>
-                          <th scope="col" className="py-2">{t("modules.task")}</th>
-                          <th scope="col">{t("modules.deadline")}</th>
-                          <th scope="col">{t("groups.completion")}</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {ga.taskProgress.map((tp) => (
-                          <tr key={tp.id}>
-                            <td className="break-words py-2 pr-3">
-                              <Link href="/teacher/modules" className="text-link underline-offset-4 hover:underline">{tp.title}</Link>
-                            </td>
-                            <td className="whitespace-nowrap pr-3 text-muted-foreground">{fmtDateTime(tp.deadline)}</td>
-                            <td className="flex items-center gap-2 pr-3">
-                              <span className="font-semibold">{tp.submittedCount}/{tp.targetCount}</span>
-                              {!!tp.lateCount && <StatusBadge tone="warning">{t("groups.lateCount", { count: tp.lateCount })}</StatusBadge>}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <ResponsiveTable
+                    rows={ga.taskProgress}
+                    rowKey={(tp) => tp.id}
+                    columns={[
+                      {
+                        key: "task",
+                        header: t("modules.task"),
+                        thClassName: "py-2",
+                        tdClassName: "break-words py-2 pr-3",
+                        card: "title",
+                        cell: (tp) => <Link href="/teacher/modules" className="text-link underline-offset-4 hover:underline">{tp.title}</Link>,
+                      },
+                      { key: "deadline", header: t("modules.deadline"), tdClassName: "whitespace-nowrap pr-3 text-muted-foreground", cell: (tp) => fmtDateTime(tp.deadline) },
+                      {
+                        key: "completion",
+                        header: t("groups.completion"),
+                        tdClassName: "flex items-center gap-2 pr-3",
+                        cell: (tp) => (
+                          <>
+                            <span className="font-semibold">{tp.submittedCount}/{tp.targetCount}</span>
+                            {!!tp.lateCount && <StatusBadge tone="warning">{t("groups.lateCount", { count: tp.lateCount })}</StatusBadge>}
+                          </>
+                        ),
+                        cardCell: (tp) => (
+                          <span className="inline-flex flex-wrap items-center justify-end gap-2">
+                            <span className="font-semibold">{tp.submittedCount}/{tp.targetCount}</span>
+                            {!!tp.lateCount && <StatusBadge tone="warning">{t("groups.lateCount", { count: tp.lateCount })}</StatusBadge>}
+                          </span>
+                        ),
+                      },
+                    ]}
+                  />
                 )}
               </Panel>
             </TabsContent>

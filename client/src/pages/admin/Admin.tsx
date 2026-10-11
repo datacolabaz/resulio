@@ -1,4 +1,5 @@
 import { ErrorNote, Loading, Panel } from "@/components/AppShell";
+import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -158,31 +159,22 @@ function AdminAuditPage() {
   return (
     <Panel title={t("admin.nav.audit")}>
       {list.error ? <ErrorNote error={list.error} /> : list.isLoading ? <Loading /> : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-left text-xs uppercase text-muted-foreground">
-              <tr>
-                <th scope="col" className="py-2">{t("admin.audit.action")}</th>
-                <th scope="col">{t("admin.audit.target")}</th>
-                <th scope="col">{t("admin.audit.reason")}</th>
-                <th scope="col">{t("admin.audit.when")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {(list.data ?? []).map((row) => (
-                <tr key={row.id}>
-                  <td className="py-2 pr-3 font-medium">{row.action}</td>
-                  <td className="pr-3 text-muted-foreground">{row.targetType} #{row.targetId}</td>
-                  <td className="max-w-xs truncate pr-3 text-muted-foreground" title={row.reason ?? ""}>{row.reason ?? "—"}</td>
-                  <td className="whitespace-nowrap text-muted-foreground">{fmtDateTime(row.createdAt)}</td>
-                </tr>
-              ))}
-              {!list.data?.length && (
-                <tr><td colSpan={4} className="py-3 text-muted-foreground">{t("admin.audit.empty")}</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <ResponsiveTable
+          rows={list.data ?? []}
+          rowKey={(row) => row.id}
+          empty={t("admin.audit.empty")}
+          columns={[
+            { key: "action", header: t("admin.audit.action"), thClassName: "py-2", tdClassName: "py-2 pr-3 font-medium", card: "title", cell: (row) => row.action },
+            { key: "target", header: t("admin.audit.target"), tdClassName: "pr-3 text-muted-foreground", cell: (row) => <>{row.targetType} #{row.targetId}</> },
+            {
+              key: "reason",
+              header: t("admin.audit.reason"),
+              tdClassName: "max-w-xs truncate pr-3 text-muted-foreground",
+              cell: (row) => <span title={row.reason ?? ""}>{row.reason ?? "—"}</span>,
+            },
+            { key: "when", header: t("admin.audit.when"), tdClassName: "whitespace-nowrap text-muted-foreground", cell: (row) => fmtDateTime(row.createdAt) },
+          ]}
+        />
       )}
     </Panel>
   );

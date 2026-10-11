@@ -1,5 +1,6 @@
 import { AXIS, TOOLTIP } from "@/components/AnalyticsBlocks";
 import { ChoiceChip, EmptyState, ErrorNote, Loading, Panel } from "@/components/AppShell";
+import { ResponsiveTable, type ResponsiveColumn } from "@/components/ResponsiveTable";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActivityTimeline } from "@/components/syllabus/ActivityTimeline";
 import { NextStepButton } from "@/components/syllabus/Workflow";
@@ -28,6 +29,10 @@ import { fieldLabel, GrantStateBadge, selectCls, toastError } from "./shared";
 
 type Data = RouterOutputs["teacher"]["syllabus"]["analytics"];
 type StudentRow = Data["students"][number];
+type GroupRow = Data["groups"][number];
+type ModuleRow = Data["modules"][number];
+type LessonRow = Data["lessons"][number];
+type PracticeRow = Data["practice"][number];
 
 const STUDENTS_ID = "sa-students";
 
@@ -395,20 +400,32 @@ function StudentTable({ rows, groupName, onTimeline }: { rows: StudentRow[]; gro
 // Groups (§34), modules (§35), lessons (§36), practice (§37)
 // ---------------------------------------------------------------------------
 
-function Table({ head, children, minWidth = 640 }: { head: string[]; children: React.ReactNode; minWidth?: number }) {
+const cellCls = "py-2 pr-3 tabular-nums";
+
+/** Stat column: header, value and the shared cell padding. */
+function stat<T>(key: string, header: string, cell: (row: T) => React.ReactNode): ResponsiveColumn<T> {
+  return { key, header, thClassName: "py-2 pr-3", tdClassName: cellCls, cell };
+}
+
+function Table<T>({ rows, rowKey, columns, tableClassName, rowClassName }: {
+  rows: readonly T[];
+  rowKey: (row: T) => string;
+  columns: ResponsiveColumn<T>[];
+  /** Includes the desktop min-width, e.g. `min-w-[760px]`. */
+  tableClassName: string;
+  rowClassName?: string;
+}) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm" style={{ minWidth }}>
-        <thead className="text-left text-xs uppercase text-muted-foreground">
-          <tr>
-            {head.map((h, i) => (
-              <th key={i} scope="col" className="py-2 pr-3">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">{children}</tbody>
-      </table>
-    </div>
+    <ResponsiveTable
+      rows={rows}
+      rowKey={rowKey}
+      columns={columns}
+      tableClassName={tableClassName}
+      headClassName="text-left text-xs uppercase text-muted-foreground"
+      bodyClassName="divide-y divide-border"
+      rowClassName={rowClassName ? () => rowClassName : undefined}
+      cardsClassName="divide-y divide-border"
+    />
   );
 }
 
@@ -446,25 +463,33 @@ function Groups({ d }: { d: Data }) {
           ]}
         />
       )}
-      <Table head={[t("sa.col.group"), t("sa.col.students"), t("sa.col.avgProgress"), t("sa.col.avgScore"), t("sa.col.completed"), t("sa.col.atRisk"), t("sa.col.modules")]} minWidth={760}>
-        {d.groups.map((g) => (
-          <tr key={g.groupId} className="align-top">
-            <td className="py-2 pr-3 font-medium">{g.name}</td>
-            <td className="py-2 pr-3 tabular-nums">{g.students}</td>
-            <td className="py-2 pr-3 tabular-nums">{pctText(g.avgProgressPct)}</td>
-            <td className="py-2 pr-3 tabular-nums">{pctText(g.avgScorePct)}</td>
-            <td className="py-2 pr-3 tabular-nums">{g.completed}/{g.students}</td>
-            <td className={`py-2 pr-3 tabular-nums ${g.atRisk ? "font-semibold text-destructive" : ""}`}>{g.atRisk}</td>
-            <td className="py-2 pr-3 text-xs text-muted-foreground">
+      <Table
+        rows={d.groups}
+        rowKey={(g) => g.groupId}
+        tableClassName="w-full min-w-[760px] text-sm"
+        rowClassName="align-top"
+        columns={[
+          { key: "group", header: t("sa.col.group"), thClassName: "py-2 pr-3", tdClassName: "py-2 pr-3 font-medium", card: "title", cell: (g) => g.name },
+          stat<GroupRow>("students", t("sa.col.students"), (g) => g.students),
+          stat<GroupRow>("progress", t("sa.col.avgProgress"), (g) => pctText(g.avgProgressPct)),
+          stat<GroupRow>("score", t("sa.col.avgScore"), (g) => pctText(g.avgScorePct)),
+          stat<GroupRow>("completed", t("sa.col.completed"), (g) => `${g.completed}/${g.students}`),
+          stat<GroupRow>("atRisk", t("sa.col.atRisk"), (g) => <span className={g.atRisk ? "font-semibold text-destructive" : ""}>{g.atRisk}</span>),
+          {
+            key: "modules",
+            header: t("sa.col.modules"),
+            thClassName: "py-2 pr-3",
+            tdClassName: "py-2 pr-3 text-xs text-muted-foreground",
+            cell: (g) => (
               <ul className="space-y-0.5">
                 {g.modules.map((m) => (
                   <li key={m.moduleId}>{t("sa.groups.moduleDone", { module: m.title, done: m.completed, of: m.of })}</li>
                 ))}
               </ul>
-            </td>
-          </tr>
-        ))}
-      </Table>
+            ),
+          },
+        ]}
+      />
     </Panel>
   );
 }
@@ -487,23 +512,28 @@ function Modules({ d }: { d: Data }) {
             />
           )}
           <Table
-            head={[t("sa.col.module"), t("sa.col.started"), t("sa.col.completed"), t("sa.col.rate"), t("sa.col.avgScore"), t("sa.col.avgTime"), t("sa.col.practicePct"), t("sa.col.passRate"), t("sa.col.retryRate")]}
-            minWidth={820}
-          >
-            {d.modules.map((m) => (
-              <tr key={m.moduleId}>
-                <td className="max-w-56 py-2 pr-3 font-medium"><span className="line-clamp-2 break-words">{m.title}</span></td>
-                <td className="py-2 pr-3 tabular-nums">{m.started}</td>
-                <td className="py-2 pr-3 tabular-nums">{m.completed}</td>
-                <td className="py-2 pr-3 tabular-nums">{pctText(m.completionRatePct)}</td>
-                <td className="py-2 pr-3 tabular-nums">{pctText(m.avgScorePct)}</td>
-                <td className="py-2 pr-3 tabular-nums">{timeText(m.avgTimeToCompleteSeconds)}</td>
-                <td className="py-2 pr-3 tabular-nums">{pctText(m.practiceCompletionPct)}</td>
-                <td className="py-2 pr-3 tabular-nums">{pctText(m.passRatePct)}</td>
-                <td className="py-2 pr-3 tabular-nums">{pctText(m.retryRatePct)}</td>
-              </tr>
-            ))}
-          </Table>
+            rows={d.modules}
+            rowKey={(m) => m.moduleId}
+            tableClassName="w-full min-w-[820px] text-sm"
+            columns={[
+              {
+                key: "module",
+                header: t("sa.col.module"),
+                thClassName: "py-2 pr-3",
+                tdClassName: "max-w-56 py-2 pr-3 font-medium",
+                card: "title",
+                cell: (m) => <span className="line-clamp-2 break-words">{m.title}</span>,
+              },
+              stat<ModuleRow>("started", t("sa.col.started"), (m) => m.started),
+              stat<ModuleRow>("completed", t("sa.col.completed"), (m) => m.completed),
+              stat<ModuleRow>("rate", t("sa.col.rate"), (m) => pctText(m.completionRatePct)),
+              stat<ModuleRow>("score", t("sa.col.avgScore"), (m) => pctText(m.avgScorePct)),
+              stat<ModuleRow>("time", t("sa.col.avgTime"), (m) => timeText(m.avgTimeToCompleteSeconds)),
+              stat<ModuleRow>("practice", t("sa.col.practicePct"), (m) => pctText(m.practiceCompletionPct)),
+              stat<ModuleRow>("pass", t("sa.col.passRate"), (m) => pctText(m.passRatePct)),
+              stat<ModuleRow>("retry", t("sa.col.retryRate"), (m) => pctText(m.retryRatePct)),
+            ]}
+          />
           <p className="mt-2 text-xs text-muted-foreground">{t("sa.timeHelp")}</p>
         </>
       )}
@@ -519,25 +549,34 @@ function Lessons({ d }: { d: Data }) {
         <p className="text-sm text-muted-foreground">{t("sa.empty")}</p>
       ) : (
         <Table
-          head={[t("sa.col.lesson"), t("sa.col.opened"), t("sa.col.completed"), t("sa.col.rate"), t("sa.col.practicePct"), t("sa.col.avgScore"), t("sa.col.avgAttempts"), t("sa.col.avgTime")]}
-          minWidth={780}
-        >
-          {d.lessons.map((l) => (
-            <tr key={l.lessonId}>
-              <td className="max-w-64 py-2 pr-3">
-                <div className="line-clamp-2 break-words font-medium">{l.title}</div>
-                <div className="line-clamp-1 text-xs text-muted-foreground">{moduleTitle.get(l.moduleId) ?? ""}</div>
-              </td>
-              <td className="py-2 pr-3 tabular-nums">{l.opened}</td>
-              <td className="py-2 pr-3 tabular-nums">{l.completed}</td>
-              <td className={`py-2 pr-3 tabular-nums ${l.completionRatePct !== null && l.opened >= 3 && l.completionRatePct < 50 ? "font-semibold text-destructive" : ""}`}>{pctText(l.completionRatePct)}</td>
-              <td className="py-2 pr-3 tabular-nums">{pctText(l.practiceCompletionPct)}</td>
-              <td className="py-2 pr-3 tabular-nums">{pctText(l.avgScorePct)}</td>
-              <td className="py-2 pr-3 tabular-nums">{numText(l.avgAttempts)}</td>
-              <td className="py-2 pr-3 tabular-nums">{timeText(l.avgActiveSeconds)}</td>
-            </tr>
-          ))}
-        </Table>
+          rows={d.lessons}
+          rowKey={(l) => l.lessonId}
+          tableClassName="w-full min-w-[780px] text-sm"
+          columns={[
+            {
+              key: "lesson",
+              header: t("sa.col.lesson"),
+              thClassName: "py-2 pr-3",
+              tdClassName: "max-w-64 py-2 pr-3",
+              card: "title",
+              cell: (l) => (
+                <>
+                  <div className="line-clamp-2 break-words font-medium">{l.title}</div>
+                  <div className="line-clamp-1 text-xs font-normal text-muted-foreground">{moduleTitle.get(l.moduleId) ?? ""}</div>
+                </>
+              ),
+            },
+            stat<LessonRow>("opened", t("sa.col.opened"), (l) => l.opened),
+            stat<LessonRow>("completed", t("sa.col.completed"), (l) => l.completed),
+            stat<LessonRow>("rate", t("sa.col.rate"), (l) => (
+              <span className={l.completionRatePct !== null && l.opened >= 3 && l.completionRatePct < 50 ? "font-semibold text-destructive" : ""}>{pctText(l.completionRatePct)}</span>
+            )),
+            stat<LessonRow>("practice", t("sa.col.practicePct"), (l) => pctText(l.practiceCompletionPct)),
+            stat<LessonRow>("score", t("sa.col.avgScore"), (l) => pctText(l.avgScorePct)),
+            stat<LessonRow>("attempts", t("sa.col.avgAttempts"), (l) => numText(l.avgAttempts)),
+            stat<LessonRow>("time", t("sa.col.avgTime"), (l) => timeText(l.avgActiveSeconds)),
+          ]}
+        />
       )}
     </Panel>
   );
@@ -558,27 +597,34 @@ function Practice({ d }: { d: Data }) {
         <p className="text-sm text-muted-foreground">{t("sa.empty")}</p>
       ) : (
         <Table
-          head={[t("sa.col.task"), t("sa.col.reached"), t("sa.col.opened"), t("sa.col.started"), t("sa.col.submitted"), t("sa.col.completed"), t("sa.col.avgScore"), t("sa.col.avgAttempts"), t("sa.col.avgTime"), t("sa.col.needsHelp")]}
-          minWidth={980}
-        >
-          {d.practice.map((p) => (
-            <tr key={p.itemId}>
-              <td className="max-w-64 py-2 pr-3">
-                <div className="line-clamp-2 break-words font-medium">{p.title}</div>
-                <div className="line-clamp-1 text-xs text-muted-foreground">{p.lessonTitle}</div>
-              </td>
-              <td className="py-2 pr-3 tabular-nums">{p.reached}</td>
-              <td className="py-2 pr-3 tabular-nums">{rateCell(p.opened, p.openRatePct)}</td>
-              <td className="py-2 pr-3 tabular-nums">{rateCell(p.started, p.startRatePct)}</td>
-              <td className="py-2 pr-3 tabular-nums">{rateCell(p.submitted, p.submitRatePct)}</td>
-              <td className="py-2 pr-3 tabular-nums">{rateCell(p.completed, p.completionRatePct)}</td>
-              <td className="py-2 pr-3 tabular-nums">{pctText(p.avgScorePct)}</td>
-              <td className="py-2 pr-3 tabular-nums">{numText(p.avgAttempts)}</td>
-              <td className="py-2 pr-3 tabular-nums">{timeText(p.avgTimeToSubmitSeconds)}</td>
-              <td className={`py-2 pr-3 tabular-nums ${p.needsHelp ? "font-semibold text-warning" : ""}`}>{p.needsHelp}</td>
-            </tr>
-          ))}
-        </Table>
+          rows={d.practice}
+          rowKey={(p) => p.itemId}
+          tableClassName="w-full min-w-[980px] text-sm"
+          columns={[
+            {
+              key: "task",
+              header: t("sa.col.task"),
+              thClassName: "py-2 pr-3",
+              tdClassName: "max-w-64 py-2 pr-3",
+              card: "title",
+              cell: (p) => (
+                <>
+                  <div className="line-clamp-2 break-words font-medium">{p.title}</div>
+                  <div className="line-clamp-1 text-xs font-normal text-muted-foreground">{p.lessonTitle}</div>
+                </>
+              ),
+            },
+            stat<PracticeRow>("reached", t("sa.col.reached"), (p) => p.reached),
+            stat<PracticeRow>("opened", t("sa.col.opened"), (p) => rateCell(p.opened, p.openRatePct)),
+            stat<PracticeRow>("started", t("sa.col.started"), (p) => rateCell(p.started, p.startRatePct)),
+            stat<PracticeRow>("submitted", t("sa.col.submitted"), (p) => rateCell(p.submitted, p.submitRatePct)),
+            stat<PracticeRow>("completed", t("sa.col.completed"), (p) => rateCell(p.completed, p.completionRatePct)),
+            stat<PracticeRow>("score", t("sa.col.avgScore"), (p) => pctText(p.avgScorePct)),
+            stat<PracticeRow>("attempts", t("sa.col.avgAttempts"), (p) => numText(p.avgAttempts)),
+            stat<PracticeRow>("time", t("sa.col.avgTime"), (p) => timeText(p.avgTimeToSubmitSeconds)),
+            stat<PracticeRow>("needsHelp", t("sa.col.needsHelp"), (p) => <span className={p.needsHelp ? "font-semibold text-warning" : ""}>{p.needsHelp}</span>),
+          ]}
+        />
       )}
     </Panel>
   );

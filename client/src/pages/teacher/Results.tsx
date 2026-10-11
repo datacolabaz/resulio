@@ -24,7 +24,7 @@ export function ResultsPage() {
       <div className="space-y-5">
         <div className="flex flex-wrap items-center gap-3">
           <select
-            className="max-w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground"
+            className="w-full max-w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground sm:w-auto"
             aria-label={t("results.filterExam")}
             value={assessmentId}
             onChange={(e) => setAssessmentId(e.target.value)}

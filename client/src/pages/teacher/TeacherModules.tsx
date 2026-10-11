@@ -498,22 +498,24 @@ function QuestionBankTab() {
   const toggle = (id: string, on: boolean) => setSelected((cur) => { const next = new Set(cur); if (on) next.add(id); else next.delete(id); return next; });
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <Input className="max-w-xs" placeholder={t("common.search")} aria-label={t("common.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
-        <TopicSelect topics={topicList} value={topicId} onChange={setTopicId} emptyLabel={t("qbank.allTopics")} ariaLabel={t("qbank.filterTopic")} className={`max-w-[16rem] ${filterSelect}`} />
-        <select className={filterSelect} aria-label={t("modules.filterType")} value={type} onChange={(e) => setType(e.target.value)}>
-          <option value="">{t("modules.allTypes")}</option>
-          {QUESTION_TYPES.map((k) => <option key={k} value={k}>{questionTypeLabel(k)}</option>)}
-        </select>
-        <select className={filterSelect} aria-label={t("modules.filterSource")} value={source} onChange={(e) => setSource(e.target.value)}>
-          <option value="">{t("modules.allSources")}</option>
-          <option value="MANUAL">{t("modules.sourceManual")}</option>
-          <option value="AI">AI</option>
-        </select>
-        <div className="ml-auto flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => setTopicsOpen(true)}><FolderTree className="mr-1 h-4 w-4" aria-hidden />{t("qbank.topics.manage")}</Button>
-          <Button variant="outline" asChild><Link href="/teacher/library/import"><FileUp className="mr-1 h-4 w-4" aria-hidden />{t("qimport.open")}</Link></Button>
-          <Button onClick={() => setEditing("new")}>{t("modules.newQuestion")}</Button>
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <Input className="sm:max-w-xs" placeholder={t("common.search")} aria-label={t("common.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
+        <div className="grid grid-cols-2 gap-2 sm:contents">
+          <TopicSelect topics={topicList} value={topicId} onChange={setTopicId} emptyLabel={t("qbank.allTopics")} ariaLabel={t("qbank.filterTopic")} className={`col-span-2 min-w-0 sm:max-w-[16rem] ${filterSelect}`} />
+          <select className={`min-w-0 ${filterSelect}`} aria-label={t("modules.filterType")} value={type} onChange={(e) => setType(e.target.value)}>
+            <option value="">{t("modules.allTypes")}</option>
+            {QUESTION_TYPES.map((k) => <option key={k} value={k}>{questionTypeLabel(k)}</option>)}
+          </select>
+          <select className={`min-w-0 ${filterSelect}`} aria-label={t("modules.filterSource")} value={source} onChange={(e) => setSource(e.target.value)}>
+            <option value="">{t("modules.allSources")}</option>
+            <option value="MANUAL">{t("modules.sourceManual")}</option>
+            <option value="AI">AI</option>
+          </select>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:ml-auto sm:flex sm:flex-wrap">
+          <Button variant="outline" className="min-w-0" onClick={() => setTopicsOpen(true)}><FolderTree className="mr-1 h-4 w-4" aria-hidden />{t("qbank.topics.manage")}</Button>
+          <Button variant="outline" className="min-w-0" asChild><Link href="/teacher/library/import"><FileUp className="mr-1 h-4 w-4" aria-hidden />{t("qimport.open")}</Link></Button>
+          <Button className="col-span-2" onClick={() => setEditing("new")}>{t("modules.newQuestion")}</Button>
         </div>
       </div>
       {selected.size > 0 && (

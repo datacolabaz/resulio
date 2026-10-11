@@ -1,4 +1,5 @@
 import { ErrorNote, Loading, Panel, StatCard } from "@/components/AppShell";
+import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { StatusBadge, type Tone } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -151,31 +152,28 @@ export function AiAnalyticsPage() {
         {!d.topUsers.length ? (
           <p className="text-sm text-muted-foreground">{t("admin.ai.noData")}</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th scope="col" className="py-2 pr-3">{t("admin.ai.col.user")}</th>
-                  <th scope="col" className="pr-3 text-right">{t("admin.common.requests")}</th>
-                  <th scope="col" className="pr-3 text-right">{t("admin.common.tokens")}</th>
-                  <th scope="col" className="text-right">{t("admin.ai.col.cost")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {d.topUsers.map((u) => (
-                  <tr key={u.userId ?? "system"}>
-                    <td className="py-2 pr-3">
-                      <span className="block break-words font-medium">{u.name ?? (u.userId ? `#${u.userId}` : t("admin.common.system"))}</span>
-                      {u.email && <span className="block break-all text-xs text-muted-foreground">{u.email}</span>}
-                    </td>
-                    <td className="pr-3 text-right tabular-nums">{fmtNumber(u.requests)}</td>
-                    <td className="pr-3 text-right tabular-nums">{fmtCompact(u.tokens)}</td>
-                    <td className="text-right tabular-nums">{fmtUsd(u.costUsd)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ResponsiveTable
+            rows={d.topUsers}
+            rowKey={(u) => u.userId ?? "system"}
+            columns={[
+              {
+                key: "user",
+                header: t("admin.ai.col.user"),
+                thClassName: "py-2 pr-3",
+                tdClassName: "py-2 pr-3",
+                card: "title",
+                cell: (u) => (
+                  <>
+                    <span className="block break-words font-medium">{u.name ?? (u.userId ? `#${u.userId}` : t("admin.common.system"))}</span>
+                    {u.email && <span className="block break-all text-xs font-normal text-muted-foreground">{u.email}</span>}
+                  </>
+                ),
+              },
+              { key: "requests", header: t("admin.common.requests"), thClassName: "pr-3 text-right", tdClassName: "pr-3 text-right tabular-nums", cell: (u) => fmtNumber(u.requests) },
+              { key: "tokens", header: t("admin.common.tokens"), thClassName: "pr-3 text-right", tdClassName: "pr-3 text-right tabular-nums", cell: (u) => fmtCompact(u.tokens) },
+              { key: "cost", header: t("admin.ai.col.cost"), thClassName: "text-right", tdClassName: "text-right tabular-nums", cell: (u) => fmtUsd(u.costUsd) },
+            ]}
+          />
         )}
       </Panel>
       {d.provider.models.length > 0 && <p className="break-words text-xs text-muted-foreground">{t("admin.ai.models", { models: d.provider.models.join(", ") })}</p>}
@@ -384,50 +382,59 @@ export function AiPricingPage() {
             {data.data.unpricedModels.length > 0 && (
               <p className="mb-4 rounded-xl bg-warning-surface p-3 text-sm text-warning">{t("admin.pricing.unpriced", { models: data.data.unpricedModels.join(", ") })}</p>
             )}
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[36rem] text-sm">
-                <thead className="text-left text-xs uppercase text-muted-foreground">
-                  <tr>
-                    <th scope="col" className="py-2 pr-3">{t("admin.pricing.model")}</th>
-                    <th scope="col" className="pr-3 text-right">{t("admin.pricing.input")}</th>
-                    <th scope="col" className="pr-3 text-right">{t("admin.pricing.output")}</th>
-                    <th scope="col" className="pr-3">{t("admin.pricing.noteLabel")}</th>
-                    {manage && <th scope="col"><span className="sr-only">{t("common.edit")}</span></th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {data.data.prices.map((p) => (
-                    <tr key={p.model} className="align-top">
-                      <td className="py-2 pr-3">
-                        <span className="block break-all font-medium">{p.model}</span>
-                        {p.model === AI_PRICE_FALLBACK_MODEL && <span className="block text-xs text-muted-foreground">{t("admin.pricing.fallback")}</span>}
-                        {configured.has(p.model) && <StatusBadge tone="info" className="mt-1">{t("admin.pricing.inUse")}</StatusBadge>}
-                      </td>
-                      <td className="pr-3 text-right tabular-nums">{fmtUsd(p.inputUsdPerMillion)}</td>
-                      <td className="pr-3 text-right tabular-nums">{fmtUsd(p.outputUsdPerMillion)}</td>
-                      <td className="max-w-xs break-words pr-3 text-xs text-muted-foreground">{p.note || "—"}</td>
-                      {manage && (
-                        <td className="whitespace-nowrap text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            aria-label={`${t("common.edit")}: ${p.model}`}
-                            onClick={() => setDraft({ model: p.model, input: String(p.inputUsdPerMillion), output: String(p.outputUsdPerMillion), note: p.note, existing: true })}
-                          >
-                            <Pencil className="h-4 w-4" aria-hidden />
-                          </Button>
-                          {p.model !== AI_PRICE_FALLBACK_MODEL && (
-                            <Button variant="ghost" size="sm" className="text-destructive" aria-label={`${t("common.delete")}: ${p.model}`} onClick={() => setDeleting(p.model)}>
-                              <Trash2 className="h-4 w-4" aria-hidden />
+            <ResponsiveTable
+              rows={data.data.prices}
+              rowKey={(p) => p.model}
+              tableClassName="w-full min-w-[36rem] text-sm"
+              rowClassName={() => "align-top"}
+              columns={[
+                {
+                  key: "model",
+                  header: t("admin.pricing.model"),
+                  thClassName: "py-2 pr-3",
+                  tdClassName: "py-2 pr-3",
+                  card: "title",
+                  cell: (p) => (
+                    <>
+                      <span className="block break-all font-medium">{p.model}</span>
+                      {p.model === AI_PRICE_FALLBACK_MODEL && <span className="block text-xs font-normal text-muted-foreground">{t("admin.pricing.fallback")}</span>}
+                      {configured.has(p.model) && <StatusBadge tone="info" className="mt-1">{t("admin.pricing.inUse")}</StatusBadge>}
+                    </>
+                  ),
+                },
+                { key: "input", header: t("admin.pricing.input"), thClassName: "pr-3 text-right", tdClassName: "pr-3 text-right tabular-nums", cell: (p) => fmtUsd(p.inputUsdPerMillion) },
+                { key: "output", header: t("admin.pricing.output"), thClassName: "pr-3 text-right", tdClassName: "pr-3 text-right tabular-nums", cell: (p) => fmtUsd(p.outputUsdPerMillion) },
+                { key: "note", header: t("admin.pricing.noteLabel"), thClassName: "pr-3", tdClassName: "max-w-xs break-words pr-3 text-xs text-muted-foreground", cell: (p) => p.note || "—" },
+                ...(manage
+                  ? [
+                      {
+                        key: "edit",
+                        header: t("common.edit"),
+                        srOnlyHeader: true,
+                        tdClassName: "whitespace-nowrap text-right",
+                        card: "action" as const,
+                        cell: (p: (typeof data.data.prices)[number]) => (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              aria-label={`${t("common.edit")}: ${p.model}`}
+                              onClick={() => setDraft({ model: p.model, input: String(p.inputUsdPerMillion), output: String(p.outputUsdPerMillion), note: p.note, existing: true })}
+                            >
+                              <Pencil className="h-4 w-4" aria-hidden />
                             </Button>
-                          )}
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                            {p.model !== AI_PRICE_FALLBACK_MODEL && (
+                              <Button variant="ghost" size="sm" className="text-destructive" aria-label={`${t("common.delete")}: ${p.model}`} onClick={() => setDeleting(p.model)}>
+                                <Trash2 className="h-4 w-4" aria-hidden />
+                              </Button>
+                            )}
+                          </>
+                        ),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
           </>
         )}
       </Panel>

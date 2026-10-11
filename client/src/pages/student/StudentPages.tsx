@@ -1,6 +1,7 @@
 import { FirstSubmittersList, ScoreBoardTable } from "@/components/ActivityBlocks";
 import { ProgressChart, TopicBars } from "@/components/AnalyticsBlocks";
 import { AppShell, ChoiceChip, EmptyState, ErrorNote, Loading, Panel, Pill, StatCard } from "@/components/AppShell";
+import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { SingleFileUpload } from "@/components/FileUpload";
 import { ResultPenalty } from "@/components/ResultPenalty";
 import { StatusBadge, toneSurface } from "@/components/StatusBadge";
@@ -239,28 +240,23 @@ export function StudentResults() {
         <EmptyState title={t("student.noResults")} body={t("student.noResultsBody")} />
       ) : (
         <Panel>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th scope="col" className="py-2">{t("common.exam")}</th>
-                  <th scope="col">{t("common.type")}</th>
-                  <th scope="col">{t("common.date")}</th>
-                  <th scope="col">{t("common.result")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {list.data.map((r) => (
-                  <tr key={r.id}>
-                    <td className="break-words py-2 pr-3"><Link href={`/student/results/${r.id}`} className="text-link underline-offset-4 hover:underline">{r.title}</Link></td>
-                    <td className="pr-3">{typeLabel(r.type)}</td>
-                    <td className="whitespace-nowrap pr-3 text-muted-foreground">{fmtDateTime(r.completedAt)}</td>
-                    <td><ScoreOrHeld released={r.released} percentage={r.percentage} heldReason={r.heldReason} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ResponsiveTable
+            rows={list.data}
+            rowKey={(r) => r.id}
+            columns={[
+              {
+                key: "exam",
+                header: t("common.exam"),
+                thClassName: "py-2",
+                tdClassName: "break-words py-2 pr-3",
+                card: "title",
+                cell: (r) => <Link href={`/student/results/${r.id}`} className="text-link underline-offset-4 hover:underline">{r.title}</Link>,
+              },
+              { key: "type", header: t("common.type"), tdClassName: "pr-3", cell: (r) => typeLabel(r.type) },
+              { key: "date", header: t("common.date"), tdClassName: "whitespace-nowrap pr-3 text-muted-foreground", cell: (r) => fmtDateTime(r.completedAt) },
+              { key: "result", header: t("common.result"), cell: (r) => <ScoreOrHeld released={r.released} percentage={r.percentage} heldReason={r.heldReason} /> },
+            ]}
+          />
         </Panel>
       )}
     </AppShell>
