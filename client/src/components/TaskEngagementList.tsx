@@ -1,3 +1,4 @@
+import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { StatusBadge } from "@/components/StatusBadge";
 import { t } from "@/i18n/messages";
 import { fmtDateTime, shareChannelLabel } from "@/lib/format";
@@ -28,57 +29,79 @@ export function TaskEngagementList({ data }: { data: Engagement | undefined }) {
         </div>
       )}
       {students.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="mt-2 w-full text-xs">
-            <thead>
-              <tr className="text-left text-muted-foreground">
-                <th className="py-1 pr-2 font-normal">{t("common.student")}</th>
-                <th className="py-1 pr-2 font-normal">{t("share.funnelChannel")}</th>
-                <th className="py-1 pr-2 font-normal">{t("modules.engagementOpened")}</th>
-                <th className="py-1 pr-2 font-normal">{t("modules.engagementDownloads")}</th>
-                <th className="py-1 font-normal">{t("modules.engagementSubmission")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {students.map((s) => (
-                <tr key={s.studentId} className="border-t border-border/60 align-top">
-                  <td className="py-1.5 pr-2">
-                    <div className="min-w-0 break-words font-medium">{s.name ?? s.email ?? `#${s.studentId}`}</div>
-                    {!s.onRoster && (
-                      <div className={restricted ? "text-destructive" : "text-muted-foreground"}>
-                        {restricted ? t("modules.engagementNoAccess") : t("modules.engagementViaLink")}
-                      </div>
-                    )}
-                  </td>
-                  <td className="py-1.5 pr-2">{s.channel ? shareChannelLabel(s.channel) : s.openedAt ? t("modules.engagementDashboard") : "—"}</td>
-                  <td className="py-1.5 pr-2">
-                    {s.openedAt ? (
-                      <>
-                        <div>{fmtDateTime(s.openedAt)}</div>
-                        {s.openCount > 1 && <div className="text-muted-foreground">{t("modules.engagementOpenCount", { count: s.openCount })}</div>}
-                      </>
-                    ) : (
-                      <span className="text-muted-foreground">{t("modules.notViewedShort")}</span>
-                    )}
-                  </td>
-                  <td className="py-1.5 pr-2" title={s.lastDownloadAt ? t("modules.engagementLastDownload", { date: fmtDateTime(s.lastDownloadAt) }) : undefined}>
-                    {s.downloadCount}
-                  </td>
-                  <td className="py-1.5">
-                    {s.submittedAt ? (
-                      <>
-                        {s.submissionStatus === "LATE" ? <StatusBadge tone="warning">{t("student.late")}</StatusBadge> : <StatusBadge tone="success">{t("student.onTime")}</StatusBadge>}
-                        <div className="mt-0.5 text-muted-foreground">{fmtDateTime(s.submittedAt)}</div>
-                      </>
-                    ) : (
-                      <StatusBadge tone="neutral">{t("modules.engagementNotSubmitted")}</StatusBadge>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ResponsiveTable
+          rows={students}
+          rowKey={(s) => s.studentId}
+          tableClassName="mt-2 w-full text-xs"
+          headClassName="text-left text-muted-foreground"
+          bodyClassName=""
+          rowClassName={() => "border-t border-border/60 align-top"}
+          cardsClassName="mt-2 divide-y divide-border/60 [&>li]:py-2 [&>li]:text-xs"
+          columns={[
+            {
+              key: "student",
+              header: t("common.student"),
+              thClassName: "py-1 pr-2 font-normal",
+              tdClassName: "py-1.5 pr-2",
+              card: "title",
+              cell: (s) => (
+                <>
+                  <div className="min-w-0 break-words font-medium">{s.name ?? s.email ?? `#${s.studentId}`}</div>
+                  {!s.onRoster && (
+                    <div className={`font-normal ${restricted ? "text-destructive" : "text-muted-foreground"}`}>
+                      {restricted ? t("modules.engagementNoAccess") : t("modules.engagementViaLink")}
+                    </div>
+                  )}
+                </>
+              ),
+            },
+            {
+              key: "channel",
+              header: t("share.funnelChannel"),
+              thClassName: "py-1 pr-2 font-normal",
+              tdClassName: "py-1.5 pr-2",
+              cell: (s) => (s.channel ? shareChannelLabel(s.channel) : s.openedAt ? t("modules.engagementDashboard") : "—"),
+            },
+            {
+              key: "opened",
+              header: t("modules.engagementOpened"),
+              thClassName: "py-1 pr-2 font-normal",
+              tdClassName: "py-1.5 pr-2",
+              cell: (s) =>
+                s.openedAt ? (
+                  <>
+                    <div>{fmtDateTime(s.openedAt)}</div>
+                    {s.openCount > 1 && <div className="text-muted-foreground">{t("modules.engagementOpenCount", { count: s.openCount })}</div>}
+                  </>
+                ) : (
+                  <span className="text-muted-foreground">{t("modules.notViewedShort")}</span>
+                ),
+            },
+            {
+              key: "downloads",
+              header: t("modules.engagementDownloads"),
+              thClassName: "py-1 pr-2 font-normal",
+              tdClassName: "py-1.5 pr-2",
+              cell: (s) => <span title={s.lastDownloadAt ? t("modules.engagementLastDownload", { date: fmtDateTime(s.lastDownloadAt) }) : undefined}>{s.downloadCount}</span>,
+            },
+            {
+              key: "submission",
+              header: t("modules.engagementSubmission"),
+              thClassName: "py-1 font-normal",
+              tdClassName: "py-1.5",
+              card: "aside",
+              cell: (s) =>
+                s.submittedAt ? (
+                  <>
+                    {s.submissionStatus === "LATE" ? <StatusBadge tone="warning">{t("student.late")}</StatusBadge> : <StatusBadge tone="success">{t("student.onTime")}</StatusBadge>}
+                    <div className="mt-0.5 text-muted-foreground">{fmtDateTime(s.submittedAt)}</div>
+                  </>
+                ) : (
+                  <StatusBadge tone="neutral">{t("modules.engagementNotSubmitted")}</StatusBadge>
+                ),
+            },
+          ]}
+        />
       )}
       {(anonymous.opens > 0 || anonymous.downloads > 0) && (
         <p className="mt-2 text-xs text-muted-foreground">

@@ -1,5 +1,6 @@
 import { ProgressChart, TopicBars } from "@/components/AnalyticsBlocks";
 import { AppShell, Loading, Panel, StatCard } from "@/components/AppShell";
+import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { t } from "@/i18n/messages";
 import { fmtDateTime } from "@/lib/format";
@@ -51,32 +52,25 @@ function GroupsTab() {
   return (
     <Panel>
       {!g.data.length ? <p className="text-sm text-muted-foreground">{t("analytics.noGroups")}</p> : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-left text-xs uppercase text-muted-foreground">
-              <tr>
-                <th scope="col" className="py-2">{t("analytics.col.group")}</th>
-                <th scope="col">{t("common.students")}</th>
-                <th scope="col">{t("common.exams")}</th>
-                <th scope="col">{t("common.participation")}</th>
-                <th scope="col">{t("common.average")}</th>
-                <th scope="col">{t("analytics.col.weakTopics")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {g.data.map((r) => (
-                <tr key={r.groupId}>
-                  <td className="break-words py-2 pr-3"><Link href={`/teacher/groups/${r.groupId}`} className="text-link underline-offset-4 hover:underline">{r.name}</Link></td>
-                  <td>{r.studentCount}</td>
-                  <td>{r.examCount}</td>
-                  <td>{r.participation}%</td>
-                  <td className="font-semibold">{r.averageScore}%</td>
-                  <td className="break-words text-muted-foreground">{r.weakTopics.join(", ") || "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ResponsiveTable
+          rows={g.data}
+          rowKey={(r) => r.groupId}
+          columns={[
+            {
+              key: "group",
+              header: t("analytics.col.group"),
+              thClassName: "py-2",
+              tdClassName: "break-words py-2 pr-3",
+              card: "title",
+              cell: (r) => <Link href={`/teacher/groups/${r.groupId}`} className="text-link underline-offset-4 hover:underline">{r.name}</Link>,
+            },
+            { key: "students", header: t("common.students"), cell: (r) => r.studentCount },
+            { key: "exams", header: t("common.exams"), cell: (r) => r.examCount },
+            { key: "participation", header: t("common.participation"), cell: (r) => `${r.participation}%` },
+            { key: "average", header: t("common.average"), tdClassName: "font-semibold", cell: (r) => `${r.averageScore}%`, cardCell: (r) => <span className="font-semibold">{r.averageScore}%</span> },
+            { key: "weak", header: t("analytics.col.weakTopics"), tdClassName: "break-words text-muted-foreground", cell: (r) => r.weakTopics.join(", ") || "—" },
+          ]}
+        />
       )}
     </Panel>
   );
@@ -91,43 +85,40 @@ function StudentsTab() {
     <div className="grid gap-5 lg:grid-cols-2">
       <Panel title={t("analytics.rankingAll")}>
         {!list.data.length ? <p className="text-sm text-muted-foreground">{t("common.noResults")}</p> : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th scope="col" className="py-2">#</th>
-                  <th scope="col">{t("common.student")}</th>
-                  <th scope="col">{t("common.average")}</th>
-                  <th scope="col">{t("analytics.col.results")}</th>
-                  <th scope="col">{t("analytics.col.last")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {list.data.map((s) => {
+          <ResponsiveTable
+            rows={list.data}
+            rowKey={(s) => s.studentId}
+            rowClassName={(s) => `cursor-pointer hover:bg-muted ${studentId === s.studentId ? "bg-info-surface" : ""}`}
+            cardClassName={(s) => `cursor-pointer ${studentId === s.studentId ? "bg-info-surface" : ""}`}
+            onRowClick={(s) => setStudentId(s.studentId)}
+            cardsClassName="-mx-2 divide-y [&>li]:px-2"
+            columns={[
+              { key: "rank", header: "#", thClassName: "py-2", tdClassName: "py-2 font-semibold", card: "title", cell: (s) => s.rank, cardCell: (s) => <span className="text-muted-foreground">{s.rank}.</span> },
+              {
+                key: "student",
+                header: t("common.student"),
+                tdClassName: "pr-3",
+                card: "title",
+                cell: (s) => {
                   const selected = studentId === s.studentId;
                   return (
-                    <tr key={s.studentId} className={`cursor-pointer hover:bg-muted ${selected ? "bg-info-surface" : ""}`} onClick={() => setStudentId(s.studentId)}>
-                      <td className="py-2 font-semibold">{s.rank}</td>
-                      <td className="pr-3">
-                        <button
-                          type="button"
-                          aria-pressed={selected}
-                          aria-label={t("analytics.selectStudent", { name: s.studentName ?? "—" })}
-                          onClick={(e) => { e.stopPropagation(); setStudentId(s.studentId); }}
-                          className={`break-words text-left underline-offset-4 hover:underline ${selected ? "font-semibold text-foreground" : "text-link"}`}
-                        >
-                          {s.studentName ?? "—"}
-                        </button>
-                      </td>
-                      <td className="font-semibold">{s.percentage}%</td>
-                      <td>{s.resultCount}</td>
-                      <td className="whitespace-nowrap text-muted-foreground">{fmtDateTime(s.lastCompletedAt)}</td>
-                    </tr>
+                    <button
+                      type="button"
+                      aria-pressed={selected}
+                      aria-label={t("analytics.selectStudent", { name: s.studentName ?? "—" })}
+                      onClick={(e) => { e.stopPropagation(); setStudentId(s.studentId); }}
+                      className={`break-words text-left underline-offset-4 hover:underline ${selected ? "font-semibold text-foreground" : "text-link"}`}
+                    >
+                      {s.studentName ?? "—"}
+                    </button>
                   );
-                })}
-              </tbody>
-            </table>
-          </div>
+                },
+              },
+              { key: "average", header: t("common.average"), tdClassName: "font-semibold", card: "aside", cell: (s) => `${s.percentage}%`, cardCell: (s) => <span className="font-semibold">{s.percentage}%</span> },
+              { key: "results", header: t("analytics.col.results"), cell: (s) => s.resultCount },
+              { key: "last", header: t("analytics.col.last"), tdClassName: "whitespace-nowrap text-muted-foreground", cell: (s) => fmtDateTime(s.lastCompletedAt) },
+            ]}
+          />
         )}
       </Panel>
       <Panel title={t("analytics.studentProgress")}>
@@ -154,7 +145,7 @@ function QuestionsTab() {
   return (
     <div className="space-y-4">
       <select
-        className="max-w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground"
+        className="w-full max-w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground sm:w-auto"
         aria-label={t("analytics.chooseExam")}
         value={selected}
         onChange={(e) => setId(e.target.value)}

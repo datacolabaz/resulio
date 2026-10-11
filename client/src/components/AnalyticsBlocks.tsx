@@ -1,3 +1,4 @@
+import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { t } from "@/i18n/messages";
 import { fmtDuration, questionTypeLabel } from "@/lib/format";
 import { TrendingDown, TrendingUp } from "lucide-react";
@@ -56,33 +57,29 @@ export function RankingTable({
 }) {
   if (!rows.length) return <p className="text-sm text-muted-foreground">{t("common.noResults")}</p>;
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead className="text-left text-xs uppercase text-muted-foreground">
-          <tr>
-            <th scope="col" className="py-2">#</th>
-            <th scope="col">{t("common.student")}</th>
-            <th scope="col">{t("common.result")}</th>
-            <th scope="col">{t("common.duration")}</th>
-            <th scope="col"><span className="sr-only">{t("common.view")}</span></th>
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {rows.map((r) => (
-            <tr key={`${r.studentId}-${r.resultId ?? ""}`}>
-              <td className="py-2 font-semibold">{r.rank}</td>
-              <td>{r.studentName ?? "—"}</td>
-              <td className="font-semibold">{r.percentage}%</td>
-              <td className="text-muted-foreground">{fmtDuration(r.durationSeconds)}</td>
-              <td className="text-right">
-                {r.pendingReviewCount ? <span className="mr-2 text-xs text-warning">{t("common.inReview")}</span> : null}
-                {resultLink && r.resultId && <Link href={`/teacher/results/${r.resultId}`} className="text-link underline-offset-4 hover:underline">{t("common.view")}</Link>}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <ResponsiveTable
+      rows={rows}
+      rowKey={(r) => `${r.studentId}-${r.resultId ?? ""}`}
+      columns={[
+        { key: "rank", header: "#", thClassName: "py-2", tdClassName: "py-2 font-semibold", card: "title", cell: (r) => r.rank, cardCell: (r) => <span className="text-muted-foreground">{r.rank}.</span> },
+        { key: "student", header: t("common.student"), card: "title", cell: (r) => r.studentName ?? "—" },
+        { key: "result", header: t("common.result"), tdClassName: "font-semibold", card: "aside", cell: (r) => `${r.percentage}%`, cardCell: (r) => <span className="font-semibold">{r.percentage}%</span> },
+        { key: "duration", header: t("common.duration"), tdClassName: "text-muted-foreground", cell: (r) => fmtDuration(r.durationSeconds) },
+        {
+          key: "view",
+          header: t("common.view"),
+          srOnlyHeader: true,
+          tdClassName: "text-right",
+          card: "action",
+          cell: (r) => (
+            <>
+              {r.pendingReviewCount ? <span className="mr-2 text-xs text-warning">{t("common.inReview")}</span> : null}
+              {resultLink && r.resultId && <Link href={`/teacher/results/${r.resultId}`} className="text-link underline-offset-4 hover:underline">{t("common.view")}</Link>}
+            </>
+          ),
+        },
+      ]}
+    />
   );
 }
 
@@ -92,39 +89,37 @@ export function QuestionStatsTable({
   rows: { questionId: string; position?: number; text: string; type?: string; topic: string; attempts: number; accuracyPercentage: number; wrongPercentage: number; unansweredPercentage: number }[];
 }) {
   if (!rows.length) return <p className="text-sm text-muted-foreground">{t("common.noData")}</p>;
+  const accuracy = (q: (typeof rows)[number]) => (
+    <span className={q.accuracyPercentage < 50 ? "font-semibold text-destructive" : "font-semibold"}>
+      {q.accuracyPercentage < 50 && <TrendingDown className="mr-1 inline h-3.5 w-3.5" aria-label={t("analytics.weak")} />}
+      {q.accuracyPercentage}%
+    </span>
+  );
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead className="text-left text-xs uppercase text-muted-foreground">
-          <tr>
-            <th scope="col" className="py-2">{t("common.question")}</th>
-            <th scope="col">{t("common.topic")}</th>
-            <th scope="col">{t("analytics.col.answers")}</th>
-            <th scope="col">{t("common.correct")}</th>
-            <th scope="col">{t("common.wrong")}</th>
-            <th scope="col">{t("common.unanswered")}</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {rows.map((q) => (
-            <tr key={q.questionId}>
-              <td className="max-w-md py-2">
-                <div className="line-clamp-2" title={q.text}>{q.position ? `${q.position}. ` : ""}{q.text}</div>
-                {q.type && <div className="text-xs text-muted-foreground">{questionTypeLabel(q.type)}</div>}
-              </td>
-              <td className="text-muted-foreground">{q.topic || "—"}</td>
-              <td>{q.attempts}</td>
-              <td className={q.accuracyPercentage < 50 ? "font-semibold text-destructive" : "font-semibold"}>
-                {q.accuracyPercentage < 50 && <TrendingDown className="mr-1 inline h-3.5 w-3.5" aria-label={t("analytics.weak")} />}
-                {q.accuracyPercentage}%
-              </td>
-              <td>{q.wrongPercentage}%</td>
-              <td>{q.unansweredPercentage}%</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <ResponsiveTable
+      rows={rows}
+      rowKey={(q) => q.questionId}
+      columns={[
+        {
+          key: "question",
+          header: t("common.question"),
+          thClassName: "py-2",
+          tdClassName: "max-w-md py-2",
+          card: "title",
+          cell: (q) => (
+            <>
+              <div className="line-clamp-2 font-normal" title={q.text}>{q.position ? `${q.position}. ` : ""}{q.text}</div>
+              {q.type && <div className="text-xs font-normal text-muted-foreground">{questionTypeLabel(q.type)}</div>}
+            </>
+          ),
+        },
+        { key: "topic", header: t("common.topic"), tdClassName: "text-muted-foreground", cell: (q) => q.topic || "—" },
+        { key: "answers", header: t("analytics.col.answers"), cell: (q) => q.attempts },
+        { key: "correct", header: t("common.correct"), cell: accuracy },
+        { key: "wrong", header: t("common.wrong"), cell: (q) => `${q.wrongPercentage}%` },
+        { key: "unanswered", header: t("common.unanswered"), cell: (q) => `${q.unansweredPercentage}%` },
+      ]}
+    />
   );
 }
 

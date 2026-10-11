@@ -1,4 +1,5 @@
 import { ErrorNote, Loading, Panel, StatCard } from "@/components/AppShell";
+import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { StatusBadge } from "@/components/StatusBadge";
 import { t } from "@/i18n/messages";
 import { fmtDay, fmtNumber } from "@/lib/format";
@@ -97,64 +98,66 @@ export default function AdminStoragePage() {
 
       <Panel title={t("admin.storage.byTeacher")}>
         {!s.byTeacher.length ? <p className="text-sm text-muted-foreground">{t("admin.storage.empty")}</p> : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th scope="col" className="py-2 pr-3">{t("admin.limits.teacher")}</th>
-                  <th scope="col" className="pr-3 text-right">{t("admin.storage.col.count")}</th>
-                  <th scope="col" className="text-right">{t("admin.storage.col.size")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {s.byTeacher.map((r) => (
-                  <tr key={r.userId}>
-                    <td className="py-2 pr-3">
-                      <span className="block break-words font-medium">{r.name ?? `#${r.userId}`}</span>
-                      {r.email && <span className="block break-all text-xs text-muted-foreground">{r.email}</span>}
-                    </td>
-                    <td className="pr-3 text-right tabular-nums">{fmtNumber(r.count)}</td>
-                    <td className="text-right tabular-nums">{formatFileSize(r.bytes)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ResponsiveTable
+            rows={s.byTeacher}
+            rowKey={(r) => r.userId}
+            columns={[
+              {
+                key: "teacher",
+                header: t("admin.limits.teacher"),
+                thClassName: "py-2 pr-3",
+                tdClassName: "py-2 pr-3",
+                card: "title",
+                cell: (r) => (
+                  <>
+                    <span className="block break-words font-medium">{r.name ?? `#${r.userId}`}</span>
+                    {r.email && <span className="block break-all text-xs font-normal text-muted-foreground">{r.email}</span>}
+                  </>
+                ),
+              },
+              { key: "count", header: t("admin.storage.col.count"), thClassName: "pr-3 text-right", tdClassName: "pr-3 text-right tabular-nums", cell: (r) => fmtNumber(r.count) },
+              { key: "size", header: t("admin.storage.col.size"), thClassName: "text-right", tdClassName: "text-right tabular-nums", cell: (r) => formatFileSize(r.bytes) },
+            ]}
+          />
         )}
       </Panel>
 
       <Panel title={t("admin.storage.largest")}>
         {!s.largest.length ? <p className="text-sm text-muted-foreground">{t("admin.storage.empty")}</p> : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[40rem] text-sm">
-              <thead className="text-left text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th scope="col" className="py-2 pr-3">{t("admin.storage.col.file")}</th>
-                  <th scope="col" className="pr-3">{t("admin.storage.col.workspace")}</th>
-                  <th scope="col" className="pr-3">{t("admin.storage.col.uploadedBy")}</th>
-                  <th scope="col" className="pr-3">{t("admin.storage.col.date")}</th>
-                  <th scope="col" className="text-right">{t("admin.storage.col.size")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {s.largest.map((f) => (
-                  <tr key={f.id} className="align-top">
-                    <td className="max-w-[16rem] py-2 pr-3">
-                      <span className="block truncate font-medium" title={f.fileName}>{f.fileName}</span>
-                      <span className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-muted-foreground" title={f.mimeType}>
-                        {t(`admin.storage.type.${f.typeGroup}`)}
-                        {f.inObjectStore && <StatusBadge tone="info">{t("admin.storage.inR2")}</StatusBadge>}
-                      </span>
-                    </td>
-                    <td className="max-w-[12rem] truncate pr-3 text-muted-foreground" title={f.workspaceTitle ?? undefined}>{f.workspaceTitle ?? "—"}</td>
-                    <td className="max-w-[10rem] truncate pr-3 text-muted-foreground">{f.uploaderName ?? "—"}</td>
-                    <td className="whitespace-nowrap pr-3 text-muted-foreground">{fmtDay(f.createdAt)}</td>
-                    <td className="whitespace-nowrap text-right tabular-nums">{formatFileSize(f.sizeBytes)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ResponsiveTable
+            rows={s.largest}
+            rowKey={(f) => f.id}
+            tableClassName="w-full min-w-[40rem] text-sm"
+            rowClassName={() => "align-top"}
+            columns={[
+              {
+                key: "file",
+                header: t("admin.storage.col.file"),
+                thClassName: "py-2 pr-3",
+                tdClassName: "max-w-[16rem] py-2 pr-3",
+                card: "title",
+                cell: (f) => (
+                  <>
+                    <span className="block truncate font-medium" title={f.fileName}>{f.fileName}</span>
+                    <span className="mt-0.5 flex flex-wrap items-center gap-1 text-xs font-normal text-muted-foreground" title={f.mimeType}>
+                      {t(`admin.storage.type.${f.typeGroup}`)}
+                      {f.inObjectStore && <StatusBadge tone="info">{t("admin.storage.inR2")}</StatusBadge>}
+                    </span>
+                  </>
+                ),
+              },
+              {
+                key: "workspace",
+                header: t("admin.storage.col.workspace"),
+                thClassName: "pr-3",
+                tdClassName: "max-w-[12rem] truncate pr-3 text-muted-foreground",
+                cell: (f) => <span title={f.workspaceTitle ?? undefined}>{f.workspaceTitle ?? "—"}</span>,
+              },
+              { key: "uploader", header: t("admin.storage.col.uploadedBy"), thClassName: "pr-3", tdClassName: "max-w-[10rem] truncate pr-3 text-muted-foreground", cell: (f) => f.uploaderName ?? "—" },
+              { key: "date", header: t("admin.storage.col.date"), thClassName: "pr-3", tdClassName: "whitespace-nowrap pr-3 text-muted-foreground", cell: (f) => fmtDay(f.createdAt) },
+              { key: "size", header: t("admin.storage.col.size"), thClassName: "text-right", tdClassName: "whitespace-nowrap text-right tabular-nums", card: "aside", cell: (f) => formatFileSize(f.sizeBytes) },
+            ]}
+          />
         )}
       </Panel>
     </div>

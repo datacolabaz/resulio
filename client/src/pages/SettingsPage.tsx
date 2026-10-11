@@ -118,7 +118,7 @@ function NotificationPreferencesPanel({ teaching }: { teaching: boolean }) {
           <thead>
             <tr className="text-left text-xs text-muted-foreground">
               <th className="py-1 font-normal" />
-              {SHOWN_CHANNELS.map((c) => <th key={c} className="w-20 py-1 text-center font-normal">{t(`settings.channel.${c}`)}</th>)}
+              {SHOWN_CHANNELS.map((c) => <th key={c} className="w-14 py-1 text-center font-normal sm:w-20">{t(`settings.channel.${c}`)}</th>)}
             </tr>
           </thead>
           <tbody className="divide-y">

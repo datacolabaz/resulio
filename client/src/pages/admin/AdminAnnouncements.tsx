@@ -1,5 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { ErrorNote, Loading, Panel } from "@/components/AppShell";
+import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { StatusBadge, type Tone } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -93,45 +94,48 @@ export default function AdminAnnouncementsPage() {
 
       <Panel title={t("admin.ann.history")}>
         {list.error ? <ErrorNote error={list.error} /> : list.isLoading ? <Loading /> : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th scope="col" className="py-2 pr-3">{t("admin.ann.titleLabel")}</th>
-                  <th scope="col" className="pr-3">{t("admin.ann.audience")}</th>
-                  <th scope="col" className="pr-3">{t("common.status")}</th>
-                  <th scope="col" className="pr-3 text-right">{t("admin.ann.inApp")}</th>
-                  <th scope="col" className="pr-3 text-right">{t("admin.ann.pushSent")}</th>
-                  <th scope="col" className="pr-3 text-right">{t("admin.ann.pushFailed")}</th>
-                  <th scope="col">{t("admin.audit.when")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {(list.data ?? []).map((row) => {
+          <ResponsiveTable
+            rows={list.data ?? []}
+            rowKey={(row) => row.id}
+            empty={t("admin.ann.empty")}
+            columns={[
+              {
+                key: "title",
+                header: t("admin.ann.titleLabel"),
+                thClassName: "py-2 pr-3",
+                tdClassName: "max-w-xs py-2 pr-3",
+                card: "title",
+                cell: (row) => {
                   const text = pickAnnouncementText(row.texts ?? {}, row.language as AnnouncementLanguage, "az");
                   return (
-                    <tr key={row.id}>
-                      <td className="max-w-xs py-2 pr-3">
-                        <span className="block truncate font-medium" title={text?.title ?? ""}>{text?.title ?? "—"}</span>
-                        <span className="block text-xs text-muted-foreground">{t(`admin.ann.language.${row.language as AnnouncementLanguage}`)}</span>
-                      </td>
-                      <td className="pr-3 text-muted-foreground">{t(`admin.ann.audience.${row.audience}`)}</td>
-                      <td className="pr-3">
-                        <StatusBadge tone={STATUS_TONE[row.status] ?? "neutral"}>{t(`admin.ann.status.${row.status}`)}</StatusBadge>
-                      </td>
-                      <td className="pr-3 text-right tabular-nums">{row.inAppSent}</td>
-                      <td className="pr-3 text-right tabular-nums">{row.pushSent}</td>
-                      <td className={`pr-3 text-right tabular-nums ${row.pushFailed ? "text-destructive" : ""}`}>{row.pushFailed}</td>
-                      <td className="whitespace-nowrap text-muted-foreground">{fmtDateTime(row.createdAt)}</td>
-                    </tr>
+                    <>
+                      <span className="block truncate font-medium" title={text?.title ?? ""}>{text?.title ?? "—"}</span>
+                      <span className="block text-xs font-normal text-muted-foreground">{t(`admin.ann.language.${row.language as AnnouncementLanguage}`)}</span>
+                    </>
                   );
-                })}
-                {!list.data?.length && (
-                  <tr><td colSpan={7} className="py-3 text-muted-foreground">{t("admin.ann.empty")}</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                },
+              },
+              { key: "audience", header: t("admin.ann.audience"), thClassName: "pr-3", tdClassName: "pr-3 text-muted-foreground", cell: (row) => t(`admin.ann.audience.${row.audience}`) },
+              {
+                key: "status",
+                header: t("common.status"),
+                thClassName: "pr-3",
+                tdClassName: "pr-3",
+                card: "aside",
+                cell: (row) => <StatusBadge tone={STATUS_TONE[row.status] ?? "neutral"}>{t(`admin.ann.status.${row.status}`)}</StatusBadge>,
+              },
+              { key: "inApp", header: t("admin.ann.inApp"), thClassName: "pr-3 text-right", tdClassName: "pr-3 text-right tabular-nums", cell: (row) => row.inAppSent },
+              { key: "pushSent", header: t("admin.ann.pushSent"), thClassName: "pr-3 text-right", tdClassName: "pr-3 text-right tabular-nums", cell: (row) => row.pushSent },
+              {
+                key: "pushFailed",
+                header: t("admin.ann.pushFailed"),
+                thClassName: "pr-3 text-right",
+                tdClassName: "pr-3 text-right tabular-nums",
+                cell: (row) => <span className={row.pushFailed ? "text-destructive" : ""}>{row.pushFailed}</span>,
+              },
+              { key: "when", header: t("admin.audit.when"), tdClassName: "whitespace-nowrap text-muted-foreground", cell: (row) => fmtDateTime(row.createdAt) },
+            ]}
+          />
         )}
       </Panel>
     </div>

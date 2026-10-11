@@ -1,5 +1,6 @@
 import { DistributionChart, QuestionStatsTable, RankingTable, TopicBars } from "@/components/AnalyticsBlocks";
 import { AppShell, ChoiceChip, EmptyState, ErrorNote, Loading, Panel, Pill, StatCard } from "@/components/AppShell";
+import { ResponsiveTable, type ResponsiveColumn } from "@/components/ResponsiveTable";
 import { ShareBox, ShareFunnelSummary } from "@/components/ShareBox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -76,35 +77,41 @@ export function AssessmentsPage() {
         ) : !list.data?.length ? (
           <EmptyState title={t("assessment.empty")} body={t("assessment.emptyBody")} />
         ) : (
-          <div className="relative overflow-x-auto rounded-2xl border bg-card">
-            <table className="w-full text-sm">
-              <thead className="border-b bg-muted text-left text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th scope="col" className="px-4 py-3">{t("common.name")}</th>
-                  <th scope="col">{t("common.type")}</th>
-                  <th scope="col">{t("common.status")}</th>
-                  <th scope="col">{t("assessment.col.window")}</th>
-                  <th scope="col">{t("common.duration")}</th>
-                  <th scope="col"><span className="sr-only">{t("common.edit")}</span></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {list.data.map((a) => (
-                  <tr key={a.id} className="hover:bg-muted">
-                    <td className="px-4 py-3">
-                      <Link href={`/teacher/assessments/${a.id}`} className="font-medium hover:underline">{a.title}</Link>
-                      {a.hasDraftChanges && a.currentVersionId && <div className="text-xs text-warning">{t("assessment.unpublishedChanges")}</div>}
-                    </td>
-                    <td>{typeLabel(a.type)}</td>
-                    <td><StatusBadge {...liveStatus(a.liveStatus)}>{liveLabel(a.liveStatus)}</StatusBadge></td>
-                    <td className="text-muted-foreground">{fmtWindow(a.startAt, a.endAt)}</td>
-                    <td className="text-muted-foreground">{fmtDuration(a.durationSeconds)}</td>
-                    <td className="pr-4 text-right"><Link href={`/teacher/assessments/${a.id}/edit`} className={linkClass}>{t("common.edit")}</Link></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ResponsiveTable
+            rows={list.data}
+            rowKey={(a) => a.id}
+            className="relative overflow-x-auto rounded-2xl border bg-card"
+            headClassName="border-b bg-muted text-left text-xs uppercase text-muted-foreground"
+            rowClassName={() => "hover:bg-muted"}
+            cardsClassName="divide-y rounded-2xl border bg-card px-4"
+            columns={[
+              {
+                key: "title",
+                header: t("common.name"),
+                thClassName: "px-4 py-3",
+                tdClassName: "px-4 py-3",
+                card: "title",
+                cell: (a) => (
+                  <>
+                    <Link href={`/teacher/assessments/${a.id}`} className="font-medium hover:underline">{a.title}</Link>
+                    {a.hasDraftChanges && a.currentVersionId && <div className="text-xs font-normal text-warning">{t("assessment.unpublishedChanges")}</div>}
+                  </>
+                ),
+              },
+              { key: "type", header: t("common.type"), cell: (a) => typeLabel(a.type) },
+              { key: "status", header: t("common.status"), card: "aside", cell: (a) => <StatusBadge {...liveStatus(a.liveStatus)}>{liveLabel(a.liveStatus)}</StatusBadge> },
+              { key: "window", header: t("assessment.col.window"), tdClassName: "text-muted-foreground", cell: (a) => fmtWindow(a.startAt, a.endAt) },
+              { key: "duration", header: t("common.duration"), tdClassName: "text-muted-foreground", cell: (a) => fmtDuration(a.durationSeconds) },
+              {
+                key: "edit",
+                header: t("common.edit"),
+                srOnlyHeader: true,
+                tdClassName: "pr-4 text-right",
+                card: "action",
+                cell: (a) => <Link href={`/teacher/assessments/${a.id}/edit`} className={linkClass}>{t("common.edit")}</Link>,
+              },
+            ]}
+          />
         )}
       </div>
     </AppShell>
@@ -243,30 +250,38 @@ export function AssessmentDetailPage() {
                 {a.assignments.length === 0 ? (
                   <p className="text-sm text-muted-foreground">{t("assessment.noAssignments")}</p>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="text-left text-xs uppercase text-muted-foreground">
-                        <tr>
-                          <th scope="col" className="py-2">{t("assessment.col.to")}</th>
-                          <th scope="col">{t("assessment.col.version")}</th>
-                          <th scope="col">{t("assessment.col.customWindow")}</th>
-                          <th scope="col">{t("common.duration")}</th>
-                          <th scope="col">{t("common.attempt")}</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {a.assignments.map((r) => (
-                          <tr key={r.id}>
-                            <td className="py-2">{r.groupId ? t("assessment.toGroup", { name: r.label }) : t("assessment.toStudent", { name: r.label })}</td>
-                            <td>{!r.versionNo ? t("assessment.afterPublish") : r.versionNo === a.versions[0]?.versionNo ? t("assessment.variantLatest") : t("attempt.earlierVariantShort")}</td>
-                            <td className="text-muted-foreground">{r.availableFrom || r.availableUntil ? fmtWindow(r.availableFrom, r.availableUntil) : t("assessment.default")}</td>
-                            <td className="text-muted-foreground">{r.durationOverrideSeconds ? fmtDuration(r.durationOverrideSeconds) : t("assessment.default")}</td>
-                            <td className="text-muted-foreground">{r.attemptLimitOverride ?? t("assessment.default")}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <ResponsiveTable
+                    rows={a.assignments}
+                    rowKey={(r) => r.id}
+                    columns={[
+                      {
+                        key: "to",
+                        header: t("assessment.col.to"),
+                        thClassName: "py-2",
+                        tdClassName: "py-2",
+                        card: "title",
+                        cell: (r) => (r.groupId ? t("assessment.toGroup", { name: r.label }) : t("assessment.toStudent", { name: r.label })),
+                      },
+                      {
+                        key: "version",
+                        header: t("assessment.col.version"),
+                        cell: (r) => (!r.versionNo ? t("assessment.afterPublish") : r.versionNo === a.versions[0]?.versionNo ? t("assessment.variantLatest") : t("attempt.earlierVariantShort")),
+                      },
+                      {
+                        key: "window",
+                        header: t("assessment.col.customWindow"),
+                        tdClassName: "text-muted-foreground",
+                        cell: (r) => (r.availableFrom || r.availableUntil ? fmtWindow(r.availableFrom, r.availableUntil) : t("assessment.default")),
+                      },
+                      {
+                        key: "duration",
+                        header: t("common.duration"),
+                        tdClassName: "text-muted-foreground",
+                        cell: (r) => (r.durationOverrideSeconds ? fmtDuration(r.durationOverrideSeconds) : t("assessment.default")),
+                      },
+                      { key: "attempts", header: t("common.attempt"), tdClassName: "text-muted-foreground", cell: (r) => r.attemptLimitOverride ?? t("assessment.default") },
+                    ]}
+                  />
                 )}
               </Panel>
             </TabsContent>
@@ -458,49 +473,57 @@ export function ResultsTable({
   showAssessment?: boolean;
 }) {
   const earlier = earlierVariantRows(rows);
-  return (
-    <div className="relative overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead className="text-left text-xs uppercase text-muted-foreground">
-          <tr>
-            <th scope="col" className="py-2">{t("common.student")}</th>
-            {showAssessment && <th scope="col">{t("common.exam")}</th>}
-            <th scope="col">{t("common.attempt")}</th>
-            <th scope="col">{t("common.result")}</th>
-            <th scope="col">{t("common.duration")}</th>
-            <th scope="col">{t("common.date")}</th>
-            <th scope="col"><span className="sr-only">{t("common.view")}</span></th>
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {rows.map((r) => (
-            <tr key={r.id}>
-              <td className="py-2">{r.studentName ?? "—"}</td>
-              {showAssessment && <td className="max-w-xs break-words">{r.assessmentTitle}</td>}
-              <td>
-                {attemptLabel(r.attemptNo)}
-                {r.autoSubmitted && <span className="ml-1 text-xs text-muted-foreground">{t("assessment.auto")}</span>}
-                {earlier.has(r.id) && (
-                  <span className="ml-1 inline-flex items-center gap-1 text-xs text-muted-foreground" title={t("attempt.earlierVariant")}>
-                    <Info className="h-3.5 w-3.5" aria-hidden />
-                    {t("attempt.earlierVariantShort")}
-                    <span className="sr-only">{t("attempt.earlierVariant")}</span>
-                  </span>
-                )}
-              </td>
-              <td className="font-semibold">
-                {r.percentage}%
-                {r.pendingReviewCount > 0 && <span className="ml-2 text-xs font-normal text-warning">{t("common.pendingReviewCount", { count: r.pendingReviewCount })}</span>}
-              </td>
-              <td className="text-muted-foreground">{fmtDuration(r.durationSeconds)}</td>
-              <td className="whitespace-nowrap text-muted-foreground">{fmtDateTime(r.completedAt)}</td>
-              <td className="text-right"><Link href={`/teacher/results/${r.id}`} className={linkClass}>{t("common.view")}</Link></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+  type Row = (typeof rows)[number];
+  const columns: ResponsiveColumn<Row>[] = [
+    { key: "student", header: t("common.student"), thClassName: "py-2", tdClassName: "py-2", card: "title", cell: (r) => r.studentName ?? "—" },
+    ...(showAssessment ? [{ key: "exam", header: t("common.exam"), tdClassName: "max-w-xs break-words", cell: (r: Row) => r.assessmentTitle }] : []),
+    {
+      key: "attempt",
+      header: t("common.attempt"),
+      cell: (r) => (
+        <>
+          {attemptLabel(r.attemptNo)}
+          {r.autoSubmitted && <span className="ml-1 text-xs text-muted-foreground">{t("assessment.auto")}</span>}
+          {earlier.has(r.id) && (
+            <span className="ml-1 inline-flex items-center gap-1 text-xs text-muted-foreground" title={t("attempt.earlierVariant")}>
+              <Info className="h-3.5 w-3.5" aria-hidden />
+              {t("attempt.earlierVariantShort")}
+              <span className="sr-only">{t("attempt.earlierVariant")}</span>
+            </span>
+          )}
+        </>
+      ),
+    },
+    {
+      key: "result",
+      header: t("common.result"),
+      tdClassName: "font-semibold",
+      card: "aside",
+      cell: (r) => (
+        <>
+          {r.percentage}%
+          {r.pendingReviewCount > 0 && <span className="ml-2 text-xs font-normal text-warning">{t("common.pendingReviewCount", { count: r.pendingReviewCount })}</span>}
+        </>
+      ),
+      cardCell: (r) => (
+        <>
+          <div className="font-semibold">{r.percentage}%</div>
+          {r.pendingReviewCount > 0 && <div className="text-xs text-warning">{t("common.pendingReviewCount", { count: r.pendingReviewCount })}</div>}
+        </>
+      ),
+    },
+    { key: "duration", header: t("common.duration"), tdClassName: "text-muted-foreground", cell: (r) => fmtDuration(r.durationSeconds) },
+    { key: "date", header: t("common.date"), tdClassName: "whitespace-nowrap text-muted-foreground", cell: (r) => fmtDateTime(r.completedAt) },
+    {
+      key: "view",
+      header: t("common.view"),
+      srOnlyHeader: true,
+      tdClassName: "text-right",
+      card: "action",
+      cell: (r) => <Link href={`/teacher/results/${r.id}`} className={linkClass}>{t("common.view")}</Link>,
+    },
+  ];
+  return <ResponsiveTable rows={rows} rowKey={(r) => r.id} columns={columns} className="relative overflow-x-auto" />;
 }
 
 export function AssessmentAnalytics({ id }: { id: string }) {
