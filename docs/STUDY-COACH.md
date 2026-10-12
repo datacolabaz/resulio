@@ -159,6 +159,22 @@ asked number fails the request. Earlier questions on the topic are sent as "do n
 - Regrades update the quiz score, mistakes and the topic's mastery evidence without counting a new
   practice attempt.
 
+## Review, mistakes and "AI yaddaşı"
+
+- **Schedule** (`review.ts`, pure `nextReview`): after each quiz the topic's next review is set
+  from the result — below 50 % → tomorrow; 50–80 % → 2 days, then ×1.2; ≥ 80 % → 3 days, then
+  ×2.2; strong mastery ×1.25; at most 60 days. Regrades do not move the schedule.
+- **Library**: "Bu gün təkrar et" lists due topics (most overdue, then weakest) with a link to
+  practise; "Səhvlərim" (`/student/coach/mistakes`) groups open mistakes by topic with their cause,
+  links to re-read or practise, and "Düzəltdim" (event `MISTAKE_FIXED`).
+- **Material page**: a mastery badge next to every practised topic.
+- **Student home**: a card with due topics and open mistakes, only when the flag is on, the
+  notice is accepted and "Xatırlatmalar" is on in coach settings.
+- **AI yaddaşı** (coach settings): the topics the coach tracks (mastery, practice count, last
+  practice) and the mistakes it remembers, in a `ResponsiveTable`. Each can be deleted, or all at
+  once. Forgetting a topic removes its mastery, schedule and mistakes; quiz history and materials
+  stay (they are deleted with the material or with "delete all my data").
+
 ## OCR (scanned PDFs and images)
 
 PDF pages with fewer than 30 letters/digits in their text layer, and images, are read by the OCR

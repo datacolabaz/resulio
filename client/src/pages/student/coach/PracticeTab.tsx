@@ -10,15 +10,16 @@ import { PRACTICE_FORMATS, QUIZ_COUNTS, type QuizFormat } from "@shared/coach";
 import { Lightbulb } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { Link } from "wouter";
 import { Sources } from "./LearnTab";
 
 type Quiz = RouterOutputs["student"]["coach"]["practice"]["get"];
 type Item = Quiz["items"][number];
 
 /** "Məşq et": questions on this topic in the app language, graded right away. */
-export function PracticeTab({ topicId }: { topicId: string }) {
+export function PracticeTab({ topicId, onLearn }: { topicId: string; onLearn: () => void }) {
   const [quizId, setQuizId] = useState<string | null>(null);
-  if (quizId) return <QuizRunner quizId={quizId} onClose={() => setQuizId(null)} />;
+  if (quizId) return <QuizRunner quizId={quizId} onClose={() => setQuizId(null)} onLearn={onLearn} />;
   return <PracticeHome topicId={topicId} onOpen={setQuizId} />;
 }
 
@@ -126,7 +127,7 @@ function MasteryCard({ progress }: { progress: NonNullable<RouterOutputs["studen
   );
 }
 
-function QuizRunner({ quizId, onClose }: { quizId: string; onClose: () => void }) {
+function QuizRunner({ quizId, onClose, onLearn }: { quizId: string; onClose: () => void; onLearn: () => void }) {
   const utils = trpc.useUtils();
   const q = trpc.student.coach.practice.get.useQuery({ quizId });
   const [answers, setAnswers] = useState<Record<string, StudentAnswer | undefined>>({});
@@ -158,6 +159,17 @@ function QuizRunner({ quizId, onClose }: { quizId: string; onClose: () => void }
           <span className="text-sm text-muted-foreground">{formatLabel(quiz.format)}</span>
         </div>
         {graded && <ScoreSummary quiz={quiz} />}
+        {graded && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {quiz.percentage !== null && quiz.percentage < 80 && (
+              <Button size="sm" variant="outline" onClick={onLearn}>{t("coach.mistakes.reread")}</Button>
+            )}
+            <Button size="sm" variant="outline" onClick={onClose}>{t("coach.practice.again")}</Button>
+            {quiz.items.some((i) => i.result?.status === "WRONG") && (
+              <Link href="/student/coach/mistakes" className="inline-flex items-center px-2 text-sm text-link hover:underline">{t("coach.practice.toMistakes")}</Link>
+            )}
+          </div>
+        )}
       </Panel>
       {quiz.items.map((item, idx) => (
         <Panel key={item.id}>

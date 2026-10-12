@@ -56,7 +56,7 @@ function TopicBody({ topicId }: { topicId: string }) {
         </div>
       </Panel>
       {tab === "learn" && <LearnTab topicId={topic.id} />}
-      {tab === "practice" && <PracticeTab key={topic.id} topicId={topic.id} />}
+      {tab === "practice" && <PracticeTab key={topic.id} topicId={topic.id} onLearn={() => setTab("learn")} />}
       <nav className="flex flex-wrap justify-between gap-2 text-sm" aria-label={t("coach.topic.nav")}>
         {prev ? (
           <Link href={`/student/coach/t/${prev.id}`} className="text-link hover:underline">
