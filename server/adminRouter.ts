@@ -18,6 +18,7 @@ import * as fileJob from "./fileStorage/job";
 import { storageSummary } from "./fileStorage/summary";
 import { listAudit } from "./modules/admin/audit";
 import { dashboard } from "./modules/admin/dashboard";
+import { coachLimitsSetting, coachModelsSetting } from "./coach/settingsSchema";
 import { getPlatformSettings } from "./platformSettings";
 import { MAX_UPLOAD_LIMIT_MB, SIZE_CLASSES, type SizeClass } from "../shared/materialTemplates";
 import * as roles from "./modules/admin/roles";
@@ -95,6 +96,24 @@ export const adminRouter = router({
           ...(input.monthlyBudgetUsd !== undefined ? { "ai.monthlyBudgetUsd": input.monthlyBudgetUsd } : {}),
           ...(input.defaultMonthlyTokenQuota !== undefined ? { "ai.defaultMonthlyTokenQuota": input.defaultMonthlyTokenQuota } : {}),
           ...(input.defaultDailyRequestCap !== undefined ? { "ai.defaultDailyRequestCap": input.defaultDailyRequestCap } : {}),
+        }),
+      ),
+    /** AI Study Coach: student quotas, per-feature caps and model names (platform_settings `coach.*`). */
+    setCoachSettings: adminProcedure("ai.manage")
+      .input(
+        z.object({
+          studentMonthlyTokenQuota: limitValue.optional(),
+          studentDailyActionCap: limitValue.optional(),
+          limits: coachLimitsSetting.optional(),
+          models: coachModelsSetting.optional(),
+        }),
+      )
+      .mutation(({ ctx, input }) =>
+        aiAdmin.updateSettings(ctx.admin, {
+          ...(input.studentMonthlyTokenQuota !== undefined ? { "coach.studentMonthlyTokenQuota": input.studentMonthlyTokenQuota } : {}),
+          ...(input.studentDailyActionCap !== undefined ? { "coach.studentDailyActionCap": input.studentDailyActionCap } : {}),
+          ...(input.limits !== undefined ? { "coach.limits": input.limits } : {}),
+          ...(input.models !== undefined ? { "coach.models": input.models } : {}),
         }),
       ),
     teachers: adminProcedure("ai.view")

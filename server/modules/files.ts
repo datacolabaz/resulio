@@ -182,6 +182,11 @@ export async function downloadAccess(file: FileRow, userId: number | null): Prom
   if (userId === null) return "SIGN_IN_REQUIRED";
   if (await teacherOwnsWorkspace(file.workspaceId, userId)) return "ALLOWED";
   if (await studentCanReach(file, userId, attachedTo, usedBy)) return "ALLOWED";
+  if (file.workspaceId.startsWith("coach-u")) {
+    // Loaded lazily: the coach modules import this one.
+    const { coachFileSharedWith } = await import("../coach/shares");
+    if (await coachFileSharedWith(file.id, userId)) return "ALLOWED";
+  }
   return "DENIED";
 }
 

@@ -2,7 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { studentAnswerSchema } from "../../shared/assessment";
 import { COACH_LOCALES, COACH_MAX_PASTE_CHARS, coachLocaleOf, MATERIAL_GOALS, PRACTICE_FORMATS, RECALL_MODES, SUMMARY_FORMATS, TUTOR_ACTIONS, type CoachLocale } from "../../shared/coach";
-import { rateLimit, router, studentProcedure } from "../_core/trpc";
+import { rateLimit, router, studentProcedure, teacherProcedure } from "../_core/trpc";
 import { isSchemaBehind } from "../syllabus/availability";
 import { assertCoachEnabled, coachEnabledFor } from "./availability";
 import * as materials from "./materials";
@@ -10,6 +10,8 @@ import * as packs from "./packs";
 import * as practice from "./practice";
 import * as review from "./review";
 import * as tutor from "./tutor";
+import * as shares from "./shares";
+import * as retention from "./retention";
 import { inExam } from "./examLock";
 import { coachLimits, coachQuota } from "./quota";
 import * as store from "./store";
@@ -176,6 +178,19 @@ const memoryRouter = router({
   forgetAll: coachConsentedProcedure.use(rateLimit("coachSettings", 20, MINUTE)).mutation(({ ctx }) => review.forgetAll(ctx.user.id)),
 });
 
+const shareTarget = z.object({ teacherId: z.number().int().positive(), workspaceId: z.string().min(1).max(32) });
+
+/** "Müəllimlə paylaş": off by default; one material, one teacher, revocable. */
+const sharesRouter = router({
+  targets: coachConsentedProcedure.query(({ ctx }) => shares.shareTargets(ctx.user.id)),
+  list: coachConsentedProcedure.input(idInput).query(({ ctx, input }) => shares.materialShares(ctx.user.id, input.id)),
+  share: coachConsentedProcedure
+    .use(rateLimit("coachShare", 20, MINUTE))
+    .input(idInput.extend({ target: shareTarget }))
+    .mutation(({ ctx, input }) => shares.shareMaterial(ctx.user.id, input.id, input.target)),
+  revoke: coachConsentedProcedure.input(z.object({ shareId: z.string().min(1).max(32) })).mutation(({ ctx, input }) => shares.revokeShare(ctx.user.id, input.shareId)),
+});
+
 export const studentCoachRouter = router({
   enabled: studentProcedure.query(async ({ ctx }) => ({ enabled: await coachEnabledFor(ctx.user.id) })),
   status: coachProcedure.query(async ({ ctx }) => ({
@@ -194,4 +209,32 @@ export const studentCoachRouter = router({
   review: reviewRouter,
   memory: memoryRouter,
   tutor: tutorRouter,
+  shares: sharesRouter,
+  /** Every coach row and file of the student; works with the flag off too, so data can always be removed. */
+  deleteAllData: studentProcedure
+    .use(rateLimit("coachSettings", 20, MINUTE))
+    .input(z.object({ confirm: z.literal(true) }))
+    .mutation(async ({ ctx }) => {
+      try {
+        return await retention.deleteAllCoachData(ctx.user.id);
+      } catch (error) {
+        if (isSchemaBehind(error)) return { ok: true as const, materials: 0 };
+        throw error;
+      }
+    }),
+});
+
+/** Teacher side: materials students shared with them, read-only (never quizzes, chat or mastery). */
+export const teacherCoachSharesRouter = router({
+  list: teacherProcedure.query(async ({ ctx }) => {
+    try {
+      return await shares.sharedWithTeacher(ctx.user.id, ctx.workspace.id);
+    } catch (error) {
+      if (isSchemaBehind(error)) return [];
+      throw error;
+    }
+  }),
+  get: teacherProcedure
+    .input(z.object({ shareId: z.string().min(1).max(32), locale: localeInput }))
+    .query(({ ctx, input }) => shares.sharedView(ctx.user.id, ctx.workspace.id, input.shareId, localeOf(input.locale, ctx.user))),
 });

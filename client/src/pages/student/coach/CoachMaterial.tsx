@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { Link, useLocation, useParams } from "wouter";
 import { CoachShell } from "./CoachShell";
 import { inProgress, MasteryBadge, StageBadge, StageSteps } from "./materialUi";
+import { SharePanel } from "./SharePanel";
 
 export type CoachMaterialDetail = RouterOutputs["student"]["coach"]["materials"]["get"];
 
@@ -183,6 +184,7 @@ function MaterialReady({ m }: { m: CoachMaterialDetail }) {
           ))}
         </ol>
       </Panel>
+      <SharePanel materialId={m.id} />
     </>
   );
 }

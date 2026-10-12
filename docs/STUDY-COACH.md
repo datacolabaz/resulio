@@ -78,6 +78,7 @@ calls never count against a teacher.
 | `coach_topic_mastery` | 0055 | per (student, topic): mastery, evidence of the last 10 quizzes, review schedule |
 | `coach_mistakes` | 0055 | wrong answers with a cause, closed when the topic is answered well again |
 | `coach_threads`, `coach_messages` | 0056 | tutor conversations per topic (deleted after 90 days) |
+| `coach_shares` | 0057 | a material the student shared with one teacher workspace ("Müəllimlə paylaş") |
 
 ## Materials
 
@@ -220,6 +221,52 @@ small PDF of just those pages). The model transcribes verbatim in the page's own
   generated content of that topic; "Mətni yoxladım" clears the warning.
 - Providers that cannot read PDFs (`COACH_PDF_MODE=text`, or a non-Gemini/OpenAI endpoint) skip
   OCR of PDF pages; images still go through OCR.
+
+## Sharing with a teacher ("Müəllimlə paylaş")
+
+Off by default; personal materials are visible only to the student. On a `READY` material the
+student picks a teacher from the workspaces of their **active** groups (`activeGroupIdsOfStudent`;
+one entry per teacher workspace) and shares. One row per (material, teacher); the student can
+revoke at any time, and deleting the material deletes its shares.
+
+- The teacher sees, read-only, under `/teacher/coach-shares` (nav item shown only when something is
+  shared): the file (download is allowed through `downloadAccess` only while a share exists), the
+  topic list and summaries the student already generated — preferring the teacher's language,
+  otherwise any language. No generation happens on the teacher's side, and quizzes, answers,
+  mastery, mistakes, tutor conversations and AI memory are never shown.
+- Shares are tied to the workspace that was chosen; if the student leaves the group the share stays
+  until revoked and is labelled as a former teacher on the student side.
+- Coach code never writes teacher tables; `coach_shares` is a side table read by
+  `teacher.coachShares.list/get` scoped to `ctx.workspace`.
+
+## Retention and "delete all my data"
+
+A job in the API process checks hourly and runs once per Baku day (skipped while migrations are
+behind):
+
+| What | Deleted after |
+| --- | --- |
+| tutor messages (and conversations left empty) | 90 days |
+| `FAILED` materials | 7 days |
+| materials not opened (or created, if never opened) | 365 days |
+| `coach_events` | 400 days |
+
+Materials are removed through the same path as a manual delete (file, topics, chunks, artifacts,
+quizzes, mastery, mistakes, conversations, shares).
+
+"Bütün məlumatlarımı sil" in the coach settings (`coach.deleteAllData`, needs `{confirm: true}`)
+removes every coach row and file of the student, including AI memory, shares and settings (the
+privacy notice is shown again). Cap events of the current month (`OCR`, `UPLOAD`, `QUIZ_STARTED`,
+`TUTOR_ASKED`, `PRO_GRADE`) are kept with their references cleared so quotas cannot be reset by
+deleting data. `ai_request_logs` rows (token accounting) are not touched.
+
+## Admin settings
+
+`/admin/settings` → "AI Study Coach": monthly token quota, daily AI actions, every `coach.limits.*`
+cap and the model per role (`coach.models`). Saved via `admin.ai.setCoachSettings` (permission
+`ai.manage`) into `platform_settings`; empty = default, `0` = unlimited; cached for 30 seconds.
+Who can use the coach is the `study_coach` feature flag (off by default; pilot through
+`STUDY_COACH_ENABLED_USERS` / `STUDY_COACH_ENABLED_WORKSPACES`, then enable for all students).
 
 All migrations use `CREATE TABLE IF NOT EXISTS`; every identifier (tables, columns, indexes,
 generated primary-key names) is at most 64 characters — `pnpm db:verify` and

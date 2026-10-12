@@ -301,6 +301,24 @@ export const coachMessages = mysqlTable(
 );
 export type CoachMessageRow = typeof coachMessages.$inferSelect;
 
+/**
+ * "Müəllimlə paylaş": a material the student shared read-only with one teacher (the owner of a
+ * workspace whose group they are in). Revoking deletes the row.
+ */
+export const coachShares = mysqlTable(
+  "coach_shares",
+  {
+    id: id("id").primaryKey(),
+    studentId: int("studentId").notNull(),
+    materialId: id("materialId").notNull(),
+    teacherId: int("teacherId").notNull(),
+    workspaceId: id("workspaceId").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex("coach_shares_material_teacher_uq").on(t.materialId, t.teacherId), index("coach_shares_teacher_idx").on(t.teacherId, t.workspaceId), index("coach_shares_student_idx").on(t.studentId)],
+);
+export type CoachShareRow = typeof coachShares.$inferSelect;
+
 export type CoachMaterialRow = typeof coachMaterials.$inferSelect;
 export type CoachTopicRow = typeof coachTopics.$inferSelect;
 export type CoachChunkRow = typeof coachChunks.$inferSelect;

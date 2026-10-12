@@ -5,6 +5,8 @@ import { errorText } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import { RECALL_MODES, type RecallMode } from "@shared/coach";
 import { toast } from "sonner";
+import { useLocation } from "wouter";
+import { Button } from "@/components/ui/button";
 import { CoachLibrary } from "./CoachLibrary";
 import { MemorySection } from "./CoachReview";
 import { CoachShell, PrivacyNotice, QuotaLine, type CoachStatus } from "./CoachShell";
@@ -34,9 +36,32 @@ export function CoachSettingsPage() {
           <CoachPreferences status={status} />
           <MemorySection />
           <PrivacyNotice accepted />
+          <DeleteAllData />
         </>
       )}
     </CoachShell>
+  );
+}
+
+/** "Bütün məlumatlarımı sil": materials, files, summaries, quizzes, chats, memory and shares. */
+function DeleteAllData() {
+  const utils = trpc.useUtils();
+  const [, nav] = useLocation();
+  const del = trpc.student.coach.deleteAllData.useMutation({
+    onSuccess: () => {
+      void utils.student.coach.invalidate();
+      toast.success(t("coach.deleteAll.done"));
+      nav("/student/coach");
+    },
+    onError: (e) => toast.error(errorText(e)),
+  });
+  return (
+    <Panel title={t("coach.deleteAll.title")}>
+      <p className="text-sm text-muted-foreground">{t("coach.deleteAll.body")}</p>
+      <Button variant="destructive" size="sm" className="mt-3" disabled={del.isPending} onClick={() => window.confirm(t("coach.deleteAll.confirm")) && del.mutate({ confirm: true })}>
+        {t("coach.deleteAll.action")}
+      </Button>
+    </Panel>
   );
 }
 
