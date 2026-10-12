@@ -56,6 +56,40 @@ export type SummaryFormat = (typeof SUMMARY_FORMATS)[number];
 export const GROUNDING = ["MATERIAL", "MIXED", "GENERAL", "NOT_FOUND"] as const;
 export type Grounding = (typeof GROUNDING)[number];
 
+/** A verified citation: the quote is copied verbatim from the chunk (original language). */
+export interface Cite {
+  chunkId: string;
+  page: number;
+  quote: string;
+}
+export interface PackPoint {
+  text: string;
+  cites: Cite[];
+  /** MATERIAL when at least one citation was verified; GENERAL = the model's own knowledge. */
+  grounding: "MATERIAL" | "GENERAL";
+}
+export interface PackSection {
+  heading: string;
+  points: PackPoint[];
+}
+export interface PackConcept {
+  term: string;
+  definition: string;
+  cites: Cite[];
+  grounding: "MATERIAL" | "GENERAL";
+}
+/** One generated artifact. Summaries use `sections` (+ `questions`/`pitfalls` for EXAM); CONCEPTS uses `concepts`. */
+export interface ArtifactContent {
+  title: string;
+  sections: PackSection[];
+  concepts?: PackConcept[];
+  /** EXAM: likely exam questions. */
+  questions?: string[];
+  /** EXAM: common mistakes. */
+  pitfalls?: string[];
+}
+export const SUMMARY_KIND: Record<SummaryFormat, ArtifactKind> = { SHORT: "SUMMARY_SHORT", DETAILED: "SUMMARY_DETAILED", EXAM: "SUMMARY_EXAM" };
+
 export const QUIZ_FORMATS = ["MCQ", "TRUE_FALSE", "OPEN", "WRITTEN", "CALCULATION", "MATCHING", "MIXED"] as const;
 export type QuizFormat = (typeof QUIZ_FORMATS)[number];
 export const QUIZ_COUNTS = [5, 10, 15] as const;

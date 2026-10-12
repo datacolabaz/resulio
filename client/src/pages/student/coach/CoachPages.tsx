@@ -10,6 +10,7 @@ import { CoachShell, PrivacyNotice, QuotaLine, type CoachStatus } from "./CoachS
 
 export { CoachMaterialPage } from "./CoachMaterial";
 export { CoachTextEditorPage } from "./CoachTextEditor";
+export { CoachTopicPage } from "./CoachTopic";
 
 const selectClass = "mt-1 w-full max-w-xs rounded-lg border border-input bg-card px-3 py-2 text-foreground";
 

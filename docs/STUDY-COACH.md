@@ -73,6 +73,7 @@ calls never count against a teacher.
 | `coach_materials` | 0053 | the student's materials, processing status, OCR summary |
 | `coach_topics` | 0053 | topics found in a material (consecutive chunk ranges) |
 | `coach_chunks` | 0053 | text passages (pages → chunks), the unit of retrieval and citation |
+| `coach_artifacts` | 0054 | generated summaries/concepts per (topic, kind, app language) |
 
 ## Materials
 
@@ -94,6 +95,22 @@ as interrupted and can be retried):
 
 `FAILED` shows the reason (`NO_TEXT`, `TOO_MANY_PAGES`, `UNREADABLE`, …) with a retry button.
 Deleting a material removes its chunks, topics, generated content and the file (also from R2).
+
+## Learn ("Öyrən")
+
+Per topic (`/student/coach/t/:topicId`), three formats: **Qısa** (summary + key concepts),
+**Ətraflı** and **İmtahan üçün** (+ likely questions and common mistakes).
+
+- Context: the topic's chunks (all of them up to 24 000 characters, else the best BM25 matches in
+  reading order — `retrieval.ts`). Chunks are labelled `C1…Cn` in the prompt.
+- Citations: each point carries quotes; `verifyCites` keeps a quote only if it is really in the
+  cited chunk (token match ≥ 85 % after folding case, diacritics and punctuation). A point without
+  a verified quote is labelled "general knowledge" in the UI. Quotes are shown verbatim.
+- Cache: `coach_artifacts` keyed by (topic, kind, locale); `inputHash` = prompt revision + kind +
+  locale + chunk ids and texts. A missing or stale pack is generated once automatically when the
+  tab opens (so switching the app language generates that language once); "Yenidən hazırla"
+  regenerates. Students can edit a point or definition; an edited pack is kept (flagged) when the
+  source text changes, an unedited one is dropped.
 
 ## OCR (scanned PDFs and images)
 

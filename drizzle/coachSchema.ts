@@ -1,5 +1,16 @@
-import { bigint, boolean, index, int, json, mediumtext, mysqlTable, timestamp, varchar } from "drizzle-orm/mysql-core";
-import type { ChunkMethod, CoachEventType, CoachMaterialStatus, MaterialError, MaterialGoal, MaterialSource, RecallMode } from "../shared/coach";
+import { bigint, boolean, index, int, json, mediumtext, mysqlTable, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
+import type {
+  ArtifactContent,
+  ArtifactKind,
+  ChunkMethod,
+  CoachEventType,
+  CoachLocale,
+  CoachMaterialStatus,
+  MaterialError,
+  MaterialGoal,
+  MaterialSource,
+  RecallMode,
+} from "../shared/coach";
 
 /**
  * AI Study Coach side tables (docs/STUDY-COACH.md). Student-private: no teacher table is read for
@@ -109,6 +120,33 @@ export const coachChunks = mysqlTable(
   },
   (t) => [index("coach_chunks_material_idx").on(t.materialId, t.ord), index("coach_chunks_topic_idx").on(t.topicId)],
 );
+
+/**
+ * Generated study content for one topic: a summary pack or the key concepts, one row per
+ * (topic, kind, app language). `inputHash` covers the source text, kind, language and prompt, so
+ * a corrected text or another language means the row is regenerated, never silently reused.
+ */
+export const coachArtifacts = mysqlTable(
+  "coach_artifacts",
+  {
+    id: id("id").primaryKey(),
+    materialId: id("materialId").notNull(),
+    topicId: id("topicId").notNull(),
+    studentId: int("studentId").notNull(),
+    kind: varchar("kind", { length: 20 }).$type<ArtifactKind>().notNull(),
+    locale: varchar("locale", { length: 2 }).$type<CoachLocale>().notNull(),
+    inputHash: varchar("inputHash", { length: 64 }).notNull(),
+    content: json("content").$type<ArtifactContent>().notNull(),
+    /** How many times it was generated or edited; shown as "updated" only. */
+    revision: int("revision").default(1).notNull(),
+    edited: boolean("edited").default(false).notNull(),
+    model: varchar("model", { length: 120 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [uniqueIndex("coach_artifacts_topic_kind_uq").on(t.topicId, t.kind, t.locale), index("coach_artifacts_material_idx").on(t.materialId)],
+);
+export type CoachArtifactRow = typeof coachArtifacts.$inferSelect;
 
 export type CoachMaterialRow = typeof coachMaterials.$inferSelect;
 export type CoachTopicRow = typeof coachTopics.$inferSelect;

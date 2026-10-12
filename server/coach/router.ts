@@ -1,10 +1,11 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { COACH_LOCALES, COACH_MAX_PASTE_CHARS, coachLocaleOf, MATERIAL_GOALS, RECALL_MODES, type CoachLocale } from "../../shared/coach";
+import { COACH_LOCALES, COACH_MAX_PASTE_CHARS, coachLocaleOf, MATERIAL_GOALS, RECALL_MODES, SUMMARY_FORMATS, type CoachLocale } from "../../shared/coach";
 import { rateLimit, router, studentProcedure } from "../_core/trpc";
 import { isSchemaBehind } from "../syllabus/availability";
 import { assertCoachEnabled, coachEnabledFor } from "./availability";
 import * as materials from "./materials";
+import * as packs from "./packs";
 import { coachLimits, coachQuota } from "./quota";
 import * as store from "./store";
 
@@ -68,6 +69,32 @@ const materialsRouter = router({
   markReviewed: coachConsentedProcedure.input(idInput).mutation(({ ctx, input }) => materials.markReviewed(ctx.user.id, input.id)),
 });
 
+const learnRouter = router({
+  topic: coachConsentedProcedure.input(z.object({ topicId: z.string().min(1).max(32) })).query(({ ctx, input }) => packs.topicDetail(ctx.user.id, input.topicId)),
+  pack: coachConsentedProcedure
+    .input(z.object({ topicId: z.string().min(1).max(32), format: z.enum(SUMMARY_FORMATS), locale: localeInput }))
+    .query(({ ctx, input }) => packs.getPack(ctx.user.id, input.topicId, input.format, localeOf(input.locale, ctx.user))),
+  generate: coachConsentedProcedure
+    .use(rateLimit("coachGenerate", 12, MINUTE))
+    .input(z.object({ topicId: z.string().min(1).max(32), format: z.enum(SUMMARY_FORMATS), locale: localeInput }))
+    .mutation(({ ctx, input }) => packs.generatePack(ctx.user.id, input.topicId, input.format, localeOf(input.locale, ctx.user))),
+  edit: coachConsentedProcedure
+    .use(rateLimit("coachEdit", 60, MINUTE))
+    .input(
+      z.object({
+        artifactId: z.string().min(1).max(32),
+        section: z.number().int().min(0).max(50).optional(),
+        point: z.number().int().min(0).max(50).optional(),
+        concept: z.number().int().min(0).max(50).optional(),
+        text: z.string().min(1).max(1000),
+      }),
+    )
+    .mutation(({ ctx, input }) => packs.editPack(ctx.user.id, input)),
+  cited: coachConsentedProcedure
+    .input(z.object({ chunkIds: z.array(z.string().min(1).max(32)).max(10) }))
+    .query(({ ctx, input }) => packs.citedChunks(ctx.user.id, input.chunkIds)),
+});
+
 export const studentCoachRouter = router({
   enabled: studentProcedure.query(async ({ ctx }) => ({ enabled: await coachEnabledFor(ctx.user.id) })),
   status: coachProcedure.query(async ({ ctx }) => ({
@@ -81,4 +108,5 @@ export const studentCoachRouter = router({
     .input(z.object({ recallMode: z.enum(RECALL_MODES).optional(), reminders: z.boolean().optional() }))
     .mutation(({ ctx, input }) => store.saveSettings(ctx.user.id, input)),
   materials: materialsRouter,
+  learn: learnRouter,
 });
