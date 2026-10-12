@@ -33,7 +33,7 @@ export function materialStage(status: CoachMaterialStatus): MaterialStage {
   return status;
 }
 
-export const MATERIAL_ERRORS = ["NO_TEXT", "TOO_MANY_PAGES", "UNREADABLE", "FILE_MISSING", "FILE_TYPE", "OCR_LIMIT", "AI_UNAVAILABLE", "AI_QUOTA", "INTERRUPTED", "INTERNAL"] as const;
+export const MATERIAL_ERRORS = ["NO_TEXT", "TOO_MANY_PAGES", "UNREADABLE", "FILE_MISSING", "FILE_TYPE", "OCR_LIMIT", "AI_LIMIT", "AI_UNAVAILABLE", "AI_QUOTA", "INTERRUPTED", "INTERNAL"] as const;
 export type MaterialError = (typeof MATERIAL_ERRORS)[number];
 
 /** Upload limits: the existing API upload path (8 MB), 150 pages, 300k characters of text. */
@@ -93,7 +93,12 @@ export const COACH_EVENT_TYPES = [
   "MISTAKE_FIXED",
   "PRO_GRADE",
   "SHARED",
+  /** Pages read by OCR; `meta.pages` counts against the monthly OCR cap (deleting a material does not refund it). */
+  "OCR",
 ] as const;
+
+/** OCR page quality (0-100) below this asks the student to check the recognised text. */
+export const OCR_LOW_QUALITY = 60;
 export type CoachEventType = (typeof COACH_EVENT_TYPES)[number];
 
 /** Free beta limits; every value can be changed in platform_settings (`coach.limits`, `coach.student*`). */

@@ -8,7 +8,7 @@ import { fileDownloadUrl } from "@/lib/uploadFile";
 import { Download, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { useLocation, useParams } from "wouter";
+import { Link, useLocation, useParams } from "wouter";
 import { CoachShell } from "./CoachShell";
 import { inProgress, StageBadge, StageSteps } from "./materialUi";
 
@@ -138,18 +138,48 @@ function MaterialProgress({ m }: { m: CoachMaterialDetail }) {
   );
 }
 
-function MaterialReady({ m }: { m: CoachMaterialDetail }) {
+function TextNotices({ m }: { m: CoachMaterialDetail }) {
   return (
-    <Panel title={t("coach.material.topics")}>
-      <ol className="space-y-2">
-        {m.topics.map((topic) => (
-          <li key={topic.id} className="flex items-baseline gap-3 rounded-lg border border-border px-3 py-2">
-            <span className="w-6 shrink-0 text-right text-xs text-muted-foreground">{topic.ord + 1}</span>
-            <span className="min-w-0 flex-1 break-words">{topic.title}</span>
-            <span className="shrink-0 text-xs text-muted-foreground">{topic.pageFrom === topic.pageTo ? t("coach.page", { page: topic.pageFrom }) : t("coach.pages", { from: topic.pageFrom, to: topic.pageTo })}</span>
-          </li>
-        ))}
-      </ol>
-    </Panel>
+    <>
+      {m.needsReview && (
+        <div role="status" className="space-y-2 rounded-2xl border border-warning/40 bg-warning-surface p-4 text-sm">
+          <p className="text-warning">{t("coach.ocr.lowQuality")}</p>
+          <Link href={`/student/coach/m/${m.id}/text`} className="font-medium text-link hover:underline">
+            {t("coach.text.open")}
+          </Link>
+        </div>
+      )}
+      {m.errorCode === "OCR_LIMIT" && (
+        <p role="status" className="rounded-2xl border border-warning/40 bg-warning-surface p-4 text-sm text-warning">{t("coach.ocr.skipped")}</p>
+      )}
+    </>
   );
 }
+
+function MaterialReady({ m }: { m: CoachMaterialDetail }) {
+  return (
+    <>
+      <TextNotices m={m} />
+      <Panel
+        title={t("coach.material.topics")}
+        action={
+          <Link href={`/student/coach/m/${m.id}/text`} className="text-sm text-link hover:underline">
+            {t("coach.text.link")}
+          </Link>
+        }
+      >
+        <ol className="space-y-2">
+          {m.topics.map((topic) => (
+            <li key={topic.id} className="flex items-baseline gap-3 rounded-lg border border-border px-3 py-2">
+              <span className="w-6 shrink-0 text-right text-xs text-muted-foreground">{topic.ord + 1}</span>
+              <span className="min-w-0 flex-1 break-words">{topic.title}</span>
+              <span className="shrink-0 text-xs text-muted-foreground">{pagesLabel(topic.pageFrom, topic.pageTo)}</span>
+            </li>
+          ))}
+        </ol>
+      </Panel>
+    </>
+  );
+}
+
+export const pagesLabel = (from: number, to: number) => (from === to ? t("coach.page", { page: from }) : t("coach.pages", { from, to }));

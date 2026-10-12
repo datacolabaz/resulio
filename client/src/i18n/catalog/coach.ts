@@ -166,4 +166,31 @@ export const coach = {
     "В отсканированных PDF и изображениях распознаётся только печатный текст. Рукописный текст, сложные формулы, таблицы и многоколоночные страницы могут распознаваться с ошибками.",
   ],
   "coach.ocr.checkBadge": ["Mətni yoxlayın", "Check the text", "Проверьте текст"],
+  "coach.ocr.lowQuality": [
+    "Mətni tam tanımaq mümkün olmadı. Daha aydın fayl yükləyin və ya tanınmış mətni yoxlayın.",
+    "The text could not be fully recognised. Upload a clearer file or check the recognised text.",
+    "Не удалось полностью распознать текст. Загрузите более чёткий файл или проверьте распознанный текст.",
+  ],
+  "coach.ocr.skipped": [
+    "Bəzi skan edilmiş səhifələr mətn tanıma limiti səbəbindən oxunmadı. Material oxunan səhifələr əsasında hazırlanıb.",
+    "Some scanned pages were not read because of the text recognition limit. The material is based on the pages that were read.",
+    "Некоторые отсканированные страницы не были прочитаны из-за лимита распознавания. Материал подготовлен по прочитанным страницам.",
+  ],
+  "coach.materialError.AI_LIMIT": ["AI limitiniz dolub. Limit yenilənəndən sonra yenidən cəhd edin.", "Your AI allowance is used up. Try again after it renews.", "Ваш лимит ИИ исчерпан. Попробуйте снова после его обновления."],
+
+  "coach.text.title": ["Materialın mətni", "Material text", "Текст материала"],
+  "coach.text.intro": [
+    "Faylınızdan çıxarılan mətn. Səhvləri düzəldin: xülasə və suallar düzəldilmiş mətn əsasında yenidən hazırlanacaq.",
+    "The text taken from your file. Fix any mistakes: summaries and questions will be prepared again from the corrected text.",
+    "Текст, извлечённый из вашего файла. Исправьте ошибки: конспекты и вопросы будут подготовлены заново по исправленному тексту.",
+  ],
+  "coach.text.link": ["Mətni gör və düzəlt", "View and fix the text", "Посмотреть и исправить текст"],
+  "coach.text.open": ["Tanınmış mətni yoxla", "Check the recognised text", "Проверить распознанный текст"],
+  "coach.text.onlyLow": ["Yalnız yoxlanmalı hissələr ({count})", "Only parts to check ({count})", "Только части для проверки ({count})"],
+  "coach.text.reviewed": ["Mətni yoxladım", "I have checked the text", "Я проверил(а) текст"],
+  "coach.text.reviewedDone": ["Xəbərdarlıq götürüldü.", "The warning was removed.", "Предупреждение снято."],
+  "coach.text.saved": ["Mətn yadda saxlanıldı.", "Text saved.", "Текст сохранён."],
+  "coach.text.ocrBadge": ["Tanınmış mətn", "Recognised text", "Распознанный текст"],
+  "coach.text.lowBadge": ["Yoxlayın", "Check this", "Проверьте"],
+  "coach.text.editedBadge": ["Düzəldilib", "Corrected", "Исправлено"],
 } as const satisfies Record<string, Entry>;

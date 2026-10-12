@@ -15,8 +15,9 @@ import { AppError } from "../modules/errors";
 import { deleteFile, extensionOf, fileBytes, fileRow, saveFile, ALLOWED_FILE_TYPES } from "../modules/files";
 import { generateStructured, withCoachAi } from "./ai";
 import { chunkPages, normalizeText, titleFromText, type DraftChunk, type PageText } from "./chunker";
-import { extractSource, IngestError } from "./extract";
+import { IngestError } from "./extract";
 import { coachModels } from "./models";
+import { readPagesWithOcr } from "./ocr";
 import { assertCoachAiAllowed, assertDailyCap, coachLimits } from "./quota";
 import { fallbackTopics, normalizeTopics, segmentJsonSchema, segmentMessages, segmentSchema, type DraftTopic } from "./segment";
 import { logEvent } from "./store";
@@ -206,6 +207,50 @@ export async function deleteMaterial(studentId: number, id: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Recognised text: review and corrections
+// ---------------------------------------------------------------------------
+
+export const CHUNK_EDIT_MAX_CHARS = 20_000;
+
+export async function materialChunks(studentId: number, id: string) {
+  const m = await ownedMaterial(studentId, id);
+  const rows = await requireDb().select().from(coachChunks).where(eq(coachChunks.materialId, id)).orderBy(asc(coachChunks.ord));
+  return {
+    material: materialView(m),
+    chunks: rows.map((c) => ({ id: c.id, ord: c.ord, topicId: c.topicId, pageFrom: c.pageFrom, pageTo: c.pageTo, heading: c.heading, text: c.text, method: c.method, quality: c.quality, edited: c.edited })),
+  };
+}
+
+/** Hooks run after chunk text changed (generated content made from the old text is dropped). */
+const textChangeHooks: ((materialId: string, topicIds: string[]) => Promise<void>)[] = [];
+export function onMaterialTextChange(fn: (materialId: string, topicIds: string[]) => Promise<void>) {
+  textChangeHooks.push(fn);
+}
+
+export async function updateChunk(studentId: number, materialId: string, chunkId: string, text: string) {
+  const m = await ownedMaterial(studentId, materialId);
+  if (m.status !== "READY") throw new AppError("COACH_NOT_READY");
+  const clean = normalizeText(text);
+  if (!clean) throw new AppError("COACH_NOT_ENOUGH_CONTENT");
+  if (clean.length > CHUNK_EDIT_MAX_CHARS) throw new AppError("FILE_TOO_LARGE");
+  const db = requireDb();
+  const [chunk] = await db.select().from(coachChunks).where(and(eq(coachChunks.id, chunkId), eq(coachChunks.materialId, materialId))).limit(1);
+  if (!chunk) throw new AppError("NOT_FOUND");
+  if (chunk.text === clean) return { ok: true as const, changed: false };
+  await db.update(coachChunks).set({ text: clean, edited: true }).where(eq(coachChunks.id, chunkId));
+  await db.update(coachMaterials).set({ textRevision: m.textRevision + 1, charCount: Math.max(0, m.charCount - chunk.text.length + clean.length) }).where(eq(coachMaterials.id, materialId));
+  for (const hook of textChangeHooks) await hook(materialId, chunk.topicId ? [chunk.topicId] : []);
+  return { ok: true as const, changed: true };
+}
+
+/** The student checked the recognised text: the warning goes away. */
+export async function markReviewed(studentId: number, materialId: string) {
+  await ownedMaterial(studentId, materialId);
+  await requireDb().update(coachMaterials).set({ needsReview: false }).where(eq(coachMaterials.id, materialId));
+  return { ok: true as const };
+}
+
+// ---------------------------------------------------------------------------
 // Processing run
 // ---------------------------------------------------------------------------
 
@@ -229,22 +274,28 @@ async function progress(materialId: string, runId: string, patch: Partial<CoachM
 }
 const finish = progress;
 
-/** Reads the pages of a material; OCR of scanned pages and images is plugged in here (ocrPages). */
+/** Reads the pages of a material: text layers directly, scanned pages and images through OCR (ocr.ts). */
 export interface PageReader {
-  (input: { material: CoachMaterialRow; bytes: Buffer; locale: CoachLocale }): Promise<{ pages: PageText[]; pageCount: number; ocrPages: number; ocrScore: number | null; needsReview: boolean }>;
+  (input: { material: CoachMaterialRow; bytes: Buffer; locale: CoachLocale }): Promise<{
+    pages: PageText[];
+    pageCount: number;
+    ocrPages: number;
+    ocrScore: number | null;
+    needsReview: boolean;
+    /** Scanned pages left unread because of the OCR caps. */
+    ocrSkipped: number;
+  }>;
 }
 
-export const readPagesDirect: PageReader = async ({ material, bytes }) => {
-  const source = await extractSource(material.fileName ?? "", bytes);
-  if (source.kind === "image") throw new IngestError("NO_TEXT");
-  const scanned = new Set(source.scanned);
-  const pages = source.texts.flatMap((text, i) => (scanned.has(i + 1) ? [] : [{ page: i + 1, text, method: "TEXT" as const, quality: null }]));
-  return { pages, pageCount: source.texts.length, ocrPages: 0, ocrScore: null, needsReview: false };
-};
-
-let pageReader: PageReader = readPagesDirect;
-export function setPageReader(reader: PageReader) {
-  pageReader = reader;
+/** Why a run stopped, as the student sees it. */
+export function materialErrorOf(error: unknown): MaterialError {
+  if (error instanceof IngestError) return error.code;
+  if (error instanceof AppError) {
+    if (error.code === "COACH_AI_BUSY") return "AI_QUOTA";
+    if (error.code === "COACH_MONTHLY_LIMIT" || error.code === "COACH_DAILY_LIMIT") return "AI_LIMIT";
+    if (error.code === "AI_UNAVAILABLE") return "AI_UNAVAILABLE";
+  }
+  return "UNREADABLE";
 }
 
 /** Keeps whole pages up to the character cap. */
@@ -288,9 +339,9 @@ export async function runMaterial(materialId: string, runId: string, locale: Coa
   }
   let read;
   try {
-    read = await pageReader({ material, bytes: await fileBytes(file), locale });
+    read = await readPagesWithOcr({ material, bytes: await fileBytes(file), locale });
   } catch (error) {
-    const code: MaterialError = error instanceof IngestError ? error.code : error instanceof AppError && error.code === "COACH_AI_BUSY" ? "AI_QUOTA" : "UNREADABLE";
+    const code = materialErrorOf(error);
     if (!(error instanceof IngestError)) console.warn("[coach] extraction failed", materialId, error instanceof Error ? error.message : error);
     await finish(materialId, runId, { status: "FAILED", errorCode: code });
     return;
@@ -319,7 +370,7 @@ export async function runMaterial(materialId: string, runId: string, locale: Coa
     for (let i = 0; i < rows.length; i += 100) await tx.insert(coachChunks).values(rows.slice(i, i + 100));
     await tx
       .update(coachMaterials)
-      .set({ status: "READY", errorCode: null, ocrScore: read.ocrScore, needsReview: read.needsReview, textRevision: material.textRevision + 1 })
+      .set({ status: "READY", errorCode: read.ocrSkipped > 0 ? "OCR_LIMIT" : null, ocrScore: read.ocrScore, needsReview: read.needsReview, textRevision: material.textRevision + 1 })
       .where(eq(coachMaterials.id, materialId));
     return true;
   });

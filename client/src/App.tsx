@@ -57,6 +57,7 @@ const PublicSyllabusPage = lazyPage(() => import("@/pages/PublicSyllabusPage"));
 const StudentGrowthPage = lazyPage(() => import("@/pages/student/StudentGrowth").then((m) => ({ default: m.StudentGrowthPage })));
 const CoachLibraryPage = lazyPage(() => import("@/pages/student/coach/CoachPages").then((m) => ({ default: m.CoachLibraryPage })));
 const CoachMaterialPage = lazyPage(() => import("@/pages/student/coach/CoachPages").then((m) => ({ default: m.CoachMaterialPage })));
+const CoachTextEditorPage = lazyPage(() => import("@/pages/student/coach/CoachPages").then((m) => ({ default: m.CoachTextEditorPage })));
 const CoachSettingsPage = lazyPage(() => import("@/pages/student/coach/CoachPages").then((m) => ({ default: m.CoachSettingsPage })));
 const GrowthReportPage = lazyPage(() => import("@/pages/GrowthReport").then((m) => ({ default: m.GrowthReportPage })));
 const GrowthPage = lazyPage(() => import("@/pages/teacher/growth/GrowthPage").then((m) => ({ default: m.GrowthPage })));
@@ -210,6 +211,7 @@ function Router() {
       <Route path="/student/growth">{student(<StudentGrowthPage />)}</Route>
       <Route path="/student/coach">{student(<CoachLibraryPage />)}</Route>
       <Route path="/student/coach/settings">{student(<CoachSettingsPage />)}</Route>
+      <Route path="/student/coach/m/:id/text">{student(<CoachTextEditorPage />)}</Route>
       <Route path="/student/coach/m/:id">{student(<CoachMaterialPage />)}</Route>
       <Route path="/student/syllabus">{student(<MySyllabi />)}</Route>
       <Route path="/student/syllabus/:id/lessons/:lessonId">{student(<LessonPlayer />)}</Route>

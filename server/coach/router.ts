@@ -60,6 +60,12 @@ const materialsRouter = router({
     .input(idInput.extend({ title: z.string().min(1).max(200) }))
     .mutation(({ ctx, input }) => materials.renameMaterial(ctx.user.id, input.id, input.title)),
   remove: coachConsentedProcedure.input(idInput).mutation(({ ctx, input }) => materials.deleteMaterial(ctx.user.id, input.id)),
+  chunks: coachConsentedProcedure.input(idInput).query(({ ctx, input }) => materials.materialChunks(ctx.user.id, input.id)),
+  updateChunk: coachConsentedProcedure
+    .use(rateLimit("coachEdit", 60, MINUTE))
+    .input(idInput.extend({ chunkId: z.string().min(1).max(32), text: z.string().min(1).max(materials.CHUNK_EDIT_MAX_CHARS + 2000) }))
+    .mutation(({ ctx, input }) => materials.updateChunk(ctx.user.id, input.id, input.chunkId, input.text)),
+  markReviewed: coachConsentedProcedure.input(idInput).mutation(({ ctx, input }) => materials.markReviewed(ctx.user.id, input.id)),
 });
 
 export const studentCoachRouter = router({
