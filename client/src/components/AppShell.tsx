@@ -39,6 +39,7 @@ import {
   Radar,
   Settings,
   Shield,
+  Sparkles,
   Sun,
   TrendingUp,
   Trophy,
@@ -87,6 +88,7 @@ const STUDENT_NAV: typeof TEACHER_NAV = [
   { href: "/student/results", key: "nav.myResults", icon: ListChecks },
   { href: "/student/progress", key: "nav.myProgress", icon: TrendingUp },
   { href: "/student/growth", key: "nav.myGrowth", icon: Radar },
+  { href: "/student/coach", key: "nav.coach", icon: Sparkles },
   { href: "/student/profile", key: "nav.myProfile", icon: Trophy },
   { href: "/partner", key: "nav.referral", icon: Handshake },
   { href: "/settings", key: "nav.settings", icon: Settings },
@@ -205,8 +207,12 @@ export function AppShell({
   );
   const studentSyllabus = trpc.student.syllabus.enabled.useQuery(undefined, { enabled: area === "learning", staleTime: 5 * 60_000 });
   const studentGrowth = trpc.student.growth.enabled.useQuery(undefined, { enabled: area === "learning", staleTime: 5 * 60_000 });
+  const studentCoach = trpc.student.coach.enabled.useQuery(undefined, { enabled: area === "learning", staleTime: 5 * 60_000 });
   const studentNav = STUDENT_NAV.filter(
-    (i) => (i.href !== "/student/syllabus" || studentSyllabus.data?.enabled) && (i.href !== "/student/growth" || studentGrowth.data?.enabled),
+    (i) =>
+      (i.href !== "/student/syllabus" || studentSyllabus.data?.enabled) &&
+      (i.href !== "/student/growth" || studentGrowth.data?.enabled) &&
+      (i.href !== "/student/coach" || studentCoach.data?.enabled),
   );
   const drawerOpen = open && !desktop;
 

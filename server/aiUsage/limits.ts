@@ -1,5 +1,5 @@
-import { and, eq, gte, sql } from "drizzle-orm";
-import { AI_LIMIT_WARN_RATIO, effectiveLimit, nextPeriodStart, periodStart, type LimitValue } from "../../shared/aiUsage";
+import { and, eq, gte, like, notLike, sql } from "drizzle-orm";
+import { AI_LIMIT_WARN_RATIO, COACH_FEATURE_PREFIX, effectiveLimit, nextPeriodStart, periodStart, type LimitValue } from "../../shared/aiUsage";
 import { aiRequestLogs, aiTeacherLimits } from "../../drizzle/schema";
 import { requireDb } from "../db";
 import { AppError } from "../modules/errors";
@@ -69,17 +69,31 @@ async function overrideOf(userId: number): Promise<LimitOverride | null> {
   return row ? { monthlyTokenQuota: row.monthlyTokenQuota, dailyRequestCap: row.dailyRequestCap, usageResetAt: row.usageResetAt } : null;
 }
 
-export async function usageSince(userId: number, from: { month: Date; day: Date }): Promise<TeacherUsage> {
+/**
+ * Who pays: a teacher's quota counts every feature except the AI Study Coach, a student's coach
+ * quota counts only coach features (server/coach/quota.ts), so neither can use up the other.
+ */
+export type QuotaAudience = "teacher" | "coach";
+
+const audienceFilter = (audience: QuotaAudience) =>
+  audience === "coach" ? like(aiRequestLogs.feature, `${COACH_FEATURE_PREFIX}%`) : notLike(aiRequestLogs.feature, `${COACH_FEATURE_PREFIX}%`);
+
+export async function usageSince(userId: number, from: { month: Date; day: Date }, audience: QuotaAudience = "teacher"): Promise<TeacherUsage> {
   const db = requireDb();
   const [month] = await db
     .select({ tokens: sql<number>`coalesce(sum(${aiRequestLogs.totalTokens}), 0)` })
     .from(aiRequestLogs)
-    .where(and(eq(aiRequestLogs.userId, userId), gte(aiRequestLogs.createdAt, from.month)));
+    .where(and(eq(aiRequestLogs.userId, userId), gte(aiRequestLogs.createdAt, from.month), audienceFilter(audience)));
   const [day] = await db
     .select({ ops: sql<number>`count(distinct ${aiRequestLogs.operationId})` })
     .from(aiRequestLogs)
-    .where(and(eq(aiRequestLogs.userId, userId), gte(aiRequestLogs.createdAt, from.day)));
+    .where(and(eq(aiRequestLogs.userId, userId), gte(aiRequestLogs.createdAt, from.day), audienceFilter(audience)));
   return { monthTokens: Number(month?.tokens ?? 0), dayOperations: Number(day?.ops ?? 0) };
+}
+
+/** A user's admin override row (shared by teacher and coach limits; null fields = the audience's default). */
+export async function limitOverrideOf(userId: number): Promise<LimitOverride | null> {
+  return overrideOf(userId);
 }
 
 async function teacherState(userId: number, now: Date) {

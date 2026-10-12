@@ -337,6 +337,13 @@
       "when": 1791662308107,
       "tag": "0051_growth_plan_xp",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "5",
+      "when": 1791793721527,
+      "tag": "0052_coach_core",
+      "breakpoints": true
     }
   ]
 }

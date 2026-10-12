@@ -2330,3 +2330,5 @@ export type Task = typeof tasks.$inferSelect;
 export type TaskSubmission = typeof taskSubmissions.$inferSelect;
 export type SubmissionAiReview = typeof submissionAiReviews.$inferSelect;
 export type SubmissionGrading = typeof submissionGrading.$inferSelect;
+
+export * from "./coachSchema";
