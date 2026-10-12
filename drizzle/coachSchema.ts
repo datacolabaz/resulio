@@ -12,6 +12,7 @@ import type {
   CoachLocale,
   CoachMaterialStatus,
   GradedBy,
+  Grounding,
   ItemFeedback,
   MaterialError,
   MaterialGoal,
@@ -20,6 +21,8 @@ import type {
   QuizFormat,
   QuizStatus,
   RecallMode,
+  TutorAction,
+  TutorMode,
 } from "../shared/coach";
 import type { MasteryStatus } from "../shared/growth";
 
@@ -260,6 +263,43 @@ export const coachMistakes = mysqlTable(
   (t) => [index("coach_mistakes_student_idx").on(t.studentId, t.fixedAt), index("coach_mistakes_topic_idx").on(t.topicId)],
 );
 export type CoachMistakeRow = typeof coachMistakes.$inferSelect;
+
+/** One tutor conversation, about one topic (or a whole material). */
+export const coachThreads = mysqlTable(
+  "coach_threads",
+  {
+    id: id("id").primaryKey(),
+    studentId: int("studentId").notNull(),
+    materialId: id("materialId").notNull(),
+    topicId: id("topicId"),
+    title: varchar("title", { length: 200 }).notNull(),
+    messageCount: int("messageCount").default(0).notNull(),
+    lastMessageAt: timestamp("lastMessageAt").defaultNow().notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [index("coach_threads_student_idx").on(t.studentId, t.lastMessageAt), index("coach_threads_material_idx").on(t.materialId), index("coach_threads_topic_idx").on(t.topicId)],
+);
+export type CoachThreadRow = typeof coachThreads.$inferSelect;
+
+export const coachMessages = mysqlTable(
+  "coach_messages",
+  {
+    id: id("id").primaryKey(),
+    threadId: id("threadId").notNull(),
+    studentId: int("studentId").notNull(),
+    role: varchar("role", { length: 12 }).$type<"USER" | "ASSISTANT">().notNull(),
+    action: varchar("action", { length: 12 }).$type<TutorAction>(),
+    mode: varchar("mode", { length: 12 }).$type<TutorMode>(),
+    content: text("content").notNull(),
+    cites: json("cites").$type<Cite[]>(),
+    grounding: varchar("grounding", { length: 12 }).$type<Grounding>(),
+    recall: varchar("recall", { length: 600 }),
+    model: varchar("model", { length: 100 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [index("coach_messages_thread_idx").on(t.threadId, t.createdAt), index("coach_messages_student_idx").on(t.studentId, t.createdAt)],
+);
+export type CoachMessageRow = typeof coachMessages.$inferSelect;
 
 export type CoachMaterialRow = typeof coachMaterials.$inferSelect;
 export type CoachTopicRow = typeof coachTopics.$inferSelect;
