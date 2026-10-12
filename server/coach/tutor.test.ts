@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { promptChunks } from "./packs";
-import { finalGrounding, internalQuestion, looksLikeProblem, shouldRecall, tutorMessages, tutorMode } from "./tutor";
+import { finalGrounding, internalQuestion, looksLikeProblem, normaliseTutorOutput, shouldRecall, tutorMessages, tutorMode, tutorSchema } from "./tutor";
 
 const { prompt } = promptChunks([{ id: "c1", ord: 0, pageFrom: 3, pageTo: 3, heading: "", text: "Nyutonun ikinci qanunu: F = m·a. Qüvvə kütlə ilə təcilin hasilinə bərabərdir." }]);
 
@@ -22,6 +22,29 @@ describe("tutor mode", () => {
     expect(tutorMode("SIMPLE", "", null)).toBe("EXPLAIN");
     expect(tutorMode("EXAMPLE", "", "HINT")).toBe("EXAMPLE");
     expect(tutorMode("QUIZ_ME", "", null)).toBe("CHECK");
+  });
+
+  it("treats a typed reply to a check question as the answer to evaluate", () => {
+    expect(tutorMode("ASK", "F = m·a", "CHECK")).toBe("EVALUATE");
+    expect(tutorMode("ASK", "Calculate 2 * 3 = ?", "CHECK")).toBe("EVALUATE");
+    expect(tutorMode("QUIZ_ME", "", "CHECK")).toBe("CHECK");
+    expect(tutorMode("SIMPLE", "", "CHECK")).toBe("EXPLAIN");
+    expect(tutorMode("ASK", "What next?", "EVALUATE")).toBe("CLARIFY");
+  });
+});
+
+describe("tutor output normalisation", () => {
+  it("keeps a well-formed reply as it is", () => {
+    expect(tutorSchema.parse({ reply: "Salam", grounding: "MIXED", cites: [{ chunk: "C1", quote: "q" }] })).toEqual({ reply: "Salam", grounding: "MIXED", cites: [{ chunk: "C1", quote: "q" }] });
+  });
+
+  it("coerces the shapes models return instead", () => {
+    expect(normaliseTutorOutput("Just text")).toEqual({ reply: "Just text", cites: [] });
+    expect(normaliseTutorOutput({ reply: ["a", { text: "b" }], grounding: "not found", cites: null })).toEqual({ reply: "a\nb", grounding: "NOT_FOUND", cites: [] });
+    expect(normaliseTutorOutput({ answer: "x", grounding: 3, cites: [{ chunkId: "C2", text: "q" }, { chunk: "C3" }, null, "C4"] })).toEqual({ reply: "x", grounding: undefined, cites: [{ chunk: "C2", quote: "q" }] });
+    expect(tutorSchema.safeParse({ reply: "" }).success).toBe(false);
+    expect(tutorSchema.safeParse([]).success).toBe(false);
+    expect(tutorSchema.safeParse(null).success).toBe(false);
   });
 
   it("phrases button presses for the model and keeps the student's words", () => {

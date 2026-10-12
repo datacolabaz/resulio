@@ -10,6 +10,7 @@ import * as materials from "./materials";
 import * as packs from "./packs";
 import * as practice from "./practice";
 import * as review from "./review";
+import * as ocrRetry from "./ocrRetry";
 import * as tutor from "./tutor";
 import * as shares from "./shares";
 import * as uploads from "./uploads";
@@ -69,7 +70,12 @@ const uploadsRouter = router({
 
 const materialsRouter = router({
   list: coachConsentedProcedure.query(({ ctx }) => materials.listMaterials(ctx.user.id)),
-  get: coachConsentedProcedure.input(idInput).query(({ ctx, input }) => materials.materialDetail(ctx.user.id, input.id)),
+  get: coachConsentedProcedure.input(idInput).query(async ({ ctx, input }) => {
+    const detail = await materials.materialDetail(ctx.user.id, input.id);
+    ocrRetry.resumeOcrRetry(detail.id, detail.pages);
+    return detail;
+  }),
+  retryPages: coachConsentedProcedure.input(idInput).mutation(({ ctx, input }) => ocrRetry.retryFailedPages(ctx.user.id, input.id)),
   createFromFile: coachConsentedProcedure
     .use(rateLimit("coachUpload", 10, MINUTE))
     .input(z.object({ fileId: z.string().min(1).max(32), title: titleInput, goal: z.enum(MATERIAL_GOALS).default("LEARN_ALL"), locale: localeInput }))

@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { coachChunks, coachMaterials, coachPageReports, coachTopics, type CoachMaterialRow } from "../../drizzle/schema";
 import {
@@ -18,14 +18,14 @@ import { uploadSigner } from "../fileStorage/r2";
 import { AppError } from "../modules/errors";
 import { deleteFile, extensionOf, fileBytes, fileRow, saveFile, ALLOWED_FILE_TYPES } from "../modules/files";
 import { createLimiter, generateStructured, withCoachAi } from "./ai";
-import { normalizeText, titleFromText, type DraftChunk, type PageText } from "./chunker";
+import { chunkPages, normalizeText, titleFromText, type DraftChunk, type PageText } from "./chunker";
 import { IngestError } from "./extract";
 import { coachModels } from "./models";
 import { readPagesWithOcr } from "./ocr";
 import { assertCoachAiAllowed, assertDailyCap, coachLimits } from "./quota";
-import { fallbackTopics, finishTopics, normalizeTopics, segmentJsonSchema, segmentMessages, segmentSchema, startsOf, type DraftTopic, type TopicPlan } from "./segment";
+import { fallbackTopics, finishTopics, normalizeTopics, segmentJsonSchema, segmentMessages, segmentSchema, startsOf, titleMessages, titlesJsonSchema, titlesSchema, type DraftTopic, type TopicPlan } from "./segment";
 import { logEvent } from "./store";
-import { casingHints, chunkMaterial, frontMatterOf, introTitle, tocStarts, type TocEntry } from "./structure";
+import { AI_TITLE_MAX_WORDS, casingHints, chunkMaterial, frontMatterOf, introTitle, tocStarts, topicWord, usableTitle, type TocEntry } from "./structure";
 
 /**
  * A student's own materials: upload/paste → extract pages → chunks → topics. Files live in `files`
@@ -128,7 +128,7 @@ export async function pageReportOf(materialId: string): Promise<MaterialPageRepo
   }
 }
 
-async function savePageReport(materialId: string, studentId: number, report: MaterialPageReport) {
+export async function savePageReport(materialId: string, studentId: number, report: MaterialPageReport) {
   try {
     await requireDb().insert(coachPageReports).values({ materialId, studentId, report }).onDuplicateKeyUpdate({ set: { report } });
   } catch (error) {
@@ -291,6 +291,80 @@ export async function updateChunk(studentId: number, materialId: string, chunkId
   return { ok: true as const, changed: true };
 }
 
+interface PlacedChunk {
+  chunk: DraftChunk;
+  ord: number;
+  topicId: string | null;
+}
+
+/**
+ * Where late pages go in a ready material: each new chunk right before the first chunk of a later
+ * page, in the topic whose pages cover it (else the topic before it, else the first). Existing
+ * chunks keep their order and shift by `by` from `fromOrd` on (applied from the last insertion
+ * point down); topics whose range a page falls outside of grow to include it.
+ */
+export function placeRecovered(
+  existing: { ord: number; pageFrom: number }[],
+  topics: { id: string; ord: number; pageFrom: number; pageTo: number }[],
+  fresh: DraftChunk[],
+): { shifts: { fromOrd: number; by: number }[]; inserts: PlacedChunk[]; ranges: { id: string; pageFrom: number; pageTo: number }[] } {
+  const sorted = [...existing].sort((a, b) => a.ord - b.ord);
+  const end = sorted.length ? sorted[sorted.length - 1].ord + 1 : 0;
+  const byTopic = [...topics].sort((a, b) => a.ord - b.ord);
+  const topicFor = (page: number) => byTopic.find((t) => page >= t.pageFrom && page <= t.pageTo) ?? [...byTopic].reverse().find((t) => t.pageFrom <= page) ?? byTopic[0] ?? null;
+  const groups = new Map<number, DraftChunk[]>();
+  for (const c of [...fresh].sort((a, b) => a.pageFrom - b.pageFrom)) {
+    const at = sorted.find((e) => e.pageFrom > c.pageFrom)?.ord ?? end;
+    groups.set(at, [...(groups.get(at) ?? []), c]);
+  }
+  const shifts: { fromOrd: number; by: number }[] = [];
+  const inserts: PlacedChunk[] = [];
+  let before = 0;
+  for (const at of [...groups.keys()].sort((a, b) => a - b)) {
+    const group = groups.get(at)!;
+    group.forEach((chunk, i) => inserts.push({ chunk, ord: at + before + i, topicId: topicFor(chunk.pageFrom)?.id ?? null }));
+    shifts.push({ fromOrd: at, by: group.length });
+    before += group.length;
+  }
+  const ranges = new Map<string, { id: string; pageFrom: number; pageTo: number }>();
+  for (const { chunk, topicId } of inserts) {
+    const t = topicId ? (ranges.get(topicId) ?? byTopic.find((x) => x.id === topicId)) : null;
+    if (t && (chunk.pageFrom < t.pageFrom || chunk.pageTo > t.pageTo)) ranges.set(t.id, { id: t.id, pageFrom: Math.min(t.pageFrom, chunk.pageFrom), pageTo: Math.max(t.pageTo, chunk.pageTo) });
+  }
+  return { shifts: shifts.reverse(), inserts, ranges: [...ranges.values()] };
+}
+
+/**
+ * Pages recognised after the material was ready (a background OCR retry) join it in place: topics,
+ * their ids and everything attached to them stay; content generated from the topics that got new
+ * text is dropped so it is made again with it. Returns the number of chunks added.
+ */
+export async function addRecoveredPages(materialId: string, pages: PageText[]): Promise<number> {
+  const fresh = chunkPages([...pages].sort((a, b) => a.page - b.page));
+  if (!fresh.length) return 0;
+  const db = requireDb();
+  const touched = await db.transaction(async (tx) => {
+    const [m] = await tx.select().from(coachMaterials).where(eq(coachMaterials.id, materialId)).for("update");
+    if (!m || m.status !== "READY") return null;
+    const existing = await tx.select({ ord: coachChunks.ord, pageFrom: coachChunks.pageFrom }).from(coachChunks).where(eq(coachChunks.materialId, materialId));
+    const topics = await tx.select({ id: coachTopics.id, ord: coachTopics.ord, pageFrom: coachTopics.pageFrom, pageTo: coachTopics.pageTo }).from(coachTopics).where(eq(coachTopics.materialId, materialId));
+    const plan = placeRecovered(existing, topics, fresh);
+    for (const s of plan.shifts) {
+      await tx.update(coachChunks).set({ ord: sql`${coachChunks.ord} + ${s.by}` }).where(and(eq(coachChunks.materialId, materialId), gte(coachChunks.ord, s.fromOrd)));
+    }
+    await tx.insert(coachChunks).values(
+      plan.inserts.map(({ chunk, ord, topicId }) => ({ id: nanoid(), materialId, studentId: m.studentId, topicId, ord, pageFrom: chunk.pageFrom, pageTo: chunk.pageTo, heading: chunk.heading, text: chunk.text, method: chunk.method, quality: chunk.quality })),
+    );
+    for (const r of plan.ranges) await tx.update(coachTopics).set({ pageFrom: r.pageFrom, pageTo: r.pageTo }).where(eq(coachTopics.id, r.id));
+    const added = fresh.reduce((n, c) => n + c.text.length, 0);
+    await tx.update(coachMaterials).set({ charCount: m.charCount + added, ocrPages: m.ocrPages + pages.length, textRevision: m.textRevision + 1, updatedAt: m.updatedAt }).where(eq(coachMaterials.id, materialId));
+    return [...new Set(plan.inserts.flatMap((p) => (p.topicId ? [p.topicId] : [])))];
+  });
+  if (!touched) return 0;
+  for (const hook of textChangeHooks) await hook(materialId, touched);
+  return fresh.length;
+}
+
 /** The student checked the recognised text: the warning goes away. */
 export async function markReviewed(studentId: number, materialId: string) {
   await ownedMaterial(studentId, materialId);
@@ -360,6 +434,8 @@ export interface PageReader {
     ocrSkipped: number;
     /** Scanned pages the provider failed on (after retries). */
     ocrFailed: number;
+    /** Of those, pages left for the background retries (report.pending). */
+    ocrPending?: number;
     report: MaterialPageReport;
   }>;
 }
@@ -461,6 +537,45 @@ export async function segmentTopics(
   }
 }
 
+export const TITLE_TIMEOUT_MS = 15_000;
+
+/**
+ * Topics with no heading of their own get a short model-written title (one lite call for all of
+ * them, ≤ AI_TITLE_MAX_WORDS words, checked like any title); without an answer, "Mövzu N".
+ */
+export async function titleUntitled(
+  studentId: number,
+  topics: DraftTopic[],
+  chunks: DraftChunk[],
+  plan: Pick<TopicPlan, "locale" | "hints" | "names">,
+  generate: typeof generateStructured = generateStructured,
+): Promise<DraftTopic[]> {
+  const missing = topics.filter((t) => !t.title);
+  if (!missing.length) return topics;
+  const named = new Map<number, string>();
+  try {
+    await assertCoachAiAllowed(studentId);
+    const { lite } = await coachModels();
+    const excerpts = missing.map((t) => ({ n: t.ord + 1, text: chunks.slice(t.from, t.to + 1).map((c) => c.text).join("\n").slice(0, 1200) }));
+    const { data } = await generate({
+      model: lite,
+      messages: titleMessages(excerpts, plan.locale),
+      schema: titlesSchema,
+      jsonSchema: titlesJsonSchema,
+      maxTokens: 1024,
+      timeoutMs: TITLE_TIMEOUT_MS,
+      retry: { attempts: 1 },
+    });
+    for (const x of data.titles) {
+      const title = usableTitle(x.title, plan.hints, plan.names, AI_TITLE_MAX_WORDS);
+      if (title && title.length <= 60) named.set(Math.trunc(x.n), title);
+    }
+  } catch (error) {
+    console.warn("[coach] topic titles fell back to numbers", error instanceof AppError ? error.code : error instanceof Error ? error.message : error);
+  }
+  return topics.map((t) => (t.title ? t : { ...t, title: named.get(t.ord + 1) ?? `${topicWord(plan.locale)} ${t.ord + 1}` }));
+}
+
 /**
  * Chunks and topics of a material's pages: front matter (title page, table of contents, a short
  * preface) belongs to no topic, a preface with real content becomes "Giriş", the rest is split
@@ -474,7 +589,8 @@ export async function structureMaterial(studentId: number, pages: PageText[], lo
   const plan = { locale, hints: casingHints(pages.map((p) => p.text)), names: front.names, minPages: limits.topicMinPages, maxPages: limits.topicMaxPages, toc: front.toc };
   const { topics: bodyTopics, source } = await segmentTopics(studentId, body, locale, generate, plan);
   const introTopic: DraftTopic[] = intro ? [{ ord: 0, title: introTitle(locale), from: intro.from, to: intro.to, pageFrom: chunks[intro.from].pageFrom, pageTo: chunks[intro.to].pageTo }] : [];
-  const topics = [...introTopic, ...bodyTopics.map((t) => ({ ...t, from: t.from + bodyFrom, to: t.to + bodyFrom }))].map((t, i) => ({ ...t, ord: i }));
+  const placed = [...introTopic, ...bodyTopics.map((t) => ({ ...t, from: t.from + bodyFrom, to: t.to + bodyFrom }))].map((t, i) => ({ ...t, ord: i }));
+  const topics = await titleUntitled(studentId, placed, chunks, plan, generate);
   return { chunks, topics, source, frontPages: front.kinds.length };
 }
 
@@ -503,7 +619,7 @@ export async function runMaterial(materialId: string, runId: string, locale: Coa
   const pages = capPages(read.pages.filter((p) => p.text.trim()));
   const charCount = pages.reduce((n, p) => n + p.text.length, 0);
   if (pages.reduce((n, p) => n + p.text.replace(/\s/g, "").length, 0) < 50) {
-    await finish(materialId, runId, { status: "FAILED", errorCode: read.ocrFailed > 0 ? "OCR_PARTIAL" : "NO_TEXT", pageCount: read.pageCount, ocrPages: read.ocrPages });
+    await finish(materialId, runId, { status: "FAILED", errorCode: read.ocrFailed + (read.ocrPending ?? 0) > 0 ? "OCR_PARTIAL" : "NO_TEXT", pageCount: read.pageCount, ocrPages: read.ocrPages });
     return;
   }
   const extractedAt = Date.now();
@@ -532,7 +648,7 @@ export async function runMaterial(materialId: string, runId: string, locale: Coa
   if (!stillOurs) return;
   await savePageReport(materialId, material.studentId, read.report);
   const timing = { extractMs: extractedAt - startedAt, topicsMs: Date.now() - extractedAt, topicSource: source };
-  const stats = { pages: read.pageCount, chunks: chunks.length, topics: topics.length, frontPages, ocrPages: read.ocrPages, ocrFailed: read.ocrFailed, lowPages: read.report.low.length, ...timing };
+  const stats = { pages: read.pageCount, chunks: chunks.length, topics: topics.length, frontPages, ocrPages: read.ocrPages, ocrFailed: read.ocrFailed, ocrPending: read.ocrPending ?? 0, lowPages: read.report.low.length, ...timing };
   console.info("[coach] material ready", materialId, stats);
   await logEvent(material.studentId, "MATERIAL_READY", materialId, stats);
   const ready: ReadyMaterial = { studentId: material.studentId, materialId, locale, firstTopicId: topicIds[0] ?? null };

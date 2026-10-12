@@ -6,9 +6,9 @@ import { AppError } from "../modules/errors";
 import { DEFAULT_RETRY } from "./ai";
 import { IngestError } from "./extract";
 import { materialErrorOf, readyWarning, segmentTopics, SEGMENT_TIMEOUT_MS, structureMaterial } from "./materials";
-import { readPagesWithOcr } from "./ocr";
+import { OCR_BATCH_PAGES, OCR_RETRY, readPagesWithOcr } from "./ocr";
 import { AUTHOR, aparatPages, aparatPagesWithoutToc } from "./outline.fixture";
-import { chunkMaterial, frontMatterOf } from "./structure";
+import { chunkMaterial, contentTitle, frontMatterOf, usableTitle } from "./structure";
 import type { DraftChunk } from "./chunker";
 import type { CoachMaterialRow } from "../../drizzle/schema";
 
@@ -87,37 +87,90 @@ describe("text PDFs never wait on OCR", () => {
 });
 
 describe("OCR failures (the production report)", () => {
-  it("one rate-limited batch no longer fails the whole material", async () => {
-    // 8 text pages + 12 scanned → OCR batches of 5, 5 and 2 pages; the 2-page batch is always 429.
+  it("pages OCR could not read are left for the background retries, not reported as failed", async () => {
+    // 8 text pages + 11 scanned → five 2-page batches and a 1-page one (page 19), which is always 429.
     h.invoke = vi.fn(async (p: InvokeParams) => {
-      if (pagesIn(p) === 2) throw rateLimited();
+      if (pagesIn(p) === 1) throw rateLimited();
       return ocrReply(p);
     });
-    const out = await read([...repeat(8, "text" as const), ...repeat(12, "scan" as const)]);
+    const out = await read([...repeat(8, "text" as const), ...repeat(11, "scan" as const)]);
     expect(out.ocrPages).toBe(10);
-    expect(out.ocrFailed).toBe(2);
-    expect(out.pages.map((p) => p.page)).toEqual(Array.from({ length: 18 }, (_, i) => i + 1));
-    // Unread pages are listed as such; they do not make the recognised ones look poor.
+    expect(out.ocrFailed).toBe(0);
+    expect(out.ocrPending).toBe(1);
+    expect(out.pages).toHaveLength(18);
+    // Unread pages do not make the recognised ones look poor, and the material gets no warning.
     expect(out.needsReview).toBe(false);
     expect(out.ocrScore).toBeGreaterThanOrEqual(OCR_LOW_QUALITY);
-    expect(out.report).toEqual({ low: [], image: [], failed: [19, 20], skipped: [] });
-    expect(readyWarning(out)).toBe("OCR_PARTIAL");
-    // The failing batch was retried (bounded) before giving up.
-    expect(h.invoke.mock.calls.filter(([p]) => pagesIn(p as InvokeParams) === 2)).toHaveLength(DEFAULT_RETRY.attempts);
+    expect(out.report).toEqual({ low: [], image: [], failed: [], skipped: [], pending: [19], retries: 0, retryAt: null });
+    expect(readyWarning(out)).toBeNull();
+    expect(OCR_BATCH_PAGES).toBe(2);
+    // The failing batch was tried OCR_RETRY.attempts times before it was left for later.
+    expect(h.invoke.mock.calls.filter(([p]) => pagesIn(p as InvokeParams) === 1)).toHaveLength(OCR_RETRY.attempts);
+  });
+
+  it("a batch that fails a few times and then answers is not lost", async () => {
+    let calls = 0;
+    h.invoke = vi.fn(async (p: InvokeParams) => {
+      if (++calls <= 3) throw new LlmHttpError(503, "LLM invoke failed: 503 – overloaded");
+      return ocrReply(p);
+    });
+    const out = await read([...repeat(6, "text" as const), ...repeat(4, "scan" as const)]);
+    expect(out.ocrPages).toBe(4);
+    expect(out.report.pending).toBeUndefined();
+    expect(h.invoke).toHaveBeenCalledTimes(5);
+    expect(OCR_RETRY.attempts).toBeGreaterThanOrEqual(4);
+  });
+
+  it("waits as long as a 429 says (retry-after) before trying again", async () => {
+    const waits: number[] = [];
+    DEFAULT_RETRY.sleep = async (ms) => void waits.push(ms);
+    let calls = 0;
+    h.invoke = vi.fn(async (p: InvokeParams) => {
+      if (++calls === 1) throw new LlmHttpError(429, "LLM invoke failed: 429 – RESOURCE_EXHAUSTED Please retry in 45s.", { retryAfterMs: 45_000 });
+      return ocrReply(p);
+    });
+    try {
+      const out = await read([...repeat(6, "text" as const), ...repeat(2, "scan" as const)]);
+      expect(out.ocrPages).toBe(2);
+      expect(waits).toHaveLength(1);
+      expect(waits[0]).toBeGreaterThanOrEqual(45_000);
+      expect(waits[0]).toBeLessThanOrEqual(OCR_RETRY.maxMs);
+    } finally {
+      DEFAULT_RETRY.sleep = async () => undefined;
+    }
+  });
+
+  it("a page OCR cannot read keeps its own text layer instead of being lost", async () => {
+    // A scanned PDF: the 'Part 4' page has a few words of text layer, so it went to OCR too.
+    h.invoke = vi.fn(async () => {
+      throw rateLimited();
+    });
+    const out = await read([...repeat(3, "scan" as const), "sparse"]);
+    expect(out.pages).toEqual([{ page: 4, text: "Part 4", method: "TEXT", quality: null }]);
+    expect(out.report.pending).toEqual([1, 2, 3]);
+  });
+
+  it("unusable output for a batch: each page gets its own call", async () => {
+    h.invoke = vi.fn(async (p: InvokeParams) => (pagesIn(p) === 2 ? reply({ nope: true }) : ocrReply(p)));
+    const out = await read([...repeat(6, "text" as const), ...repeat(2, "scan" as const)]);
+    expect(out.ocrPages).toBe(2);
+    expect(out.report.pending).toBeUndefined();
   });
 
   it("lists poorly recognised pages and names picture pages instead of warning about them", async () => {
     // 40 text pages + scans at 41-44: page 42 is a diagram (a caption), 43 is unreadable.
-    h.invoke = vi.fn(async () =>
-      reply({
-        pages: [
-          { page: 1, text: "Prosessorun quruluşu və iş prinsipi. ".repeat(15), confidence: 0.95 },
-          { page: 2, text: "Şəkil 3. Sxem", confidence: 0.4 },
-          { page: 3, text: "Ya§ddaş ¤¤ ¤ qurğ¶u ¤¤¤ [?] [?] ".repeat(20), confidence: 0.3 },
-          { page: 4, text: "Daxiletmə qurğuları: klaviatura, siçan. ".repeat(15), confidence: 0.9 },
-        ],
-      }),
-    );
+    const batchReplies = [
+      [
+        { page: 1, text: "Prosessorun quruluşu və iş prinsipi. ".repeat(15), confidence: 0.95 },
+        { page: 2, text: "Şəkil 3. Sxem", confidence: 0.4 },
+      ],
+      [
+        { page: 1, text: "Ya§ddaş ¤¤ ¤ qurğ¶u ¤¤¤ [?] [?] ".repeat(20), confidence: 0.3 },
+        { page: 2, text: "Daxiletmə qurğuları: klaviatura, siçan. ".repeat(15), confidence: 0.9 },
+      ],
+    ];
+    let call = 0;
+    h.invoke = vi.fn(async () => reply({ pages: batchReplies[call++] }));
     const out = await read([...repeat(40, "text" as const), ...repeat(4, "scan" as const)]);
     expect(out.report.image).toEqual([42]);
     expect(out.report.low).toEqual([43]);
@@ -138,8 +191,8 @@ describe("OCR failures (the production report)", () => {
     });
     const out = await read([...repeat(6, "text" as const), ...repeat(4, "scan" as const)]);
     expect(out.pages).toHaveLength(6);
-    expect(out.ocrFailed).toBe(4);
-    expect(readyWarning(out)).toBe("OCR_PARTIAL");
+    expect(out.report.pending).toEqual([7, 8, 9, 10]);
+    expect(readyWarning(out)).toBeNull();
   });
 
   it("'busy' only for a genuine per-minute rate limit", async () => {
@@ -179,7 +232,8 @@ describe("OCR failures (the production report)", () => {
       throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
     });
     expect(materialErrorOf(await read(repeat(3, "scan")).catch((e) => e))).toBe("AI_TIMEOUT");
-    expect(h.invoke).toHaveBeenCalledTimes(2);
+    // Two batches (pages 1-2 and 3), each tried twice.
+    expect(h.invoke).toHaveBeenCalledTimes(4);
   });
 });
 
@@ -206,8 +260,8 @@ describe("OCR speed and progress", () => {
     });
     expect(seen[0]).toBe(0);
     expect(seen.every((d, i) => i === 0 || d > seen[i - 1])).toBe(true);
-    expect(h.invoke.mock.calls.length).toBeLessThan(6);
-    expect(out.ocrFailed).toBeGreaterThan(0);
+    expect(h.invoke.mock.calls.length).toBeLessThanOrEqual(7);
+    expect(out.report.pending?.length).toBeGreaterThan(0);
   });
 
   it("recognises only the first pages up to the per-material cap", async () => {
@@ -240,10 +294,10 @@ describe("topic segmentation never blocks a material", () => {
   const chunks: DraftChunk[] = Array.from({ length: 12 }, (_, i) => ({ ord: i, pageFrom: i + 1, pageTo: i + 1, heading: i % 4 === 0 ? `Bölmə ${i / 4 + 1}` : "", text: "mətn ".repeat(50), method: "TEXT", quality: null }));
 
   it("one lite call with a short timeout and no retries", async () => {
-    const generate = vi.fn(async () => ({ data: { topics: [{ title: "A", firstChunk: 0 }, { title: "B", firstChunk: 6 }] }, model: "lite-m" }));
+    const generate = vi.fn(async () => ({ data: { topics: [{ title: "Prosessorun quruluşu", firstChunk: 0 }, { title: "Yaddaş qurğuları", firstChunk: 6 }] }, model: "lite-m" }));
     const out = await segmentTopics(7, chunks, "az", generate as never);
     expect(out.source).toBe("AI");
-    expect(out.topics.map((t) => t.title)).toEqual(["A", "B"]);
+    expect(out.topics.map((t) => t.title)).toEqual(["Prosessorun quruluşu", "Yaddaş qurğuları"]);
     expect(generate).toHaveBeenCalledTimes(1);
     expect(generate.mock.calls[0]).toMatchObject([{ model: "lite-m", timeoutMs: SEGMENT_TIMEOUT_MS, retry: { attempts: 1 } }]);
     expect(SEGMENT_TIMEOUT_MS).toBeLessThanOrEqual(20_000);
@@ -258,6 +312,52 @@ describe("topic segmentation never blocks a material", () => {
       expect(out.source).toBe("HEADINGS");
       expect(out.topics.map((t) => t.title)).toEqual(["Bölmə 1", "Bölmə 2", "Bölmə 3"]);
     }
+  });
+});
+
+describe("topic titles are headings, never a cut sentence of the text", () => {
+  // Production: topic 1 (pages 2-9, no heading) was titled "İlk hesablama vasitəsi olaraq insanlar saymaq üçün eyni…".
+  const SENTENCE = "İlk hesablama vasitəsi olaraq insanlar saymaq üçün eyni zamanda barmaqlarından və daşlardan istifadə edirdilər.";
+  const pages = Array.from({ length: 9 }, (_, i) => ({
+    page: i + 1,
+    text: `${i === 0 ? SENTENCE : "Abak qədim dövrlərdə geniş yayılmış hesablama alətidir."} ${"Sonralar mexaniki hesablama maşınları yaradıldı və onlar əməliyyatları daha sürətlə yerinə yetirirdi. ".repeat(14)}`,
+    method: "TEXT" as const,
+    quality: null,
+  }));
+  const titles = (out: Awaited<ReturnType<typeof structureMaterial>>) => out.topics.map((t) => t.title);
+
+  it("no heading: one short AI title, not the first sentence", async () => {
+    const generate = vi
+      .fn()
+      .mockRejectedValueOnce(new AppError("COACH_AI_TIMEOUT"))
+      .mockResolvedValue({ data: { titles: [{ n: 1, title: "Hesablama vasitələrinin tarixi" }, { n: 2, title: "Mexaniki hesablama maşınları" }] }, model: "lite-m" });
+    const out = await structureMaterial(7, pages, "az", generate as never);
+    expect(out.source).toBe("HEADINGS");
+    expect(titles(out)).toEqual(["Hesablama vasitələrinin tarixi", "Mexaniki hesablama maşınları"]);
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(generate.mock.calls[1][0]).toMatchObject({ model: "lite-m", retry: { attempts: 1 } });
+    expect(JSON.stringify(generate.mock.calls[1][0].messages)).toContain("at most 6 words");
+  });
+
+  it("a sentence or a cut-off title from the model is refused; without an answer the topic is numbered", async () => {
+    for (const reply of ["İlk hesablama vasitəsi olaraq insanlar saymaq üçün eyni…", "İlk hesablama vasitəsi olaraq insanlar saymaq üçün barmaqlardan istifadə edirdilər"]) {
+      const generate = vi.fn().mockRejectedValueOnce(new AppError("COACH_AI_TIMEOUT")).mockResolvedValue({ data: { titles: [{ n: 1, title: reply }, { n: 2, title: "Mexaniki maşınlar" }] }, model: "lite-m" });
+      expect(titles(await structureMaterial(7, pages, "az", generate as never))).toEqual(["Mövzu 1", "Mexaniki maşınlar"]);
+    }
+    const down = vi.fn().mockRejectedValue(new AppError("COACH_AI_BUSY"));
+    expect(titles(await structureMaterial(7, pages, "ru", down as never))).toEqual(["Тема 1", "Тема 2"]);
+  });
+
+  it("titles are checked like headings", () => {
+    const hints = new Map<string, string>();
+    expect(usableTitle("Hesablama vasitələrinin tarixi", hints)).toBe("Hesablama vasitələrinin tarixi");
+    expect(usableTitle("İlk hesablama vasitəsi olaraq insanlar saymaq üçün eyni…", hints)).toBe("");
+    expect(usableTitle("İlk hesablama vasitəsi olaraq insanlar saymaq üçün eyni...", hints)).toBe("");
+    expect(usableTitle(SENTENCE, hints)).toBe("");
+    expect(usableTitle("1.2", hints)).toBe("");
+    expect(usableTitle("Mündəricat", hints)).toBe("");
+    expect(contentTitle([{ heading: "", text: SENTENCE }], hints)).toBe("");
+    expect(contentTitle([{ heading: "", text: SENTENCE }, { heading: "ABAK VƏ SAYĞAC", text: "..." }], hints)).toBe("Abak və sayğac");
   });
 });
 

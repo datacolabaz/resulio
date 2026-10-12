@@ -43,7 +43,8 @@ function sourceFiles(dir: string): string[] {
 
 const files = sourceFiles(CLIENT_SRC)
   .map((path) => ({ path, rel: relative(CLIENT_SRC, path).split(sep).join("/") }))
-  .filter(({ rel }) => !SCAN_EXCLUDE.some((x) => rel.startsWith(x)))
+  // Component tests assert on the rendered (translated) text; they are not UI source.
+  .filter(({ rel }) => !SCAN_EXCLUDE.some((x) => rel.startsWith(x)) && !/\.test\.tsx?$/.test(rel))
   .map((f) => ({ ...f, code: stripComments(readFileSync(f.path, "utf8")) }));
 
 function stripComments(code: string) {

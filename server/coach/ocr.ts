@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { PDFDocument } from "pdf-lib";
 import { z } from "zod";
-import { coachEvents } from "../../drizzle/schema";
+import { coachEvents, type CoachMaterialRow } from "../../drizzle/schema";
 import { periodStart } from "../../shared/aiUsage";
 import { coachUploadLimits, OCR_IMAGE_PAGE_LETTERS, OCR_LOW_QUALITY, reviewNeeded, type MaterialPageReport } from "../../shared/coach";
 import { ENV } from "../_core/env";
@@ -11,7 +11,7 @@ import { requireDb } from "../db";
 import { AppError } from "../modules/errors";
 import { extensionOf } from "../modules/files";
 import { filePart, pdfInputMode } from "../questionBank/importJobs";
-import { createLimiter, DATA_RULE, generateStructured, ingestAiSlot } from "./ai";
+import { createLimiter, DATA_RULE, generateStructured, ingestAiSlot, type RetryPolicy } from "./ai";
 import { normalizeText, type PageText } from "./chunker";
 import { extractSource, IMAGE_MIME, IngestError } from "./extract";
 import type { PageReader } from "./materials";
@@ -26,11 +26,14 @@ import { logEvent } from "./store";
  * student to check the recognised text.
  */
 
-export const OCR_BATCH_PAGES = 5;
+/** Small batches: a slow or refused call costs two pages, not five, and finishes well inside the timeout. */
+export const OCR_BATCH_PAGES = 2;
 /** Batches of one material read at the same time (all materials together: INGEST_AI_CONCURRENCY). */
 export const OCR_PARALLEL_BATCHES = 2;
-/** Per try; a 5-page batch normally takes 10-30 s. */
-export const OCR_TIMEOUT_MS = 120_000;
+/** Per try; a 2-page batch normally takes 5-20 s, image-heavy pages much longer. */
+export const OCR_TIMEOUT_MS = 180_000;
+/** OCR is worth waiting for: more tries than other calls, and a provider's "retry in Ns" up to 90 s is honoured. */
+export const OCR_RETRY = { attempts: 4, baseMs: 3000, maxMs: 90_000, timeoutRetries: 1 } satisfies Partial<RetryPolicy>;
 /** Letters/digits a full printed page usually has; fewer lowers the density part of the score. */
 const DENSE_PAGE_CHARS = 350;
 
@@ -152,6 +155,7 @@ async function ocrCall(model: string, part: MessageContent, pageNumbers: number[
     jsonSchema: ocrJsonSchema,
     maxTokens: 16_384,
     timeoutMs: OCR_TIMEOUT_MS,
+    retry: OCR_RETRY,
   });
   return pageNumbers.map((page, i) => {
     const hit = data.pages.find((p) => Math.trunc(p.page) === i + 1) ?? data.pages[i];
@@ -209,9 +213,18 @@ export async function recogniseBatches(
         try {
           recognised.push(...(await read(group)));
         } catch (e) {
-          failed.push(...group);
           error ??= e;
           if (stopsOcr(e)) stopped = true;
+          // Unusable output usually comes from one page (a huge table, a truncated answer): the others get a call of their own.
+          const split = group.length > 1 && e instanceof AppError && e.code === "AI_INVALID_OUTPUT";
+          for (const page of split ? group : []) {
+            try {
+              recognised.push(...(await read([page])));
+            } catch {
+              failed.push(page);
+            }
+          }
+          if (!split) failed.push(...group);
         }
         done += group.length;
         if (opts.onBatch && !(await opts.onBatch(done))) stopped = true;
@@ -221,10 +234,29 @@ export async function recogniseBatches(
   return { recognised: recognised.sort((a, b) => a.page - b.page), failed: failed.sort((a, b) => a - b), error };
 }
 
+/** OCR of some pages of a material's file (PDF pages, or the one image), counted against the monthly cap. */
+export async function ocrPagesOf(material: Pick<CoachMaterialRow, "id" | "studentId" | "fileName">, bytes: Buffer, pages: number[], onBatch?: (pagesDone: number) => Promise<boolean> | boolean): Promise<OcrOutcome> {
+  const fileName = material.fileName ?? "";
+  const image = IMAGE_MIME[extensionOf(fileName)];
+  const { ocr: model } = await coachModels();
+  const pdf = image ? null : await PDFDocument.load(bytes, { updateMetadata: false });
+  return recogniseBatches(
+    image ? [[1]] : batches(pages, OCR_BATCH_PAGES),
+    async (group) => {
+      const part = pdf ? filePart("application/pdf", await pdfPick(pdf, group), fileName, ENV.llm) : filePart(image, bytes, fileName, ENV.llm);
+      const out = await ingestAiSlot(() => ocrCall(model, part, group));
+      await logEvent(material.studentId, "OCR", material.id, { pages: group.length });
+      return out;
+    },
+    { parallel: OCR_PARALLEL_BATCHES, onBatch },
+  );
+}
+
 /**
  * Page reader with OCR: text-layer pages as they are, scanned pages and images through the OCR
- * model within the caps. Reports skipped pages (caps) and failed pages (provider errors) so the
- * material can say some were not read; it fails only when no page at all could be read.
+ * model within the caps. A page OCR could not read keeps its own text layer if it has one; the
+ * rest are `pending` (tried again in the background, see ocrRetry.ts) instead of failing the
+ * material, which fails only when no page at all could be read.
  */
 export const readPagesWithOcr: PageReader = async ({ material, bytes, onProgress }) => {
   const fileName = material.fileName ?? "";
@@ -259,33 +291,24 @@ export const readPagesWithOcr: PageReader = async ({ material, bytes, onProgress
     if (!textPages.length) throw error;
     return skipAll();
   }
-  const { ocr: model } = await coachModels();
-  const pdf = isImage ? null : await PDFDocument.load(bytes, { updateMetadata: false });
-  const groups = isImage ? [[1]] : batches(plan.read, OCR_BATCH_PAGES);
   const total = plan.read.length;
   if (onProgress && !(await onProgress({ step: "OCR", done: 0, total }))) return { ...base, pages: textPages };
-  const outcome = await recogniseBatches(
-    groups,
-    async (group) => {
-      const part = pdf ? filePart("application/pdf", await pdfPick(pdf, group), fileName, ENV.llm) : filePart(IMAGE_MIME[extensionOf(fileName)], bytes, fileName, ENV.llm);
-      const pages = await ingestAiSlot(() => ocrCall(model, part, group));
-      await logEvent(material.studentId, "OCR", material.id, { pages: group.length });
-      return pages;
-    },
-    { parallel: OCR_PARALLEL_BATCHES, onBatch: (done) => (onProgress ? onProgress({ step: "OCR", done, total }) : true) },
-  );
+  const outcome = await ocrPagesOf(material, bytes, plan.read, (done) => (onProgress ? onProgress({ step: "OCR", done, total }) : true));
   const ocrPages: PageText[] = outcome.recognised.filter((p) => p.text.trim()).map((p) => ({ page: p.page, text: p.text, method: "OCR" as const, quality: p.quality }));
-  if (!ocrPages.length && !textPages.length) throw outcome.error ?? new IngestError("NO_TEXT");
-  if (outcome.failed.length) console.warn("[coach] OCR left pages unread", material.id, { failed: outcome.failed.length, of: total, error: outcome.error instanceof Error ? outcome.error.message : outcome.error });
-  const pages = [...textPages, ...ocrPages].sort((a, b) => a.page - b.page);
-  const report = pageReport(outcome.recognised, outcome.failed, scanned.slice(plan.read.length));
+  const ownText: PageText[] = outcome.failed.flatMap((page) => (texts[page - 1]?.trim() ? [{ page, text: texts[page - 1], method: "TEXT" as const, quality: null }] : []));
+  if (!ocrPages.length && !textPages.length && !ownText.length) throw outcome.error ?? new IngestError("NO_TEXT");
+  const pending = outcome.failed.filter((p) => !ownText.some((t) => t.page === p));
+  if (pending.length) console.warn("[coach] OCR left pages for a background retry", material.id, { pending: pending.length, of: total, error: outcome.error instanceof Error ? outcome.error.message : outcome.error });
+  const pages = [...textPages, ...ocrPages, ...ownText].sort((a, b) => a.page - b.page);
+  const report: MaterialPageReport = { ...pageReport(outcome.recognised, [], scanned.slice(plan.read.length)), ...(pending.length ? { pending, retries: 0, retryAt: null } : {}) };
   const textual = outcome.recognised.filter((p) => !report.image.includes(p.page));
   return {
     ...base,
     pages,
     ocrPages: outcome.recognised.length,
     ocrSkipped: plan.skipped,
-    ocrFailed: outcome.failed.length,
+    ocrFailed: 0,
+    ocrPending: pending.length,
     ocrScore: textual.length ? Math.min(...textual.map((p) => p.quality)) : null,
     needsReview: reviewNeeded(report.low.length, texts.length),
     report,

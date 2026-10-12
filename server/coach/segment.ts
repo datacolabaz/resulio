@@ -3,8 +3,8 @@ import type { CoachLocale } from "../../shared/coach";
 import type { Message } from "../_core/llm";
 import { clip, sanitizeForPrompt } from "../modules/aiContext";
 import { DATA_RULE, languageRule } from "./ai";
-import { titleFromText, type DraftChunk } from "./chunker";
-import { balanceTopics, finishTitles, type TopicStart } from "./structure";
+import type { DraftChunk } from "./chunker";
+import { AI_TITLE_MAX_WORDS, balanceTopics, finishTitles, type TopicStart } from "./structure";
 
 /**
  * Topics of a material: consecutive chunk ranges with a title. The lite model proposes them from
@@ -42,6 +42,32 @@ export const segmentJsonSchema = {
     required: ["topics"],
   },
 };
+
+export const titlesSchema = z.object({ titles: z.array(z.object({ n: z.number(), title: z.string() })).max(80) });
+export const titlesJsonSchema = {
+  name: "coach_topic_titles",
+  schema: {
+    type: "object",
+    properties: { titles: { type: "array", items: { type: "object", properties: { n: { type: "integer" }, title: { type: "string" } }, required: ["n", "title"] } } },
+    required: ["titles"],
+  },
+};
+
+/** One short title per topic that has no heading of its own, from the start of its text. */
+export function titleMessages(topics: { n: number; text: string }[], locale: CoachLocale): Message[] {
+  return [
+    {
+      role: "system",
+      content: [
+        `Give each numbered study-text excerpt a short topic title: at most ${AI_TITLE_MAX_WORDS} words, a noun phrase naming what it teaches (like a textbook heading), in sentence case, no numbering, no ending punctuation.`,
+        'Never copy or cut a sentence of the excerpt, never use a person\'s name. Return JSON {"titles":[{"n","title"}]} with one entry per excerpt.',
+        languageRule(locale),
+        DATA_RULE,
+      ].join("\n"),
+    },
+    { role: "user", content: topics.map((t) => `#${t.n}: ${clip(sanitizeForPrompt(t.text.replace(/\s+/g, " ")), 600).text}`).join("\n\n") },
+  ];
+}
 
 /** Headings plus the first words of each chunk; shorter lines for long materials so the one lite call stays quick. */
 export function outlineOf(chunks: DraftChunk[]): string {
@@ -120,18 +146,19 @@ export function fallbackTopics(chunks: DraftChunk[]): DraftTopic[] {
   const starts: { from: number; title: string }[] = [];
   chunks.forEach((c, i) => {
     const prev = chunks[i - 1];
-    if (i === 0 || (c.heading && c.heading !== prev?.heading)) starts.push({ from: i, title: c.heading || titleFromText(c.text) });
+    if (i === 0 || (c.heading && c.heading !== prev?.heading)) starts.push({ from: i, title: c.heading });
   });
   let byHeadings = starts;
   for (let minPages = Math.ceil(pageSpan / MAX_TOPICS); byHeadings.length > MAX_TOPICS; minPages++) byHeadings = spaced(starts, chunks, minPages);
   let plan = byHeadings;
   if (byHeadings.length < 2) {
     const perTopic = Math.max(FALLBACK_PAGES_PER_TOPIC, Math.ceil(pageSpan / MAX_TOPICS));
-    const groups = spaced(chunks.map((c, i) => ({ from: i, title: c.heading || titleFromText(c.text) })), chunks, perTopic);
-    plan = groups.length ? groups : [{ from: 0, title: titleFromText(chunks[0].text) }];
+    const groups = spaced(chunks.map((c, i) => ({ from: i, title: c.heading })), chunks, perTopic);
+    plan = groups.length ? groups : [{ from: 0, title: "" }];
   }
+  // No heading: no title here (never the first words of the text); a short one is asked for later.
   return withPages(
-    plan.map((s, i) => ({ ord: i, title: (s.title || `#${i + 1}`).slice(0, 200), from: s.from, to: i + 1 < plan.length ? plan[i + 1].from - 1 : chunks.length - 1 })),
+    plan.map((s, i) => ({ ord: i, title: s.title.slice(0, 200), from: s.from, to: i + 1 < plan.length ? plan[i + 1].from - 1 : chunks.length - 1 })),
     chunks,
   );
 }
