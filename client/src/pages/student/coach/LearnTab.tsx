@@ -131,7 +131,7 @@ function PackView({ pack }: { pack: Pack }) {
   );
 }
 
-function Sources({ cites, general }: { cites: Cite[]; general: boolean }) {
+export function Sources({ cites, general }: { cites: Cite[]; general: boolean }) {
   const [open, setOpen] = useState<number | null>(null);
   if (general) return <p className="mt-1 text-xs text-muted-foreground">{t("coach.learn.general")}</p>;
   return (

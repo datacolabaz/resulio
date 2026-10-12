@@ -92,6 +92,8 @@ export const SUMMARY_KIND: Record<SummaryFormat, ArtifactKind> = { SHORT: "SUMMA
 
 export const QUIZ_FORMATS = ["MCQ", "TRUE_FALSE", "OPEN", "WRITTEN", "CALCULATION", "MATCHING", "MIXED"] as const;
 export type QuizFormat = (typeof QUIZ_FORMATS)[number];
+/** Formats the student can pick (WRITTEN needs AI grading of open answers). */
+export const PRACTICE_FORMATS = ["MCQ", "TRUE_FALSE", "OPEN", "MATCHING", "CALCULATION", "MIXED"] as const satisfies readonly QuizFormat[];
 export const QUIZ_COUNTS = [5, 10, 15] as const;
 export const QUIZ_STATUSES = ["READY", "IN_PROGRESS", "GRADED"] as const;
 export type QuizStatus = (typeof QUIZ_STATUSES)[number];
@@ -100,6 +102,45 @@ export const COACH_ITEM_STATUSES = ["CORRECT", "WRONG", "UNANSWERED", "PENDING_R
 export type CoachItemStatus = (typeof COACH_ITEM_STATUSES)[number];
 export const GRADED_BY = ["RULE", "AI", "AI_PRO"] as const;
 export type GradedBy = (typeof GRADED_BY)[number];
+
+/** Formats offered in "Məşq et" and the question types each one generates. */
+export const FORMAT_TYPES: Record<QuizFormat, readonly string[]> = {
+  MCQ: ["MULTIPLE_CHOICE"],
+  TRUE_FALSE: ["TRUE_FALSE"],
+  OPEN: ["SHORT_ANSWER"],
+  WRITTEN: ["LONG_ANSWER"],
+  CALCULATION: ["NUMERIC"],
+  MATCHING: ["MATCHING"],
+  MIXED: ["MULTIPLE_CHOICE", "TRUE_FALSE", "SHORT_ANSWER", "MATCHING"],
+};
+
+/** One quiz's evidence for a topic, in the Growth engine's shape (origin PRACTICE). */
+export interface CoachEvidence {
+  resultId: string;
+  completedAt: string;
+  questionCount: number;
+  pendingCount: number;
+  earned: number;
+  possible: number;
+  wrongPoints: number;
+}
+
+/** CALCULATION: formula over named inputs, evaluated on the server to check the model's answer. */
+export interface CalcSpec {
+  formula: string;
+  variables: Record<string, number>;
+  unit?: string;
+  /** False when the server's result differed from the model's key (the item is not graded strictly). */
+  verified?: boolean;
+}
+
+/** AI feedback on an answer: what was right, what was missing, and the rubric points. */
+export interface ItemFeedback {
+  summary: string;
+  good?: string[];
+  missing?: string[];
+  rubric?: { point: string; met: boolean }[];
+}
 
 export const MISTAKE_CAUSES = ["CONCEPT_CONFUSION", "CALC_SLIP", "MISREAD", "MISSING_STEP", "NOT_LEARNED", "UNKNOWN"] as const;
 export type MistakeCause = (typeof MISTAKE_CAUSES)[number];

@@ -358,6 +358,13 @@
       "when": 1791795144276,
       "tag": "0054_coach_artifacts",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "5",
+      "when": 1791795516564,
+      "tag": "0055_coach_practice",
+      "breakpoints": true
     }
   ]
 }

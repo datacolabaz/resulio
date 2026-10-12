@@ -1,0 +1,81 @@
+CREATE TABLE IF NOT EXISTS `coach_mistakes` (
+	`id` varchar(32) NOT NULL,
+	`studentId` int NOT NULL,
+	`materialId` varchar(32),
+	`topicId` varchar(32),
+	`quizId` varchar(32),
+	`itemId` varchar(32),
+	`cause` varchar(20) NOT NULL DEFAULT 'UNKNOWN',
+	`question` varchar(600) NOT NULL,
+	`fixedAt` timestamp,
+	`createdAt` timestamp NOT NULL DEFAULT (now()),
+	CONSTRAINT `coach_mistakes_id` PRIMARY KEY(`id`),
+	INDEX `coach_mistakes_student_idx` (`studentId`,`fixedAt`),
+	INDEX `coach_mistakes_topic_idx` (`topicId`)
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `coach_quiz_items` (
+	`id` varchar(32) NOT NULL,
+	`quizId` varchar(32) NOT NULL,
+	`studentId` int NOT NULL,
+	`topicId` varchar(32),
+	`ord` int NOT NULL,
+	`type` varchar(20) NOT NULL,
+	`text` text NOT NULL,
+	`content` json NOT NULL,
+	`answerKey` json NOT NULL,
+	`explanation` text,
+	`hint` text,
+	`cites` json,
+	`calc` json,
+	`answer` json,
+	`status` varchar(16),
+	`score` int,
+	`gradedBy` varchar(8),
+	`confidence` int,
+	`feedback` json,
+	`hintUsed` boolean NOT NULL DEFAULT false,
+	`disputed` boolean NOT NULL DEFAULT false,
+	`createdAt` timestamp NOT NULL DEFAULT (now()),
+	`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	CONSTRAINT `coach_quiz_items_id` PRIMARY KEY(`id`),
+	INDEX `coach_quiz_items_quiz_idx` (`quizId`,`ord`)
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `coach_quizzes` (
+	`id` varchar(32) NOT NULL,
+	`studentId` int NOT NULL,
+	`materialId` varchar(32),
+	`topicId` varchar(32),
+	`format` varchar(12) NOT NULL,
+	`locale` varchar(2) NOT NULL,
+	`status` varchar(12) NOT NULL DEFAULT 'READY',
+	`total` int NOT NULL DEFAULT 0,
+	`correct` int NOT NULL DEFAULT 0,
+	`percentage` int,
+	`pending` int NOT NULL DEFAULT 0,
+	`hintsUsed` int NOT NULL DEFAULT 0,
+	`model` varchar(120),
+	`submittedAt` timestamp,
+	`createdAt` timestamp NOT NULL DEFAULT (now()),
+	`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	CONSTRAINT `coach_quizzes_id` PRIMARY KEY(`id`),
+	INDEX `coach_quizzes_student_idx` (`studentId`,`createdAt`),
+	INDEX `coach_quizzes_topic_idx` (`topicId`)
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `coach_topic_mastery` (
+	`studentId` int NOT NULL,
+	`topicId` varchar(32) NOT NULL,
+	`materialId` varchar(32) NOT NULL,
+	`mastery` int NOT NULL DEFAULT 0,
+	`status` varchar(12) NOT NULL DEFAULT 'INSUFFICIENT',
+	`attempts` int NOT NULL DEFAULT 0,
+	`evidence` json NOT NULL,
+	`lastPracticedAt` timestamp,
+	`nextReviewAt` timestamp,
+	`intervalDays` int NOT NULL DEFAULT 0,
+	`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	CONSTRAINT `coach_topic_mastery_pk` PRIMARY KEY(`studentId`,`topicId`),
+	INDEX `coach_topic_mastery_review_idx` (`studentId`,`nextReviewAt`)
+);
