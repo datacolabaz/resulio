@@ -38,6 +38,8 @@ import { installSyllabusHooks, reconcileDirty } from "../syllabus/progression";
 import { startGrowthJobs } from "../growth/jobs";
 import { runCoachRetention } from "../coach/retention";
 import { isSchemaBehind } from "../syllabus/availability";
+import { OAUTH_RETENTION_MS, registerMcpRoutes } from "../mcp/http";
+import { oauthStore } from "../mcp/store";
 
 const SWEEP_INTERVAL_MS = 30_000;
 
@@ -161,6 +163,20 @@ function startCoachRetention() {
   }, COACH_RETENTION_CHECK_MS).unref();
 }
 
+const OAUTH_SWEEP_MS = 60 * 60_000;
+
+/** Claude connector: deletes OAuth requests, codes and tokens a week after they stopped working. */
+function startOAuthSweep() {
+  if (!getDb()) return;
+  setInterval(() => {
+    oauthStore()
+      .sweep(new Date(Date.now() - OAUTH_RETENTION_MS))
+      .catch((error) => {
+        if (!isSchemaBehind(error)) console.error("[OAuth] Sweep failed", error instanceof Error ? error.message : error);
+      });
+  }, OAUTH_SWEEP_MS).unref();
+}
+
 async function startServer() {
   await runAutoMigrate();
   installAiUsageLogging();
@@ -188,6 +204,7 @@ async function startServer() {
   app.get("/api/public/group-preview/:kind/:key", groupPreviewRoute);
   registerGoogleAuthRoutes(app);
   registerFileRoutes(app);
+  registerMcpRoutes(app);
   app.use(
     "/api/trpc",
     createExpressMiddleware({
@@ -209,6 +226,7 @@ async function startServer() {
   void resumeAnnouncements();
   startSyllabusProgression();
   startCoachRetention();
+  startOAuthSweep();
   startMaterialSweepers();
   startGrowthJobs();
   if (getDb()) {

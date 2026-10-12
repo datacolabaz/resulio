@@ -15,6 +15,7 @@ import { AI_CALL_STATUSES, AI_FEATURES } from "../shared/aiUsage";
 import { adminProcedure, router } from "./_core/trpc";
 import * as aiAdmin from "./aiUsage/admin";
 import * as fileJob from "./fileStorage/job";
+import * as mcp from "./mcp/entitlement";
 import { storageSummary } from "./fileStorage/summary";
 import { listAudit } from "./modules/admin/audit";
 import { dashboard } from "./modules/admin/dashboard";
@@ -118,7 +119,29 @@ export const adminRouter = router({
       ),
     teachers: adminProcedure("ai.view")
       .input(z.object({ query: z.string().trim().max(255).optional() }).optional())
-      .query(({ input }) => aiAdmin.teacherLimits({ query: input?.query })),
+      .query(async ({ input }) => {
+        const out = await aiAdmin.teacherLimits({ query: input?.query });
+        const connector = await mcp.mcpAdminStates(out.teachers.map((t) => t.id));
+        return { ...out, teachers: out.teachers.map((t) => ({ ...t, mcpConnector: connector.get(t.id) ?? null })) };
+      }),
+    /** Claude connector subscription per teacher: grant/extend (expiresAt null = no end date) or revoke. */
+    grantMcp: adminProcedure("ai.manage")
+      .input(
+        z.object({
+          userId,
+          plan: z.string().trim().min(1).max(32).default("premium"),
+          expiresAt: z.date().nullable().refine((d) => d === null || d.getTime() > Date.now(), "expiresAt must be in the future"),
+          note: z.string().trim().max(255).nullish(),
+        }),
+      )
+      .mutation(({ ctx, input }) => mcp.grantMcpEntitlement(ctx.admin, input.userId, { plan: input.plan, expiresAt: input.expiresAt, note: input.note || null })),
+    revokeMcp: adminProcedure("ai.manage")
+      .input(z.object({ userId }))
+      .mutation(({ ctx, input }) => mcp.revokeMcpEntitlement(ctx.admin, input.userId)),
+    mcpUpgradeRequests: adminProcedure("ai.view").query(() => mcp.openUpgradeRequests()),
+    closeMcpUpgradeRequest: adminProcedure("ai.manage")
+      .input(z.object({ userId }))
+      .mutation(({ ctx, input }) => mcp.closeUpgradeRequest(ctx.admin, input.userId)),
     setTeacherLimit: adminProcedure("ai.manage")
       .input(z.object({ userId, monthlyTokenQuota: limitValue, dailyRequestCap: limitValue }))
       .mutation(({ ctx, input }) => aiAdmin.setTeacherLimit(ctx.admin, input.userId, input)),

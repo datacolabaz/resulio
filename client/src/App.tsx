@@ -59,6 +59,7 @@ const CoachLibraryPage = lazyPage(() => import("@/pages/student/coach/CoachPages
 const CoachMaterialPage = lazyPage(() => import("@/pages/student/coach/CoachPages").then((m) => ({ default: m.CoachMaterialPage })));
 const CoachTextEditorPage = lazyPage(() => import("@/pages/student/coach/CoachPages").then((m) => ({ default: m.CoachTextEditorPage })));
 const CoachTopicPage = lazyPage(() => import("@/pages/student/coach/CoachPages").then((m) => ({ default: m.CoachTopicPage })));
+const ConnectClaudePage = lazyPage(() => import("@/pages/ClaudeConnector"));
 const CoachSettingsPage = lazyPage(() => import("@/pages/student/coach/CoachPages").then((m) => ({ default: m.CoachSettingsPage })));
 const CoachMistakesPage = lazyPage(() => import("@/pages/student/coach/CoachPages").then((m) => ({ default: m.CoachMistakesPage })));
 const GrowthReportPage = lazyPage(() => import("@/pages/GrowthReport").then((m) => ({ default: m.GrowthReportPage })));
@@ -168,6 +169,7 @@ function Router() {
       <Route path="/syllabus/:code">{() => <Suspense fallback={<PageLoading />}><PublicSyllabusPage /></Suspense>}</Route>
       <Route path="/app">{() => <AppRedirect />}</Route>
       <Route path="/settings" component={SettingsPage} />
+      <Route path="/connect/claude" component={ConnectClaudePage} />
       <Route path="/partner">{partner(<PartnerPage />)}</Route>
       <Route path="/admin/*" component={AdminRoutes} />
       <Route path="/admin" component={AdminRoutes} />
