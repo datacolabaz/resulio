@@ -121,6 +121,10 @@ const practiceRouter = router({
     .use(rateLimit("coachSubmit", 20, MINUTE))
     .input(quizIdInput.extend({ answers: z.record(z.string().max(32), studentAnswerSchema.optional()) }))
     .mutation(({ ctx, input }) => practice.submitQuiz(ctx.user.id, input.quizId, input.answers)),
+  regrade: coachConsentedProcedure
+    .use(rateLimit("coachSubmit", 20, MINUTE))
+    .input(quizIdInput.extend({ itemId: z.string().min(1).max(32) }))
+    .mutation(({ ctx, input }) => practice.regradeItem(ctx.user.id, input.quizId, input.itemId)),
 });
 
 export const studentCoachRouter = router({

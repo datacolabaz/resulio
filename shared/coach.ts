@@ -92,8 +92,8 @@ export const SUMMARY_KIND: Record<SummaryFormat, ArtifactKind> = { SHORT: "SUMMA
 
 export const QUIZ_FORMATS = ["MCQ", "TRUE_FALSE", "OPEN", "WRITTEN", "CALCULATION", "MATCHING", "MIXED"] as const;
 export type QuizFormat = (typeof QUIZ_FORMATS)[number];
-/** Formats the student can pick (WRITTEN needs AI grading of open answers). */
-export const PRACTICE_FORMATS = ["MCQ", "TRUE_FALSE", "OPEN", "MATCHING", "CALCULATION", "MIXED"] as const satisfies readonly QuizFormat[];
+/** Formats the student can pick. */
+export const PRACTICE_FORMATS = ["MCQ", "TRUE_FALSE", "OPEN", "WRITTEN", "MATCHING", "CALCULATION", "MIXED"] as const satisfies readonly QuizFormat[];
 export const QUIZ_COUNTS = [5, 10, 15] as const;
 export const QUIZ_STATUSES = ["READY", "IN_PROGRESS", "GRADED"] as const;
 export type QuizStatus = (typeof QUIZ_STATUSES)[number];

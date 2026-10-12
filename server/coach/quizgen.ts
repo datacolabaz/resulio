@@ -4,6 +4,7 @@ import { FORMAT_TYPES, type CalcSpec, type Cite, type CoachLocale, type QuizForm
 import type { Message } from "../_core/llm";
 import { seededShuffle } from "../modules/engine";
 import { DATA_RULE, languageRule, materialBlock, type PromptChunk } from "./ai";
+import { checkCalc } from "./calc";
 import { foldText, verifyCites, type RetrievalChunk } from "./retrieval";
 
 /**
@@ -73,7 +74,7 @@ const TYPE_RULES: Record<string, string> = {
   TRUE_FALSE: "TRUE_FALSE: a statement in `text`, `correct` true/false. Mix true and false statements.",
   SHORT_ANSWER: "SHORT_ANSWER: answer is a word, term, name or short phrase; `accepted`: 1-5 accepted spellings/variants.",
   MATCHING: "MATCHING: `pairs`: 3-5 {left, right} pairs (terms ↔ definitions, causes ↔ effects).",
-  NUMERIC: "NUMERIC: a calculation; `value` (the answer), `tolerance` (absolute, e.g. rounding), optional `unit`, plus `formula` (arithmetic over the names in `variables`, e.g. \"m*a\") and `variables` {name: number} that reproduce `value`.",
+  NUMERIC: "NUMERIC: a calculation; `value` (the answer), `tolerance` (absolute, e.g. rounding), optional `unit`, plus `formula` (plain arithmetic over the names in `variables`: + - * / ^ ( ), sqrt, abs, ln, log, sin, cos, tan, pi; e.g. \"m*a\") and `variables` {name: number} that reproduce `value` exactly.",
   LONG_ANSWER: "LONG_ANSWER: an open question needing 2-6 sentences; `rubric`: 2-5 short points a full answer must cover, one per line.",
 };
 
@@ -156,7 +157,13 @@ export function toDraftItem(raw: RawQuestion, allowed: readonly string[], byLabe
       const unit = clean(raw.unit, 32);
       content = unit ? { unit } : {};
       answerKey = { value, tolerance: Number(tolerance.toPrecision(6)) };
-      if (raw.formula && raw.variables && Object.keys(raw.variables).length) calc = { formula: clean(raw.formula, 300), variables: raw.variables, ...(unit ? { unit } : {}) };
+      if (raw.formula) {
+        const spec = { formula: clean(raw.formula, 300), variables: raw.variables ?? {} };
+        const { verdict } = checkCalc(spec, value, tolerance);
+        // A key its own formula contradicts is unreliable: drop the question rather than mark students wrong.
+        if (verdict === "mismatch") return null;
+        calc = { ...spec, ...(unit ? { unit } : {}), verified: verdict === "verified" };
+      }
       break;
     }
     case "LONG_ANSWER": {

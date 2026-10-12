@@ -172,7 +172,7 @@ function QuizRunner({ quizId, onClose }: { quizId: string; onClose: () => void }
             }}
           />
           {!graded && <HintButton quizId={quizId} item={item} />}
-          {graded && item.result && <ItemResult item={item} value={valueOf(item)} />}
+          {graded && item.result && <ItemResult quizId={quizId} item={item} value={valueOf(item)} />}
         </Panel>
       ))}
       {!graded && (
@@ -222,13 +222,35 @@ function HintButton({ quizId, item }: { quizId: string; item: Item }) {
   );
 }
 
-function ItemResult({ item, value }: { item: Item; value: StudentAnswer | undefined }) {
+const RESULT_COLORS: Record<string, string> = {
+  ...ITEM_STATUS_COLORS,
+  PARTIAL: "border-warning/40 bg-warning-surface",
+  PROVISIONAL: "border-info/40 bg-info-surface",
+};
+
+function ItemResult({ quizId, item, value }: { quizId: string; item: Item; value: StudentAnswer | undefined }) {
+  const utils = trpc.useUtils();
   const r = item.result!;
   const status = r.status ?? "PENDING_REVIEW";
   const statusKey = `coach.item.${status}`;
+  const regrade = trpc.student.coach.practice.regrade.useMutation({
+    onSuccess: (quiz) => {
+      utils.student.coach.practice.get.setData({ quizId }, quiz);
+      void utils.student.coach.practice.progress.invalidate();
+      void utils.student.coach.practice.list.invalidate();
+    },
+    onError: (e) => toast.error(errorText(e)),
+  });
+  const fb = r.feedback;
   return (
-    <div className={`mt-4 space-y-2 rounded-xl border p-3 text-sm ${ITEM_STATUS_COLORS[status] ?? "border-border bg-muted"}`}>
-      <p className="font-medium">{isMessageKey(statusKey) ? t(statusKey) : status}</p>
+    <div className={`mt-4 space-y-2 rounded-xl border p-3 text-sm ${RESULT_COLORS[status] ?? "border-border bg-muted"}`}>
+      <p className="font-medium">
+        {isMessageKey(statusKey) ? t(statusKey) : status}
+        {(status === "PARTIAL" || (r.gradedBy !== "RULE" && item.question.type === "LONG_ANSWER" && r.score !== null)) && <span className="ml-2 tabular-nums text-muted-foreground">{r.score}%</span>}
+      </p>
+      {r.gradedBy && r.gradedBy !== "RULE" && <p className="text-xs text-muted-foreground">{t(r.gradedBy === "AI_PRO" ? "coach.grade.byPro" : "coach.grade.byAi")}</p>}
+      {status === "PROVISIONAL" && <p className="text-xs">{t("coach.grade.provisional")}</p>}
+      {r.disputed && <p className="text-xs text-muted-foreground">{t("coach.grade.disputed")}</p>}
       <dl className="space-y-1">
         <div>
           <dt className="inline text-muted-foreground">{t("coach.practice.yourAnswer")}: </dt>
@@ -241,8 +263,47 @@ function ItemResult({ item, value }: { item: Item; value: StudentAnswer | undefi
           </div>
         )}
       </dl>
+      {fb && (
+        <div className="space-y-1 rounded-lg bg-background/60 p-2">
+          <p className="leading-relaxed">{fb.summary}</p>
+          {!!fb.good?.length && <FeedbackList title={t("coach.grade.good")} items={fb.good} />}
+          {!!fb.missing?.length && <FeedbackList title={t("coach.grade.missing")} items={fb.missing} />}
+          {!!fb.rubric?.length && (
+            <ul className="space-y-0.5" aria-label={t("coach.grade.rubric")}>
+              {fb.rubric.map((p, i) => (
+                <li key={i} className="flex gap-2">
+                  <span aria-hidden className={p.met ? "text-success" : "text-destructive"}>{p.met ? "✓" : "✗"}</span>
+                  <span className="sr-only">{p.met ? t("coach.grade.met") : t("coach.grade.notMet")}</span>
+                  <span className="min-w-0 break-words">{p.point}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      {!fb && r.rubric && (
+        <div>
+          <p className="text-muted-foreground">{t("coach.grade.rubric")}:</p>
+          <p className="whitespace-pre-wrap break-words">{r.rubric}</p>
+        </div>
+      )}
+      {r.calcVerified === false && <p className="text-xs text-muted-foreground">{t("coach.grade.calcUnchecked")}</p>}
       {r.explanation && <p className="leading-relaxed">{r.explanation}</p>}
       {r.cites.length > 0 && <Sources cites={r.cites} general={false} />}
+      {r.canRegrade && (
+        <Button size="sm" variant="outline" disabled={regrade.isPending} onClick={() => regrade.mutate({ quizId, itemId: item.id })}>
+          {regrade.isPending ? t("coach.practice.checking") : status === "PENDING_REVIEW" ? t("coach.grade.retry") : t("coach.grade.dispute")}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function FeedbackList({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div>
+      <p className="text-muted-foreground">{title}</p>
+      <ul className="list-disc pl-5">{items.map((s, i) => <li key={i} className="break-words">{s}</li>)}</ul>
     </div>
   );
 }
