@@ -5,15 +5,18 @@ import {
   COACH_MAX_CHARS,
   COACH_MAX_PASTE_CHARS,
   COACH_UPLOAD_EXTENSIONS,
+  coachUploadLimits,
   materialStage,
   type CoachLocale,
   type MaterialError,
   type MaterialGoal,
+  type MaterialProgress,
 } from "../../shared/coach";
 import { requireDb } from "../db";
+import { uploadSigner } from "../fileStorage/r2";
 import { AppError } from "../modules/errors";
 import { deleteFile, extensionOf, fileBytes, fileRow, saveFile, ALLOWED_FILE_TYPES } from "../modules/files";
-import { generateStructured, withCoachAi } from "./ai";
+import { createLimiter, generateStructured, withCoachAi } from "./ai";
 import { chunkPages, normalizeText, titleFromText, type DraftChunk, type PageText } from "./chunker";
 import { IngestError } from "./extract";
 import { coachModels } from "./models";
@@ -41,6 +44,15 @@ export function effectiveStatus(m: Pick<CoachMaterialRow, "status" | "errorCode"
   return { status: m.status, errorCode: m.errorCode ?? null };
 }
 
+/** Live progress of runs in this process (runs are in-process too); gone after a restart, like the run. */
+const runProgress = new Map<string, MaterialProgress & { runId: string }>();
+
+export function progressOf(m: Pick<CoachMaterialRow, "id" | "runId">, status: CoachMaterialRow["status"]): MaterialProgress | null {
+  const p = runProgress.get(m.id);
+  if (!p || p.runId !== m.runId || !inFlight(status)) return null;
+  return { step: p.step, done: p.done, total: p.total };
+}
+
 export function materialView(m: CoachMaterialRow, topicCount = 0) {
   const { status, errorCode } = effectiveStatus(m);
   return {
@@ -57,6 +69,7 @@ export function materialView(m: CoachMaterialRow, topicCount = 0) {
     errorCode,
     needsReview: m.needsReview,
     ocrPages: m.ocrPages,
+    progress: progressOf(m, status),
     topicCount,
     createdAt: m.createdAt,
     lastOpenedAt: m.lastOpenedAt,
@@ -107,9 +120,15 @@ async function assertCanAdd(studentId: number) {
   await assertDailyCap(studentId, "UPLOAD", limits.uploadsPerDay);
 }
 
-/** Checked by the upload endpoint before the bytes are stored. */
-export async function assertUploadAllowed(studentId: number, fileName: string) {
+/** The size and page limits in force now: `coach.limits`, reduced to 8 MB when files cannot go to R2. */
+export async function uploadLimits() {
+  return coachUploadLimits(await coachLimits(), uploadSigner() !== null);
+}
+
+/** Checked before the bytes are stored (API upload) or before a direct upload is signed. */
+export async function assertUploadAllowed(studentId: number, fileName: string, sizeBytes: number) {
   if (!COACH_FILE_TYPES[extensionOf(fileName)]) throw new AppError("COACH_FILE_TYPE");
+  if (sizeBytes <= 0 || sizeBytes > (await uploadLimits()).maxBytes) throw new AppError("FILE_TOO_LARGE");
   await assertCanAdd(studentId);
 }
 
@@ -120,6 +139,8 @@ export async function createFromFile(studentId: number, input: { fileId: string;
   if (!file || file.uploadedBy !== studentId || file.workspaceId !== coachWorkspaceId(studentId)) throw new AppError("FILE_NOT_FOUND");
   const [used] = await requireDb().select({ id: coachMaterials.id }).from(coachMaterials).where(eq(coachMaterials.fileId, file.id)).limit(1);
   if (used) throw new AppError("COACH_BUSY");
+  if (!COACH_FILE_TYPES[extensionOf(file.fileName)]) throw new AppError("COACH_FILE_TYPE");
+  if (file.sizeBytes > (await uploadLimits()).maxBytes) throw new AppError("FILE_TOO_LARGE");
   await assertCanAdd(studentId);
   const baseName = file.fileName.replace(/\.[^.]+$/, "");
   return insertAndRun(studentId, {
@@ -254,13 +275,21 @@ export async function markReviewed(studentId: number, materialId: string) {
 // Processing run
 // ---------------------------------------------------------------------------
 
+/** Material runs at the same time in this process; the rest wait as QUEUED ("Fayl yoxlanılır"). */
+export const MATERIAL_RUN_CONCURRENCY = 3;
+const materialRunSlot = createLimiter(MATERIAL_RUN_CONCURRENCY);
+
 function scheduleRun(studentId: number, materialId: string, runId: string, locale: CoachLocale) {
   withCoachAi(studentId, "COACH_INGEST", () =>
     setImmediate(() => {
-      runMaterial(materialId, runId, locale).catch(async (error) => {
-        console.error("[coach] material run failed", materialId, error instanceof Error ? error.message : error);
-        await finish(materialId, runId, { status: "FAILED", errorCode: "INTERNAL" }).catch(() => false);
-      });
+      materialRunSlot(() => runMaterial(materialId, runId, locale))
+        .catch(async (error) => {
+          console.error("[coach] material run failed", materialId, error instanceof Error ? error.message : error);
+          await finish(materialId, runId, { status: "FAILED", errorCode: "INTERNAL" }).catch(() => false);
+        })
+        .finally(() => {
+          if (runProgress.get(materialId)?.runId === runId) runProgress.delete(materialId);
+        });
     }),
   );
 }
@@ -274,28 +303,64 @@ async function progress(materialId: string, runId: string, patch: Partial<CoachM
 }
 const finish = progress;
 
+/** Heartbeats closer than this are kept in memory only. */
+const HEARTBEAT_MS = 20_000;
+
+/**
+ * Records progress for the status line and, at most every HEARTBEAT_MS, touches `updatedAt` so a
+ * long OCR run is not mistaken for one that died in a restart. False when the run was replaced
+ * (retry) or the material deleted: the caller stops.
+ */
+function progressReporter(materialId: string, runId: string) {
+  let lastBeat = Date.now();
+  return async (p: MaterialProgress): Promise<boolean> => {
+    runProgress.set(materialId, { ...p, runId });
+    if (Date.now() - lastBeat < HEARTBEAT_MS && p.done < p.total) return true;
+    lastBeat = Date.now();
+    return progress(materialId, runId, { updatedAt: new Date() });
+  };
+}
+
 /** Reads the pages of a material: text layers directly, scanned pages and images through OCR (ocr.ts). */
 export interface PageReader {
-  (input: { material: CoachMaterialRow; bytes: Buffer; locale: CoachLocale }): Promise<{
+  (input: { material: CoachMaterialRow; bytes: Buffer; locale: CoachLocale; onProgress?: (p: MaterialProgress) => Promise<boolean> }): Promise<{
     pages: PageText[];
     pageCount: number;
     ocrPages: number;
     ocrScore: number | null;
     needsReview: boolean;
-    /** Scanned pages left unread because of the OCR caps. */
+    /** Scanned pages left unread because of the OCR caps (or a provider that cannot read PDFs). */
     ocrSkipped: number;
+    /** Scanned pages the provider failed on (after retries). */
+    ocrFailed: number;
   }>;
 }
+
+const AI_ERRORS: Partial<Record<string, MaterialError>> = {
+  COACH_AI_BUSY: "AI_QUOTA",
+  COACH_AI_EXHAUSTED: "AI_EXHAUSTED",
+  COACH_AI_CONFIG: "AI_CONFIG",
+  COACH_AI_TIMEOUT: "AI_TIMEOUT",
+  COACH_AI_UNSUPPORTED: "OCR_UNSUPPORTED",
+  COACH_AI_UNAVAILABLE: "AI_UNAVAILABLE",
+  AI_UNAVAILABLE: "AI_UNAVAILABLE",
+  AI_INVALID_OUTPUT: "AI_UNAVAILABLE",
+  COACH_MONTHLY_LIMIT: "AI_LIMIT",
+  COACH_DAILY_LIMIT: "AI_LIMIT",
+};
 
 /** Why a run stopped, as the student sees it. */
 export function materialErrorOf(error: unknown): MaterialError {
   if (error instanceof IngestError) return error.code;
-  if (error instanceof AppError) {
-    if (error.code === "COACH_AI_BUSY") return "AI_QUOTA";
-    if (error.code === "COACH_MONTHLY_LIMIT" || error.code === "COACH_DAILY_LIMIT") return "AI_LIMIT";
-    if (error.code === "AI_UNAVAILABLE") return "AI_UNAVAILABLE";
-  }
+  if (error instanceof AppError) return AI_ERRORS[error.code] ?? "INTERNAL";
   return "UNREADABLE";
+}
+
+/** The notice on a READY material: unread pages (failures) first, then pages left out by the caps. */
+export function readyWarning(read: { ocrFailed: number; ocrSkipped: number }): MaterialError | null {
+  if (read.ocrFailed > 0) return "OCR_PARTIAL";
+  if (read.ocrSkipped > 0) return "OCR_LIMIT";
+  return null;
 }
 
 /** Keeps whole pages up to the character cap. */
@@ -313,24 +378,33 @@ export function capPages(pages: PageText[], max = COACH_MAX_CHARS): PageText[] {
   return out;
 }
 
-async function segment(studentId: number, chunks: DraftChunk[], locale: CoachLocale): Promise<DraftTopic[]> {
-  if (chunks.length <= 2) return fallbackTopics(chunks);
+/**
+ * Topic segmentation never blocks a material for long: one lite call, no retries, a short timeout;
+ * anything else (no answer in time, rate limit, unusable output) gives the deterministic topics.
+ */
+export const SEGMENT_TIMEOUT_MS = 20_000;
+
+export async function segmentTopics(studentId: number, chunks: DraftChunk[], locale: CoachLocale, generate: typeof generateStructured = generateStructured): Promise<{ topics: DraftTopic[]; ai: boolean }> {
+  if (chunks.length <= 2) return { topics: fallbackTopics(chunks), ai: false };
   try {
     await assertCoachAiAllowed(studentId);
     const { lite } = await coachModels();
-    const { data } = await generateStructured({ model: lite, messages: segmentMessages(chunks, locale), schema: segmentSchema, jsonSchema: segmentJsonSchema, maxTokens: 4096, timeoutMs: 90_000 });
-    return normalizeTopics(data.topics, chunks) ?? fallbackTopics(chunks);
+    const { data } = await generate({ model: lite, messages: segmentMessages(chunks, locale), schema: segmentSchema, jsonSchema: segmentJsonSchema, maxTokens: 4096, timeoutMs: SEGMENT_TIMEOUT_MS, retry: { attempts: 1 } });
+    const topics = normalizeTopics(data.topics, chunks);
+    return topics ? { topics, ai: true } : { topics: fallbackTopics(chunks), ai: false };
   } catch (error) {
-    console.warn("[coach] segmentation fell back to headings", error instanceof Error ? error.message : error);
-    return fallbackTopics(chunks);
+    console.warn("[coach] segmentation fell back to headings", error instanceof AppError ? error.code : error instanceof Error ? error.message : error);
+    return { topics: fallbackTopics(chunks), ai: false };
   }
 }
 
-export async function runMaterial(materialId: string, runId: string, locale: CoachLocale) {
+export async function runMaterial(materialId: string, runId: string, locale: CoachLocale, reader: PageReader = readPagesWithOcr) {
   const db = requireDb();
+  const startedAt = Date.now();
   const [material] = await db.select().from(coachMaterials).where(eq(coachMaterials.id, materialId)).limit(1);
   if (!material || material.runId !== runId) return;
   if (!(await progress(materialId, runId, { status: "EXTRACTING" }))) return;
+  runProgress.set(materialId, { step: "READING", done: 0, total: 0, runId });
 
   const file = material.fileId ? await fileRow(material.fileId) : null;
   if (!file) {
@@ -339,22 +413,24 @@ export async function runMaterial(materialId: string, runId: string, locale: Coa
   }
   let read;
   try {
-    read = await readPagesWithOcr({ material, bytes: await fileBytes(file), locale });
+    read = await reader({ material, bytes: await fileBytes(file), locale, onProgress: progressReporter(materialId, runId) });
   } catch (error) {
     const code = materialErrorOf(error);
-    if (!(error instanceof IngestError)) console.warn("[coach] extraction failed", materialId, error instanceof Error ? error.message : error);
+    if (!(error instanceof IngestError)) console.warn("[coach] extraction failed", materialId, error instanceof AppError ? error.code : error instanceof Error ? error.message : error);
     await finish(materialId, runId, { status: "FAILED", errorCode: code });
     return;
   }
   const pages = capPages(read.pages.filter((p) => p.text.trim()));
   const charCount = pages.reduce((n, p) => n + p.text.length, 0);
   if (pages.reduce((n, p) => n + p.text.replace(/\s/g, "").length, 0) < 50) {
-    await finish(materialId, runId, { status: "FAILED", errorCode: "NO_TEXT", pageCount: read.pageCount, ocrPages: read.ocrPages });
+    await finish(materialId, runId, { status: "FAILED", errorCode: read.ocrFailed > 0 ? "OCR_PARTIAL" : "NO_TEXT", pageCount: read.pageCount, ocrPages: read.ocrPages });
     return;
   }
   const chunks = chunkPages(pages);
+  const extractedAt = Date.now();
+  runProgress.set(materialId, { step: "TOPICS", done: read.pageCount, total: read.pageCount, runId });
   if (!(await progress(materialId, runId, { status: "SEGMENTING", pageCount: read.pageCount, charCount, ocrPages: read.ocrPages }))) return;
-  const topics = await segment(material.studentId, chunks, locale);
+  const { topics, ai } = await segmentTopics(material.studentId, chunks, locale);
 
   const topicIds = topics.map(() => nanoid());
   const topicOfChunk = (ord: number) => topicIds[topics.findIndex((t) => ord >= t.from && ord <= t.to)] ?? null;
@@ -370,9 +446,12 @@ export async function runMaterial(materialId: string, runId: string, locale: Coa
     for (let i = 0; i < rows.length; i += 100) await tx.insert(coachChunks).values(rows.slice(i, i + 100));
     await tx
       .update(coachMaterials)
-      .set({ status: "READY", errorCode: read.ocrSkipped > 0 ? "OCR_LIMIT" : null, ocrScore: read.ocrScore, needsReview: read.needsReview, textRevision: material.textRevision + 1 })
+      .set({ status: "READY", errorCode: readyWarning(read), ocrScore: read.ocrScore, needsReview: read.needsReview, textRevision: material.textRevision + 1 })
       .where(eq(coachMaterials.id, materialId));
     return true;
   });
-  if (stillOurs) await logEvent(material.studentId, "MATERIAL_READY", materialId, { pages: read.pageCount, chunks: chunks.length, topics: topics.length, ocrPages: read.ocrPages });
+  if (!stillOurs) return;
+  const timing = { extractMs: extractedAt - startedAt, topicsMs: Date.now() - extractedAt, aiTopics: ai };
+  console.info("[coach] material ready", materialId, { pages: read.pageCount, chunks: chunks.length, ocrPages: read.ocrPages, ocrFailed: read.ocrFailed, ...timing });
+  await logEvent(material.studentId, "MATERIAL_READY", materialId, { pages: read.pageCount, chunks: chunks.length, topics: topics.length, ocrPages: read.ocrPages, ocrFailed: read.ocrFailed, ...timing });
 }

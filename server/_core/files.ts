@@ -124,7 +124,7 @@ export function registerFileRoutes(app: Express) {
           // A student's own study material: private workspace id no provider workspace has.
           await assertCoachEnabled(user.id);
           await assertConsent(user.id);
-          await assertUploadAllowed(user.id, uploaded.originalname);
+          await assertUploadAllowed(user.id, uploaded.originalname, uploaded.size);
           workspaceId = coachWorkspaceId(user.id);
           allowedTypes = COACH_FILE_TYPES;
         } else if (context === "submission") {

@@ -4,12 +4,12 @@ import { useI18n } from "@/i18n/locale";
 import { t } from "@/i18n/messages";
 import { errorText } from "@/lib/format";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
-import { fileDownloadUrl } from "@/lib/uploadFile";
+import { fileDownloadUrl, formatFileSize } from "@/lib/uploadFile";
 import { Download, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useParams } from "wouter";
-import { CoachShell } from "./CoachShell";
+import { CoachShell, type CoachStatus } from "./CoachShell";
 import { inProgress, MasteryBadge, StageBadge, StageSteps } from "./materialUi";
 import { SharePanel } from "./SharePanel";
 
@@ -20,12 +20,17 @@ export function CoachMaterialPage() {
   const { id } = useParams<{ id: string }>();
   return (
     <CoachShell title={t("nav.coach")} back="/student/coach">
-      {() => <MaterialBody id={id} />}
+      {(status) => <MaterialBody id={id} limits={status.upload} />}
     </CoachShell>
   );
 }
 
-function MaterialBody({ id }: { id: string }) {
+type UploadLimits = CoachStatus["upload"];
+
+/** Values the limit-related messages need ({pages}, {size}, {ocr}). */
+const limitValues = (limits: UploadLimits) => ({ pages: limits.maxPages, size: formatFileSize(limits.maxBytes), ocr: limits.ocrPages });
+
+function MaterialBody({ id, limits }: { id: string; limits: UploadLimits }) {
   const q = trpc.student.coach.materials.get.useQuery({ id }, { refetchInterval: (s) => (s.state.data && inProgress(s.state.data.stage) ? 2500 : false) });
   if (q.error) return <ErrorNote error={q.error} />;
   if (!q.data) return <Loading />;
@@ -33,7 +38,7 @@ function MaterialBody({ id }: { id: string }) {
   return (
     <>
       <MaterialHeader m={m} />
-      {m.stage !== "READY" ? <MaterialProgress m={m} /> : <MaterialReady m={m} />}
+      {m.stage !== "READY" ? <MaterialProgress m={m} limits={limits} /> : <MaterialReady m={m} limits={limits} />}
     </>
   );
 }
@@ -110,7 +115,7 @@ function MaterialHeader({ m }: { m: CoachMaterialDetail }) {
   );
 }
 
-function MaterialProgress({ m }: { m: CoachMaterialDetail }) {
+function MaterialProgress({ m, limits }: { m: CoachMaterialDetail; limits: UploadLimits }) {
   const { locale } = useI18n();
   const utils = trpc.useUtils();
   const retry = trpc.student.coach.materials.retry.useMutation({
@@ -122,7 +127,7 @@ function MaterialProgress({ m }: { m: CoachMaterialDetail }) {
       <Panel>
         <div role="alert" className="space-y-3">
           <p className="text-sm font-medium text-destructive">{t("coach.stage.FAILED")}</p>
-          <p className="text-sm">{t(`coach.materialError.${m.errorCode ?? "INTERNAL"}`)}</p>
+          <p className="text-sm">{t(`coach.materialError.${m.errorCode ?? "INTERNAL"}`, limitValues(limits))}</p>
           <Button size="sm" variant="outline" disabled={retry.isPending} onClick={() => retry.mutate({ id: m.id, locale })}>
             <RotateCcw className="mr-1 h-4 w-4" aria-hidden />
             {t("coach.material.retry")}
@@ -131,15 +136,27 @@ function MaterialProgress({ m }: { m: CoachMaterialDetail }) {
       </Panel>
     );
   }
+  const p = m.progress;
+  const pct = p && p.step === "OCR" && p.total > 0 ? Math.round((p.done / p.total) * 100) : null;
   return (
     <Panel>
       <StageSteps stage={m.stage} />
-      <p className="mt-3 text-xs text-muted-foreground">{t("coach.material.processingHint")}</p>
+      {p && (
+        <div className="mt-4 space-y-2" aria-live="polite">
+          <p className="text-sm font-medium">{t(`coach.progress.${p.step}`, { done: p.done, total: p.total })}</p>
+          {pct !== null && (
+            <div className="h-2 w-full overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={t(`coach.progress.${p.step}`, { done: p.done, total: p.total })}>
+              <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${pct}%` }} />
+            </div>
+          )}
+        </div>
+      )}
+      <p className="mt-3 text-sm text-muted-foreground">{t("coach.material.processingHint")}</p>
     </Panel>
   );
 }
 
-function TextNotices({ m }: { m: CoachMaterialDetail }) {
+function TextNotices({ m, limits }: { m: CoachMaterialDetail; limits: UploadLimits }) {
   return (
     <>
       {m.needsReview && (
@@ -150,19 +167,21 @@ function TextNotices({ m }: { m: CoachMaterialDetail }) {
           </Link>
         </div>
       )}
-      {m.errorCode === "OCR_LIMIT" && (
-        <p role="status" className="rounded-2xl border border-warning/40 bg-warning-surface p-4 text-sm text-warning">{t("coach.ocr.skipped")}</p>
+      {(m.errorCode === "OCR_LIMIT" || m.errorCode === "OCR_PARTIAL") && (
+        <p role="status" className="rounded-2xl border border-warning/40 bg-warning-surface p-4 text-sm text-warning">
+          {m.errorCode === "OCR_PARTIAL" ? t("coach.ocr.partial") : t("coach.ocr.skipped", limitValues(limits))}
+        </p>
       )}
     </>
   );
 }
 
-function MaterialReady({ m }: { m: CoachMaterialDetail }) {
+function MaterialReady({ m, limits }: { m: CoachMaterialDetail; limits: UploadLimits }) {
   const mastery = trpc.student.coach.review.materialProgress.useQuery({ id: m.id });
   const progress = new Map((mastery.data ?? []).map((r) => [r.topicId, r]));
   return (
     <>
-      <TextNotices m={m} />
+      <TextNotices m={m} limits={limits} />
       <Panel
         title={t("coach.material.topics")}
         action={

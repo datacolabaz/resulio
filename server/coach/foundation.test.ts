@@ -117,12 +117,15 @@ describe("generateStructured", () => {
     await expect(generateStructured({ model: "m", messages: [], schema, jsonSchema, invoke })).rejects.toMatchObject({ code: "AI_INVALID_OUTPUT" });
   });
 
-  it("maps provider rate limits to COACH_AI_BUSY", async () => {
+  it("maps provider rate limits to COACH_AI_BUSY after bounded retries", async () => {
     const invoke = vi.fn(async () => {
       throw new LlmHttpError(429, "LLM invoke failed: 429 Too Many Requests");
     });
-    const err = await generateStructured({ model: "m", messages: [], schema, jsonSchema, invoke }).catch((e) => e);
+    const sleep = vi.fn(async () => undefined);
+    const err = await generateStructured({ model: "m", messages: [], schema, jsonSchema, invoke, retry: { sleep } }).catch((e) => e);
     expect(err).toBeInstanceOf(AppError);
     expect(err.code).toBe("COACH_AI_BUSY");
+    expect(invoke).toHaveBeenCalledTimes(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
   });
 });

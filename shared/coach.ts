@@ -33,13 +33,45 @@ export function materialStage(status: CoachMaterialStatus): MaterialStage {
   return status;
 }
 
-export const MATERIAL_ERRORS = ["NO_TEXT", "TOO_MANY_PAGES", "UNREADABLE", "FILE_MISSING", "FILE_TYPE", "OCR_LIMIT", "AI_LIMIT", "AI_UNAVAILABLE", "AI_QUOTA", "INTERRUPTED", "INTERNAL"] as const;
+/**
+ * Why a material failed (status FAILED), or a warning on a READY material (OCR_LIMIT, OCR_PARTIAL).
+ * AI failures are told apart: AI_QUOTA = the provider's rate limit (429, "busy, retry soon"),
+ * AI_EXHAUSTED = its daily quota, AI_CONFIG = wrong key/model or a model with no quota,
+ * AI_TIMEOUT = no answer in time, OCR_UNSUPPORTED = the provider cannot read PDFs/images.
+ */
+export const MATERIAL_ERRORS = [
+  "NO_TEXT",
+  "TOO_MANY_PAGES",
+  "FILE_TOO_LARGE",
+  "UNREADABLE",
+  "FILE_MISSING",
+  "FILE_TYPE",
+  "OCR_LIMIT",
+  "OCR_PARTIAL",
+  "OCR_UNSUPPORTED",
+  "AI_LIMIT",
+  "AI_UNAVAILABLE",
+  "AI_QUOTA",
+  "AI_EXHAUSTED",
+  "AI_CONFIG",
+  "AI_TIMEOUT",
+  "INTERRUPTED",
+  "INTERNAL",
+] as const;
 export type MaterialError = (typeof MATERIAL_ERRORS)[number];
+/** READY with one of these: the material works, a notice explains what was left out. */
+export const MATERIAL_WARNINGS: readonly MaterialError[] = ["OCR_LIMIT", "OCR_PARTIAL"];
 
-/** Upload limits: the existing API upload path (8 MB), 150 pages, 300k characters of text. */
-export const COACH_MAX_FILE_BYTES = 8 * 1024 * 1024;
-export const COACH_MAX_PAGES = 150;
-export const COACH_MAX_CHARS = 300_000;
+/**
+ * Upload limits. Size and pages come from `coach.limits` (maxUploadMb, maxPages); files above the
+ * API upload path (8 MB) go straight to R2, so without R2 the size limit stays at 8 MB. Hard caps
+ * keep an admin typo from letting a 2 GB file into server memory.
+ */
+export const COACH_DB_MAX_UPLOAD_MB = 8;
+export const COACH_HARD_MAX_UPLOAD_MB = 200;
+export const COACH_HARD_MAX_PAGES = 1000;
+/** Text kept per material (~330 dense pages); later pages are dropped. */
+export const COACH_MAX_CHARS = 1_000_000;
 export const COACH_MAX_PASTE_CHARS = 100_000;
 export const COACH_UPLOAD_EXTENSIONS = [".pdf", ".png", ".jpg", ".jpeg", ".docx", ".pptx", ".txt"] as const;
 
@@ -180,6 +212,10 @@ export type CoachEventType = (typeof COACH_EVENT_TYPES)[number];
 export const COACH_DEFAULT_LIMITS = {
   uploadsPerDay: 5,
   maxMaterials: 20,
+  /** MB per file (with R2; without it at most COACH_DB_MAX_UPLOAD_MB). */
+  maxUploadMb: 50,
+  /** Pages (PDF pages, slides, or ~3000-character parts of a text). */
+  maxPages: 300,
   ocrPagesPerMaterial: 30,
   ocrPagesPerMonth: 200,
   quizzesPerDay: 10,
@@ -187,6 +223,42 @@ export const COACH_DEFAULT_LIMITS = {
   proGradesPerDay: 5,
 };
 export type CoachLimits = typeof COACH_DEFAULT_LIMITS;
+
+const MB = 1024 * 1024;
+
+/** What the upload form shows and the server enforces, for the configured limits and file storage. */
+export function coachUploadLimits(limits: Pick<CoachLimits, "maxUploadMb" | "maxPages" | "ocrPagesPerMaterial" | "ocrPagesPerMonth">, direct: boolean) {
+  const wantedMb = limits.maxUploadMb > 0 ? limits.maxUploadMb : COACH_DEFAULT_LIMITS.maxUploadMb;
+  const maxMb = Math.min(wantedMb, direct ? COACH_HARD_MAX_UPLOAD_MB : COACH_DB_MAX_UPLOAD_MB);
+  return {
+    /** Browser → R2 for files above the API upload path. */
+    direct,
+    maxBytes: maxMb * MB,
+    maxPages: Math.min(limits.maxPages > 0 ? limits.maxPages : COACH_DEFAULT_LIMITS.maxPages, COACH_HARD_MAX_PAGES),
+    /** 0 = no per-material OCR cap. */
+    ocrPages: limits.ocrPagesPerMaterial,
+    ocrPagesPerMonth: limits.ocrPagesPerMonth,
+    /** The configured size is above what this storage allows (no R2): the form says so. */
+    reducedByStorage: !direct && wantedMb > COACH_DB_MAX_UPLOAD_MB,
+  };
+}
+export type CoachUploadLimits = ReturnType<typeof coachUploadLimits>;
+
+/** Checked in the browser before anything is sent; the server checks again. */
+export function coachFileProblem(file: { name: string; size: number }, maxBytes: number): "TYPE" | "SIZE" | null {
+  const dot = file.name.lastIndexOf(".");
+  const ext = dot === -1 ? "" : file.name.slice(dot).toLowerCase();
+  if (!(COACH_UPLOAD_EXTENSIONS as readonly string[]).includes(ext)) return "TYPE";
+  if (file.size <= 0 || file.size > maxBytes) return "SIZE";
+  return null;
+}
+
+/** Progress of a run, for "Material emal olunur… (səhifə X/Y)". */
+export interface MaterialProgress {
+  step: "READING" | "OCR" | "TOPICS";
+  done: number;
+  total: number;
+}
 export const COACH_DEFAULT_MONTHLY_TOKENS = 500_000;
 export const COACH_DEFAULT_DAILY_ACTIONS = 30;
 

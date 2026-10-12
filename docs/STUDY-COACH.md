@@ -60,9 +60,20 @@ calls never count against a teacher.
 | `coach.limits.ocrPagesPerMonth` | 200 recognised pages per month |
 | `coach.limits.quizzesPerDay` | 10 quizzes / day |
 | `coach.limits.proGradesPerDay` | 5 second-opinion gradings / day |
+| `coach.limits.maxUploadMb` | 50 MB per file (hard cap 200; 8 without R2) |
+| `coach.limits.maxPages` | 300 pages per file (hard cap 1000) |
 
-`null` = the default above, `0` = unlimited. An admin's per-user override in the AI limits page
-(`ai_teacher_limits`, keyed by user id) wins for that student. File limits: 8 MB, 150 pages.
+`null` = the default above, `0` = unlimited (for `maxUploadMb`/`maxPages`, `0` = the default). An
+admin's per-user override in the AI limits page (`ai_teacher_limits`, keyed by user id) wins for
+that student.
+
+File size: with R2 configured the browser uploads straight to R2 (`student.coach.uploads.*`, the
+signed PUT / multipart flow of `server/materials/directUpload.ts`, sessions scoped to
+`coach-u<studentId>`, stored private); the server checks the object's size and type after the
+upload, and the file's signature and page count when it is processed. Without R2 files go through
+`/api/files/upload` into the database, so the limit stays at 8 MB and the form says why
+(`coachUploadLimits` → `reducedByStorage`). `coach.status` returns the effective limits; the form
+shows them above the file picker and checks type and size before uploading.
 
 ## Tables
 
@@ -82,7 +93,7 @@ calls never count against a teacher.
 
 ## Materials
 
-Upload (`/api/files/upload`, context `coach`) or paste text. Files are stored in `files` under the
+Upload (direct to R2, or `/api/files/upload` with context `coach`) or paste text. Files are stored in `files` under the
 private workspace id `coach-u<studentId>`: no provider workspace has such an id, so no teacher
 reaches them, and `downloadAccess` allows the uploader only. Pasted text is stored the same way as
 a `.txt` file so every material has one source file.
@@ -93,12 +104,34 @@ as interrupted and can be retried):
 1. **Fayl yoxlanılır** (`QUEUED`) — type, size, page count.
 2. **Material emal olunur** (`EXTRACTING`, `SEGMENTING`) — text per page (text PDFs, DOCX and TXT
    in virtual pages of ~3000 characters, one page per PPTX slide), then chunks of ~1500 characters
-   that respect headings, then topics: the lite model proposes topic starts from an outline;
-   `normalizeTopics` keeps a valid ordered cover, and headings are the fallback when the model is
-   unavailable or the quota is used up.
+   that respect headings, then topics: **one** lite-model call (20 s timeout, no retries) proposes
+   topic starts from an outline; `normalizeTopics` keeps a valid ordered cover. On any failure
+   (timeout, rate limit, quota, bad output) the topics come from headings, else groups of ~8 pages
+   (`fallbackTopics`) — a text PDF never needs the AI to become `READY`.
 3. **Material hazırdır** (`READY`).
 
-`FAILED` shows the reason (`NO_TEXT`, `TOO_MANY_PAGES`, `UNREADABLE`, …) with a retry button.
+The material page shows the step and, during OCR, "səhifə X/Y" (`material.progress`, kept in
+memory by the run; the run also touches `updatedAt` every 20 s so long OCR is not mistaken for an
+interrupted run). At most 3 materials are processed at a time per API process, and processing AI
+calls of all students share 4 slots (`ingestAiSlot`).
+
+AI calls (`generateStructured`) retry a per-minute 429, 5xx, 408, network errors and timeouts with
+equal-jitter exponential backoff (3 tries, 2 s base, 20 s cap, the provider's "retry in Ns" wins; a
+timeout is retried once). The HTTP layer's own retries are off for coach calls so tries do not
+multiply. Provider failures are classified (`aiFailureOf`):
+
+| Provider answer | Code | Material error |
+| --- | --- | --- |
+| 429 per-minute | `COACH_AI_BUSY` | `AI_QUOTA` ("busy, try in a few minutes") |
+| 429 per-day / insufficient quota | `COACH_AI_EXHAUSTED` | `AI_EXHAUSTED` |
+| 429 with `limit: 0`, 401/403, 404 model, LLM not configured | `COACH_AI_CONFIG` | `AI_CONFIG` |
+| timeout, 408, 504 | `COACH_AI_TIMEOUT` | `AI_TIMEOUT` |
+| 400/415 "unsupported file/MIME" | `COACH_AI_UNSUPPORTED` | `OCR_UNSUPPORTED` |
+| anything else | `COACH_AI_UNAVAILABLE` | `AI_UNAVAILABLE` |
+
+`FAILED` shows the reason (`NO_TEXT`, `TOO_MANY_PAGES`, `FILE_TYPE`, `AI_CONFIG`, …) with a retry
+button. A `READY` material may carry a warning in `errorCode`: `OCR_LIMIT` (pages over the cap) or
+`OCR_PARTIAL` (some pages could not be recognised).
 Deleting a material removes its chunks, topics, generated content and the file (also from R2).
 
 ## Learn ("Öyrən")
@@ -200,9 +233,19 @@ Per topic: a free question or a button — **Sadə izah et**, **Nümunə göstə
 
 ## OCR (scanned PDFs and images)
 
-PDF pages with fewer than 30 letters/digits in their text layer, and images, are read by the OCR
-model (`coach.models.ocr` → `COACH_OCR_MODEL` → main) in batches of 5 pages (`pdfPick` builds a
-small PDF of just those pages). The model transcribes verbatim in the page's own language.
+Images and scanned PDF pages are read by the OCR model (`coach.models.ocr` → `COACH_OCR_MODEL` →
+main) in batches of 5 pages (`pdfPick` builds a small PDF of just those pages), 2 batches of a
+material at a time, 120 s timeout per call. The model transcribes verbatim in the page's own
+language. Which pages are scanned (`scannedPagesOf`): in a text PDF (at least half the pages have a
+text layer) only pages with no letters at all — slide titles and figure pages keep their few words
+and never wait on OCR; otherwise pages with fewer than 30 letters/digits.
+
+- Failures: a batch that still fails after retries leaves its pages unread instead of failing the
+  material; those pages count as quality 0 (`needsReview`) and the material is `READY` with
+  `OCR_PARTIAL`. Failures no other batch can pass (`limit: 0`, daily quota, unsupported input,
+  student caps) stop the remaining batches. The material fails only when no page at all is
+  readable, with the specific code from the table above. If the student's AI allowance is used up,
+  the text pages still make a material.
 
 - Caps: `coach.limits.ocrPagesPerMaterial` (30) and `coach.limits.ocrPagesPerMonth` (200), counted
   from `coach_events` type `OCR` (`meta.pages`), so deleting a material does not refund pages.
@@ -276,4 +319,7 @@ generated primary-key names) is at most 64 characters — `pnpm db:verify` and
 
 `COACH_NOT_AVAILABLE` (flag off), `COACH_DB_NOT_READY` (migration not applied yet),
 `COACH_CONSENT_REQUIRED`, `COACH_MONTHLY_LIMIT`, `COACH_DAILY_LIMIT`, `COACH_FEATURE_LIMIT`,
-`COACH_AI_BUSY` (provider rate limit), `AI_INVALID_OUTPUT`, `AI_UNAVAILABLE`.
+`COACH_AI_BUSY` (per-minute provider rate limit), `COACH_AI_EXHAUSTED` (daily provider quota),
+`COACH_AI_CONFIG` (model/key without access — check `coach.models`, `COACH_*_MODEL`, `AI_MODEL`),
+`COACH_AI_TIMEOUT`, `COACH_AI_UNSUPPORTED`, `COACH_AI_UNAVAILABLE`, `AI_INVALID_OUTPUT`,
+`COACH_TOO_MANY_PAGES`, `COACH_FILE_TYPE`, `FILE_TOO_LARGE`.
