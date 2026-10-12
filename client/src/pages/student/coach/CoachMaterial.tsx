@@ -34,7 +34,10 @@ type UploadLimits = CoachStatus["upload"];
 const limitValues = (limits: UploadLimits) => ({ pages: limits.maxPages, size: formatFileSize(limits.maxBytes), ocr: limits.ocrPages });
 
 function MaterialBody({ id, limits }: { id: string; limits: UploadLimits }) {
-  const q = trpc.student.coach.materials.get.useQuery({ id }, { refetchInterval: (s) => (s.state.data && inProgress(s.state.data.stage) ? 2500 : false) });
+  const q = trpc.student.coach.materials.get.useQuery(
+    { id },
+    { refetchInterval: (s) => (s.state.data && inProgress(s.state.data.stage) ? 2500 : s.state.data?.pages?.pending?.length ? 20_000 : false) },
+  );
   if (q.error) return <ErrorNote error={q.error} />;
   if (!q.data) return <Loading />;
   const m = q.data;
@@ -164,6 +167,15 @@ const warningBox = "rounded-2xl border border-warning/40 bg-warning-surface p-4 
 /** Reading notices that name the pages: poorly recognised (with a link to exactly those), failed, capped, picture pages. */
 function TextNotices({ m, limits }: { m: CoachMaterialDetail; limits: UploadLimits }) {
   const r = m.pages;
+  const utils = trpc.useUtils();
+  const retryPages = trpc.student.coach.materials.retryPages.useMutation({
+    onSuccess: (data) => {
+      utils.student.coach.materials.get.setData({ id: m.id }, data);
+      void utils.student.coach.materials.list.invalidate();
+    },
+    onError: (e) => toast.error(errorText(e)),
+  });
+  const pending = r?.pending ?? [];
   return (
     <>
       {m.needsReview && (
@@ -174,10 +186,21 @@ function TextNotices({ m, limits }: { m: CoachMaterialDetail; limits: UploadLimi
           </Link>
         </div>
       )}
-      {m.errorCode === "OCR_PARTIAL" && (
-        <p role="status" className={`${warningBox} text-warning`}>
-          {r?.failed.length ? t("coach.ocr.failedPages", { pages: pageList(r.failed) }) : t("coach.ocr.partial")}
+      {pending.length > 0 && (
+        <p role="status" className="rounded-2xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+          {t("coach.ocr.pendingPages", { count: pending.length, pages: pageList(pending) })}
         </p>
+      )}
+      {r?.failed.length ? (
+        <div role="status" className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-card p-4 text-sm">
+          <p className="min-w-0 flex-1">{t("coach.ocr.failedPages", { pages: pageList(r.failed) })}</p>
+          <Button size="sm" variant="outline" disabled={retryPages.isPending} onClick={() => retryPages.mutate({ id: m.id })}>
+            <RotateCcw className="mr-1 h-4 w-4" aria-hidden />
+            {t("coach.material.retry")}
+          </Button>
+        </div>
+      ) : (
+        m.errorCode === "OCR_PARTIAL" && !pending.length && <p role="status" className={`${warningBox} text-warning`}>{t("coach.ocr.partial")}</p>
       )}
       {m.errorCode === "OCR_LIMIT" && (
         <p role="status" className={`${warningBox} text-warning`}>

@@ -130,8 +130,12 @@ Topics (`structure.ts`, pure, and `segmentTopics`):
   ALL CAPS and Title Case turned into sentence case with Azerbaijani İ/i and I/ı ("CON FON NEYMAN
   ARXİTEKTURASI" → "Con fon Neyman arxitekturası") using how the material writes each word
   mid-sentence (`casingHints`: "Neyman", "EHM", "USB" kept), first letter capitalised, at most 80
-  characters. A person's name (`looksLikePersonName`, or a name from the title page) or a
-  table-of-contents word is replaced by the topic's own first heading.
+  characters. A title is a real heading, never text from the body (`usableTitle`): empty, cut off
+  ("…"), longer than 12 words (a sentence), a person's name (`looksLikePersonName`, or a name from
+  the title page), a table-of-contents word or a bare number is replaced by the topic's own first
+  heading of ≤ 8 words (`contentTitle`). Topics still without one get a short title from **one**
+  lite call for all of them (`titleUntitled`: ≤ 6 words, 15 s, no retries, checked the same way),
+  else "Mövzu N" ("Topic N", "Тема N").
 - **Balance** (`balanceTopics`): a topic longer than `topicMaxPages` is split at a heading near an
   even cut (or evenly: "Title (2)"); one shorter than `topicMinPages` is merged into its smaller
   neighbour while the result stays within the maximum ("Ana plata və sistem bloku…"); at most 30
@@ -160,7 +164,7 @@ multiply. Provider failures are classified (`aiFailureOf`):
 
 `FAILED` shows the reason (`NO_TEXT`, `TOO_MANY_PAGES`, `FILE_TYPE`, `AI_CONFIG`, …) with a retry
 button. A `READY` material may carry a warning in `errorCode`: `OCR_LIMIT` (pages over the cap) or
-`OCR_PARTIAL` (some pages could not be recognised).
+`OCR_PARTIAL` (some pages could not be recognised after every background retry, see OCR).
 Deleting a material removes its chunks, topics, generated content, page report and the file (also
 from R2).
 
@@ -265,6 +269,15 @@ Per topic: a free question or a button — **Sadə izah et**, **Nümunə göstə
 - **Hint first**: a message that looks like an exercise (solve/calculate verbs in AZ/EN/RU, or
   arithmetic with `=`/`?`) gets one hint, not the answer; asking again right after a hint gets the
   full solution (`tutorMode`).
+- **Məni yoxla**: one short open question (mode `CHECK`, badge "Yoxlama sualı"); the box then asks
+  for the answer, and the next typed message is evaluated (mode `EVALUATE`: correct / partly
+  correct / not correct, what was missing, the right idea from the material).
+- **Resilience**: the model's JSON is normalised before the zod check (`normaliseTutorOutput`: a
+  question object, `cites` as one object, an unknown or lower-case grounding, the text under
+  another key); an unusable answer is `AI_INVALID_OUTPUT` and nothing is stored. Messages are read
+  back defensively (`messageView`). In the tab, the chat and every message sit in a local error
+  boundary: a message that cannot be shown, or a failed request, shows "Cavab göstərilə bilmədi,
+  yenidən cəhd edin" with **Yenidən cəhd et** in place, never the global error page.
 - **Grounding label**: "Materialınızdan" only when quotes check out (`verifyCites`); otherwise
   "Material + ümumi bilik", "Materialda yoxdur: ümumi bilik" or "Mövzudan kənar"
   (`finalGrounding`). Quotes are shown verbatim with page chips.
@@ -279,18 +292,26 @@ Per topic: a free question or a button — **Sadə izah et**, **Nümunə göstə
 ## OCR (scanned PDFs and images)
 
 Images and scanned PDF pages are read by the OCR model (`coach.models.ocr` → `COACH_OCR_MODEL` →
-main) in batches of 5 pages (`pdfPick` builds a small PDF of just those pages), 2 batches of a
-material at a time, 120 s timeout per call. The model transcribes verbatim in the page's own
-language. Which pages are scanned (`scannedPagesOf`): in a text PDF (at least half the pages have a
-text layer) only pages with no letters at all — slide titles and figure pages keep their few words
-and never wait on OCR; otherwise pages with fewer than 30 letters/digits.
+main) in batches of 2 pages (`pdfPick` builds a small PDF of just those pages), 2 batches of a
+material at a time, 180 s timeout per call, 4 tries with backoff up to 90 s (`OCR_RETRY`; a 429's
+"retry in Ns" is waited out). The model transcribes verbatim in the page's own language. Which
+pages are scanned (`scannedPagesOf`): in a text PDF (at least half the pages have a text layer) only
+pages with no letters at all — slide titles and figure pages keep their few words and never wait
+on OCR; otherwise pages with fewer than 30 letters/digits.
 
-- Failures: a batch that still fails after retries leaves its pages unread instead of failing the
-  material; they are listed as unread (not as poor recognition) and the material is `READY` with
-  `OCR_PARTIAL`. Failures no other batch can pass (`limit: 0`, daily quota, unsupported input,
-  student caps) stop the remaining batches. The material fails only when no page at all is
-  readable, with the specific code from the table above. If the student's AI allowance is used up,
-  the text pages still make a material.
+- Failures: unusable output for a 2-page batch is retried page by page. A page OCR still cannot
+  read keeps its own text layer when it has any; the others are **pending** (`report.pending`):
+  the material is `READY` without a warning and says "N səhifə hələ emal olunur…" (neutral; the
+  page polls every 20 s). `ocrRetry.ts` tries them again after 1, 3 and 10 minutes (timers in the
+  API process; a restart resumes them when the material is opened). Recognised pages join the
+  material in place (`addRecoveredPages`: new chunks between their neighbours, in the topic that
+  covers the page, topic ids kept, that topic's generated content dropped). Only after the last
+  try are they `failed` (`OCR_PARTIAL`): "Bu səhifələri hələlik oxumaq alınmadı: …" with
+  **Yenidən cəhd et** (`materials.retryPages`, one more try, no new upload). Failures no other
+  batch can pass (`limit: 0`, daily quota, unsupported input, student caps) stop the remaining
+  batches and end the retries. The material fails only when no page at all is readable, with the
+  specific code from the table above. If the student's AI allowance is used up, the text pages
+  still make a material.
 
 - Caps: `coach.limits.ocrPagesPerMaterial` (30) and `coach.limits.ocrPagesPerMonth` (200), counted
   from `coach_events` type `OCR` (`meta.pages`), so deleting a material does not refund pages.

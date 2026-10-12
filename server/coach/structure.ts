@@ -268,17 +268,34 @@ const TOPIC_WORD: Record<CoachLocale, string> = { az: "Mövzu", en: "Topic", ru:
 const AND: Record<CoachLocale, string> = { az: "və", en: "and", ru: "и" };
 export const introTitle = (locale: CoachLocale) => INTRO_TITLE[locale];
 
-/** A usable title from the topic's own text when the proposed one is a name or empty. */
-export function contentTitle(chunks: Pick<DraftChunk, "heading" | "text">[], hints: Map<string, string>, names: string[] = []): string {
+export const topicWord = (locale: CoachLocale) => TOPIC_WORD[locale];
+/** Longest proposed title kept (table of contents, model, heading); longer is a sentence, not a heading. */
+export const TITLE_MAX_WORDS = 12;
+/** A heading found in the text names a topic only when it is this short. */
+export const HEADING_TITLE_MAX_WORDS = 8;
+/** Titles the model writes for topics without a heading. */
+export const AI_TITLE_MAX_WORDS = 6;
+
+/**
+ * A proposed title as shown, or "" when it is no title: empty, cut off ("…"), a sentence (too many
+ * words), a person's name, a table-of-contents label or just a number.
+ */
+export function usableTitle(raw: string, hints: Map<string, string>, names: string[] = [], maxWords = TITLE_MAX_WORDS): string {
+  const line = raw.replace(/\s+/g, " ").trim();
+  if (!line || /(…|\.\.\.)$/u.test(line)) return "";
+  const title = normalizeTitle(line, hints, Number.POSITIVE_INFINITY);
   const banned = new Set(names.map((n) => foldText(n)));
-  const ok = (line: string) => {
-    const l = line.replace(/\s+/g, " ").trim();
-    return l.length >= 4 && l.length <= 90 && lettersOf(l) >= 4 && !looksLikePersonName(l) && !banned.has(foldText(l)) && !TOC_TITLE.test(lowerAz(l)) && !/^\d+$/.test(l);
-  };
-  for (const c of chunks) if (c.heading && ok(c.heading)) return normalizeTitle(c.heading, hints);
+  const words = title.split(" ").filter(Boolean).length;
+  if (words > maxWords || title.length > 90 || lettersOf(title) < 3 || /^\d+$/.test(title)) return "";
+  if (looksLikePersonName(title) || banned.has(foldText(title)) || TOC_TITLE.test(lowerAz(title))) return "";
+  return title;
+}
+
+/** The topic's first real heading when the proposed title is no title; "" when it has none (never a sentence of its text). */
+export function contentTitle(chunks: Pick<DraftChunk, "heading" | "text">[], hints: Map<string, string>, names: string[] = []): string {
   for (const c of chunks) {
-    const line = linesOf(c.text).find((l) => ok(l) && l.split(" ").length >= 2);
-    if (line) return normalizeTitle(line.replace(/[.!?].*$/u, ""), hints, 60);
+    const title = c.heading ? usableTitle(c.heading, hints, names, HEADING_TITLE_MAX_WORDS) : "";
+    if (title) return title;
   }
   return "";
 }
@@ -404,12 +421,14 @@ function splitSpan(span: Span, chunks: Pick<DraftChunk, "pageFrom" | "pageTo" | 
     const to = i + 1 < bounds.length ? bounds[i + 1] - 1 : span.to;
     const heading = chunks[from].heading;
     const own = i > 0 && headingStart(chunks, from) && heading && !sameTitle(heading, span.title) && !looksLikePersonName(heading);
-    const title = i === 0 ? span.title : own ? normalizeTitle(heading, hints) : `${span.title} (${++numbered})`;
+    const title = i === 0 ? span.title : own ? usableTitle(heading, hints, [], HEADING_TITLE_MAX_WORDS) || (span.title && `${span.title} (${++numbered})`) : span.title && `${span.title} (${++numbered})`;
     return { from, to, title, parts: [{ title, pages: pagesOf(chunks, from, to) }] };
   });
 }
 
-function joinTitle(parts: Span["parts"], locale: CoachLocale, hints: Map<string, string>): string {
+function joinTitle(all: Span["parts"], locale: CoachLocale, hints: Map<string, string>): string {
+  const parts = all.filter((p) => p.title);
+  if (!parts.length) return "";
   if (parts.length === 2) {
     const [a, b] = parts;
     const firstWord = b.title.split(" ")[0] ?? "";
@@ -464,15 +483,13 @@ export function balanceTopics(starts: TopicStart[], chunks: Pick<DraftChunk, "pa
   return spans.map((s) => ({ from: s.from, title: s.parts.length > 1 ? joinTitle(s.parts, opts.locale, hints) : s.title }));
 }
 
-/** Final titles: normalised, never a person's name or empty, never two identical neighbours. */
+/**
+ * Final titles: a real heading (proposed, else the topic's own first heading), normalised; "" when
+ * there is none — `titleUntitled` (materials.ts) then asks for a short one.
+ */
 export function finishTitles(starts: TopicStart[], chunks: Pick<DraftChunk, "heading" | "text">[], opts: { hints: Map<string, string>; names?: string[]; locale: CoachLocale }): TopicStart[] {
-  const banned = new Set((opts.names ?? []).map((n) => foldText(n)));
   return starts.map((s, i) => {
     const to = i + 1 < starts.length ? starts[i + 1].from : chunks.length;
-    let title = normalizeTitle(s.title, opts.hints);
-    if (!title || looksLikePersonName(title) || banned.has(foldText(title)) || TOC_TITLE.test(lowerAz(title))) {
-      title = contentTitle(chunks.slice(s.from, to), opts.hints, opts.names) || `${TOPIC_WORD[opts.locale]} ${i + 1}`;
-    }
-    return { from: s.from, title };
+    return { from: s.from, title: usableTitle(s.title, opts.hints, opts.names) || contentTitle(chunks.slice(s.from, to), opts.hints, opts.names) };
   });
 }

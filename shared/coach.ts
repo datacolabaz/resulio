@@ -183,7 +183,8 @@ export type MistakeCause = (typeof MISTAKE_CAUSES)[number];
 export const RECALL_MODES = ["OFF", "LOW", "NORMAL"] as const;
 export type RecallMode = (typeof RECALL_MODES)[number];
 
-export const TUTOR_MODES = ["CLARIFY", "HINT", "EXPLAIN", "EXAMPLE", "CHECK", "RECALL"] as const;
+/** EVALUATE: the student's reply to a CHECK question, judged right / partly right / wrong. */
+export const TUTOR_MODES = ["CLARIFY", "HINT", "EXPLAIN", "EXAMPLE", "CHECK", "EVALUATE", "RECALL"] as const;
 export type TutorMode = (typeof TUTOR_MODES)[number];
 /** The buttons next to a topic: "Sadə izah et", "Nümunə göstər", "Məni yoxla", or a free question. */
 export const TUTOR_ACTIONS = ["ASK", "SIMPLE", "EXAMPLE", "QUIZ_ME"] as const;
@@ -221,10 +222,16 @@ export interface MaterialPageReport {
   low: number[];
   /** Picture/diagram pages with little text. */
   image: number[];
-  /** OCR failed on them (after retries). */
+  /** OCR failed on them after every retry, the background ones included; the student may try again. */
   failed: number[];
   /** Left out by the OCR caps. */
   skipped: number[];
+  /** Not recognised yet: tried again in the background, the material updates in place. */
+  pending?: number[];
+  /** Background tries already made for `pending`. */
+  retries?: number;
+  /** When the next background try is due (ISO time). */
+  retryAt?: string | null;
 }
 
 /** Whether poorly recognised pages are a meaningful share of the material (and not a few diagrams). */

@@ -49,7 +49,7 @@ export function materialBlock(chunks: PromptChunk[], nonce: string): string {
 export interface StructuredRequest<T> {
   model: string;
   messages: Message[];
-  schema: z.ZodType<T>;
+  schema: z.ZodType<T, unknown>;
   jsonSchema: { name: string; schema: Record<string, unknown> };
   maxTokens?: number;
   /** Per attempt. */
@@ -209,11 +209,12 @@ export async function generateStructured<T>(req: StructuredRequest<T>): Promise<
     throw coachAiError(error);
   }
   const content = result.choices?.[0]?.message?.content;
-  const parsed = parseJsonLoose(typeof content === "string" ? content : "");
+  const raw = typeof content === "string" ? content : Array.isArray(content) ? content.map((p: unknown) => (p && typeof p === "object" && "text" in p ? String(p.text) : "")).join("") : "";
+  const parsed = parseJsonLoose(raw);
   const checked = parsed ? req.schema.safeParse(parsed.value) : null;
   if (!checked?.success) {
     console.warn("[coach] unusable model output", { model: result.model, finish: result.choices?.[0]?.finish_reason ?? null });
     throw new AppError("AI_INVALID_OUTPUT");
   }
-  return { data: checked.data, model: (result.model || req.model || "").slice(0, 120) };
+  return { data: checked.data, model: (result.model || req.model || "").slice(0, 100) };
 }

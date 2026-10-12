@@ -4,7 +4,8 @@ import { LlmHttpError, type InvokeResult } from "../_core/llm";
 import { AppError } from "../modules/errors";
 import { aiFailureOf, backoffMs, coachAiError, createLimiter, DEFAULT_RETRY, generateStructured, isRetryable, withRetries, type RetryPolicy } from "./ai";
 import { looksLike, scannedPagesOf } from "./extract";
-import { materialErrorOf, readyWarning } from "./materials";
+import type { DraftChunk } from "./chunker";
+import { materialErrorOf, placeRecovered, readyWarning } from "./materials";
 import { recogniseBatches, stopsOcr } from "./ocr";
 import { z } from "zod";
 
@@ -205,5 +206,45 @@ describe("upload limits", () => {
     expect(readyWarning({ ocrFailed: 2, ocrSkipped: 3 })).toBe("OCR_PARTIAL");
     expect(readyWarning({ ocrFailed: 0, ocrSkipped: 3 })).toBe("OCR_LIMIT");
     expect(readyWarning({ ocrFailed: 0, ocrSkipped: 0 })).toBeNull();
+  });
+});
+
+describe("late pages join a ready material in place", () => {
+  const chunk = (pageFrom: number, pageTo = pageFrom): DraftChunk => ({ ord: 0, pageFrom, pageTo, heading: "", text: `p${pageFrom}`, method: "OCR", quality: 90 });
+  // Chunks of pages 2-26, 29-30, 33-40 (27-28 and 31-32 were missing); topics 2-26, 29-40.
+  const existing = [
+    { ord: 0, pageFrom: 2 },
+    { ord: 1, pageFrom: 14 },
+    { ord: 2, pageFrom: 26 },
+    { ord: 3, pageFrom: 29 },
+    { ord: 4, pageFrom: 33 },
+  ];
+  const topics = [
+    { id: "A", ord: 0, pageFrom: 2, pageTo: 26 },
+    { id: "B", ord: 1, pageFrom: 29, pageTo: 40 },
+  ];
+
+  it("puts each page between its neighbours, in the topic covering it, growing a topic to include it", () => {
+    const plan = placeRecovered(existing, topics, [chunk(31, 32), chunk(27, 28)]);
+    expect(plan.inserts.map((p) => [p.chunk.pageFrom, p.ord, p.topicId])).toEqual([
+      [27, 3, "A"],
+      [31, 5, "B"],
+    ]);
+    // Applied from the last insertion point down: ords >= 4 move by 1, then ords >= 3 by 1.
+    expect(plan.shifts).toEqual([
+      { fromOrd: 4, by: 1 },
+      { fromOrd: 3, by: 1 },
+    ]);
+    expect(plan.ranges).toEqual([{ id: "A", pageFrom: 2, pageTo: 28 }]);
+  });
+
+  it("pages after the last chunk go to the end of the last topic", () => {
+    const plan = placeRecovered(existing, topics, [chunk(41), chunk(42)]);
+    expect(plan.inserts.map((p) => [p.ord, p.topicId])).toEqual([
+      [5, "B"],
+      [6, "B"],
+    ]);
+    expect(plan.shifts).toEqual([{ fromOrd: 5, by: 2 }]);
+    expect(plan.ranges).toEqual([{ id: "B", pageFrom: 29, pageTo: 42 }]);
   });
 });
