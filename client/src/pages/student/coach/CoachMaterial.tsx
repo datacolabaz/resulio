@@ -5,12 +5,15 @@ import { t } from "@/i18n/messages";
 import { errorText } from "@/lib/format";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { fileDownloadUrl, formatFileSize } from "@/lib/uploadFile";
-import { Download, Pencil, RotateCcw, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { COACH_MATERIAL_QUIZ_COUNT, pageList } from "@shared/coach";
+import { ClipboardCheck, Download, FileText, MessageCircle, Pencil, Play, RotateCcw, Trash2, type LucideIcon } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useParams } from "wouter";
 import { CoachShell, type CoachStatus } from "./CoachShell";
+import { PackView } from "./LearnTab";
 import { inProgress, MasteryBadge, StageBadge, StageSteps } from "./materialUi";
+import { QuizRunner } from "./PracticeTab";
 import { SharePanel } from "./SharePanel";
 
 export type CoachMaterialDetail = RouterOutputs["student"]["coach"]["materials"]["get"];
@@ -156,23 +159,145 @@ function MaterialProgress({ m, limits }: { m: CoachMaterialDetail; limits: Uploa
   );
 }
 
+const warningBox = "rounded-2xl border border-warning/40 bg-warning-surface p-4 text-sm";
+
+/** Reading notices that name the pages: poorly recognised (with a link to exactly those), failed, capped, picture pages. */
 function TextNotices({ m, limits }: { m: CoachMaterialDetail; limits: UploadLimits }) {
+  const r = m.pages;
   return (
     <>
       {m.needsReview && (
-        <div role="status" className="space-y-2 rounded-2xl border border-warning/40 bg-warning-surface p-4 text-sm">
-          <p className="text-warning">{t("coach.ocr.lowQuality")}</p>
-          <Link href={`/student/coach/m/${m.id}/text`} className="font-medium text-link hover:underline">
-            {t("coach.text.open")}
+        <div role="status" className={`space-y-2 ${warningBox}`}>
+          <p className="text-warning">{r?.low.length ? t("coach.ocr.lowPages", { pages: pageList(r.low) }) : t("coach.ocr.lowQuality")}</p>
+          <Link href={`/student/coach/m/${m.id}/text${r?.low.length ? `?pages=${r.low.join(",")}` : ""}`} className="font-medium text-link hover:underline">
+            {r?.low.length ? t("coach.ocr.checkPages") : t("coach.text.open")}
           </Link>
         </div>
       )}
-      {(m.errorCode === "OCR_LIMIT" || m.errorCode === "OCR_PARTIAL") && (
-        <p role="status" className="rounded-2xl border border-warning/40 bg-warning-surface p-4 text-sm text-warning">
-          {m.errorCode === "OCR_PARTIAL" ? t("coach.ocr.partial") : t("coach.ocr.skipped", limitValues(limits))}
+      {m.errorCode === "OCR_PARTIAL" && (
+        <p role="status" className={`${warningBox} text-warning`}>
+          {r?.failed.length ? t("coach.ocr.failedPages", { pages: pageList(r.failed) }) : t("coach.ocr.partial")}
         </p>
       )}
+      {m.errorCode === "OCR_LIMIT" && (
+        <p role="status" className={`${warningBox} text-warning`}>
+          {r?.skipped.length ? t("coach.ocr.skippedPages", { ...limitValues(limits), pages: pageList(r.skipped) }) : t("coach.ocr.skipped", limitValues(limits))}
+        </p>
+      )}
+      {!!r?.image.length && <p className="px-1 text-xs text-muted-foreground">{t("coach.ocr.imagePages", { pages: pageList(r.image) })}</p>}
     </>
+  );
+}
+
+function StepButton({ icon: Icon, label, hint, primary, href, onClick, disabled }: { icon: LucideIcon; label: string; hint: string; primary?: boolean; href?: string; onClick?: () => void; disabled?: boolean }) {
+  const className = `flex min-h-16 w-full items-start gap-3 rounded-xl border p-3 text-left transition-colors disabled:opacity-60 ${
+    primary ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90" : "border-border bg-card hover:border-link"
+  }`;
+  const body: ReactNode = (
+    <>
+      <Icon className="mt-0.5 h-5 w-5 shrink-0" aria-hidden />
+      <span className="min-w-0">
+        <span className="block font-medium">{label}</span>
+        <span className={`block text-xs ${primary ? "text-primary-foreground/80" : "text-muted-foreground"}`}>{hint}</span>
+      </span>
+    </>
+  );
+  return href ? (
+    <Link href={href} className={className}>
+      {body}
+    </Link>
+  ) : (
+    <button type="button" className={className} onClick={onClick} disabled={disabled}>
+      {body}
+    </button>
+  );
+}
+
+type NextView = null | "summary" | { quizId: string };
+
+/** The first thing a ready material shows: how many topics, and four ways to start. */
+function NextSteps({ m }: { m: CoachMaterialDetail }) {
+  const { locale } = useI18n();
+  const [, nav] = useLocation();
+  const utils = trpc.useUtils();
+  const [view, setView] = useState<NextView>(null);
+  const quiz = trpc.student.coach.practice.startMaterial.useMutation({
+    onSuccess: (q) => {
+      utils.student.coach.practice.get.setData({ quizId: q.id }, q);
+      setView({ quizId: q.id });
+    },
+    onError: (e) => toast.error(errorText(e)),
+  });
+  const first = m.topics[0];
+  if (!first) return null;
+  if (view && view !== "summary") {
+    return (
+      <>
+        <Panel title={t("coach.next.quizTitle")}>
+          <p className="text-sm text-muted-foreground">{m.title}</p>
+        </Panel>
+        <QuizRunner quizId={view.quizId} onClose={() => setView(null)} onLearn={() => nav(`/student/coach/t/${first.id}`)} backLabel={t("coach.next.close")} />
+      </>
+    );
+  }
+  return (
+    <>
+      <Panel>
+        <h3 className="text-lg font-semibold">{t("coach.next.title", { count: m.topics.length })}</h3>
+        <p className="text-sm text-muted-foreground">{t("coach.next.intro")}</p>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <StepButton primary icon={Play} href={`/student/coach/t/${first.id}`} label={t("coach.next.start")} hint={t("coach.next.startHint")} />
+          <StepButton icon={FileText} onClick={() => setView(view === "summary" ? null : "summary")} label={t("coach.next.summary")} hint={t("coach.next.summaryHint")} />
+          <StepButton
+            icon={ClipboardCheck}
+            disabled={quiz.isPending}
+            onClick={() => quiz.mutate({ materialId: m.id, locale })}
+            label={quiz.isPending ? t("coach.practice.preparing") : t("coach.next.quiz", { count: COACH_MATERIAL_QUIZ_COUNT })}
+            hint={t("coach.next.quizHint")}
+          />
+          <StepButton icon={MessageCircle} href={`/student/coach/t/${first.id}?tab=ask`} label={t("coach.next.ask")} hint={t("coach.next.askHint")} />
+        </div>
+      </Panel>
+      {view === "summary" && <MaterialSummary materialId={m.id} onClose={() => setView(null)} />}
+    </>
+  );
+}
+
+function MaterialSummary({ materialId, onClose }: { materialId: string; onClose: () => void }) {
+  const { locale } = useI18n();
+  const utils = trpc.useUtils();
+  const input = { materialId, locale };
+  const summary = trpc.student.coach.learn.materialSummary.useQuery(input);
+  const generate = trpc.student.coach.learn.generateMaterialSummary.useMutation({
+    onSuccess: (data) => utils.student.coach.learn.materialSummary.setData(input, data),
+    onError: (e) => toast.error(errorText(e)),
+  });
+  const asked = useRef(new Set<string>());
+  useEffect(() => {
+    if (summary.data === null && !generate.isPending && !asked.current.has(locale)) {
+      asked.current.add(locale);
+      generate.mutate(input);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summary.data, locale]);
+  return (
+    <Panel
+      title={t("coach.next.summaryTitle")}
+      action={
+        <Button size="sm" variant="ghost" onClick={onClose}>
+          {t("coach.next.close")}
+        </Button>
+      }
+    >
+      {generate.isPending || summary.isLoading ? (
+        <p role="status" className="text-sm text-muted-foreground">{t("coach.learn.preparing")}</p>
+      ) : summary.data ? (
+        <PackView pack={summary.data} />
+      ) : (
+        <Button size="sm" onClick={() => generate.mutate(input)}>{t("coach.learn.prepare")}</Button>
+      )}
+      <p className="mt-4 text-xs text-muted-foreground">{t("coach.learn.aiNote")}</p>
+    </Panel>
   );
 }
 
@@ -181,6 +306,7 @@ function MaterialReady({ m, limits }: { m: CoachMaterialDetail; limits: UploadLi
   const progress = new Map((mastery.data ?? []).map((r) => [r.topicId, r]));
   return (
     <>
+      <NextSteps m={m} />
       <TextNotices m={m} limits={limits} />
       <Panel
         title={t("coach.material.topics")}

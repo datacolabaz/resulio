@@ -4,7 +4,7 @@ import { Switch } from "@/components/ui/switch";
 import { t } from "@/i18n/messages";
 import { errorText } from "@/lib/format";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
-import { OCR_LOW_QUALITY } from "@shared/coach";
+import { OCR_LOW_QUALITY, pageList, type MaterialPageReport } from "@shared/coach";
 import { CheckCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -13,7 +13,19 @@ import { CoachShell } from "./CoachShell";
 
 type Chunk = RouterOutputs["student"]["coach"]["materials"]["chunks"]["chunks"][number];
 
-const isLow = (c: Pick<Chunk, "method" | "quality">) => c.method === "OCR" && c.quality !== null && c.quality < OCR_LOW_QUALITY;
+const covers = (c: Pick<Chunk, "pageFrom" | "pageTo">, pages: number[]) => pages.some((p) => p >= c.pageFrom && p <= c.pageTo);
+
+/** Poorly recognised: on a page the report lists (picture pages excluded), or by its own score for older materials. */
+const lowCheck = (report: MaterialPageReport | null) => (c: Pick<Chunk, "method" | "quality" | "pageFrom" | "pageTo">) =>
+  c.method === "OCR" && (report ? covers(c, report.low) : c.quality !== null && c.quality < OCR_LOW_QUALITY);
+
+/** `?pages=5,9,12` from the material's "check these pages" link. */
+const focusPages = () =>
+  (new URLSearchParams(window.location.search).get("pages") ?? "")
+    .split(",")
+    .map(Number)
+    .filter((n) => Number.isInteger(n) && n > 0)
+    .slice(0, 200);
 
 /** "/student/coach/m/:id/text": the recognised text page by page, editable by the student. */
 export function CoachTextEditorPage() {
@@ -28,6 +40,8 @@ export function CoachTextEditorPage() {
 function Editor({ id }: { id: string }) {
   const utils = trpc.useUtils();
   const q = trpc.student.coach.materials.chunks.useQuery({ id });
+  const [focus] = useState(focusPages);
+  const [onlyFocus, setOnlyFocus] = useState(focus.length > 0);
   const [onlyLow, setOnlyLow] = useState(false);
   const reviewed = trpc.student.coach.materials.markReviewed.useMutation({
     onSuccess: () => {
@@ -38,21 +52,29 @@ function Editor({ id }: { id: string }) {
   });
   if (q.error) return <ErrorNote error={q.error} />;
   if (!q.data) return <Loading />;
-  const { material, chunks } = q.data;
+  const { material, chunks, pages: report } = q.data;
+  const isLow = lowCheck(report);
   const hasOcr = chunks.some((c) => c.method === "OCR");
   const lowCount = chunks.filter(isLow).length;
-  const shown = onlyLow ? chunks.filter(isLow) : chunks;
+  const shown = onlyFocus && focus.length ? chunks.filter((c) => covers(c, focus)) : onlyLow ? chunks.filter(isLow) : chunks;
   return (
     <>
-      {hasOcr && (
+      {(hasOcr || focus.length > 0) && (
         <Panel>
           <div className="space-y-3">
             {material.needsReview && (
-              <p role="status" className="rounded-xl border border-warning/40 bg-warning-surface p-3 text-sm text-warning">{t("coach.ocr.lowQuality")}</p>
+              <p role="status" className="rounded-xl border border-warning/40 bg-warning-surface p-3 text-sm text-warning">
+                {report?.low.length ? t("coach.ocr.lowPages", { pages: pageList(report.low) }) : t("coach.ocr.lowQuality")}
+              </p>
             )}
             <p className="text-xs text-muted-foreground">{t("coach.ocr.disclaimer")}</p>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              {lowCount > 0 ? (
+              {focus.length > 0 ? (
+                <label className="flex items-center gap-2 text-sm">
+                  <Switch checked={onlyFocus} onCheckedChange={setOnlyFocus} />
+                  {t("coach.text.focusPages", { pages: pageList(focus) })}
+                </label>
+              ) : lowCount > 0 ? (
                 <label className="flex items-center gap-2 text-sm">
                   <Switch checked={onlyLow} onCheckedChange={setOnlyLow} />
                   {t("coach.text.onlyLow", { count: lowCount })}
@@ -73,7 +95,7 @@ function Editor({ id }: { id: string }) {
       <ol className="space-y-3">
         {shown.map((c) => (
           <li key={c.id}>
-            <ChunkEditor materialId={id} chunk={c} />
+            <ChunkEditor materialId={id} chunk={c} low={isLow(c)} />
           </li>
         ))}
       </ol>
@@ -81,7 +103,7 @@ function Editor({ id }: { id: string }) {
   );
 }
 
-function ChunkEditor({ materialId, chunk }: { materialId: string; chunk: Chunk }) {
+function ChunkEditor({ materialId, chunk, low }: { materialId: string; chunk: Chunk; low: boolean }) {
   const utils = trpc.useUtils();
   const [text, setText] = useState(chunk.text);
   const save = trpc.student.coach.materials.updateChunk.useMutation({
@@ -94,13 +116,13 @@ function ChunkEditor({ materialId, chunk }: { materialId: string; chunk: Chunk }
   const pages = chunk.pageFrom === chunk.pageTo ? t("coach.page", { page: chunk.pageFrom }) : t("coach.pages", { from: chunk.pageFrom, to: chunk.pageTo });
   const dirty = text.trim() !== chunk.text.trim();
   return (
-    <section className={`rounded-2xl border bg-card p-4 ${isLow(chunk) ? "border-warning/60" : "border-border"}`}>
+    <section className={`rounded-2xl border bg-card p-4 ${low ? "border-warning/60" : "border-border"}`}>
       <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <span className="font-medium text-foreground">{pages}</span>
         {chunk.heading && <span className="min-w-0 truncate">{chunk.heading}</span>}
         {chunk.method === "OCR" && (
-          <span className={`rounded-full px-2 py-0.5 ${isLow(chunk) ? "bg-warning-surface text-warning" : "bg-muted"}`}>
-            {isLow(chunk) ? t("coach.text.lowBadge") : t("coach.text.ocrBadge")}
+          <span className={`rounded-full px-2 py-0.5 ${low ? "bg-warning-surface text-warning" : "bg-muted"}`}>
+            {low ? t("coach.text.lowBadge") : t("coach.text.ocrBadge")}
           </span>
         )}
         {chunk.edited && <span className="rounded-full bg-info-surface px-2 py-0.5 text-info">{t("coach.text.editedBadge")}</span>}

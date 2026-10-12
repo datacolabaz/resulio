@@ -1,6 +1,6 @@
 import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { coachChunks, coachMaterials, coachTopics, type CoachMaterialRow } from "../../drizzle/schema";
+import { coachChunks, coachMaterials, coachPageReports, coachTopics, type CoachMaterialRow } from "../../drizzle/schema";
 import {
   COACH_MAX_CHARS,
   COACH_MAX_PASTE_CHARS,
@@ -10,6 +10,7 @@ import {
   type CoachLocale,
   type MaterialError,
   type MaterialGoal,
+  type MaterialPageReport,
   type MaterialProgress,
 } from "../../shared/coach";
 import { requireDb } from "../db";
@@ -17,13 +18,14 @@ import { uploadSigner } from "../fileStorage/r2";
 import { AppError } from "../modules/errors";
 import { deleteFile, extensionOf, fileBytes, fileRow, saveFile, ALLOWED_FILE_TYPES } from "../modules/files";
 import { createLimiter, generateStructured, withCoachAi } from "./ai";
-import { chunkPages, normalizeText, titleFromText, type DraftChunk, type PageText } from "./chunker";
+import { normalizeText, titleFromText, type DraftChunk, type PageText } from "./chunker";
 import { IngestError } from "./extract";
 import { coachModels } from "./models";
 import { readPagesWithOcr } from "./ocr";
 import { assertCoachAiAllowed, assertDailyCap, coachLimits } from "./quota";
-import { fallbackTopics, normalizeTopics, segmentJsonSchema, segmentMessages, segmentSchema, type DraftTopic } from "./segment";
+import { fallbackTopics, finishTopics, normalizeTopics, segmentJsonSchema, segmentMessages, segmentSchema, startsOf, type DraftTopic, type TopicPlan } from "./segment";
 import { logEvent } from "./store";
+import { casingHints, chunkMaterial, frontMatterOf, introTitle, tocStarts, type TocEntry } from "./structure";
 
 /**
  * A student's own materials: upload/paste → extract pages → chunks → topics. Files live in `files`
@@ -108,7 +110,30 @@ export async function materialDetail(studentId: number, id: string) {
   const m = await ownedMaterial(studentId, id);
   const topics = await topicsOf(id);
   if (m.status === "READY") await requireDb().update(coachMaterials).set({ lastOpenedAt: new Date(), updatedAt: m.updatedAt }).where(eq(coachMaterials.id, id));
-  return { ...materialView(m, topics.length), topics: topics.map((t) => ({ id: t.id, ord: t.ord, title: t.title, pageFrom: t.pageFrom, pageTo: t.pageTo })) };
+  return {
+    ...materialView(m, topics.length),
+    pages: m.status === "READY" ? await pageReportOf(id) : null,
+    topics: topics.map((t) => ({ id: t.id, ord: t.ord, title: t.title, pageFrom: t.pageFrom, pageTo: t.pageTo })),
+  };
+}
+
+/** The page report of the last run; null for materials made before reports existed (or if the table is not there yet). */
+export async function pageReportOf(materialId: string): Promise<MaterialPageReport | null> {
+  try {
+    const [row] = await requireDb().select({ report: coachPageReports.report }).from(coachPageReports).where(eq(coachPageReports.materialId, materialId)).limit(1);
+    return row?.report ?? null;
+  } catch (error) {
+    console.warn("[coach] page report unavailable", error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
+async function savePageReport(materialId: string, studentId: number, report: MaterialPageReport) {
+  try {
+    await requireDb().insert(coachPageReports).values({ materialId, studentId, report }).onDuplicateKeyUpdate({ set: { report } });
+  } catch (error) {
+    console.warn("[coach] page report not saved", materialId, error instanceof Error ? error.message : error);
+  }
 }
 
 async function assertCanAdd(studentId: number) {
@@ -202,6 +227,7 @@ export async function renameMaterial(studentId: number, id: string, title: strin
 const materialCascade: ((materialIds: string[]) => Promise<void>)[] = [
   async (ids) => void (await requireDb().delete(coachChunks).where(inArray(coachChunks.materialId, ids))),
   async (ids) => void (await requireDb().delete(coachTopics).where(inArray(coachTopics.materialId, ids))),
+  async (ids) => void (await requireDb().delete(coachPageReports).where(inArray(coachPageReports.materialId, ids))),
 ];
 export function onMaterialDelete(fn: (materialIds: string[]) => Promise<void>) {
   materialCascade.push(fn);
@@ -238,6 +264,7 @@ export async function materialChunks(studentId: number, id: string) {
   const rows = await requireDb().select().from(coachChunks).where(eq(coachChunks.materialId, id)).orderBy(asc(coachChunks.ord));
   return {
     material: materialView(m),
+    pages: await pageReportOf(id),
     chunks: rows.map((c) => ({ id: c.id, ord: c.ord, topicId: c.topicId, pageFrom: c.pageFrom, pageTo: c.pageTo, heading: c.heading, text: c.text, method: c.method, quality: c.quality, edited: c.edited })),
   };
 }
@@ -333,7 +360,20 @@ export interface PageReader {
     ocrSkipped: number;
     /** Scanned pages the provider failed on (after retries). */
     ocrFailed: number;
+    report: MaterialPageReport;
   }>;
+}
+
+/** Hooks run (not awaited) once a material is READY, e.g. preparing the first topic's summary. */
+export interface ReadyMaterial {
+  studentId: number;
+  materialId: string;
+  locale: CoachLocale;
+  firstTopicId: string | null;
+}
+const readyHooks: ((m: ReadyMaterial) => Promise<void>)[] = [];
+export function onMaterialReady(fn: (m: ReadyMaterial) => Promise<void>) {
+  readyHooks.push(fn);
 }
 
 const AI_ERRORS: Partial<Record<string, MaterialError>> = {
@@ -379,23 +419,63 @@ export function capPages(pages: PageText[], max = COACH_MAX_CHARS): PageText[] {
 }
 
 /**
- * Topic segmentation never blocks a material for long: one lite call, no retries, a short timeout;
- * anything else (no answer in time, rate limit, unusable output) gives the deterministic topics.
+ * Topic segmentation never blocks a material for long. A table of contents that matches the text
+ * gives the topics without AI; otherwise one lite call (no retries, short timeout), and anything
+ * else (no answer in time, rate limit, unusable output) gives the heading-based topics. Every
+ * source then gets readable titles and balanced lengths (`finishTopics`).
  */
 export const SEGMENT_TIMEOUT_MS = 20_000;
 
-export async function segmentTopics(studentId: number, chunks: DraftChunk[], locale: CoachLocale, generate: typeof generateStructured = generateStructured): Promise<{ topics: DraftTopic[]; ai: boolean }> {
-  if (chunks.length <= 2) return { topics: fallbackTopics(chunks), ai: false };
+export type TopicSource = "TOC" | "AI" | "HEADINGS";
+
+export const defaultTopicPlan = (locale: CoachLocale): TopicPlan => ({ locale, hints: new Map(), names: [], minPages: 2, maxPages: 6 });
+
+export async function segmentTopics(
+  studentId: number,
+  chunks: DraftChunk[],
+  locale: CoachLocale,
+  generate: typeof generateStructured = generateStructured,
+  plan: TopicPlan & { toc?: TocEntry[] } = defaultTopicPlan(locale),
+): Promise<{ topics: DraftTopic[]; source: TopicSource }> {
+  const fromToc = plan.toc?.length ? tocStarts(plan.toc, chunks) : null;
+  if (fromToc) return { topics: finishTopics(fromToc, chunks, plan), source: "TOC" };
+  const headings = () => ({ topics: finishTopics(startsOf(fallbackTopics(chunks)), chunks, plan), source: "HEADINGS" as const });
+  if (chunks.length <= 2) return headings();
   try {
     await assertCoachAiAllowed(studentId);
     const { lite } = await coachModels();
-    const { data } = await generate({ model: lite, messages: segmentMessages(chunks, locale), schema: segmentSchema, jsonSchema: segmentJsonSchema, maxTokens: 4096, timeoutMs: SEGMENT_TIMEOUT_MS, retry: { attempts: 1 } });
+    const { data } = await generate({
+      model: lite,
+      messages: segmentMessages(chunks, locale, { min: plan.minPages, max: plan.maxPages }),
+      schema: segmentSchema,
+      jsonSchema: segmentJsonSchema,
+      maxTokens: 4096,
+      timeoutMs: SEGMENT_TIMEOUT_MS,
+      retry: { attempts: 1 },
+    });
     const topics = normalizeTopics(data.topics, chunks);
-    return topics ? { topics, ai: true } : { topics: fallbackTopics(chunks), ai: false };
+    return topics ? { topics: finishTopics(startsOf(topics), chunks, plan), source: "AI" } : headings();
   } catch (error) {
     console.warn("[coach] segmentation fell back to headings", error instanceof AppError ? error.code : error instanceof Error ? error.message : error);
-    return { topics: fallbackTopics(chunks), ai: false };
+    return headings();
   }
+}
+
+/**
+ * Chunks and topics of a material's pages: front matter (title page, table of contents, a short
+ * preface) belongs to no topic, a preface with real content becomes "Giriş", the rest is split
+ * into topics. Topic and chunk ranges are positions in the returned `chunks`.
+ */
+export async function structureMaterial(studentId: number, pages: PageText[], locale: CoachLocale, generate: typeof generateStructured = generateStructured) {
+  const front = frontMatterOf(pages);
+  const { chunks, intro, bodyFrom } = chunkMaterial(pages, front);
+  const body = chunks.slice(bodyFrom).map((c, i) => ({ ...c, ord: i }));
+  const limits = await coachLimits();
+  const plan = { locale, hints: casingHints(pages.map((p) => p.text)), names: front.names, minPages: limits.topicMinPages, maxPages: limits.topicMaxPages, toc: front.toc };
+  const { topics: bodyTopics, source } = await segmentTopics(studentId, body, locale, generate, plan);
+  const introTopic: DraftTopic[] = intro ? [{ ord: 0, title: introTitle(locale), from: intro.from, to: intro.to, pageFrom: chunks[intro.from].pageFrom, pageTo: chunks[intro.to].pageTo }] : [];
+  const topics = [...introTopic, ...bodyTopics.map((t) => ({ ...t, from: t.from + bodyFrom, to: t.to + bodyFrom }))].map((t, i) => ({ ...t, ord: i }));
+  return { chunks, topics, source, frontPages: front.kinds.length };
 }
 
 export async function runMaterial(materialId: string, runId: string, locale: CoachLocale, reader: PageReader = readPagesWithOcr) {
@@ -426,11 +506,10 @@ export async function runMaterial(materialId: string, runId: string, locale: Coa
     await finish(materialId, runId, { status: "FAILED", errorCode: read.ocrFailed > 0 ? "OCR_PARTIAL" : "NO_TEXT", pageCount: read.pageCount, ocrPages: read.ocrPages });
     return;
   }
-  const chunks = chunkPages(pages);
   const extractedAt = Date.now();
   runProgress.set(materialId, { step: "TOPICS", done: read.pageCount, total: read.pageCount, runId });
   if (!(await progress(materialId, runId, { status: "SEGMENTING", pageCount: read.pageCount, charCount, ocrPages: read.ocrPages }))) return;
-  const { topics, ai } = await segmentTopics(material.studentId, chunks, locale);
+  const { chunks, topics, source, frontPages } = await structureMaterial(material.studentId, pages, locale);
 
   const topicIds = topics.map(() => nanoid());
   const topicOfChunk = (ord: number) => topicIds[topics.findIndex((t) => ord >= t.from && ord <= t.to)] ?? null;
@@ -451,7 +530,11 @@ export async function runMaterial(materialId: string, runId: string, locale: Coa
     return true;
   });
   if (!stillOurs) return;
-  const timing = { extractMs: extractedAt - startedAt, topicsMs: Date.now() - extractedAt, aiTopics: ai };
-  console.info("[coach] material ready", materialId, { pages: read.pageCount, chunks: chunks.length, ocrPages: read.ocrPages, ocrFailed: read.ocrFailed, ...timing });
-  await logEvent(material.studentId, "MATERIAL_READY", materialId, { pages: read.pageCount, chunks: chunks.length, topics: topics.length, ocrPages: read.ocrPages, ocrFailed: read.ocrFailed, ...timing });
+  await savePageReport(materialId, material.studentId, read.report);
+  const timing = { extractMs: extractedAt - startedAt, topicsMs: Date.now() - extractedAt, topicSource: source };
+  const stats = { pages: read.pageCount, chunks: chunks.length, topics: topics.length, frontPages, ocrPages: read.ocrPages, ocrFailed: read.ocrFailed, lowPages: read.report.low.length, ...timing };
+  console.info("[coach] material ready", materialId, stats);
+  await logEvent(material.studentId, "MATERIAL_READY", materialId, stats);
+  const ready: ReadyMaterial = { studentId: material.studentId, materialId, locale, firstTopicId: topicIds[0] ?? null };
+  for (const hook of readyHooks) void hook(ready).catch((error) => console.warn("[coach] ready hook failed", materialId, error instanceof Error ? error.message : error));
 }

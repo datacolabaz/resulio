@@ -9,7 +9,7 @@ import { requireDb } from "../db";
 import { AppError } from "../modules/errors";
 import { DATA_RULE, generateStructured, languageRule, materialBlock, withCoachAi, type PromptChunk } from "./ai";
 import { assertNotInExam } from "./examLock";
-import { onMaterialDelete, onMaterialTextChange, ownedMaterial } from "./materials";
+import { onMaterialDelete, onMaterialReady, onMaterialTextChange, ownedMaterial, type ReadyMaterial } from "./materials";
 import { coachModels } from "./models";
 import { assertCoachAiAllowed } from "./quota";
 import { selectChunks, verifyCites, type RetrievalChunk } from "./retrieval";
@@ -57,13 +57,17 @@ export const packJsonSchema = {
   },
 };
 
-const FORMAT_RULES: Record<SummaryFormat, string> = {
+type PackFormat = SummaryFormat | "OVERVIEW";
+
+const FORMAT_RULES: Record<PackFormat, string> = {
   SHORT: "A short summary: 1-2 sections, 4-8 points in total, one sentence each. Also return `concepts`: the 4-10 key terms of the topic with a one-sentence definition each.",
   DETAILED: "A detailed study summary: one section per sub-topic in the material's order, 3-8 points each, each point 1-3 sentences that explain, not just list.",
   EXAM: "An exam-prep summary: sections with the facts, definitions, formulas and dates most likely to be asked; plus `questions` (5-8 likely exam questions) and `pitfalls` (3-6 common mistakes).",
+  OVERVIEW:
+    "A short overview of the WHOLE material for a student seeing it for the first time: one section per main topic in the listed order (join neighbouring topics so there are at most 10 sections; section heading = the topic), 2-4 points each, one sentence per point, saying what the student will learn. Also return `concepts`: the 5-10 most important terms of the material with a one-sentence definition each.",
 };
 
-export function packMessages(input: { format: SummaryFormat; topicTitle: string; chunks: PromptChunk[]; locale: CoachLocale; nonce: string }): Message[] {
+export function packMessages(input: { format: PackFormat; topicTitle: string; chunks: PromptChunk[]; locale: CoachLocale; nonce: string }): Message[] {
   return [
     {
       role: "system",
@@ -176,7 +180,57 @@ export async function getPack(studentId: number, topicId: string, format: Summar
   return artifactView(row, stale);
 }
 
-const running = new Set<string>();
+/** Generations in flight: a second request for the same pack (a click while it is prepared in the background) waits for the first. */
+const running = new Map<string, Promise<ArtifactView>>();
+
+function once(key: string, fn: () => Promise<ArtifactView>): Promise<ArtifactView> {
+  const inFlight = running.get(key);
+  if (inFlight) return inFlight;
+  const p = fn().finally(() => running.delete(key));
+  running.set(key, p);
+  return p;
+}
+
+/** Generates and stores one pack; `scopeId` is the topic id (or the material id for MATERIAL_SUMMARY). */
+async function buildPack(input: {
+  studentId: number;
+  materialId: string;
+  scopeId: string;
+  kind: ArtifactKind;
+  format: PackFormat;
+  title: string;
+  locale: CoachLocale;
+  chunks: CoachChunkRow[];
+  selected: RetrievalChunk[];
+}): Promise<ArtifactView> {
+  const { studentId, kind, locale } = input;
+  const { prompt, byLabel } = promptChunks(input.selected);
+  const { main } = await coachModels();
+  const { data, model } = await withCoachAi(studentId, "COACH_SUMMARY", () =>
+    generateStructured({
+      model: main,
+      messages: packMessages({ format: input.format, topicTitle: input.title, chunks: prompt, locale, nonce: randomBytes(4).toString("hex") }),
+      schema: packSchema,
+      jsonSchema: packJsonSchema,
+      maxTokens: input.format === "SHORT" ? 4096 : 8192,
+      timeoutMs: 120_000,
+    }),
+  );
+  const content = finishPack(data, byLabel, input.title);
+  if (!content.sections.length) throw new AppError("AI_INVALID_OUTPUT");
+  const inputHash = packInputHash({ kind, locale, chunks: input.chunks });
+  const existing = await findArtifact(input.scopeId, kind, locale);
+  if (existing) {
+    await requireDb()
+      .update(coachArtifacts)
+      .set({ content, inputHash, model, edited: false, revision: existing.revision + 1 })
+      .where(eq(coachArtifacts.id, existing.id));
+  } else {
+    await requireDb().insert(coachArtifacts).values({ id: nanoid(), materialId: input.materialId, topicId: input.scopeId, studentId, kind, locale, inputHash, content, model });
+  }
+  const row = (await findArtifact(input.scopeId, kind, locale))!;
+  return artifactView(row, false);
+}
 
 export async function generatePack(studentId: number, topicId: string, format: SummaryFormat, locale: CoachLocale) {
   await assertNotInExam(studentId);
@@ -184,44 +238,84 @@ export async function generatePack(studentId: number, topicId: string, format: S
   const material = await ownedMaterial(studentId, topic.materialId);
   if (material.status !== "READY") throw new AppError("COACH_NOT_READY");
   const kind = SUMMARY_KIND[format];
-  const key = `${topic.id}:${kind}:${locale}`;
-  if (running.has(key)) throw new AppError("COACH_BUSY");
-  const chunks = await topicChunks(topic.id);
-  if (!chunks.length || chunks.reduce((n, c) => n + c.text.trim().length, 0) < 80) throw new AppError("COACH_NOT_ENOUGH_CONTENT");
-  await assertCoachAiAllowed(studentId);
-  running.add(key);
-  try {
+  return once(`${topic.id}:${kind}:${locale}`, async () => {
+    const chunks = await topicChunks(topic.id);
+    if (!chunks.length || chunks.reduce((n, c) => n + c.text.trim().length, 0) < 80) throw new AppError("COACH_NOT_ENOUGH_CONTENT");
+    await assertCoachAiAllowed(studentId);
     const selected = selectChunks(chunks, `${topic.title} ${chunks.map((c) => c.heading).join(" ")}`, PACK_MAX_CHARS);
-    const { prompt, byLabel } = promptChunks(selected);
-    const { main } = await coachModels();
-    const { data, model } = await withCoachAi(studentId, "COACH_SUMMARY", () =>
-      generateStructured({
-        model: main,
-        messages: packMessages({ format, topicTitle: topic.title, chunks: prompt, locale, nonce: randomBytes(4).toString("hex") }),
-        schema: packSchema,
-        jsonSchema: packJsonSchema,
-        maxTokens: format === "SHORT" ? 4096 : 8192,
-        timeoutMs: 120_000,
-      }),
-    );
-    const content = finishPack(data, byLabel, topic.title);
-    if (!content.sections.length) throw new AppError("AI_INVALID_OUTPUT");
-    const inputHash = packInputHash({ kind, locale, chunks });
-    const existing = await findArtifact(topic.id, kind, locale);
-    if (existing) {
-      await requireDb()
-        .update(coachArtifacts)
-        .set({ content, inputHash, model, edited: false, revision: existing.revision + 1 })
-        .where(eq(coachArtifacts.id, existing.id));
-    } else {
-      await requireDb().insert(coachArtifacts).values({ id: nanoid(), materialId: topic.materialId, topicId: topic.id, studentId, kind, locale, inputHash, content, model });
+    return buildPack({ studentId, materialId: topic.materialId, scopeId: topic.id, kind, format, title: topic.title, locale, chunks, selected });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Whole-material overview and the first topic prepared in advance
+// ---------------------------------------------------------------------------
+
+export const MATERIAL_SUMMARY = "MATERIAL_SUMMARY" satisfies ArtifactKind;
+
+/** The material's topic chunks (front matter excluded) and its topics in order. */
+async function materialContent(materialId: string) {
+  const db = requireDb();
+  const topics = await db.select().from(coachTopics).where(eq(coachTopics.materialId, materialId)).orderBy(asc(coachTopics.ord));
+  const chunks = (await db.select().from(coachChunks).where(eq(coachChunks.materialId, materialId)).orderBy(asc(coachChunks.ord))).filter((c) => c.topicId);
+  return { topics, chunks };
+}
+
+/** An equal share of the budget per topic, its first chunks first: the overview covers every topic. */
+export function spreadChunks<T extends { topicId: string | null; text: string }>(topicIds: string[], chunks: T[], maxChars: number): T[] {
+  if (!topicIds.length) return [];
+  const share = Math.max(600, Math.floor(maxChars / topicIds.length));
+  const out: T[] = [];
+  let total = 0;
+  for (const id of topicIds) {
+    let used = 0;
+    for (const c of chunks.filter((x) => x.topicId === id)) {
+      if (used && used + c.text.length > share) break;
+      if (total + Math.min(c.text.length, share) > maxChars) return out;
+      out.push(c.text.length > share ? { ...c, text: c.text.slice(0, share) } : c);
+      used += Math.min(c.text.length, share);
+      total += Math.min(c.text.length, share);
     }
-    const row = (await findArtifact(topic.id, kind, locale))!;
-    return artifactView(row, false);
-  } finally {
-    running.delete(key);
+  }
+  return out;
+}
+
+export async function getMaterialSummary(studentId: number, materialId: string, locale: CoachLocale) {
+  const material = await ownedMaterial(studentId, materialId);
+  const row = await findArtifact(material.id, MATERIAL_SUMMARY, locale);
+  if (!row) return null;
+  const hash = packInputHash({ kind: MATERIAL_SUMMARY, locale, chunks: (await materialContent(material.id)).chunks });
+  const stale = row.inputHash !== hash;
+  if (stale && !row.edited) return null;
+  await logEvent(studentId, "PACK_OPENED", row.id, { kind: MATERIAL_SUMMARY, locale });
+  return artifactView(row, stale);
+}
+
+export async function generateMaterialSummary(studentId: number, materialId: string, locale: CoachLocale) {
+  await assertNotInExam(studentId);
+  const material = await ownedMaterial(studentId, materialId);
+  if (material.status !== "READY") throw new AppError("COACH_NOT_READY");
+  return once(`${material.id}:${MATERIAL_SUMMARY}:${locale}`, async () => {
+    const { topics, chunks } = await materialContent(material.id);
+    if (chunks.reduce((n, c) => n + c.text.trim().length, 0) < 200) throw new AppError("COACH_NOT_ENOUGH_CONTENT");
+    await assertCoachAiAllowed(studentId);
+    const selected = spreadChunks(topics.map((t) => t.id), chunks, PACK_MAX_CHARS);
+    const title = `${material.title}\nTopics: ${topics.map((t, i) => `${i + 1}. ${t.title}`).join("; ")}`;
+    return buildPack({ studentId, materialId: material.id, scopeId: material.id, kind: MATERIAL_SUMMARY, format: "OVERVIEW", title, locale, chunks, selected });
+  });
+}
+
+/** Right after READY: the short summary of the first topic, so "start with topic 1" opens instantly. */
+async function prepareFirstTopic(m: ReadyMaterial) {
+  if (!m.firstTopicId) return;
+  if (await findArtifact(m.firstTopicId, SUMMARY_KIND.SHORT, m.locale)) return;
+  try {
+    await generatePack(m.studentId, m.firstTopicId, "SHORT", m.locale);
+  } catch (error) {
+    console.info("[coach] first topic not prepared", m.materialId, error instanceof AppError ? error.code : error instanceof Error ? error.message : error);
   }
 }
+onMaterialReady(prepareFirstTopic);
 
 /** The student rewrites one point or concept in their own words. */
 export async function editPack(studentId: number, input: { artifactId: string; section?: number; point?: number; concept?: number; text: string }) {

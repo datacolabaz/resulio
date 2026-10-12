@@ -78,7 +78,8 @@ export const COACH_UPLOAD_EXTENSIONS = [".pdf", ".png", ".jpg", ".jpeg", ".docx"
 export const CHUNK_METHODS = ["TEXT", "OCR"] as const;
 export type ChunkMethod = (typeof CHUNK_METHODS)[number];
 
-export const ARTIFACT_KINDS = ["SUMMARY_SHORT", "SUMMARY_DETAILED", "SUMMARY_EXAM", "CONCEPTS"] as const;
+/** MATERIAL_SUMMARY: the short overview of a whole material, stored with `topicId` = the material id. */
+export const ARTIFACT_KINDS = ["SUMMARY_SHORT", "SUMMARY_DETAILED", "SUMMARY_EXAM", "CONCEPTS", "MATERIAL_SUMMARY"] as const;
 export type ArtifactKind = (typeof ARTIFACT_KINDS)[number];
 /** What the student picks in the "Öyrən" tab; SHORT also brings the key concepts. */
 export const SUMMARY_FORMATS = ["SHORT", "DETAILED", "EXAM"] as const;
@@ -127,6 +128,8 @@ export type QuizFormat = (typeof QUIZ_FORMATS)[number];
 /** Formats the student can pick. */
 export const PRACTICE_FORMATS = ["MCQ", "TRUE_FALSE", "OPEN", "WRITTEN", "MATCHING", "CALCULATION", "MIXED"] as const satisfies readonly QuizFormat[];
 export const QUIZ_COUNTS = [5, 10, 15] as const;
+/** "Özünü yoxla": mixed questions over a whole material. */
+export const COACH_MATERIAL_QUIZ_COUNT = 10;
 export const QUIZ_STATUSES = ["READY", "IN_PROGRESS", "GRADED"] as const;
 export type QuizStatus = (typeof QUIZ_STATUSES)[number];
 /** Item outcome: the engine's statuses plus PROVISIONAL (an AI grade that is not final). */
@@ -204,9 +207,43 @@ export const COACH_EVENT_TYPES = [
   "OCR",
 ] as const;
 
-/** OCR page quality (0-100) below this asks the student to check the recognised text. */
+/** OCR page quality (0-100) below this marks the page as poorly recognised. */
 export const OCR_LOW_QUALITY = 60;
+/** The material asks the student to check its text only when at least this share of its pages is poorly recognised. */
+export const OCR_REVIEW_SHARE = 0.1;
+/** A recognised page with fewer letters is a picture or diagram page ("şəkil səhifəsi"), not a poor recognition. */
+export const OCR_IMAGE_PAGE_LETTERS = 150;
 export type CoachEventType = (typeof COACH_EVENT_TYPES)[number];
+
+/** Page numbers per outcome of reading a material, shown on the material and in the text editor. */
+export interface MaterialPageReport {
+  /** Recognised, but poorly: the student may want to check them. */
+  low: number[];
+  /** Picture/diagram pages with little text. */
+  image: number[];
+  /** OCR failed on them (after retries). */
+  failed: number[];
+  /** Left out by the OCR caps. */
+  skipped: number[];
+}
+
+/** Whether poorly recognised pages are a meaningful share of the material (and not a few diagrams). */
+export function reviewNeeded(lowPages: number, pageCount: number): boolean {
+  return lowPages > 0 && lowPages >= Math.max(1, pageCount) * OCR_REVIEW_SHARE;
+}
+
+/** "3, 5–7, 12" (at most `max` groups, then "…"). */
+export function pageList(pages: number[], max = 12): string {
+  const sorted = [...new Set(pages)].sort((a, b) => a - b);
+  const groups: string[] = [];
+  for (let i = 0; i < sorted.length; ) {
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] + 1) j++;
+    groups.push(j === i ? String(sorted[i]) : `${sorted[i]}–${sorted[j]}`);
+    i = j + 1;
+  }
+  return groups.length > max ? `${groups.slice(0, max).join(", ")}, …` : groups.join(", ");
+}
 
 /** Free beta limits; every value can be changed in platform_settings (`coach.limits`, `coach.student*`). */
 export const COACH_DEFAULT_LIMITS = {
@@ -221,6 +258,10 @@ export const COACH_DEFAULT_LIMITS = {
   quizzesPerDay: 10,
   tutorPerDay: 40,
   proGradesPerDay: 5,
+  /** Topics shorter than this many pages are joined with a neighbour (0 = never). */
+  topicMinPages: 2,
+  /** Topics longer than this many pages are split at headings (0 = never). */
+  topicMaxPages: 6,
 };
 export type CoachLimits = typeof COACH_DEFAULT_LIMITS;
 

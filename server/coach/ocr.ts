@@ -4,7 +4,7 @@ import { PDFDocument } from "pdf-lib";
 import { z } from "zod";
 import { coachEvents } from "../../drizzle/schema";
 import { periodStart } from "../../shared/aiUsage";
-import { coachUploadLimits, OCR_LOW_QUALITY } from "../../shared/coach";
+import { coachUploadLimits, OCR_IMAGE_PAGE_LETTERS, OCR_LOW_QUALITY, reviewNeeded, type MaterialPageReport } from "../../shared/coach";
 import { ENV } from "../_core/env";
 import type { Message, MessageContent } from "../_core/llm";
 import { requireDb } from "../db";
@@ -235,20 +235,21 @@ export const readPagesWithOcr: PageReader = async ({ material, bytes, onProgress
   const scanned = source.kind === "pages" ? source.scanned : [1];
   const scannedSet = new Set(scanned);
   const textPages: PageText[] = texts.flatMap((text, i) => (scannedSet.has(i + 1) || !text.trim() ? [] : [{ page: i + 1, text, method: "TEXT" as const, quality: null }]));
-  const base = { pageCount: texts.length, ocrPages: 0, ocrScore: null, needsReview: false, ocrSkipped: 0, ocrFailed: 0 };
+  const base = { pageCount: texts.length, ocrPages: 0, ocrScore: null, needsReview: false, ocrSkipped: 0, ocrFailed: 0, report: emptyReport() };
   if (!scanned.length) return { ...base, pages: textPages };
+  const skipAll = () => ({ ...base, pages: textPages, ocrSkipped: scanned.length, report: { ...emptyReport(), skipped: scanned } });
 
   const pdfOk = isImage || pdfInputMode(ENV.llm, ENV.coachPdfMode) === "native";
   if (!pdfOk) {
     if (!textPages.length) throw new IngestError("OCR_UNSUPPORTED");
-    return { ...base, pages: textPages, ocrSkipped: scanned.length };
+    return skipAll();
   }
   const monthCap = limits.ocrPagesPerMonth > 0 ? limits.ocrPagesPerMonth : Number.POSITIVE_INFINITY;
   const monthLeft = Math.max(0, monthCap - (await ocrPagesUsedThisMonth(material.studentId)));
   const plan = planOcrPages(scanned, limits.ocrPagesPerMaterial, monthLeft);
   if (!plan.read.length) {
     if (!textPages.length) throw new IngestError("OCR_LIMIT");
-    return { ...base, pages: textPages, ocrSkipped: plan.skipped };
+    return skipAll();
   }
 
   try {
@@ -256,7 +257,7 @@ export const readPagesWithOcr: PageReader = async ({ material, bytes, onProgress
   } catch (error) {
     // The student's AI allowance is used up: the text pages still make a material.
     if (!textPages.length) throw error;
-    return { ...base, pages: textPages, ocrSkipped: scanned.length };
+    return skipAll();
   }
   const { ocr: model } = await coachModels();
   const pdf = isImage ? null : await PDFDocument.load(bytes, { updateMetadata: false });
@@ -277,7 +278,28 @@ export const readPagesWithOcr: PageReader = async ({ material, bytes, onProgress
   if (!ocrPages.length && !textPages.length) throw outcome.error ?? new IngestError("NO_TEXT");
   if (outcome.failed.length) console.warn("[coach] OCR left pages unread", material.id, { failed: outcome.failed.length, of: total, error: outcome.error instanceof Error ? outcome.error.message : outcome.error });
   const pages = [...textPages, ...ocrPages].sort((a, b) => a.page - b.page);
-  // A page that could not be read counts as quality 0: the student is asked to check the text.
-  const scores = [...outcome.recognised.map((p) => p.quality), ...outcome.failed.map(() => 0)];
-  return { ...base, pages, ocrPages: outcome.recognised.length, ocrSkipped: plan.skipped, ocrFailed: outcome.failed.length, ...summarizeQuality(scores) };
+  const report = pageReport(outcome.recognised, outcome.failed, scanned.slice(plan.read.length));
+  const textual = outcome.recognised.filter((p) => !report.image.includes(p.page));
+  return {
+    ...base,
+    pages,
+    ocrPages: outcome.recognised.length,
+    ocrSkipped: plan.skipped,
+    ocrFailed: outcome.failed.length,
+    ocrScore: textual.length ? Math.min(...textual.map((p) => p.quality)) : null,
+    needsReview: reviewNeeded(report.low.length, texts.length),
+    report,
+  };
 };
+
+export const emptyReport = (): MaterialPageReport => ({ low: [], image: [], failed: [], skipped: [] });
+
+/**
+ * Picture/diagram pages (little text) are named as such instead of counting as poor recognition;
+ * the other recognised pages below OCR_LOW_QUALITY are the ones the student may want to check.
+ */
+export function pageReport(recognised: OcrPage[], failed: number[], skipped: number[]): MaterialPageReport {
+  const image = recognised.filter((p) => (p.text.match(/[\p{L}\p{N}]/gu) ?? []).length < OCR_IMAGE_PAGE_LETTERS).map((p) => p.page);
+  const low = recognised.filter((p) => !image.includes(p.page) && isLowQuality(p.quality)).map((p) => p.page);
+  return { low, image, failed: [...failed], skipped: [...skipped] };
+}

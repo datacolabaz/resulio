@@ -4,6 +4,7 @@ import type { Message } from "../_core/llm";
 import { clip, sanitizeForPrompt } from "../modules/aiContext";
 import { DATA_RULE, languageRule } from "./ai";
 import { titleFromText, type DraftChunk } from "./chunker";
+import { balanceTopics, finishTitles, type TopicStart } from "./structure";
 
 /**
  * Topics of a material: consecutive chunk ranges with a title. The lite model proposes them from
@@ -50,17 +51,21 @@ export function outlineOf(chunks: DraftChunk[]): string {
     .join("\n");
 }
 
-export function segmentMessages(chunks: DraftChunk[], locale: CoachLocale): Message[] {
+export function segmentMessages(chunks: DraftChunk[], locale: CoachLocale, pages: { min: number; max: number } = { min: 2, max: 6 }): Message[] {
+  const size = pages.max > 0 ? `Aim for topics of about ${Math.max(1, pages.min)}-${pages.max} pages: split a long section at its sub-headings, join very short neighbouring sections.` : "";
   return [
     {
       role: "system",
       content: [
         "You split a student's study material into its main topics.",
         `Return JSON {"topics":[{"title","firstChunk"}]}: consecutive topics in reading order; the first starts at chunk 0; each topic starts where the previous ends. Between 1 and ${MAX_TOPICS} topics; prefer the material's own sections; a topic usually spans several chunks.`,
-        "Titles: short (2-8 words), specific, no numbering.",
+        size,
+        "Titles: short (2-8 words), specific, in sentence case (not ALL CAPS), no numbering. Name what the section teaches; never use a person's name (author, lecturer), a course code or a university as a title.",
         languageRule(locale),
         DATA_RULE,
-      ].join("\n"),
+      ]
+        .filter(Boolean)
+        .join("\n"),
     },
     { role: "user", content: `Chunks (#ord, pages, [heading]: first words):\n${outlineOf(chunks)}` },
   ];
@@ -127,6 +132,30 @@ export function fallbackTopics(chunks: DraftChunk[]): DraftTopic[] {
   }
   return withPages(
     plan.map((s, i) => ({ ord: i, title: (s.title || `#${i + 1}`).slice(0, 200), from: s.from, to: i + 1 < plan.length ? plan[i + 1].from - 1 : chunks.length - 1 })),
+    chunks,
+  );
+}
+
+export const startsOf = (topics: Pick<DraftTopic, "from" | "title">[]): TopicStart[] => topics.map((t) => ({ from: t.from, title: t.title }));
+
+export interface TopicPlan {
+  locale: CoachLocale;
+  /** How the material writes its words mid-sentence (`casingHints`). */
+  hints: Map<string, string>;
+  /** Names from the title page (the author). */
+  names: string[];
+  /** `coach.limits.topicMinPages` / `topicMaxPages`; 0 = no merging / no splitting. */
+  minPages: number;
+  maxPages: number;
+}
+
+/** Whatever proposed the starts (table of contents, model, headings): readable titles, then balanced lengths. */
+export function finishTopics(starts: TopicStart[], chunks: DraftChunk[], plan: TopicPlan): DraftTopic[] {
+  if (!chunks.length || !starts.length) return [];
+  const titled = finishTitles(starts, chunks, plan);
+  const balanced = balanceTopics(titled, chunks, { minPages: plan.minPages, maxPages: plan.maxPages, maxTopics: MAX_TOPICS, locale: plan.locale, hints: plan.hints });
+  return withPages(
+    balanced.map((s, i) => ({ ord: i, title: s.title.slice(0, 200), from: s.from, to: i + 1 < balanced.length ? balanced[i + 1].from - 1 : chunks.length - 1 })),
     chunks,
   );
 }

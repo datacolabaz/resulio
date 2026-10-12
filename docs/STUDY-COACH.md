@@ -62,6 +62,8 @@ calls never count against a teacher.
 | `coach.limits.proGradesPerDay` | 5 second-opinion gradings / day |
 | `coach.limits.maxUploadMb` | 50 MB per file (hard cap 200; 8 without R2) |
 | `coach.limits.maxPages` | 300 pages per file (hard cap 1000) |
+| `coach.limits.topicMinPages` | 2 — shorter topics are merged into a neighbour (`0` = never) |
+| `coach.limits.topicMaxPages` | 6 — longer topics are split at headings (`0` = never) |
 
 `null` = the default above, `0` = unlimited (for `maxUploadMb`/`maxPages`, `0` = the default). An
 admin's per-user override in the AI limits page (`ai_teacher_limits`, keyed by user id) wins for
@@ -90,6 +92,7 @@ shows them above the file picker and checks type and size before uploading.
 | `coach_mistakes` | 0055 | wrong answers with a cause, closed when the topic is answered well again |
 | `coach_threads`, `coach_messages` | 0056 | tutor conversations per topic (deleted after 90 days) |
 | `coach_shares` | 0057 | a material the student shared with one teacher workspace ("Müəllimlə paylaş") |
+| `coach_page_reports` | 0058 | per material: OCR pages poorly recognised, picture pages, failed and skipped pages |
 
 ## Materials
 
@@ -104,11 +107,37 @@ as interrupted and can be retried):
 1. **Fayl yoxlanılır** (`QUEUED`) — type, size, page count.
 2. **Material emal olunur** (`EXTRACTING`, `SEGMENTING`) — text per page (text PDFs, DOCX and TXT
    in virtual pages of ~3000 characters, one page per PPTX slide), then chunks of ~1500 characters
-   that respect headings, then topics: **one** lite-model call (20 s timeout, no retries) proposes
-   topic starts from an outline; `normalizeTopics` keeps a valid ordered cover. On any failure
-   (timeout, rate limit, quota, bad output) the topics come from headings, else groups of ~8 pages
-   (`fallbackTopics`) — a text PDF never needs the AI to become `READY`.
+   that respect headings, then topics (`structureMaterial`, below) — a text PDF never needs the AI
+   to become `READY`.
 3. **Material hazırdır** (`READY`).
+
+Topics (`structure.ts`, pure, and `segmentTopics`):
+
+- **Front matter** (`frontMatterOf`, first ≤ 15 pages, never all of them): the cover / title page
+  (short, or < 900 letters with institution/author/city signs and a year or a name line), table
+  of contents pages ("Mündəricat", "Содержание", "Contents", or mostly "title …… page" lines) and a
+  preface ("Ön söz", "Annotasiya", "Предисловие", "Preface"…). These pages are chunked on their own
+  and belong to no topic; a preface with ≥ 600 letters becomes a first topic "Giriş"
+  ("Introduction", "Введение"). "Short" is relative to the material's median page, so slide decks
+  are not swallowed. Names on the title page (the author) are remembered.
+- **Boundaries**, first that works: the **table of contents** (`tocStarts`: entries matched to
+  headings, printed page numbers shifted by the offset the matches show — printed page 1 is often
+  PDF page 3; bibliography entries dropped; used only when ≥ 60 % of entries map), then **one**
+  lite-model call (20 s timeout, no retries; the prompt asks for 2–6-page topics and forbids
+  names as titles; `normalizeTopics` keeps a valid ordered cover), then headings / ~8-page groups
+  (`fallbackTopics`) on any AI failure. The source is logged (`TOC`, `AI`, `HEADINGS`).
+- **Titles** (`finishTitles`, `normalizeTitle`): numbering removed ("1.", "8.1.", "Mövzu 3:"),
+  ALL CAPS and Title Case turned into sentence case with Azerbaijani İ/i and I/ı ("CON FON NEYMAN
+  ARXİTEKTURASI" → "Con fon Neyman arxitekturası") using how the material writes each word
+  mid-sentence (`casingHints`: "Neyman", "EHM", "USB" kept), first letter capitalised, at most 80
+  characters. A person's name (`looksLikePersonName`, or a name from the title page) or a
+  table-of-contents word is replaced by the topic's own first heading.
+- **Balance** (`balanceTopics`): a topic longer than `topicMaxPages` is split at a heading near an
+  even cut (or evenly: "Title (2)"); one shorter than `topicMinPages` is merged into its smaller
+  neighbour while the result stays within the maximum ("Ana plata və sistem bloku…"); at most 30
+  topics (the maximum grows for very long materials). `server/coach/outline.fixture.ts`
+  reproduces the production case (author on the title page, "Mündəricat", a 1-page and a 14-page
+  section).
 
 The material page shows the step and, during OCR, "səhifə X/Y" (`material.progress`, kept in
 memory by the run; the run also touches `updatedAt` every 20 s so long OCR is not mistaken for an
@@ -132,7 +161,15 @@ multiply. Provider failures are classified (`aiFailureOf`):
 `FAILED` shows the reason (`NO_TEXT`, `TOO_MANY_PAGES`, `FILE_TYPE`, `AI_CONFIG`, …) with a retry
 button. A `READY` material may carry a warning in `errorCode`: `OCR_LIMIT` (pages over the cap) or
 `OCR_PARTIAL` (some pages could not be recognised).
-Deleting a material removes its chunks, topics, generated content and the file (also from R2).
+Deleting a material removes its chunks, topics, generated content, page report and the file (also
+from R2).
+
+**First screen of a ready material** ("Material hazırdır — N mövzu", one column on phones, two on
+wider screens): **1-ci mövzudan başla** (opens Öyrən of topic 1), **Bütün material üzrə qısa
+xülasə** (inline, below), **Özünü yoxla (10 sual)** (a 10-question mixed quiz over the whole
+material, run inline) and **Sual ver** (the tutor of topic 1). Right after `READY` the short
+summary of topic 1 is generated in the background (`onMaterialReady` → `prepareFirstTopic`, fails
+silently), so the first click opens it at once.
 
 ## Learn ("Öyrən")
 
@@ -149,6 +186,11 @@ Per topic (`/student/coach/t/:topicId`), three formats: **Qısa** (summary + key
   tab opens (so switching the app language generates that language once); "Yenidən hazırla"
   regenerates. Students can edit a point or definition; an edited pack is kept (flagged) when the
   source text changes, an unedited one is dropped.
+- Concurrent requests for the same pack share one generation (no "busy" for a double click or the
+  background pre-generation).
+- **Whole material** (`learn.materialSummary` / `learn.generateMaterialSummary`): artifact kind
+  `MATERIAL_SUMMARY` stored with `topicId` = the material id; ≤ 10 sections of 2–4 points from
+  every topic's chunks (`spreadChunks`: an equal share per topic, front matter excluded).
 
 ## Practice ("Məşq et")
 
@@ -158,6 +200,9 @@ the questions from the topic's chunks; `quizgen.ts` converts them to the assessm
 and validates them with the same `questionInputSchema` teachers' questions use. Options are
 shuffled on the server; duplicates and broken questions are dropped, and fewer than half of the
 asked number fails the request. Earlier questions on the topic are sent as "do not repeat".
+`practice.startMaterial` makes a 10-question mixed quiz over the whole material (`topicId` null on
+the quiz; each question belongs to the topic of its first cited passage, so mastery and mistakes
+still land on topics).
 
 - Keys, explanations and sources are not sent before the quiz is submitted. Hints are stored with
   the question (no extra AI call); using one is recorded.
@@ -241,7 +286,7 @@ text layer) only pages with no letters at all — slide titles and figure pages 
 and never wait on OCR; otherwise pages with fewer than 30 letters/digits.
 
 - Failures: a batch that still fails after retries leaves its pages unread instead of failing the
-  material; those pages count as quality 0 (`needsReview`) and the material is `READY` with
+  material; they are listed as unread (not as poor recognition) and the material is `READY` with
   `OCR_PARTIAL`. Failures no other batch can pass (`limit: 0`, daily quota, unsupported input,
   student caps) stop the remaining batches. The material fails only when no page at all is
   readable, with the specific code from the table above. If the student's AI allowance is used up,
@@ -256,11 +301,16 @@ and never wait on OCR; otherwise pages with fewer than 30 letters/digits.
   formulas, tables and multi-column pages may be recognised incorrectly.
 - Quality per page, deterministic (`pageQuality`): 50 % the model's confidence, 25 % text density
   (letters/digits vs a full page of ~350), 25 % cleanliness (garbage characters and `[?]` markers;
-  20 % garbage scores zero). Below 60 the page is low quality; the material's worst page decides
-  `needsReview`.
-- Low quality: the material shows "Mətni tam tanımaq mümkün olmadı. Daha aydın fayl yükləyin və
-  ya tanınmış mətni yoxlayın." with a link to the text page (`/student/coach/m/:id/text`), where
-  every chunk can be corrected. A correction updates the chunk, bumps `textRevision` and drops the
+  20 % garbage scores zero). Below 60 the page is low quality.
+- Page report (`pageReport`, table `coach_page_reports`, read fail-soft): recognised pages with
+  fewer than 150 letters/digits are **picture pages** (diagrams, photos) and are only noted
+  ("Şəkil səhifəsi (az mətn): …"); the other low-quality pages are listed ("Bu səhifələrdə mətn tam
+  tanınmadı: 5, 9, 12"), as are failed and skipped pages. `needsReview` is set only when low pages
+  are ≥ 10 % of the material's pages (`reviewNeeded`), so one weak page in a 42-page text PDF does
+  not warn the whole material.
+- Low quality: the listed pages link to the text page at those pages
+  (`/student/coach/m/:id/text?pages=5,9,12`, "Yalnız bu səhifələr" on by default), where every
+  chunk can be corrected. A correction updates the chunk, bumps `textRevision` and drops the
   generated content of that topic; "Mətni yoxladım" clears the warning.
 - Providers that cannot read PDFs (`COACH_PDF_MODE=text`, or a non-Gemini/OpenAI endpoint) skip
   OCR of PDF pages; images still go through OCR.

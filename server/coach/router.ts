@@ -103,6 +103,13 @@ const learnRouter = router({
     .use(rateLimit("coachGenerate", 12, MINUTE))
     .input(z.object({ topicId: z.string().min(1).max(32), format: z.enum(SUMMARY_FORMATS), locale: localeInput }))
     .mutation(({ ctx, input }) => packs.generatePack(ctx.user.id, input.topicId, input.format, localeOf(input.locale, ctx.user))),
+  materialSummary: coachConsentedProcedure
+    .input(z.object({ materialId: z.string().min(1).max(32), locale: localeInput }))
+    .query(({ ctx, input }) => packs.getMaterialSummary(ctx.user.id, input.materialId, localeOf(input.locale, ctx.user))),
+  generateMaterialSummary: coachConsentedProcedure
+    .use(rateLimit("coachGenerate", 12, MINUTE))
+    .input(z.object({ materialId: z.string().min(1).max(32), locale: localeInput }))
+    .mutation(({ ctx, input }) => packs.generateMaterialSummary(ctx.user.id, input.materialId, localeOf(input.locale, ctx.user))),
   edit: coachConsentedProcedure
     .use(rateLimit("coachEdit", 60, MINUTE))
     .input(
@@ -132,6 +139,10 @@ const practiceRouter = router({
     .use(rateLimit("coachGenerate", 12, MINUTE))
     .input(z.object({ topicId: z.string().min(1).max(32), format: z.enum(PRACTICE_FORMATS), count: z.union([z.literal(5), z.literal(10), z.literal(15)]), locale: localeInput }))
     .mutation(({ ctx, input }) => practice.startQuiz(ctx.user.id, { ...input, locale: localeOf(input.locale, ctx.user) })),
+  startMaterial: coachConsentedProcedure
+    .use(rateLimit("coachGenerate", 12, MINUTE))
+    .input(z.object({ materialId: z.string().min(1).max(32), locale: localeInput }))
+    .mutation(({ ctx, input }) => practice.startMaterialQuiz(ctx.user.id, { materialId: input.materialId, locale: localeOf(input.locale, ctx.user) })),
   saveAnswer: coachConsentedProcedure
     .use(rateLimit("coachAnswer", 240, MINUTE))
     .input(quizIdInput.extend({ itemId: z.string().min(1).max(32), answer: studentAnswerSchema }))

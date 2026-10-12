@@ -1,12 +1,14 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { COACH_DEFAULT_LIMITS, type CoachLimits } from "../../shared/coach";
+import { COACH_DEFAULT_LIMITS, OCR_LOW_QUALITY, type CoachLimits } from "../../shared/coach";
 import { LlmHttpError, type InvokeParams, type InvokeResult } from "../_core/llm";
 import { AppError } from "../modules/errors";
 import { DEFAULT_RETRY } from "./ai";
 import { IngestError } from "./extract";
-import { materialErrorOf, readyWarning, segmentTopics, SEGMENT_TIMEOUT_MS } from "./materials";
+import { materialErrorOf, readyWarning, segmentTopics, SEGMENT_TIMEOUT_MS, structureMaterial } from "./materials";
 import { readPagesWithOcr } from "./ocr";
+import { AUTHOR, aparatPages, aparatPagesWithoutToc } from "./outline.fixture";
+import { chunkMaterial, frontMatterOf } from "./structure";
 import type { DraftChunk } from "./chunker";
 import type { CoachMaterialRow } from "../../drizzle/schema";
 
@@ -95,11 +97,39 @@ describe("OCR failures (the production report)", () => {
     expect(out.ocrPages).toBe(10);
     expect(out.ocrFailed).toBe(2);
     expect(out.pages.map((p) => p.page)).toEqual(Array.from({ length: 18 }, (_, i) => i + 1));
-    expect(out.needsReview).toBe(true);
-    expect(out.ocrScore).toBe(0);
+    // Unread pages are listed as such; they do not make the recognised ones look poor.
+    expect(out.needsReview).toBe(false);
+    expect(out.ocrScore).toBeGreaterThanOrEqual(OCR_LOW_QUALITY);
+    expect(out.report).toEqual({ low: [], image: [], failed: [19, 20], skipped: [] });
     expect(readyWarning(out)).toBe("OCR_PARTIAL");
     // The failing batch was retried (bounded) before giving up.
     expect(h.invoke.mock.calls.filter(([p]) => pagesIn(p as InvokeParams) === 2)).toHaveLength(DEFAULT_RETRY.attempts);
+  });
+
+  it("lists poorly recognised pages and names picture pages instead of warning about them", async () => {
+    // 40 text pages + scans at 41-44: page 42 is a diagram (a caption), 43 is unreadable.
+    h.invoke = vi.fn(async () =>
+      reply({
+        pages: [
+          { page: 1, text: "Prosessorun quruluşu və iş prinsipi. ".repeat(15), confidence: 0.95 },
+          { page: 2, text: "Şəkil 3. Sxem", confidence: 0.4 },
+          { page: 3, text: "Ya§ddaş ¤¤ ¤ qurğ¶u ¤¤¤ [?] [?] ".repeat(20), confidence: 0.3 },
+          { page: 4, text: "Daxiletmə qurğuları: klaviatura, siçan. ".repeat(15), confidence: 0.9 },
+        ],
+      }),
+    );
+    const out = await read([...repeat(40, "text" as const), ...repeat(4, "scan" as const)]);
+    expect(out.report.image).toEqual([42]);
+    expect(out.report.low).toEqual([43]);
+    // One poor page of 44 is below the review share: no material-wide warning.
+    expect(out.needsReview).toBe(false);
+  });
+
+  it("asks for a review when a meaningful share of pages is poorly recognised", async () => {
+    h.invoke = vi.fn(async (p: InvokeParams) => reply({ pages: Array.from({ length: pagesIn(p) }, (_, i) => ({ page: i + 1, text: "Ya§ddaş ¤¤ ¤ qurğ¶u ¤¤¤ [?] ".repeat(20), confidence: 0.3 })) }));
+    const out = await read([...repeat(6, "text" as const), ...repeat(4, "scan" as const)]);
+    expect(out.report.low).toEqual([7, 8, 9, 10]);
+    expect(out.needsReview).toBe(true);
   });
 
   it("text pages still make a material when every OCR call fails", async () => {
@@ -212,7 +242,7 @@ describe("topic segmentation never blocks a material", () => {
   it("one lite call with a short timeout and no retries", async () => {
     const generate = vi.fn(async () => ({ data: { topics: [{ title: "A", firstChunk: 0 }, { title: "B", firstChunk: 6 }] }, model: "lite-m" }));
     const out = await segmentTopics(7, chunks, "az", generate as never);
-    expect(out.ai).toBe(true);
+    expect(out.source).toBe("AI");
     expect(out.topics.map((t) => t.title)).toEqual(["A", "B"]);
     expect(generate).toHaveBeenCalledTimes(1);
     expect(generate.mock.calls[0]).toMatchObject([{ model: "lite-m", timeoutMs: SEGMENT_TIMEOUT_MS, retry: { attempts: 1 } }]);
@@ -225,8 +255,80 @@ describe("topic segmentation never blocks a material", () => {
         throw new AppError(code);
       });
       const out = await segmentTopics(7, chunks, "az", generate as never);
-      expect(out.ai).toBe(false);
+      expect(out.source).toBe("HEADINGS");
       expect(out.topics.map((t) => t.title)).toEqual(["Bölmə 1", "Bölmə 2", "Bölmə 3"]);
     }
+  });
+});
+
+describe("topics of the production material (title page, table of contents, 40 pages)", () => {
+  const view = (out: Awaited<ReturnType<typeof structureMaterial>>) => out.topics.map((t) => `${t.title} ${t.pageFrom}–${t.pageTo}`);
+
+  it("follows the table of contents without an AI call, skipping the title page", async () => {
+    const generate = vi.fn(async () => {
+      throw new Error("not called");
+    });
+    const out = await structureMaterial(7, aparatPages(), "az", generate as never);
+    expect(generate).not.toHaveBeenCalled();
+    expect(out.source).toBe("TOC");
+    expect(out.frontPages).toBe(2);
+    expect(view(out)).toEqual([
+      "EHM-lərin nəsillərə görə xüsusiyyətləri 3–6",
+      "Kompüterin struktur sxemi və tərkibi 7–10",
+      "Con fon Neyman arxitekturası 11–12",
+      "Periferiya hissəsi 13–17",
+      "Ana plata və sistem bloku daxili qurluşu 18–22",
+      "USB 23–28",
+      "Yaddaş qurğuları 29–32",
+      "Operativ yaddaş 33–37",
+      "Xarici yaddaş qurğuları 38–42",
+    ]);
+    // Front matter chunks belong to no topic.
+    expect(out.topics[0].from).toBeGreaterThan(0);
+    expect(out.chunks[out.topics[0].from].pageFrom).toBe(3);
+  });
+
+  it("an AI answer naming the author as topic 1 still gives readable, balanced topics", async () => {
+    const pages = aparatPagesWithoutToc();
+    const { chunks: all, bodyFrom } = chunkMaterial(pages, frontMatterOf(pages));
+    const at = (page: number) => all.slice(bodyFrom).findIndex((c) => c.pageFrom >= page);
+    const generate = vi.fn(async () => ({
+      data: {
+        topics: [
+          { title: AUTHOR, firstChunk: at(3) },
+          { title: "Periferiya Hissəsi", firstChunk: at(13) },
+          { title: "ana plata", firstChunk: at(18) },
+          { title: "sistem bloku daxili qurluşu", firstChunk: at(19) },
+          { title: "USB", firstChunk: at(23) },
+          { title: "YADDAŞ QURĞULARI", firstChunk: at(29) },
+        ],
+      },
+      model: "lite-m",
+    }));
+    const out = await structureMaterial(7, pages, "az", generate as never);
+    expect(out.source).toBe("AI");
+    expect(view(out)).toEqual([
+      "EHM-lərin nəsillərə görə xüsusiyyətləri 3–6",
+      "Kompüterin struktur sxemi və tərkibi 7–12",
+      "Periferiya hissəsi 13–17",
+      "Ana plata və sistem bloku daxili qurluşu 18–22",
+      "USB 23–28",
+      "Yaddaş qurğuları 29–32",
+      "Operativ yaddaş 33–37",
+      "Xarici yaddaş qurğuları 38–42",
+    ]);
+    // The prompt asks for topics of the configured size and never a person's name as a title.
+    const prompt = JSON.stringify((generate.mock.calls[0] as unknown[])[0]);
+    expect(prompt).toContain("about 2-6 pages");
+    expect(prompt).toContain("never use a person's name");
+    // Front matter is not sent to the model as content.
+    expect(prompt).not.toContain(AUTHOR);
+  });
+
+  it("topic sizes follow coach.limits", async () => {
+    h.limits = { topicMinPages: 0, topicMaxPages: 0 };
+    const out = await structureMaterial(7, aparatPages(), "az", vi.fn() as never);
+    expect(view(out).at(-1)).toBe("Yaddaş qurğuları 29–42");
+    expect(out.topics.find((t) => t.title === "Ana plata")).toBeDefined();
   });
 });
