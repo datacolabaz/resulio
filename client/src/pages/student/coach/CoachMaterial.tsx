@@ -170,10 +170,12 @@ function MaterialReady({ m }: { m: CoachMaterialDetail }) {
       >
         <ol className="space-y-2">
           {m.topics.map((topic) => (
-            <li key={topic.id} className="flex items-baseline gap-3 rounded-lg border border-border px-3 py-2">
-              <span className="w-6 shrink-0 text-right text-xs text-muted-foreground">{topic.ord + 1}</span>
-              <span className="min-w-0 flex-1 break-words">{topic.title}</span>
-              <span className="shrink-0 text-xs text-muted-foreground">{pagesLabel(topic.pageFrom, topic.pageTo)}</span>
+            <li key={topic.id}>
+              <Link href={`/student/coach/t/${topic.id}`} className="flex items-baseline gap-3 rounded-lg border border-border px-3 py-2 hover:border-link">
+                <span className="w-6 shrink-0 text-right text-xs text-muted-foreground">{topic.ord + 1}</span>
+                <span className="min-w-0 flex-1 break-words">{topic.title}</span>
+                <span className="shrink-0 text-xs text-muted-foreground">{pagesLabel(topic.pageFrom, topic.pageTo)}</span>
+              </Link>
             </li>
           ))}
         </ol>
