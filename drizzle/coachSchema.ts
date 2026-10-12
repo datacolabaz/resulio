@@ -1,16 +1,27 @@
-import { bigint, boolean, index, int, json, mediumtext, mysqlTable, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
+import { bigint, boolean, index, int, json, mediumtext, mysqlTable, primaryKey, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
+import type { AnswerKey, QuestionContent, QuestionType, StudentAnswer } from "../shared/assessment";
 import type {
   ArtifactContent,
   ArtifactKind,
+  CalcSpec,
   ChunkMethod,
+  Cite,
   CoachEventType,
+  CoachEvidence,
+  CoachItemStatus,
   CoachLocale,
   CoachMaterialStatus,
+  GradedBy,
+  ItemFeedback,
   MaterialError,
   MaterialGoal,
   MaterialSource,
+  MistakeCause,
+  QuizFormat,
+  QuizStatus,
   RecallMode,
 } from "../shared/coach";
+import type { MasteryStatus } from "../shared/growth";
 
 /**
  * AI Study Coach side tables (docs/STUDY-COACH.md). Student-private: no teacher table is read for
@@ -147,6 +158,108 @@ export const coachArtifacts = mysqlTable(
   (t) => [uniqueIndex("coach_artifacts_topic_kind_uq").on(t.topicId, t.kind, t.locale), index("coach_artifacts_material_idx").on(t.materialId)],
 );
 export type CoachArtifactRow = typeof coachArtifacts.$inferSelect;
+
+/** A practice quiz the student generated for one topic (or a review set across topics: topicId null). */
+export const coachQuizzes = mysqlTable(
+  "coach_quizzes",
+  {
+    id: id("id").primaryKey(),
+    studentId: int("studentId").notNull(),
+    materialId: id("materialId"),
+    topicId: id("topicId"),
+    format: varchar("format", { length: 12 }).$type<QuizFormat>().notNull(),
+    locale: varchar("locale", { length: 2 }).$type<CoachLocale>().notNull(),
+    status: varchar("status", { length: 12 }).$type<QuizStatus>().default("READY").notNull(),
+    total: int("total").default(0).notNull(),
+    correct: int("correct").default(0).notNull(),
+    /** 0-100 once graded. */
+    percentage: int("percentage"),
+    pending: int("pending").default(0).notNull(),
+    hintsUsed: int("hintsUsed").default(0).notNull(),
+    model: varchar("model", { length: 120 }),
+    submittedAt: timestamp("submittedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [index("coach_quizzes_student_idx").on(t.studentId, t.createdAt), index("coach_quizzes_topic_idx").on(t.topicId)],
+);
+export type CoachQuizRow = typeof coachQuizzes.$inferSelect;
+
+/** One question of a quiz. The answer key and explanation never leave the server before submission. */
+export const coachQuizItems = mysqlTable(
+  "coach_quiz_items",
+  {
+    id: id("id").primaryKey(),
+    quizId: id("quizId").notNull(),
+    studentId: int("studentId").notNull(),
+    topicId: id("topicId"),
+    ord: int("ord").notNull(),
+    type: varchar("type", { length: 20 }).$type<QuestionType>().notNull(),
+    text: text("text").notNull(),
+    content: json("content").$type<QuestionContent>().notNull(),
+    answerKey: json("answerKey").$type<AnswerKey>().notNull(),
+    explanation: text("explanation"),
+    hint: text("hint"),
+    cites: json("cites").$type<Cite[]>(),
+    /** CALCULATION: the formula and inputs the model used, re-computed on the server (P6). */
+    calc: json("calc").$type<CalcSpec>(),
+    answer: json("answer").$type<StudentAnswer>(),
+    status: varchar("status", { length: 16 }).$type<CoachItemStatus>(),
+    /** 0-100 credit (partial credit for AI-graded answers). */
+    score: int("score"),
+    gradedBy: varchar("gradedBy", { length: 8 }).$type<GradedBy>(),
+    /** AI grading confidence 0-100. */
+    confidence: int("confidence"),
+    feedback: json("feedback").$type<ItemFeedback>(),
+    hintUsed: boolean("hintUsed").default(false).notNull(),
+    disputed: boolean("disputed").default(false).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [index("coach_quiz_items_quiz_idx").on(t.quizId, t.ord)],
+);
+export type CoachQuizItemRow = typeof coachQuizItems.$inferSelect;
+
+/** The student's own mastery of a coach topic (coach evidence only; never mixed into Growth). */
+export const coachTopicMastery = mysqlTable(
+  "coach_topic_mastery",
+  {
+    studentId: int("studentId").notNull(),
+    topicId: id("topicId").notNull(),
+    materialId: id("materialId").notNull(),
+    mastery: int("mastery").default(0).notNull(),
+    status: varchar("status", { length: 12 }).$type<MasteryStatus>().default("INSUFFICIENT").notNull(),
+    attempts: int("attempts").default(0).notNull(),
+    /** Newest-first evidence, at most 10 quizzes. */
+    evidence: json("evidence").$type<CoachEvidence[]>().notNull(),
+    lastPracticedAt: timestamp("lastPracticedAt"),
+    /** Spaced review: when this topic should come back, and the current interval. */
+    nextReviewAt: timestamp("nextReviewAt"),
+    intervalDays: int("intervalDays").default(0).notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.studentId, t.topicId], name: "coach_topic_mastery_pk" }), index("coach_topic_mastery_review_idx").on(t.studentId, t.nextReviewAt)],
+);
+export type CoachTopicMasteryRow = typeof coachTopicMastery.$inferSelect;
+
+/** A wrong answer kept for review ("AI yaddaşı"): visible to and deletable by the student. */
+export const coachMistakes = mysqlTable(
+  "coach_mistakes",
+  {
+    id: id("id").primaryKey(),
+    studentId: int("studentId").notNull(),
+    materialId: id("materialId"),
+    topicId: id("topicId"),
+    quizId: id("quizId"),
+    itemId: id("itemId"),
+    cause: varchar("cause", { length: 20 }).$type<MistakeCause>().default("UNKNOWN").notNull(),
+    question: varchar("question", { length: 600 }).notNull(),
+    fixedAt: timestamp("fixedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [index("coach_mistakes_student_idx").on(t.studentId, t.fixedAt), index("coach_mistakes_topic_idx").on(t.topicId)],
+);
+export type CoachMistakeRow = typeof coachMistakes.$inferSelect;
 
 export type CoachMaterialRow = typeof coachMaterials.$inferSelect;
 export type CoachTopicRow = typeof coachTopics.$inferSelect;

@@ -1,11 +1,13 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { COACH_LOCALES, COACH_MAX_PASTE_CHARS, coachLocaleOf, MATERIAL_GOALS, RECALL_MODES, SUMMARY_FORMATS, type CoachLocale } from "../../shared/coach";
+import { studentAnswerSchema } from "../../shared/assessment";
+import { COACH_LOCALES, COACH_MAX_PASTE_CHARS, coachLocaleOf, MATERIAL_GOALS, PRACTICE_FORMATS, RECALL_MODES, SUMMARY_FORMATS, type CoachLocale } from "../../shared/coach";
 import { rateLimit, router, studentProcedure } from "../_core/trpc";
 import { isSchemaBehind } from "../syllabus/availability";
 import { assertCoachEnabled, coachEnabledFor } from "./availability";
 import * as materials from "./materials";
 import * as packs from "./packs";
+import * as practice from "./practice";
 import { coachLimits, coachQuota } from "./quota";
 import * as store from "./store";
 
@@ -95,6 +97,32 @@ const learnRouter = router({
     .query(({ ctx, input }) => packs.citedChunks(ctx.user.id, input.chunkIds)),
 });
 
+const quizIdInput = z.object({ quizId: z.string().min(1).max(32) });
+
+const practiceRouter = router({
+  list: coachConsentedProcedure
+    .input(z.object({ topicId: z.string().min(1).max(32).optional() }))
+    .query(({ ctx, input }) => practice.listQuizzes(ctx.user.id, input.topicId)),
+  get: coachConsentedProcedure.input(quizIdInput).query(({ ctx, input }) => practice.getQuiz(ctx.user.id, input.quizId)),
+  progress: coachConsentedProcedure.input(z.object({ topicId: z.string().min(1).max(32) })).query(({ ctx, input }) => practice.topicProgress(ctx.user.id, input.topicId)),
+  start: coachConsentedProcedure
+    .use(rateLimit("coachGenerate", 12, MINUTE))
+    .input(z.object({ topicId: z.string().min(1).max(32), format: z.enum(PRACTICE_FORMATS), count: z.union([z.literal(5), z.literal(10), z.literal(15)]), locale: localeInput }))
+    .mutation(({ ctx, input }) => practice.startQuiz(ctx.user.id, { ...input, locale: localeOf(input.locale, ctx.user) })),
+  saveAnswer: coachConsentedProcedure
+    .use(rateLimit("coachAnswer", 240, MINUTE))
+    .input(quizIdInput.extend({ itemId: z.string().min(1).max(32), answer: studentAnswerSchema }))
+    .mutation(({ ctx, input }) => practice.saveAnswer(ctx.user.id, input.quizId, input.itemId, input.answer)),
+  hint: coachConsentedProcedure
+    .use(rateLimit("coachAnswer", 240, MINUTE))
+    .input(quizIdInput.extend({ itemId: z.string().min(1).max(32) }))
+    .mutation(({ ctx, input }) => practice.useHint(ctx.user.id, input.quizId, input.itemId)),
+  submit: coachConsentedProcedure
+    .use(rateLimit("coachSubmit", 20, MINUTE))
+    .input(quizIdInput.extend({ answers: z.record(z.string().max(32), studentAnswerSchema.optional()) }))
+    .mutation(({ ctx, input }) => practice.submitQuiz(ctx.user.id, input.quizId, input.answers)),
+});
+
 export const studentCoachRouter = router({
   enabled: studentProcedure.query(async ({ ctx }) => ({ enabled: await coachEnabledFor(ctx.user.id) })),
   status: coachProcedure.query(async ({ ctx }) => ({
@@ -109,4 +137,5 @@ export const studentCoachRouter = router({
     .mutation(({ ctx, input }) => store.saveSettings(ctx.user.id, input)),
   materials: materialsRouter,
   learn: learnRouter,
+  practice: practiceRouter,
 });

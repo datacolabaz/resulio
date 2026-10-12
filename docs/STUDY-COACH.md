@@ -74,6 +74,9 @@ calls never count against a teacher.
 | `coach_topics` | 0053 | topics found in a material (consecutive chunk ranges) |
 | `coach_chunks` | 0053 | text passages (pages → chunks), the unit of retrieval and citation |
 | `coach_artifacts` | 0054 | generated summaries/concepts per (topic, kind, app language) |
+| `coach_quizzes`, `coach_quiz_items` | 0055 | practice quizzes and their questions, answers and grades |
+| `coach_topic_mastery` | 0055 | per (student, topic): mastery, evidence of the last 10 quizzes, review schedule |
+| `coach_mistakes` | 0055 | wrong answers with a cause, closed when the topic is answered well again |
 
 ## Materials
 
@@ -111,6 +114,29 @@ Per topic (`/student/coach/t/:topicId`), three formats: **Qısa** (summary + key
   tab opens (so switching the app language generates that language once); "Yenidən hazırla"
   regenerates. Students can edit a point or definition; an edited pack is kept (flagged) when the
   source text changes, an unedited one is dropped.
+
+## Practice ("Məşq et")
+
+Per topic: the student picks a format (Test, Doğru/Yanlış, Qısa cavab, Uyğunlaşdırma, Hesablama,
+Qarışıq) and 5/10/15 questions. One AI call (`COACH_QUIZ`, main model, the app language) writes
+the questions from the topic's chunks; `quizgen.ts` converts them to the assessment engine's types
+and validates them with the same `questionInputSchema` teachers' questions use. Options are
+shuffled on the server; duplicates and broken questions are dropped, and fewer than half of the
+asked number fails the request. Earlier questions on the topic are sent as "do not repeat".
+
+- Keys, explanations and sources are not sent before the quiz is submitted. Hints are stored with
+  the question (no extra AI call); using one is recorded.
+- Grading: closed questions by `gradeQuestion` (the same grader as exams). Open written answers
+  (WRITTEN) are graded by AI in the grading phase; until then they stay pending.
+- Mastery: `computeMastery` from the Growth Engine over the coach's own evidence only (origin
+  PRACTICE, last 10 quizzes per topic). It never reads or writes teacher results.
+- Mistakes: every wrong answer is stored with a deterministic first guess at the cause (numeric
+  answer within 10 % → calculation slip; after a hint → not learned; closed question → concept
+  confusion). A quiz of ≥ 80 % on the topic closes its older open mistakes.
+- XP: `PRACTICE_DONE` once per quiz (`refKey coach:quiz:<id>`, workspace `coach`) — shown only on
+  the student's own Growth page.
+- Cap: `coach.limits.quizzesPerDay` (event `QUIZ_STARTED`) plus the monthly token and daily action
+  quotas.
 
 ## OCR (scanned PDFs and images)
 
