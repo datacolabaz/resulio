@@ -95,6 +95,30 @@ as interrupted and can be retried):
 `FAILED` shows the reason (`NO_TEXT`, `TOO_MANY_PAGES`, `UNREADABLE`, …) with a retry button.
 Deleting a material removes its chunks, topics, generated content and the file (also from R2).
 
+## OCR (scanned PDFs and images)
+
+PDF pages with fewer than 30 letters/digits in their text layer, and images, are read by the OCR
+model (`coach.models.ocr` → `COACH_OCR_MODEL` → main) in batches of 5 pages (`pdfPick` builds a
+small PDF of just those pages). The model transcribes verbatim in the page's own language.
+
+- Caps: `coach.limits.ocrPagesPerMaterial` (30) and `coach.limits.ocrPagesPerMonth` (200), counted
+  from `coach_events` type `OCR` (`meta.pages`), so deleting a material does not refund pages.
+  Pages over the cap are skipped; the material is still built from the other pages and shows a
+  notice (`errorCode = OCR_LIMIT` on a `READY` material). With nothing readable it fails with
+  `OCR_LIMIT`.
+- MVP: printed text only. The upload form and the text page say that handwriting, complex
+  formulas, tables and multi-column pages may be recognised incorrectly.
+- Quality per page, deterministic (`pageQuality`): 50 % the model's confidence, 25 % text density
+  (letters/digits vs a full page of ~350), 25 % cleanliness (garbage characters and `[?]` markers;
+  20 % garbage scores zero). Below 60 the page is low quality; the material's worst page decides
+  `needsReview`.
+- Low quality: the material shows "Mətni tam tanımaq mümkün olmadı. Daha aydın fayl yükləyin və
+  ya tanınmış mətni yoxlayın." with a link to the text page (`/student/coach/m/:id/text`), where
+  every chunk can be corrected. A correction updates the chunk, bumps `textRevision` and drops the
+  generated content of that topic; "Mətni yoxladım" clears the warning.
+- Providers that cannot read PDFs (`COACH_PDF_MODE=text`, or a non-Gemini/OpenAI endpoint) skip
+  OCR of PDF pages; images still go through OCR.
+
 All migrations use `CREATE TABLE IF NOT EXISTS`; every identifier (tables, columns, indexes,
 generated primary-key names) is at most 64 characters — `pnpm db:verify` and
 `server/migrationIdentifiers.test.ts` fail otherwise.
