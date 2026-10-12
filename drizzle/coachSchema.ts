@@ -1,5 +1,5 @@
-import { bigint, boolean, index, int, json, mysqlTable, timestamp, varchar } from "drizzle-orm/mysql-core";
-import type { CoachEventType, RecallMode } from "../shared/coach";
+import { bigint, boolean, index, int, json, mediumtext, mysqlTable, timestamp, varchar } from "drizzle-orm/mysql-core";
+import type { ChunkMethod, CoachEventType, CoachMaterialStatus, MaterialError, MaterialGoal, MaterialSource, RecallMode } from "../shared/coach";
 
 /**
  * AI Study Coach side tables (docs/STUDY-COACH.md). Student-private: no teacher table is read for
@@ -33,3 +33,83 @@ export const coachEvents = mysqlTable(
   },
   (t) => [index("coach_events_student_idx").on(t.studentId, t.type, t.createdAt)],
 );
+
+/**
+ * A student's own material: an uploaded file (in `files`, workspace `coach-u<studentId>`, private)
+ * or pasted text. Processed in-process by a run (runId), like the question import.
+ */
+export const coachMaterials = mysqlTable(
+  "coach_materials",
+  {
+    id: id("id").primaryKey(),
+    studentId: int("studentId").notNull(),
+    title: varchar("title", { length: 200 }).notNull(),
+    source: varchar("source", { length: 8 }).$type<MaterialSource>().notNull(),
+    goal: varchar("goal", { length: 16 }).$type<MaterialGoal>().default("LEARN_ALL").notNull(),
+    fileId: id("fileId"),
+    fileName: varchar("fileName", { length: 255 }),
+    mimeType: varchar("mimeType", { length: 120 }),
+    sizeBytes: int("sizeBytes").default(0).notNull(),
+    pageCount: int("pageCount").default(0).notNull(),
+    charCount: int("charCount").default(0).notNull(),
+    status: varchar("status", { length: 12 }).$type<CoachMaterialStatus>().default("QUEUED").notNull(),
+    errorCode: varchar("errorCode", { length: 24 }).$type<MaterialError>(),
+    runId: id("runId"),
+    /** Pages read by OCR (scanned PDF pages, images); counted against the monthly OCR cap. */
+    ocrPages: int("ocrPages").default(0).notNull(),
+    /** Lowest page quality score (0-100) among OCR pages; null when nothing was recognised. */
+    ocrScore: int("ocrScore"),
+    /** Low recognition quality: the student is asked to check the recognised text. */
+    needsReview: boolean("needsReview").default(false).notNull(),
+    /** Bumped when chunk text changes, so generated content made from older text is stale. */
+    textRevision: int("textRevision").default(1).notNull(),
+    lastOpenedAt: timestamp("lastOpenedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [index("coach_materials_student_idx").on(t.studentId, t.createdAt)],
+);
+
+/** A topic found in a material; titles are in the language the student used at upload time. */
+export const coachTopics = mysqlTable(
+  "coach_topics",
+  {
+    id: id("id").primaryKey(),
+    materialId: id("materialId").notNull(),
+    studentId: int("studentId").notNull(),
+    ord: int("ord").notNull(),
+    title: varchar("title", { length: 200 }).notNull(),
+    pageFrom: int("pageFrom").default(1).notNull(),
+    pageTo: int("pageTo").default(1).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [index("coach_topics_material_idx").on(t.materialId, t.ord), index("coach_topics_student_idx").on(t.studentId)],
+);
+
+/** A passage of the material's text (one or a few pages); the unit of retrieval and citation. */
+export const coachChunks = mysqlTable(
+  "coach_chunks",
+  {
+    id: id("id").primaryKey(),
+    materialId: id("materialId").notNull(),
+    studentId: int("studentId").notNull(),
+    topicId: id("topicId"),
+    ord: int("ord").notNull(),
+    pageFrom: int("pageFrom").notNull(),
+    pageTo: int("pageTo").notNull(),
+    heading: varchar("heading", { length: 255 }).default("").notNull(),
+    text: mediumtext("text").notNull(),
+    method: varchar("method", { length: 8 }).$type<ChunkMethod>().default("TEXT").notNull(),
+    /** OCR quality score 0-100 of the pages this chunk came from; null for text layers. */
+    quality: int("quality"),
+    /** The student corrected this text by hand. */
+    edited: boolean("edited").default(false).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [index("coach_chunks_material_idx").on(t.materialId, t.ord), index("coach_chunks_topic_idx").on(t.topicId)],
+);
+
+export type CoachMaterialRow = typeof coachMaterials.$inferSelect;
+export type CoachTopicRow = typeof coachTopics.$inferSelect;
+export type CoachChunkRow = typeof coachChunks.$inferSelect;

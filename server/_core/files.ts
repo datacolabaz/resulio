@@ -7,6 +7,9 @@ import type { User } from "../../drizzle/schema";
 import { tasks } from "../../drizzle/schema";
 import { requireDb } from "../db";
 import { MATERIAL_UPLOAD_TYPES } from "../../shared/materialTemplates";
+import { assertCoachEnabled } from "../coach/availability";
+import { assertUploadAllowed, COACH_FILE_TYPES, coachWorkspaceId } from "../coach/materials";
+import { assertConsent } from "../coach/store";
 import { contentDisposition, r2DownloadMode } from "../fileStorage/r2";
 import { assertWorkspaceQuota } from "../materials/directUpload";
 import { resolveWorkspace } from "../modules/access";
@@ -30,7 +33,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: fil
  * "syllabus": cover images, theory images/files and practice attachments; "question-import": a PDF
  * or image to extract bank questions from. Both private to the workspace.
  */
-const UPLOAD_CONTEXTS = ["task-attachment", "material", "submission", "syllabus", "question-import"] as const;
+const UPLOAD_CONTEXTS = ["task-attachment", "material", "submission", "syllabus", "question-import", "coach"] as const;
 type UploadContext = (typeof UPLOAD_CONTEXTS)[number];
 function isUploadContext(v: unknown): v is UploadContext {
   return typeof v === "string" && (UPLOAD_CONTEXTS as readonly string[]).includes(v);
@@ -53,6 +56,11 @@ const STATUS: Partial<Record<AppErrorCode, number>> = {
   FORBIDDEN: 403,
   NO_WORKSPACE: 403,
   RATE_LIMITED: 429,
+  COACH_NOT_AVAILABLE: 403,
+  COACH_CONSENT_REQUIRED: 412,
+  COACH_FEATURE_LIMIT: 429,
+  COACH_MATERIAL_LIMIT: 409,
+  COACH_FILE_TYPE: 400,
 };
 
 /** `?share=TASK&code=<shareCode>&src=<channel>&campaign=..&vid=..`, appended by the public task/material page's download links. */
@@ -111,7 +119,15 @@ export function registerFileRoutes(app: Express) {
 
         let workspaceId: string;
         let isPublic = false;
-        if (context === "submission") {
+        let allowedTypes = context === "material" ? MATERIAL_UPLOAD_TYPES : undefined;
+        if (context === "coach") {
+          // A student's own study material: private workspace id no provider workspace has.
+          await assertCoachEnabled(user.id);
+          await assertConsent(user.id);
+          await assertUploadAllowed(user.id, uploaded.originalname);
+          workspaceId = coachWorkspaceId(user.id);
+          allowedTypes = COACH_FILE_TYPES;
+        } else if (context === "submission") {
           const taskId = String(req.body?.taskId ?? "");
           const [task] = await requireDb().select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
           if (!task) throw new AppError("NOT_FOUND");
@@ -140,7 +156,7 @@ export function registerFileRoutes(app: Express) {
           fileName: uploaded.originalname,
           buffer: uploaded.buffer,
           isPublic,
-          allowedTypes: context === "material" ? MATERIAL_UPLOAD_TYPES : undefined,
+          allowedTypes,
         });
         res.json(saved);
       } catch (error) {

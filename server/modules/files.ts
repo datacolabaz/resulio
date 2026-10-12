@@ -122,6 +122,18 @@ export async function fileBytes(file: Pick<FileRow, "id" | "dataBase64">): Promi
   return stored ? stored.store.get(stored.key) : Buffer.from(file.dataBase64, "base64");
 }
 
+/** Removes a file row and its bucket object (best effort for the object). Callers check ownership. */
+export async function deleteFile(fileId: string) {
+  const file = await fileRow(fileId);
+  if (!file) return;
+  const stored = await storedObjectOf(file).catch(() => null);
+  if (stored) await stored.store.remove(stored.key).catch((error) => console.warn("[files] object delete failed", fileId, error instanceof Error ? error.message : error));
+  await requireDb().transaction(async (tx) => {
+    await tx.delete(fileObjects).where(eq(fileObjects.fileId, fileId));
+    await tx.delete(files).where(eq(files.id, fileId));
+  });
+}
+
 async function teacherOwnsWorkspace(workspaceId: string, userId: number) {
   const owned = await managedWorkspaces(userId);
   return owned.some((w) => w.id === workspaceId);

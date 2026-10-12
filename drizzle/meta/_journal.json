@@ -344,6 +344,13 @@
       "when": 1791793721527,
       "tag": "0052_coach_core",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "5",
+      "when": 1791794155069,
+      "tag": "0053_coach_materials",
+      "breakpoints": true
     }
   ]
 }

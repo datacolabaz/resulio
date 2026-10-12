@@ -70,6 +70,30 @@ calls never count against a teacher.
 | --- | --- | --- |
 | `coach_settings` | 0052 | recall mode, reminders, privacy notice acceptance |
 | `coach_events` | 0052 | event log (also used for per-day caps) |
+| `coach_materials` | 0053 | the student's materials, processing status, OCR summary |
+| `coach_topics` | 0053 | topics found in a material (consecutive chunk ranges) |
+| `coach_chunks` | 0053 | text passages (pages → chunks), the unit of retrieval and citation |
+
+## Materials
+
+Upload (`/api/files/upload`, context `coach`) or paste text. Files are stored in `files` under the
+private workspace id `coach-u<studentId>`: no provider workspace has such an id, so no teacher
+reaches them, and `downloadAccess` allows the uploader only. Pasted text is stored the same way as
+a `.txt` file so every material has one source file.
+
+Processing runs in-process (`runId`, like the question import; a run older than 15 minutes is shown
+as interrupted and can be retried):
+
+1. **Fayl yoxlanılır** (`QUEUED`) — type, size, page count.
+2. **Material emal olunur** (`EXTRACTING`, `SEGMENTING`) — text per page (text PDFs, DOCX and TXT
+   in virtual pages of ~3000 characters, one page per PPTX slide), then chunks of ~1500 characters
+   that respect headings, then topics: the lite model proposes topic starts from an outline;
+   `normalizeTopics` keeps a valid ordered cover, and headings are the fallback when the model is
+   unavailable or the quota is used up.
+3. **Material hazırdır** (`READY`).
+
+`FAILED` shows the reason (`NO_TEXT`, `TOO_MANY_PAGES`, `UNREADABLE`, …) with a retry button.
+Deleting a material removes its chunks, topics, generated content and the file (also from R2).
 
 All migrations use `CREATE TABLE IF NOT EXISTS`; every identifier (tables, columns, indexes,
 generated primary-key names) is at most 64 characters — `pnpm db:verify` and
