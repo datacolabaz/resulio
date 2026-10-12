@@ -146,4 +146,22 @@ export const ENV = {
     const n = Number.parseInt(envString("SYLLABUS_IMPORT_DAILY_LIMIT"), 10);
     return Number.isFinite(n) && n >= 0 ? n : 30;
   },
+  /** AI Study Coach (`study_coach`) for these user ids, or "*". Empty = DB flag only. */
+  get coachEnabledUsers(): string[] {
+    return envString("STUDY_COACH_ENABLED_USERS").split(",").map((s) => s.trim()).filter(Boolean);
+  },
+  /** AI Study Coach for the students of these workspaces (their active groups), or "*". */
+  get coachEnabledWorkspaces(): string[] {
+    return envString("STUDY_COACH_ENABLED_WORKSPACES").split(",").map((s) => s.trim()).filter(Boolean);
+  },
+  /** Coach models; empty = AI_MODEL (main) / the main model (lite, pro, ocr). platform_settings `coach.models` wins. */
+  get coachModel() { return envString("COACH_MODEL"); },
+  get coachLiteModel() { return envString("COACH_LITE_MODEL"); },
+  get coachProModel() { return envString("COACH_PRO_MODEL"); },
+  get coachOcrModel() { return envString("COACH_OCR_MODEL"); },
+  /** "native" sends PDF pages to the model, "text" only extracted text; empty = native where supported. */
+  get coachPdfMode(): "native" | "text" | "" {
+    const v = envString("COACH_PDF_MODE").toLowerCase();
+    return v === "native" || v === "text" ? v : "";
+  },
 };

@@ -89,12 +89,22 @@ function apply(stmt) {
   throw new Error(`Unparsed statement: ${s.slice(0, 120)}`);
 }
 
+// MySQL refuses identifiers (table, column, index and constraint names) longer than 64 characters;
+// a 65-character primary key name once stopped a production deploy halfway through a migration.
+const MAX_IDENTIFIER = 64;
+const longIdentifiers = [];
 for (const entry of journal.entries) {
   const sql = fs.readFileSync(path.join(dir, `${entry.tag}.sql`), "utf8");
+  for (const m of sql.matchAll(/`([^`]+)`/g)) if (m[1].length > MAX_IDENTIFIER) longIdentifiers.push(`${entry.tag}: ${m[1]} (${m[1].length})`);
   for (const stmt of sql.split("--> statement-breakpoint")) apply(stmt);
 }
 
 const problems = [];
+for (const l of longIdentifiers) problems.push(`identifier longer than ${MAX_IDENTIFIER} characters: ${l}`);
+for (const [name, e] of Object.entries(snapshot.tables)) {
+  const named = [...Object.keys(e.indexes), ...Object.keys(e.compositePrimaryKeys), ...Object.keys(e.uniqueConstraints), ...Object.keys(e.columns), name];
+  for (const n of named) if (n.length > MAX_IDENTIFIER) problems.push(`snapshot identifier longer than ${MAX_IDENTIFIER} characters: ${name}.${n} (${n.length})`);
+}
 const norm = v => (v === undefined ? undefined : String(v));
 const replayed = Object.keys(tables).filter(t => !IGNORED_TABLES.has(t)).sort();
 const expected = Object.keys(snapshot.tables).sort();

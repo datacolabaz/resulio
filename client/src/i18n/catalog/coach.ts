@@ -1,0 +1,101 @@
+import type { Entry } from "../types";
+
+/** AI Study Coach: the student's private materials, packs, practice and tutor (docs/STUDY-COACH.md). */
+export const coach = {
+  "nav.coach": ["AI köməkçi", "AI study coach", "ИИ-помощник"],
+  "coach.intro": [
+    "Öz materiallarınızı yükləyin: AI qısa xülasə, əsas anlayışlar və məşq sualları hazırlayır. Yüklədiyiniz fayllar yalnız sizə görünür.",
+    "Upload your own materials: the AI prepares a short summary, key concepts and practice questions. Your files are visible only to you.",
+    "Загрузите свои материалы: ИИ подготовит краткий конспект, ключевые понятия и вопросы для практики. Ваши файлы видны только вам.",
+  ],
+  "coach.notEnabled": ["AI köməkçi hesabınız üçün hələ aktiv deyil.", "The AI study coach is not enabled for your account yet.", "ИИ-помощник пока не включён для вашего аккаунта."],
+  "coach.back": ["← AI köməkçi", "← AI study coach", "← ИИ-помощник"],
+
+  "error.COACH_NOT_AVAILABLE": ["AI köməkçi hesabınız üçün hələ aktiv deyil.", "The AI study coach is not enabled for your account yet.", "ИИ-помощник пока не включён для вашего аккаунта."],
+  "error.COACH_DB_NOT_READY": ["Məlumat bazası yenilənir. Bir neçə dəqiqədən sonra yenidən cəhd edin.", "The database is being updated. Try again in a few minutes.", "База данных обновляется. Повторите попытку через несколько минут."],
+  "error.COACH_CONSENT_REQUIRED": ["Davam etmək üçün əvvəlcə məxfilik qeydini qəbul edin.", "Accept the privacy notice first to continue.", "Чтобы продолжить, сначала примите уведомление о конфиденциальности."],
+  "error.COACH_MONTHLY_LIMIT": ["Bu ay üçün AI limitiniz dolub. Limit ayın əvvəlində yenilənir.", "Your AI allowance for this month is used up. It renews at the start of the month.", "Лимит ИИ на этот месяц исчерпан. Он обновится в начале месяца."],
+  "error.COACH_DAILY_LIMIT": ["Bu gün üçün AI əməliyyatları limiti dolub. Sabah yenidən cəhd edin.", "Today's AI action limit is reached. Try again tomorrow.", "Дневной лимит действий ИИ исчерпан. Попробуйте завтра."],
+  "error.COACH_FEATURE_LIMIT": ["Bu əməliyyat üçün gündəlik limit dolub. Sabah yenidən cəhd edin.", "The daily limit for this action is reached. Try again tomorrow.", "Дневной лимит для этого действия исчерпан. Попробуйте завтра."],
+  "error.COACH_AI_BUSY": ["AI xidməti hazırda məşğuldur. Bir az sonra yenidən cəhd edin.", "The AI service is busy right now. Try again in a moment.", "Сервис ИИ сейчас занят. Повторите попытку чуть позже."],
+  "error.COACH_LOCKED_DURING_EXAM": ["İmtahan gedərkən AI köməkçi bağlıdır.", "The AI study coach is closed while an exam is in progress.", "Во время экзамена ИИ-помощник недоступен."],
+  "error.COACH_TOO_MANY_PAGES": ["Fayl çox böyükdür: ən çox 150 səhifə qəbul olunur.", "The file is too long: up to 150 pages are accepted.", "Файл слишком большой: принимается не более 150 страниц."],
+  "error.COACH_FILE_TYPE": ["Bu fayl növü qəbul olunmur. PDF, şəkil (PNG, JPG), DOCX, PPTX və ya TXT yükləyin.", "This file type is not accepted. Upload a PDF, an image (PNG, JPG), DOCX, PPTX or TXT.", "Этот тип файла не поддерживается. Загрузите PDF, изображение (PNG, JPG), DOCX, PPTX или TXT."],
+  "error.COACH_MATERIAL_LIMIT": ["Material limitinə çatmısınız. Yenisini əlavə etmək üçün köhnə materiallardan birini silin.", "You have reached the material limit. Delete an old material to add a new one.", "Достигнут лимит материалов. Удалите один из старых, чтобы добавить новый."],
+  "error.COACH_NOT_READY": ["Material hələ hazır deyil.", "The material is not ready yet.", "Материал ещё не готов."],
+  "error.COACH_BUSY": ["Bu əməliyyat artıq icra olunur. Bir az gözləyin.", "This action is already running. Please wait.", "Это действие уже выполняется. Подождите немного."],
+  "error.COACH_NOT_ENOUGH_CONTENT": ["Bu hissədə kifayət qədər mətn yoxdur.", "There is not enough text in this part.", "В этой части недостаточно текста."],
+
+  "admin.ai.feature.COACH_INGEST": ["AI köməkçi: material emalı", "Study coach: material processing", "ИИ-помощник: обработка материалов"],
+  "admin.ai.feature.COACH_OCR": ["AI köməkçi: mətnin tanınması", "Study coach: text recognition", "ИИ-помощник: распознавание текста"],
+  "admin.ai.feature.COACH_SUMMARY": ["AI köməkçi: xülasələr", "Study coach: summaries", "ИИ-помощник: конспекты"],
+  "admin.ai.feature.COACH_QUIZ": ["AI köməkçi: məşq sualları", "Study coach: practice questions", "ИИ-помощник: вопросы для практики"],
+  "admin.ai.feature.COACH_GRADE": ["AI köməkçi: cavabların yoxlanması", "Study coach: answer grading", "ИИ-помощник: проверка ответов"],
+  "admin.ai.feature.COACH_TUTOR": ["AI köməkçi: suallara cavab", "Study coach: tutor answers", "ИИ-помощник: ответы на вопросы"],
+
+  "coach.privacy.title": ["Məxfilik və məlumatlarınız", "Privacy and your data", "Конфиденциальность и ваши данные"],
+  "coach.privacy.intro": [
+    "AI köməkçidən istifadə etməzdən əvvəl hansı məlumatların saxlandığını və kimin onları görə bildiyini oxuyun.",
+    "Before using the AI study coach, read what is stored and who can see it.",
+    "Прежде чем пользоваться ИИ-помощником, прочитайте, что сохраняется и кто это видит.",
+  ],
+  "coach.privacy.stored.title": ["Nə saxlanılır", "What is stored", "Что сохраняется"],
+  "coach.privacy.stored.body": [
+    "Yüklədiyiniz fayllar və ya yapışdırdığınız mətn, onlardan çıxarılan mətn, AI-nin hazırladığı xülasələr və suallar, cavablarınız və nəticələriniz, AI-yə verdiyiniz suallar, həmçinin AI yaddaşı: çətinlik çəkdiyiniz mövzular və səhvləriniz.",
+    "The files you upload or the text you paste, the text extracted from them, the summaries and questions the AI prepares, your answers and results, the questions you ask the AI, and the AI memory: the topics you struggle with and your mistakes.",
+    "Загруженные файлы или вставленный текст, извлечённый из них текст, подготовленные ИИ конспекты и вопросы, ваши ответы и результаты, вопросы к ИИ, а также память ИИ: трудные для вас темы и ваши ошибки.",
+  ],
+  "coach.privacy.who.title": ["Kim görür", "Who can see it", "Кто это видит"],
+  "coach.privacy.who.body": [
+    "Şəxsi materiallarınızı və AI köməkçidəki fəaliyyətinizi yalnız siz görürsünüz. Müəllim yalnız kurs materiallarını, tapşırıqları və sizin özünüz paylaşdığınız materialı görür. Paylaşma standart olaraq bağlıdır və onu istədiyiniz vaxt geri ala bilərsiniz.",
+    "Only you can see your personal materials and your activity in the study coach. Your teacher sees only course materials, assignments and any material you explicitly share. Sharing is off by default, and you can revoke it at any time.",
+    "Ваши личные материалы и действия в ИИ-помощнике видите только вы. Преподаватель видит только материалы курса, задания и то, чем вы сами поделились. По умолчанию доступ закрыт, и вы можете отозвать его в любой момент.",
+  ],
+  "coach.privacy.ai.title": ["AI necə işləyir", "How the AI works", "Как работает ИИ"],
+  "coach.privacy.ai.body": [
+    "Material mətni cavab hazırlamaq üçün AI xidmətinə (Google Gemini) göndərilir. AI səhv edə bilər: vacib məlumatı mənbədə yoxlayın. AI köməkçi müəllimin qiymətlərini və imtahan nəticələrini dəyişmir.",
+    "The material text is sent to an AI service (Google Gemini) to prepare answers. The AI can make mistakes: check important facts in the source. The study coach never changes your teacher's grades or exam results.",
+    "Текст материала отправляется в ИИ-сервис (Google Gemini) для подготовки ответов. ИИ может ошибаться: проверяйте важные факты по источнику. ИИ-помощник не меняет оценки преподавателя и результаты экзаменов.",
+  ],
+  "coach.privacy.delete.title": ["Necə silmək olar", "How to delete it", "Как удалить"],
+  "coach.privacy.delete.body": [
+    "Hər materialı faylı ilə birlikdə istənilən vaxt silə bilərsiniz. AI yaddaşını parametrlərdə ayrı-ayrılıqda və ya tam silmək olar. \"Bütün məlumatlarımı sil\" düyməsi AI köməkçidəki hər şeyi silir.",
+    "You can delete any material together with its file at any time. The AI memory can be deleted item by item or entirely in settings. The \"Delete all my data\" button removes everything in the study coach.",
+    "Любой материал можно удалить вместе с файлом в любое время. Память ИИ можно удалить по отдельности или целиком в настройках. Кнопка «Удалить все мои данные» удаляет всё в ИИ-помощнике.",
+  ],
+  "coach.privacy.minimal.title": ["Yalnız lazım olan məlumat", "Only what is needed", "Только необходимое"],
+  "coach.privacy.minimal.body": [
+    "Yalnız köməkçinin işləməsi üçün lazım olan məlumat toplanır. AI-yə verdiyiniz suallar 90 gündən sonra, emal oluna bilməyən materiallar isə 7 gündən sonra avtomatik silinir.",
+    "Only the data the coach needs to work is collected. Questions you ask the AI are deleted automatically after 90 days, and materials that could not be processed after 7 days.",
+    "Собираются только данные, необходимые для работы помощника. Вопросы к ИИ автоматически удаляются через 90 дней, а материалы, которые не удалось обработать, — через 7 дней.",
+  ],
+  "coach.privacy.limits.title": ["Mətnin tanınması haqqında", "About text recognition", "О распознавании текста"],
+  "coach.privacy.limits.body": [
+    "Skan edilmiş PDF və şəkillərdəki mətn avtomatik tanınır. Hazırda yalnız çap mətni dəstəklənir: əl yazısı, mürəkkəb düsturlar, cədvəllər və çoxsütunlu səhifələr səhv tanına bilər.",
+    "Text in scanned PDFs and images is recognised automatically. Only printed text is supported for now: handwriting, complex formulas, tables and multi-column pages may be recognised incorrectly.",
+    "Текст в отсканированных PDF и изображениях распознаётся автоматически. Пока поддерживается только печатный текст: рукописный текст, сложные формулы, таблицы и многоколоночные страницы могут распознаваться с ошибками.",
+  ],
+  "coach.privacy.accept": ["Oxudum, davam et", "I have read this, continue", "Я прочитал(а), продолжить"],
+  "coach.privacy.accepted": ["Məxfilik qeydi qəbul olunub.", "Privacy notice accepted.", "Уведомление о конфиденциальности принято."],
+
+  "coach.settings.link": ["Parametrlər və məxfilik", "Settings and privacy", "Настройки и конфиденциальность"],
+  "coach.settings.title": ["AI köməkçi parametrləri", "Study coach settings", "Настройки ИИ-помощника"],
+  "coach.settings.preferences": ["Seçimlər", "Preferences", "Параметры"],
+  "coach.settings.recall": ["Xatırlatma sualları", "Recall questions", "Вопросы на повторение"],
+  "coach.settings.recallHint": [
+    "AI ilə söhbətdə köhnə mövzulardan qısa yoxlama sualları nə qədər tez-tez göstərilsin.",
+    "How often short check questions on earlier topics appear in the tutor chat.",
+    "Как часто в чате с ИИ появляются короткие вопросы по прошлым темам.",
+  ],
+  "coach.recall.OFF": ["Göstərmə", "Off", "Не показывать"],
+  "coach.recall.LOW": ["Az", "Rarely", "Редко"],
+  "coach.recall.NORMAL": ["Normal", "Normal", "Обычно"],
+  "coach.settings.reminders": ["Təkrar xatırlatmalarını ana səhifədə göstər", "Show review reminders on the home page", "Показывать напоминания о повторении на главной"],
+
+  "coach.quota.daily": ["Bu gün AI əməliyyatları: {used} / {limit}", "AI actions today: {used} / {limit}", "Действия ИИ сегодня: {used} / {limit}"],
+  "coach.quota.monthly": ["Aylıq limitin {pct}%-i istifadə olunub", "{pct}% of the monthly allowance used", "Использовано {pct}% месячного лимита"],
+  "coach.quota.blocked": ["limit dolub", "limit reached", "лимит исчерпан"],
+
+  "coach.library.title": ["Materiallarım", "My materials", "Мои материалы"],
+  "coach.library.empty": ["Hələ material yoxdur.", "No materials yet.", "Материалов пока нет."],
+} as const satisfies Record<string, Entry>;

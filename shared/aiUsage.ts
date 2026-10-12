@@ -4,8 +4,24 @@
  */
 
 /** Every product feature that calls the model. New values go last. */
-export const AI_FEATURES = ["QUESTION_GENERATE", "QUESTION_IMPORT", "SYLLABUS_IMPORT", "SUBMISSION_REVIEW", "ANSWER_KEY_DRAFT", "OTHER"] as const;
+export const AI_FEATURES = [
+  "QUESTION_GENERATE",
+  "QUESTION_IMPORT",
+  "SYLLABUS_IMPORT",
+  "SUBMISSION_REVIEW",
+  "ANSWER_KEY_DRAFT",
+  "OTHER",
+  "COACH_INGEST",
+  "COACH_OCR",
+  "COACH_SUMMARY",
+  "COACH_QUIZ",
+  "COACH_GRADE",
+  "COACH_TUTOR",
+] as const;
 export type AiFeature = (typeof AI_FEATURES)[number];
+/** AI Study Coach features: paid from the student's own coach quota, never from a teacher's. */
+export const COACH_FEATURE_PREFIX = "COACH_";
+export const isCoachFeature = (f: string) => f.startsWith(COACH_FEATURE_PREFIX);
 
 export const AI_CALL_STATUSES = ["OK", "ERROR", "RATE_LIMITED"] as const;
 export type AiCallStatus = (typeof AI_CALL_STATUSES)[number];

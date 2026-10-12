@@ -83,6 +83,8 @@ export type InvokeParams = {
   timeoutMs?: number;
   /** HTTP-level retries of 5xx/408/429 and network errors; defaults to RETRY_MAX_RETRIES. */
   maxRetries?: number;
+  /** Gemini only; defaults to "low" (short JSON answers). Hard grading may ask for more. */
+  reasoningEffort?: "low" | "medium" | "high";
 };
 
 export type ToolCall = {
@@ -486,6 +488,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     max_tokens,
     timeoutMs,
     maxRetries,
+    reasoningEffort,
   } = params;
 
   const payload: Record<string, unknown> = {
@@ -523,7 +526,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   // Gemini 3 models always think and the thinking tokens count against max_tokens; "low" keeps
   // short JSON answers from being cut off. Other providers may reject the field.
   if (isGeminiUrl(config.baseUrl)) {
-    payload.reasoning_effort = "low";
+    payload.reasoning_effort = reasoningEffort ?? "low";
   }
 
   const normalizedResponseFormat = normalizeResponseFormat({

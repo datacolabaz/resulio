@@ -1,6 +1,7 @@
 import { inArray } from "drizzle-orm";
 import { z } from "zod";
 import { platformSettings } from "../drizzle/schema";
+import { COACH_DEFAULT_LIMITS, type CoachLimits } from "../shared/coach";
 import { MAX_UPLOAD_LIMIT_MB, SIZE_CLASSES, type SizeClass } from "../shared/materialTemplates";
 import { requireDb, type DbOrTx } from "./db";
 
@@ -24,6 +25,19 @@ export const PLATFORM_SETTINGS = {
     .object(Object.fromEntries(SIZE_CLASSES.map((c) => [c, z.number().int().min(1).max(MAX_UPLOAD_LIMIT_MB)])) as Record<SizeClass, z.ZodNumber>)
     .partial()
     .nullable(),
+  /** AI Study Coach: per-student monthly token quota and daily AI action cap; null = the free beta default. */
+  "coach.studentMonthlyTokenQuota": nullableCount,
+  "coach.studentDailyActionCap": nullableCount,
+  /** Per-feature coach caps (shared/coach.ts COACH_DEFAULT_LIMITS); a missing key uses its default. */
+  "coach.limits": z
+    .object(Object.fromEntries(Object.keys(COACH_DEFAULT_LIMITS).map((k) => [k, z.number().int().min(0).max(100_000)])) as Record<keyof CoachLimits, z.ZodNumber>)
+    .partial()
+    .nullable(),
+  /** Coach model names; switches at once, no restart. A missing name falls back to the COACH_* env vars. */
+  "coach.models": z
+    .object({ main: z.string().trim().max(120), lite: z.string().trim().max(120), pro: z.string().trim().max(120), ocr: z.string().trim().max(120) })
+    .partial()
+    .nullable(),
 } as const;
 export type PlatformSettingKey = keyof typeof PLATFORM_SETTINGS;
 export type PlatformSettings = { [K in PlatformSettingKey]: z.infer<(typeof PLATFORM_SETTINGS)[K]> };
@@ -35,6 +49,10 @@ export const SETTING_DEFAULTS: PlatformSettings = {
   "storage.softQuotaBytes": null,
   "storage.workspaceQuotaBytes": null,
   "storage.materialUploadLimitsMb": null,
+  "coach.studentMonthlyTokenQuota": null,
+  "coach.studentDailyActionCap": null,
+  "coach.limits": null,
+  "coach.models": null,
 };
 
 const KEYS = Object.keys(PLATFORM_SETTINGS) as PlatformSettingKey[];
