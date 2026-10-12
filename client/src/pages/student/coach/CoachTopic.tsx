@@ -7,8 +7,9 @@ import { CoachShell } from "./CoachShell";
 import { LearnTab } from "./LearnTab";
 import { pagesLabel } from "./CoachMaterial";
 import { PracticeTab } from "./PracticeTab";
+import { AskTab } from "./AskTab";
 
-export const TOPIC_TABS = ["learn", "practice"] as const;
+export const TOPIC_TABS = ["learn", "practice", "ask"] as const;
 export type TopicTab = (typeof TOPIC_TABS)[number];
 
 const initialTab = (): TopicTab => {
@@ -57,6 +58,7 @@ function TopicBody({ topicId }: { topicId: string }) {
       </Panel>
       {tab === "learn" && <LearnTab topicId={topic.id} />}
       {tab === "practice" && <PracticeTab key={topic.id} topicId={topic.id} onLearn={() => setTab("learn")} />}
+      {tab === "ask" && <AskTab key={topic.id} topicId={topic.id} />}
       <nav className="flex flex-wrap justify-between gap-2 text-sm" aria-label={t("coach.topic.nav")}>
         {prev ? (
           <Link href={`/student/coach/t/${prev.id}`} className="text-link hover:underline">

@@ -8,6 +8,7 @@ import type { Message } from "../_core/llm";
 import { requireDb } from "../db";
 import { AppError } from "../modules/errors";
 import { DATA_RULE, generateStructured, languageRule, materialBlock, withCoachAi, type PromptChunk } from "./ai";
+import { assertNotInExam } from "./examLock";
 import { onMaterialDelete, onMaterialTextChange, ownedMaterial } from "./materials";
 import { coachModels } from "./models";
 import { assertCoachAiAllowed } from "./quota";
@@ -178,6 +179,7 @@ export async function getPack(studentId: number, topicId: string, format: Summar
 const running = new Set<string>();
 
 export async function generatePack(studentId: number, topicId: string, format: SummaryFormat, locale: CoachLocale) {
+  await assertNotInExam(studentId);
   const topic = await ownedTopic(studentId, topicId);
   const material = await ownedMaterial(studentId, topic.materialId);
   if (material.status !== "READY") throw new AppError("COACH_NOT_READY");

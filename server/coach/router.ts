@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { studentAnswerSchema } from "../../shared/assessment";
-import { COACH_LOCALES, COACH_MAX_PASTE_CHARS, coachLocaleOf, MATERIAL_GOALS, PRACTICE_FORMATS, RECALL_MODES, SUMMARY_FORMATS, type CoachLocale } from "../../shared/coach";
+import { COACH_LOCALES, COACH_MAX_PASTE_CHARS, coachLocaleOf, MATERIAL_GOALS, PRACTICE_FORMATS, RECALL_MODES, SUMMARY_FORMATS, TUTOR_ACTIONS, type CoachLocale } from "../../shared/coach";
 import { rateLimit, router, studentProcedure } from "../_core/trpc";
 import { isSchemaBehind } from "../syllabus/availability";
 import { assertCoachEnabled, coachEnabledFor } from "./availability";
@@ -9,6 +9,8 @@ import * as materials from "./materials";
 import * as packs from "./packs";
 import * as practice from "./practice";
 import * as review from "./review";
+import * as tutor from "./tutor";
+import { inExam } from "./examLock";
 import { coachLimits, coachQuota } from "./quota";
 import * as store from "./store";
 
@@ -128,6 +130,27 @@ const practiceRouter = router({
     .mutation(({ ctx, input }) => practice.regradeItem(ctx.user.id, input.quizId, input.itemId)),
 });
 
+const tutorRouter = router({
+  threads: coachConsentedProcedure.input(z.object({ topicId: z.string().min(1).max(32) })).query(({ ctx, input }) => tutor.listThreads(ctx.user.id, input.topicId)),
+  thread: coachConsentedProcedure.input(z.object({ threadId: z.string().min(1).max(32) })).query(({ ctx, input }) => tutor.getThread(ctx.user.id, input.threadId)),
+  locked: coachConsentedProcedure.query(async ({ ctx }) => ({ locked: await inExam(ctx.user.id) })),
+  ask: coachConsentedProcedure
+    .use(rateLimit("coachTutor", 10, MINUTE))
+    .input(
+      z
+        .object({
+          topicId: z.string().min(1).max(32),
+          threadId: z.string().min(1).max(32).optional(),
+          action: z.enum(TUTOR_ACTIONS),
+          text: z.string().max(tutor.TUTOR_MAX_CHARS + 500).default(""),
+          locale: localeInput,
+        })
+        .refine((v) => v.action !== "ASK" || v.text.trim().length > 0, { message: "VALIDATION_ERROR", path: ["text"] }),
+    )
+    .mutation(({ ctx, input }) => tutor.ask(ctx.user.id, { ...input, locale: localeOf(input.locale, ctx.user) })),
+  remove: coachConsentedProcedure.input(z.object({ threadId: z.string().min(1).max(32) })).mutation(({ ctx, input }) => tutor.deleteThread(ctx.user.id, input.threadId)),
+});
+
 const reviewRouter = router({
   queue: coachConsentedProcedure.query(({ ctx }) => review.reviewQueue(ctx.user.id)),
   /** Student home card: null when the coach is off, the notice not accepted, or reminders are off. */
@@ -170,4 +193,5 @@ export const studentCoachRouter = router({
   practice: practiceRouter,
   review: reviewRouter,
   memory: memoryRouter,
+  tutor: tutorRouter,
 });

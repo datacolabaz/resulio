@@ -12,6 +12,7 @@ import { AppError } from "../modules/errors";
 import { generateStructured, withCoachAi } from "./ai";
 import { aiGrade, answerString, shortFoldedMatch, shortNearMiss, type OpenGrade, type OpenItem } from "./aigrade";
 import { addEvidence, canRegrade, coachMastery, gradeItem, mistakeCause, scoreQuiz, type ItemOutcome } from "./grading";
+import { assertNotInExam } from "./examLock";
 import { onMaterialDelete, ownedMaterial } from "./materials";
 import { coachModels } from "./models";
 import { ownedTopic, promptChunks, topicChunks } from "./packs";
@@ -121,6 +122,7 @@ export async function listQuizzes(studentId: number, topicId?: string) {
 }
 
 export async function startQuiz(studentId: number, input: { topicId: string; format: QuizFormat; count: number; locale: CoachLocale }) {
+  await assertNotInExam(studentId);
   const topic = await ownedTopic(studentId, input.topicId);
   const material = await ownedMaterial(studentId, topic.materialId);
   if (material.status !== "READY") throw new AppError("COACH_NOT_READY");

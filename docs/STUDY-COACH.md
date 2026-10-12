@@ -77,6 +77,7 @@ calls never count against a teacher.
 | `coach_quizzes`, `coach_quiz_items` | 0055 | practice quizzes and their questions, answers and grades |
 | `coach_topic_mastery` | 0055 | per (student, topic): mastery, evidence of the last 10 quizzes, review schedule |
 | `coach_mistakes` | 0055 | wrong answers with a cause, closed when the topic is answered well again |
+| `coach_threads`, `coach_messages` | 0056 | tutor conversations per topic (deleted after 90 days) |
 
 ## Materials
 
@@ -174,6 +175,27 @@ asked number fails the request. Earlier questions on the topic are sent as "do n
   practice) and the mistakes it remembers, in a `ResponsiveTable`. Each can be deleted, or all at
   once. Forgetting a topic removes its mastery, schedule and mistakes; quiz history and materials
   stay (they are deleted with the material or with "delete all my data").
+
+## Tutor ("Soruş")
+
+Per topic: a free question or a button — **Sadə izah et**, **Nümunə göstər**, **Məni yoxla**.
+
+- Context: the topic's best passages for the question (BM25, up to 12 000 characters; the whole
+  material when the topic has none), the last 8 messages of the conversation, and the app
+  language. The student's text is fenced with a per-call nonce and treated as data.
+- **Hint first**: a message that looks like an exercise (solve/calculate verbs in AZ/EN/RU, or
+  arithmetic with `=`/`?`) gets one hint, not the answer; asking again right after a hint gets the
+  full solution (`tutorMode`).
+- **Grounding label**: "Materialınızdan" only when quotes check out (`verifyCites`); otherwise
+  "Material + ümumi bilik", "Materialda yoxdur: ümumi bilik" or "Mövzudan kənar"
+  (`finalGrounding`). Quotes are shown verbatim with page chips.
+- **Recall** (coach setting): NORMAL adds a one-line re-check of an open mistake on the topic every
+  4th reply, LOW at most once a day, OFF never (event `RECALL_SHOWN`).
+- **Exam lock**: while the student has an exam attempt `IN_PROGRESS` before its deadline, the
+  tutor, new summaries and new quizzes return `COACH_LOCKED_DURING_EXAM` (read-only query on
+  `attempts`, using `attempts_status_deadline_idx`). The tab shows a lock notice.
+- Caps: `coach.limits.tutorPerDay` (event `TUTOR_ASKED`), 10 messages/minute, plus the token and
+  daily action quotas. Conversations can be deleted by the student.
 
 ## OCR (scanned PDFs and images)
 
