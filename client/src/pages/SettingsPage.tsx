@@ -9,6 +9,7 @@ import { t } from "@/i18n/messages";
 import { availableContexts, canEnter, CONTEXT_HOME, contextLabel } from "@/lib/contexts";
 import { errorText, partnerStatusLabel, providerLabel, subscriptionLabel } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
+import { ClaudeConnectorPanel } from "@/components/ClaudeConnectorPanel";
 import { PASSWORD_MIN_LENGTH } from "@shared/auth";
 import { Check } from "lucide-react";
 import { useState } from "react";
@@ -214,6 +215,8 @@ export default function SettingsPage() {
         </Panel>
 
         {user.workspaces.length > 0 && <AiUsagePanel />}
+
+        {user.workspaces.length > 0 && <ClaudeConnectorPanel />}
 
         <NotificationPreferencesPanel teaching={user.workspaces.length > 0} />
 

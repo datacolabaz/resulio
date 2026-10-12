@@ -2332,3 +2332,4 @@ export type SubmissionAiReview = typeof submissionAiReviews.$inferSelect;
 export type SubmissionGrading = typeof submissionGrading.$inferSelect;
 
 export * from "./coachSchema";
+export * from "./mcpSchema";

@@ -386,6 +386,13 @@
       "when": 1791817334162,
       "tag": "0058_coach_page_reports",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "5",
+      "when": 1791840165123,
+      "tag": "0059_mcp_connector",
+      "breakpoints": true
     }
   ]
 }

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { t } from "@/i18n/messages";
-import { errorText, fmtCompact, fmtDateTime, fmtNumber, fmtUsd } from "@/lib/format";
+import { errorText, fmtCompact, fmtDateTime, fmtDay, fmtNumber, fmtUsd } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import { formatFileSize } from "@/lib/uploadFile";
 import { AI_LIMIT_WARN_RATIO, type LimitValue } from "@shared/aiUsage";
@@ -115,6 +115,81 @@ function EditLimitsDialog({ teacher, defaults, onClose }: { teacher: TeacherRow 
   );
 }
 
+type McpRow = {
+  id: number;
+  name: string | null;
+  email: string | null;
+  mcpConnector: { status: string; plan: string | null; expiresAt: Date | null; note: string | null } | null;
+};
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+const dateInputValue = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+/** Claude connector subscription: grant or extend to an end date (inclusive, local day) or with no end, or revoke now. */
+function McpEntitlementDialog({ teacher, onClose }: { teacher: McpRow | null; onClose: () => void }) {
+  const utils = trpc.useUtils();
+  const [plan, setPlan] = useState("premium");
+  const [until, setUntil] = useState("");
+  const [note, setNote] = useState("");
+  useEffect(() => {
+    const e = teacher?.mcpConnector;
+    setPlan(e?.plan ?? "premium");
+    setUntil(e?.expiresAt ? dateInputValue(new Date(e.expiresAt)) : "");
+    setNote(e?.note ?? "");
+  }, [teacher]);
+  const done = (message: string) => {
+    toast.success(message);
+    void utils.admin.ai.teachers.invalidate();
+    void utils.admin.ai.mcpUpgradeRequests.invalidate();
+    onClose();
+  };
+  const grant = trpc.admin.ai.grantMcp.useMutation({ onSuccess: () => done(t("admin.mcp.granted")), onError: (e) => toast.error(errorText(e)) });
+  const revoke = trpc.admin.ai.revokeMcp.useMutation({ onSuccess: () => done(t("admin.mcp.revoked")), onError: (e) => toast.error(errorText(e)) });
+  const expiresAt = until ? new Date(`${until}T23:59:59`) : null;
+  const pastDate = expiresAt !== null && expiresAt.getTime() <= Date.now();
+  const busy = grant.isPending || revoke.isPending;
+
+  return (
+    <Dialog open={teacher !== null} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("admin.mcp.dialogTitle", { name: teacher?.name ?? teacher?.email ?? "" })}</DialogTitle>
+          <DialogDescription className="break-all">{teacher?.email}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <label className="block space-y-1 text-sm">
+            <span className="font-medium">{t("admin.mcp.plan")}</span>
+            <Input value={plan} maxLength={32} onChange={(e) => setPlan(e.target.value)} />
+          </label>
+          <label className="block space-y-1 text-sm">
+            <span className="font-medium">{t("admin.mcp.expiresAt")}</span>
+            <Input type="date" value={until} onChange={(e) => setUntil(e.target.value)} className="w-full sm:w-56" />
+            <span className="block text-xs text-muted-foreground">{t("admin.mcp.expiresHint")}</span>
+            {pastDate && <span role="alert" className="block text-xs text-destructive">{t("admin.mcp.pastDate")}</span>}
+          </label>
+          <label className="block space-y-1 text-sm">
+            <span className="font-medium">{t("admin.mcp.note")}</span>
+            <Input value={note} maxLength={255} onChange={(e) => setNote(e.target.value)} />
+          </label>
+        </div>
+        <DialogFooter className="gap-2">
+          {teacher?.mcpConnector?.status === "ACTIVE" && (
+            <Button variant="outline" className="text-destructive" disabled={busy} onClick={() => teacher && revoke.mutate({ userId: teacher.id })}>
+              {t("admin.mcp.revoke")}
+            </Button>
+          )}
+          <Button
+            disabled={busy || pastDate || !plan.trim()}
+            onClick={() => teacher && grant.mutate({ userId: teacher.id, plan: plan.trim(), expiresAt, note: note.trim() || null })}
+          >
+            {t("admin.mcp.grant")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function AiLimitsPage() {
   const { can } = useAdmin();
   const utils = trpc.useUtils();
@@ -127,6 +202,15 @@ export default function AiLimitsPage() {
       toast.success(t("admin.limits.resetDone"));
       void utils.admin.ai.teachers.invalidate();
       setResetting(null);
+    },
+    onError: (e) => toast.error(errorText(e)),
+  });
+  const [mcpEditing, setMcpEditing] = useState<McpRow | null>(null);
+  const requests = trpc.admin.ai.mcpUpgradeRequests.useQuery(undefined, { enabled: can("ai.view") });
+  const closeRequest = trpc.admin.ai.closeMcpUpgradeRequest.useMutation({
+    onSuccess: () => {
+      void utils.admin.ai.mcpUpgradeRequests.invalidate();
+      void utils.admin.ai.teachers.invalidate();
     },
     onError: (e) => toast.error(errorText(e)),
   });
@@ -147,6 +231,29 @@ export default function AiLimitsPage() {
           <div className="mt-3">
             <SettingsLink />
           </div>
+        )}
+      </Panel>
+
+      <Panel title={t("admin.mcp.requests")}>
+        {requests.error ? <ErrorNote error={requests.error} /> : !requests.data ? <Loading /> : !requests.data.length ? (
+          <p className="text-sm text-muted-foreground">{t("admin.mcp.noRequests")}</p>
+        ) : (
+          <ul className="divide-y text-sm">
+            {requests.data.map((r) => (
+              <li key={r.userId} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                <div className="min-w-0">
+                  <div className="break-words font-medium">{r.name ?? "—"}</div>
+                  <div className="break-all text-xs text-muted-foreground">{r.email} · {fmtDateTime(r.requestedAt)}</div>
+                </div>
+                {manage && (
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" onClick={() => setMcpEditing({ id: r.userId, name: r.name, email: r.email, mcpConnector: null })}>{t("admin.mcp.grant")}</Button>
+                    <Button size="sm" variant="ghost" disabled={closeRequest.isPending} onClick={() => closeRequest.mutate({ userId: r.userId })}>{t("admin.mcp.closeRequest")}</Button>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
         )}
       </Panel>
 
@@ -176,6 +283,25 @@ export default function AiLimitsPage() {
                     </div>
                     <div className="text-xs text-muted-foreground">{t("admin.limits.storage", { size: formatFileSize(row.storageBytes) })}</div>
                     {row.override?.usageResetAt && <div className="text-xs text-muted-foreground">{t("admin.limits.resetAt", { date: fmtDateTime(row.override.usageResetAt) })}</div>}
+                    {row.mcpConnector && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                        <span className="text-foreground-secondary">{t("admin.mcp.title")}:</span>
+                        <StatusBadge tone={row.mcpConnector.status === "ACTIVE" ? "success" : row.mcpConnector.status === "EXPIRED" ? "warning" : "neutral"}>
+                          {t(`admin.mcp.status.${row.mcpConnector.status}`)}
+                        </StatusBadge>
+                        {row.mcpConnector.status === "ACTIVE" && (
+                          <span className="text-muted-foreground">
+                            {row.mcpConnector.plan} · {row.mcpConnector.expiresAt ? t("admin.mcp.until", { date: fmtDay(row.mcpConnector.expiresAt) }) : t("admin.mcp.noEnd")}
+                          </span>
+                        )}
+                        {row.mcpConnector.requestedAt && <StatusBadge tone="info">{t("admin.mcp.requested", { date: fmtDay(row.mcpConnector.requestedAt) })}</StatusBadge>}
+                        {manage && (
+                          <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setMcpEditing(row)}>
+                            {t("admin.mcp.manage")}
+                          </Button>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-1">
                     <div className="flex flex-wrap justify-between gap-x-2 text-xs">
@@ -222,6 +348,7 @@ export default function AiLimitsPage() {
       </Panel>
 
       <EditLimitsDialog teacher={editing} defaults={defaults} onClose={() => setEditing(null)} />
+      <McpEntitlementDialog teacher={mcpEditing} onClose={() => setMcpEditing(null)} />
       <Dialog open={resetting !== null} onOpenChange={(v) => !v && setResetting(null)}>
         <DialogContent>
           <DialogHeader>

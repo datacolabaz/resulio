@@ -85,6 +85,17 @@ export const ENV = {
   get auditHashSecret() { return process.env.AUDIT_HASH_SECRET || process.env.SESSION_SECRET || ""; },
   /** Origin of the separately deployed frontend (e.g. https://resulio.co). Empty = this server also serves the SPA. */
   get frontendUrl() { return toOrigin(process.env.FRONTEND_URL ?? ""); },
+  /** Public origin of this API (e.g. https://api.resulio.co): OAuth issuer and MCP resource. Empty = taken from the request. */
+  get publicApiUrl() { return toOrigin(process.env.PUBLIC_API_URL ?? ""); },
+  /** Claude connector: loopback redirect URIs (MCP Inspector, local clients). Default on outside production. */
+  get mcpAllowLoopbackRedirects() {
+    const v = envString("MCP_ALLOW_LOOPBACK_REDIRECTS");
+    return v ? v === "1" || v === "true" : process.env.NODE_ENV !== "production";
+  },
+  /** Claude connector: extra exact redirect URIs allowed besides Claude's callbacks (comma-separated). */
+  get mcpExtraRedirectUris(): string[] {
+    return envString("MCP_EXTRA_REDIRECT_URIS").split(",").map((s) => s.trim()).filter(Boolean);
+  },
   /** Shared parent domain for session cookies when the SPA and API are on sibling hosts. */
   get cookieDomain() { return cookieDomainFromEnv(); },
   /** Browser origins allowed to call the API with credentials: FRONTEND_URL plus optional CORS_ALLOWED_ORIGINS. */

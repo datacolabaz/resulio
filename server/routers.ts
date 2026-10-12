@@ -24,7 +24,7 @@ import { clearNamedCookie } from "./_core/cookies";
 import { ENV } from "./_core/env";
 import { requestMeta } from "./_core/requestMeta";
 import { systemRouter } from "./_core/systemRouter";
-import { GROUP_FORMATS, PROVIDER_TYPES, PUSH_PLATFORMS, TASK_ACCESS_MODES, UI_CONTEXTS, type TaskAccessMode } from "../drizzle/schema";
+import { GROUP_FORMATS, PROVIDER_TYPES, PUSH_PLATFORMS, TASK_ACCESS_MODES, UI_CONTEXTS } from "../drizzle/schema";
 import { JOIN_POLICIES } from "../shared/groupJoinPolicy";
 import { adminRouter } from "./adminRouter";
 import { myAiQuota } from "./aiUsage/limits";
@@ -42,6 +42,7 @@ import * as db from "./db";
 import * as directUpload from "./materials/directUpload";
 import * as materialService from "./materials/service";
 import * as materialTags from "./materials/tags";
+import { mcpConnectorRouter } from "./mcp/router";
 import { canEnterContext, defaultContext, ensurePartnerProfile, resolveAccess, type TeacherScope } from "./modules/access";
 import * as activity from "./modules/activity";
 import { adminView } from "./modules/admin/authz";
@@ -64,7 +65,8 @@ import * as partners from "./modules/partners";
 import * as passwordAuth from "./modules/passwordAuth";
 import * as referrals from "./modules/referrals";
 import * as shareTracking from "./modules/shareTracking";
-import { canSeeTaskContent, rosterStudentIds } from "./modules/taskAccess";
+import { assertAccessGroups, assertRecipients } from "./modules/recipients";
+import { canSeeTaskContent } from "./modules/taskAccess";
 import * as tasks from "./modules/tasks";
 import * as taskNotify from "./modules/taskNotify";
 import * as workspaces from "./modules/workspaces";
@@ -139,26 +141,10 @@ async function me(user: NonNullable<Awaited<ReturnType<typeof db.getUserByOpenId
   };
 }
 
-/**
- * Validates the recipients belong to this teacher and returns who they reach (group members only, for a GROUPS-restricted task).
- * `alreadyRecipients`: on edit, students already on the row (e.g. joined via the share link) may stay.
- */
-async function assertRecipients(scope: TeacherScope, groupIds: string[], studentIds: number[], accessMode: TaskAccessMode = "PUBLIC", alreadyRecipients: readonly number[] = []) {
-  for (const g of groupIds) await groups.assertGroupOwner(scope, g);
-  const own = new Set([...(await groups.teacherStudentIds(scope)), ...alreadyRecipients]);
-  if (!studentIds.every((s) => own.has(s))) throw new AppError("FORBIDDEN");
-  const fromGroups = await groups.activeStudentIdsOfGroups(groupIds);
-  return rosterStudentIds({ accessMode, groupIds, studentIds }, fromGroups);
-}
-
 /** Unknown single-use tokens are unguessable (256 bits), but repeated misses from one caller are still cut off. */
 function limitInviteLinkMisses(ctx: TrpcContext) {
   const who = ctx.user ? `u:${ctx.user.id}` : `ip:${ctx.req.ip ?? "unknown"}`;
   limited(ctx, `inviteLinkMiss:${who}`, 20, 15 * MINUTE, "inviteLinkMiss");
-}
-
-function assertAccessGroups(accessMode: TaskAccessMode, groupIds: string[]) {
-  if (accessMode === "GROUPS" && !groupIds.length) throw new AppError("TASK_GROUPS_REQUIRED");
 }
 
 const csvCell = (v: unknown) => {
@@ -1267,6 +1253,7 @@ export const appRouter = router({
   inbox: inboxRouter,
   devices: devicesRouter,
   webPush: webPushRouter,
+  mcpConnector: mcpConnectorRouter,
 });
 
 export type AppRouter = typeof appRouter;
