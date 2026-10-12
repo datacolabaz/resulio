@@ -76,6 +76,12 @@ export async function countEvents(studentId: number, type: CoachEventType, since
   return Number(row?.n ?? 0);
 }
 
+/** How many more of `type` today (Infinity without a cap). */
+export async function dailyRemaining(studentId: number, type: CoachEventType, cap: number, now = new Date()): Promise<number> {
+  if (cap <= 0) return Infinity;
+  return Math.max(0, cap - (await countEvents(studentId, type, periodStart("day", now))));
+}
+
 /** Per-day caps counted from coach_events since Baku midnight (0 = no cap). */
 export async function assertDailyCap(studentId: number, type: CoachEventType, cap: number, now = new Date()) {
   if (cap <= 0) return;

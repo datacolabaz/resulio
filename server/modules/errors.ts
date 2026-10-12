@@ -138,7 +138,9 @@ export type AppErrorCode =
   | "COACH_MATERIAL_LIMIT"
   | "COACH_NOT_READY"
   | "COACH_BUSY"
-  | "COACH_NOT_ENOUGH_CONTENT";
+  | "COACH_NOT_ENOUGH_CONTENT"
+  | "COACH_QUIZ_CLOSED"
+  | "COACH_CANNOT_REGRADE";
 
 export class AppError extends Error {
   constructor(public readonly code: AppErrorCode) {
@@ -282,6 +284,8 @@ const HTTP: Partial<Record<AppErrorCode, TRPCError["code"]>> = {
   COACH_NOT_READY: "PRECONDITION_FAILED",
   COACH_BUSY: "CONFLICT",
   COACH_NOT_ENOUGH_CONTENT: "PRECONDITION_FAILED",
+  COACH_QUIZ_CLOSED: "CONFLICT",
+  COACH_CANNOT_REGRADE: "CONFLICT",
 };
 
 /** Where an unexpected error happened, for the server log only (never sent to the client). */

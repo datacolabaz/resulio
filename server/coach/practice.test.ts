@@ -90,7 +90,7 @@ describe("question normalization", () => {
     const n = toDraftItem({ type: "NUMERIC", text: "2 kq kütləyə 3 m/s² təcil üçün qüvvə?", value: 6, unit: "N", formula: "m*a", variables: { m: 2, a: 3 } }, ["NUMERIC"], byLabel, "s")!;
     expect(n.answerKey).toEqual({ value: 6, tolerance: 0.03 });
     expect(n.content).toEqual({ unit: "N" });
-    expect(n.calc).toEqual({ formula: "m*a", variables: { m: 2, a: 3 }, unit: "N" });
+    expect(n.calc).toEqual({ formula: "m*a", variables: { m: 2, a: 3 }, unit: "N", verified: true });
   });
 
   it("dedupes, caps at the count, and needs at least half", () => {

@@ -64,6 +64,17 @@ export function mistakeCause(item: Pick<GradableItem, "type" | "answerKey" | "hi
   return "UNKNOWN";
 }
 
+/**
+ * Whether "Yenidən yoxla" / "Etiraz et" is offered: a written answer still pending or graded by
+ * the first-pass AI, or a short answer marked wrong; once per answer, and never on a pro grade.
+ */
+export function canRegrade(item: { type: string; status: string | null; gradedBy: string | null; disputed: boolean; answer: unknown }): boolean {
+  if (item.disputed || item.gradedBy === "AI_PRO" || !isAnswered(item.answer as StudentAnswer | undefined)) return false;
+  if (item.type === "LONG_ANSWER") return item.status === "PENDING_REVIEW" || item.gradedBy === "AI";
+  if (item.type === "SHORT_ANSWER") return item.status === "WRONG";
+  return false;
+}
+
 export const MAX_EVIDENCE = 10;
 
 /** This quiz as evidence for one topic, newest first, capped. */

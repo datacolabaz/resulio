@@ -126,8 +126,8 @@ asked number fails the request. Earlier questions on the topic are sent as "do n
 
 - Keys, explanations and sources are not sent before the quiz is submitted. Hints are stored with
   the question (no extra AI call); using one is recorded.
-- Grading: closed questions by `gradeQuestion` (the same grader as exams). Open written answers
-  (WRITTEN) are graded by AI in the grading phase; until then they stay pending.
+- Grading: closed questions by `gradeQuestion` (the same grader as exams). See "Grading open
+  answers" below for written and short answers.
 - Mastery: `computeMastery` from the Growth Engine over the coach's own evidence only (origin
   PRACTICE, last 10 quizzes per topic). It never reads or writes teacher results.
 - Mistakes: every wrong answer is stored with a deterministic first guess at the cause (numeric
@@ -137,6 +137,27 @@ asked number fails the request. Earlier questions on the topic are sent as "do n
   the student's own Growth page.
 - Cap: `coach.limits.quizzesPerDay` (event `QUIZ_STARTED`) plus the monthly token and daily action
   quotas.
+
+### Grading open answers
+
+- **Calculations**: the model gives `formula` + `variables` with each answer; `calc.ts` (a small
+  arithmetic parser, no `eval`) recomputes it. A key its own formula contradicts is dropped at
+  generation; one whose formula cannot be read is kept and labelled "not checked by calculation".
+  Tolerance is at least 0.5 % of the value.
+- **Short answers**: equal after folding case, diacritics (ə→e, ı→i) and punctuation → correct
+  without AI. Close misses (similarity ≥ 0.75, or the accepted answer inside a longer phrase) are
+  checked by AI for meaning (`COACH_GRADE`).
+- **Written answers (WRITTEN)**: graded by the main model against the rubric and the topic's
+  passages, in one call per quiz. Score ≥ 85 → correct, ≤ 15 → wrong, otherwise partly correct;
+  feedback (summary, good, missing, rubric points) is in the app language. The student's text is
+  fenced with a per-call nonce and treated as data, not instructions.
+- **Confidence**: below 0.6 the grade is provisional and is re-graded by the pro model while
+  `coach.limits.proGradesPerDay` allows (event `PRO_GRADE`).
+- **Dispute** ("Etiraz et"): once per answer, on a first-pass AI grade or a short answer marked
+  wrong. The pro model grades independently; its grade is final. Counts against the same cap.
+  A pending answer (AI unavailable at submit) shows "Yenidən yoxla" instead.
+- Regrades update the quiz score, mistakes and the topic's mastery evidence without counting a new
+  practice attempt.
 
 ## OCR (scanned PDFs and images)
 
