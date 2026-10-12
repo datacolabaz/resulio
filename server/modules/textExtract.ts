@@ -114,14 +114,19 @@ export function officeXmlToText(xml: string): string {
 
 const slideNumber = (name: string) => Number(/(\d+)\.xml$/.exec(name)?.[1] ?? 0);
 
-function officeText(buf: Buffer, ext: ".docx" | ".pptx"): string {
+/** The document body of a .docx as one part, or each slide of a .pptx as its own part, in order. */
+export function officeParts(buf: Buffer, ext: ".docx" | ".pptx"): string[] {
   const entries = zipEntries(buf);
   const parts =
     ext === ".docx"
       ? entries.filter((e) => e.name === "word/document.xml")
       : entries.filter((e) => /^ppt\/slides\/slide\d+\.xml$/.test(e.name)).sort((a, b) => slideNumber(a.name) - slideNumber(b.name));
   if (!parts.length) throw new Error("no text part");
-  return parts.map((e) => officeXmlToText(readEntry(buf, e).toString("utf8"))).join("\n\n");
+  return parts.map((e) => officeXmlToText(readEntry(buf, e).toString("utf8")));
+}
+
+function officeText(buf: Buffer, ext: ".docx" | ".pptx"): string {
+  return officeParts(buf, ext).join("\n\n");
 }
 
 // ---------------------------------------------------------------------------

@@ -33,7 +33,7 @@ export function materialStage(status: CoachMaterialStatus): MaterialStage {
   return status;
 }
 
-export const MATERIAL_ERRORS = ["NO_TEXT", "TOO_MANY_PAGES", "UNREADABLE", "FILE_MISSING", "AI_UNAVAILABLE", "AI_QUOTA", "INTERRUPTED", "INTERNAL"] as const;
+export const MATERIAL_ERRORS = ["NO_TEXT", "TOO_MANY_PAGES", "UNREADABLE", "FILE_MISSING", "FILE_TYPE", "OCR_LIMIT", "AI_UNAVAILABLE", "AI_QUOTA", "INTERRUPTED", "INTERNAL"] as const;
 export type MaterialError = (typeof MATERIAL_ERRORS)[number];
 
 /** Upload limits: the existing API upload path (8 MB), 150 pages, 300k characters of text. */

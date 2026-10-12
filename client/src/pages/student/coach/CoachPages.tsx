@@ -5,7 +5,10 @@ import { errorText } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import { RECALL_MODES, type RecallMode } from "@shared/coach";
 import { toast } from "sonner";
+import { CoachLibrary } from "./CoachLibrary";
 import { CoachShell, PrivacyNotice, QuotaLine, type CoachStatus } from "./CoachShell";
+
+export { CoachMaterialPage } from "./CoachMaterial";
 
 const selectClass = "mt-1 w-full max-w-xs rounded-lg border border-input bg-card px-3 py-2 text-foreground";
 
@@ -15,17 +18,6 @@ export function CoachLibraryPage() {
     <CoachShell title={t("nav.coach")} intro={t("coach.intro")}>
       {(status) => <CoachLibrary status={status} />}
     </CoachShell>
-  );
-}
-
-function CoachLibrary({ status }: { status: CoachStatus }) {
-  return (
-    <Panel title={t("coach.library.title")}>
-      <p className="text-sm text-muted-foreground">{t("coach.library.empty")}</p>
-      <div className="mt-3">
-        <QuotaLine quota={status.quota} />
-      </div>
-    </Panel>
   );
 }
 
