@@ -127,7 +127,7 @@ function MasteryCard({ progress }: { progress: NonNullable<RouterOutputs["studen
   );
 }
 
-function QuizRunner({ quizId, onClose, onLearn }: { quizId: string; onClose: () => void; onLearn: () => void }) {
+export function QuizRunner({ quizId, onClose, onLearn, backLabel }: { quizId: string; onClose: () => void; onLearn: () => void; backLabel?: string }) {
   const utils = trpc.useUtils();
   const q = trpc.student.coach.practice.get.useQuery({ quizId });
   const [answers, setAnswers] = useState<Record<string, StudentAnswer | undefined>>({});
@@ -155,7 +155,7 @@ function QuizRunner({ quizId, onClose, onLearn }: { quizId: string; onClose: () 
     <>
       <Panel>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <Button size="sm" variant="ghost" onClick={onClose}>← {t("coach.practice.back")}</Button>
+          <Button size="sm" variant="ghost" onClick={onClose}>← {backLabel ?? t("coach.practice.back")}</Button>
           <span className="text-sm text-muted-foreground">{formatLabel(quiz.format)}</span>
         </div>
         {graded && <ScoreSummary quiz={quiz} />}

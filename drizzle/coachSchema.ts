@@ -16,6 +16,7 @@ import type {
   ItemFeedback,
   MaterialError,
   MaterialGoal,
+  MaterialPageReport,
   MaterialSource,
   MistakeCause,
   QuizFormat,
@@ -94,6 +95,14 @@ export const coachMaterials = mysqlTable(
   },
   (t) => [index("coach_materials_student_idx").on(t.studentId, t.createdAt)],
 );
+
+/** Which pages of a material were poorly recognised, picture-only, failed or capped (written by each run). */
+export const coachPageReports = mysqlTable("coach_page_reports", {
+  materialId: id("materialId").primaryKey(),
+  studentId: int("studentId").notNull(),
+  report: json("report").$type<MaterialPageReport>().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
 
 /** A topic found in a material; titles are in the language the student used at upload time. */
 export const coachTopics = mysqlTable(

@@ -4,13 +4,14 @@ import { PDFDocument } from "pdf-lib";
 import { z } from "zod";
 import { coachEvents } from "../../drizzle/schema";
 import { periodStart } from "../../shared/aiUsage";
-import { OCR_LOW_QUALITY, type CoachLocale } from "../../shared/coach";
+import { coachUploadLimits, OCR_IMAGE_PAGE_LETTERS, OCR_LOW_QUALITY, reviewNeeded, type MaterialPageReport } from "../../shared/coach";
 import { ENV } from "../_core/env";
 import type { Message, MessageContent } from "../_core/llm";
 import { requireDb } from "../db";
+import { AppError } from "../modules/errors";
 import { extensionOf } from "../modules/files";
 import { filePart, pdfInputMode } from "../questionBank/importJobs";
-import { DATA_RULE, generateStructured } from "./ai";
+import { createLimiter, DATA_RULE, generateStructured, ingestAiSlot } from "./ai";
 import { normalizeText, type PageText } from "./chunker";
 import { extractSource, IMAGE_MIME, IngestError } from "./extract";
 import type { PageReader } from "./materials";
@@ -26,6 +27,10 @@ import { logEvent } from "./store";
  */
 
 export const OCR_BATCH_PAGES = 5;
+/** Batches of one material read at the same time (all materials together: INGEST_AI_CONCURRENCY). */
+export const OCR_PARALLEL_BATCHES = 2;
+/** Per try; a 5-page batch normally takes 10-30 s. */
+export const OCR_TIMEOUT_MS = 120_000;
 /** Letters/digits a full printed page usually has; fewer lowers the density part of the score. */
 const DENSE_PAGE_CHARS = 350;
 
@@ -125,9 +130,9 @@ export function ocrMessages(part: MessageContent, pageCount: number, nonce: stri
   ];
 }
 
-/** A new PDF holding the given 1-based pages, in that order. */
-export async function pdfPick(bytes: Uint8Array, pages: number[]): Promise<Uint8Array> {
-  const source = await PDFDocument.load(bytes, { updateMetadata: false });
+/** A new PDF holding the given 1-based pages, in that order. Pass a loaded document to avoid parsing a big file per batch. */
+export async function pdfPick(bytes: Uint8Array | PDFDocument, pages: number[]): Promise<Uint8Array> {
+  const source = bytes instanceof PDFDocument ? bytes : await PDFDocument.load(bytes, { updateMetadata: false });
   const out = await PDFDocument.create();
   for (const page of await out.copyPages(source, pages.map((p) => p - 1))) out.addPage(page);
   return out.save();
@@ -146,7 +151,7 @@ async function ocrCall(model: string, part: MessageContent, pageNumbers: number[
     schema: ocrSchema,
     jsonSchema: ocrJsonSchema,
     maxTokens: 16_384,
-    timeoutMs: 180_000,
+    timeoutMs: OCR_TIMEOUT_MS,
   });
   return pageNumbers.map((page, i) => {
     const hit = data.pages.find((p) => Math.trunc(p.page) === i + 1) ?? data.pages[i];
@@ -163,42 +168,138 @@ export async function ocrPagesUsedThisMonth(studentId: number, now = new Date())
   return Number(row?.n ?? 0);
 }
 
+/** Failures no other batch can get past: stop reading instead of spending more calls. */
+export function stopsOcr(error: unknown): boolean {
+  if (error instanceof IngestError) return true;
+  if (!(error instanceof AppError)) return false;
+  return ["COACH_AI_EXHAUSTED", "COACH_AI_CONFIG", "COACH_AI_UNSUPPORTED", "COACH_MONTHLY_LIMIT", "COACH_DAILY_LIMIT"].includes(error.code);
+}
+
+export interface OcrOutcome {
+  recognised: OcrPage[];
+  /** Pages of batches that failed (or were not tried after a stop), sorted. */
+  failed: number[];
+  /** The first failure, for the error shown when nothing at all could be read. */
+  error: unknown;
+}
+
+/**
+ * Reads the batches `parallel` at a time. A failing batch leaves its pages out instead of failing
+ * the material; `onBatch` returning false (the run was cancelled) or a failure in `stopsOcr` stops
+ * the batches not started yet.
+ */
+export async function recogniseBatches(
+  groups: number[][],
+  read: (group: number[]) => Promise<OcrPage[]>,
+  opts: { parallel: number; onBatch?: (pagesDone: number) => Promise<boolean> | boolean },
+): Promise<OcrOutcome> {
+  const recognised: OcrPage[] = [];
+  const failed: number[] = [];
+  let error: unknown = null;
+  let stopped = false;
+  let done = 0;
+  const slot = createLimiter(Math.max(1, opts.parallel));
+  await Promise.all(
+    groups.map((group) =>
+      slot(async () => {
+        if (stopped) {
+          failed.push(...group);
+          return;
+        }
+        try {
+          recognised.push(...(await read(group)));
+        } catch (e) {
+          failed.push(...group);
+          error ??= e;
+          if (stopsOcr(e)) stopped = true;
+        }
+        done += group.length;
+        if (opts.onBatch && !(await opts.onBatch(done))) stopped = true;
+      }),
+    ),
+  );
+  return { recognised: recognised.sort((a, b) => a.page - b.page), failed: failed.sort((a, b) => a - b), error };
+}
+
 /**
  * Page reader with OCR: text-layer pages as they are, scanned pages and images through the OCR
- * model within the caps. Reports skipped pages so the material can say some were not read.
+ * model within the caps. Reports skipped pages (caps) and failed pages (provider errors) so the
+ * material can say some were not read; it fails only when no page at all could be read.
  */
-export const readPagesWithOcr: PageReader = async ({ material, bytes }) => {
+export const readPagesWithOcr: PageReader = async ({ material, bytes, onProgress }) => {
   const fileName = material.fileName ?? "";
-  const source = await extractSource(fileName, bytes);
+  const limits = await coachLimits();
+  const source = await extractSource(fileName, bytes, coachUploadLimits(limits, false).maxPages);
   const isImage = source.kind === "image";
   const texts = source.kind === "pages" ? source.texts : [""];
   const scanned = source.kind === "pages" ? source.scanned : [1];
-  const textPages: PageText[] = texts.flatMap((text, i) => (scanned.includes(i + 1) ? [] : [{ page: i + 1, text, method: "TEXT" as const, quality: null }]));
-  const base = { pageCount: texts.length, ocrPages: 0, ocrScore: null, needsReview: false, ocrSkipped: 0 };
+  const scannedSet = new Set(scanned);
+  const textPages: PageText[] = texts.flatMap((text, i) => (scannedSet.has(i + 1) || !text.trim() ? [] : [{ page: i + 1, text, method: "TEXT" as const, quality: null }]));
+  const base = { pageCount: texts.length, ocrPages: 0, ocrScore: null, needsReview: false, ocrSkipped: 0, ocrFailed: 0, report: emptyReport() };
   if (!scanned.length) return { ...base, pages: textPages };
+  const skipAll = () => ({ ...base, pages: textPages, ocrSkipped: scanned.length, report: { ...emptyReport(), skipped: scanned } });
 
   const pdfOk = isImage || pdfInputMode(ENV.llm, ENV.coachPdfMode) === "native";
-  const limits = await coachLimits();
+  if (!pdfOk) {
+    if (!textPages.length) throw new IngestError("OCR_UNSUPPORTED");
+    return skipAll();
+  }
   const monthCap = limits.ocrPagesPerMonth > 0 ? limits.ocrPagesPerMonth : Number.POSITIVE_INFINITY;
   const monthLeft = Math.max(0, monthCap - (await ocrPagesUsedThisMonth(material.studentId)));
-  const plan = pdfOk ? planOcrPages(scanned, limits.ocrPagesPerMaterial, monthLeft) : { read: [], skipped: scanned.length };
+  const plan = planOcrPages(scanned, limits.ocrPagesPerMaterial, monthLeft);
   if (!plan.read.length) {
-    if (!textPages.length) throw new IngestError(pdfOk ? "OCR_LIMIT" : "NO_TEXT");
-    return { ...base, pages: textPages, ocrSkipped: plan.skipped };
+    if (!textPages.length) throw new IngestError("OCR_LIMIT");
+    return skipAll();
   }
 
-  await assertCoachAiAllowed(material.studentId);
-  const { ocr: model } = await coachModels();
-  const recognised: OcrPage[] = [];
-  const groups = isImage ? [[1]] : batches(plan.read, OCR_BATCH_PAGES);
-  for (const group of groups) {
-    const part = isImage
-      ? filePart(IMAGE_MIME[extensionOf(fileName)], bytes, fileName, ENV.llm)
-      : filePart("application/pdf", await pdfPick(bytes, group), fileName, ENV.llm);
-    recognised.push(...(await ocrCall(model, part, group)));
-    await logEvent(material.studentId, "OCR", material.id, { pages: group.length });
+  try {
+    await assertCoachAiAllowed(material.studentId);
+  } catch (error) {
+    // The student's AI allowance is used up: the text pages still make a material.
+    if (!textPages.length) throw error;
+    return skipAll();
   }
-  const ocrPages: PageText[] = recognised.filter((p) => p.text.trim()).map((p) => ({ page: p.page, text: p.text, method: "OCR" as const, quality: p.quality }));
+  const { ocr: model } = await coachModels();
+  const pdf = isImage ? null : await PDFDocument.load(bytes, { updateMetadata: false });
+  const groups = isImage ? [[1]] : batches(plan.read, OCR_BATCH_PAGES);
+  const total = plan.read.length;
+  if (onProgress && !(await onProgress({ step: "OCR", done: 0, total }))) return { ...base, pages: textPages };
+  const outcome = await recogniseBatches(
+    groups,
+    async (group) => {
+      const part = pdf ? filePart("application/pdf", await pdfPick(pdf, group), fileName, ENV.llm) : filePart(IMAGE_MIME[extensionOf(fileName)], bytes, fileName, ENV.llm);
+      const pages = await ingestAiSlot(() => ocrCall(model, part, group));
+      await logEvent(material.studentId, "OCR", material.id, { pages: group.length });
+      return pages;
+    },
+    { parallel: OCR_PARALLEL_BATCHES, onBatch: (done) => (onProgress ? onProgress({ step: "OCR", done, total }) : true) },
+  );
+  const ocrPages: PageText[] = outcome.recognised.filter((p) => p.text.trim()).map((p) => ({ page: p.page, text: p.text, method: "OCR" as const, quality: p.quality }));
+  if (!ocrPages.length && !textPages.length) throw outcome.error ?? new IngestError("NO_TEXT");
+  if (outcome.failed.length) console.warn("[coach] OCR left pages unread", material.id, { failed: outcome.failed.length, of: total, error: outcome.error instanceof Error ? outcome.error.message : outcome.error });
   const pages = [...textPages, ...ocrPages].sort((a, b) => a.page - b.page);
-  return { ...base, pages, ocrPages: recognised.length, ocrSkipped: plan.skipped, ...summarizeQuality(recognised.map((p) => p.quality)) };
+  const report = pageReport(outcome.recognised, outcome.failed, scanned.slice(plan.read.length));
+  const textual = outcome.recognised.filter((p) => !report.image.includes(p.page));
+  return {
+    ...base,
+    pages,
+    ocrPages: outcome.recognised.length,
+    ocrSkipped: plan.skipped,
+    ocrFailed: outcome.failed.length,
+    ocrScore: textual.length ? Math.min(...textual.map((p) => p.quality)) : null,
+    needsReview: reviewNeeded(report.low.length, texts.length),
+    report,
+  };
 };
+
+export const emptyReport = (): MaterialPageReport => ({ low: [], image: [], failed: [], skipped: [] });
+
+/**
+ * Picture/diagram pages (little text) are named as such instead of counting as poor recognition;
+ * the other recognised pages below OCR_LOW_QUALITY are the ones the student may want to check.
+ */
+export function pageReport(recognised: OcrPage[], failed: number[], skipped: number[]): MaterialPageReport {
+  const image = recognised.filter((p) => (p.text.match(/[\p{L}\p{N}]/gu) ?? []).length < OCR_IMAGE_PAGE_LETTERS).map((p) => p.page);
+  const low = recognised.filter((p) => !image.includes(p.page) && isLowQuality(p.quality)).map((p) => p.page);
+  return { low, image, failed: [...failed], skipped: [...skipped] };
+}

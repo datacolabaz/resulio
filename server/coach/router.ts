@@ -1,8 +1,9 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { studentAnswerSchema } from "../../shared/assessment";
-import { COACH_LOCALES, COACH_MAX_PASTE_CHARS, coachLocaleOf, MATERIAL_GOALS, PRACTICE_FORMATS, RECALL_MODES, SUMMARY_FORMATS, TUTOR_ACTIONS, type CoachLocale } from "../../shared/coach";
+import { COACH_HARD_MAX_UPLOAD_MB, COACH_LOCALES, COACH_MAX_PASTE_CHARS, coachLocaleOf, MATERIAL_GOALS, PRACTICE_FORMATS, RECALL_MODES, SUMMARY_FORMATS, TUTOR_ACTIONS, type CoachLocale } from "../../shared/coach";
 import { rateLimit, router, studentProcedure, teacherProcedure } from "../_core/trpc";
+import { MAX_PART_URLS_PER_CALL } from "../materials/directUpload";
 import { isSchemaBehind } from "../syllabus/availability";
 import { assertCoachEnabled, coachEnabledFor } from "./availability";
 import * as materials from "./materials";
@@ -11,6 +12,7 @@ import * as practice from "./practice";
 import * as review from "./review";
 import * as tutor from "./tutor";
 import * as shares from "./shares";
+import * as uploads from "./uploads";
 import * as retention from "./retention";
 import { inExam } from "./examLock";
 import { coachLimits, coachQuota } from "./quota";
@@ -49,6 +51,22 @@ export const localeOf = (input: CoachLocale | undefined, user: { preferredLocale
 const idInput = z.object({ id: z.string().min(1).max(32) });
 const titleInput = z.string().max(200).optional();
 
+const sessionInput = z.object({ sessionId: z.string().min(1).max(32) });
+
+/** Files above the API upload limit, straight to R2 (server/coach/uploads.ts). */
+const uploadsRouter = router({
+  start: coachConsentedProcedure
+    .use(rateLimit("coachUploadStart", 20, MINUTE))
+    .input(z.object({ fileName: z.string().trim().min(1).max(255), sizeBytes: z.number().int().positive().max(COACH_HARD_MAX_UPLOAD_MB * 1024 * 1024) }))
+    .mutation(({ ctx, input }) => uploads.startCoachUpload(ctx.user.id, input)),
+  partUrls: coachConsentedProcedure
+    .use(rateLimit("coachUploadParts", 120, MINUTE))
+    .input(sessionInput.extend({ partNumbers: z.array(z.number().int().min(1).max(10_000)).min(1).max(MAX_PART_URLS_PER_CALL) }))
+    .mutation(({ ctx, input }) => uploads.coachUploadPartUrls(ctx.user.id, input.sessionId, input.partNumbers)),
+  complete: coachConsentedProcedure.input(sessionInput).mutation(({ ctx, input }) => uploads.completeCoachUpload(ctx.user.id, input.sessionId)),
+  abort: coachConsentedProcedure.input(sessionInput).mutation(({ ctx, input }) => uploads.abortCoachUpload(ctx.user.id, input.sessionId)),
+});
+
 const materialsRouter = router({
   list: coachConsentedProcedure.query(({ ctx }) => materials.listMaterials(ctx.user.id)),
   get: coachConsentedProcedure.input(idInput).query(({ ctx, input }) => materials.materialDetail(ctx.user.id, input.id)),
@@ -85,6 +103,13 @@ const learnRouter = router({
     .use(rateLimit("coachGenerate", 12, MINUTE))
     .input(z.object({ topicId: z.string().min(1).max(32), format: z.enum(SUMMARY_FORMATS), locale: localeInput }))
     .mutation(({ ctx, input }) => packs.generatePack(ctx.user.id, input.topicId, input.format, localeOf(input.locale, ctx.user))),
+  materialSummary: coachConsentedProcedure
+    .input(z.object({ materialId: z.string().min(1).max(32), locale: localeInput }))
+    .query(({ ctx, input }) => packs.getMaterialSummary(ctx.user.id, input.materialId, localeOf(input.locale, ctx.user))),
+  generateMaterialSummary: coachConsentedProcedure
+    .use(rateLimit("coachGenerate", 12, MINUTE))
+    .input(z.object({ materialId: z.string().min(1).max(32), locale: localeInput }))
+    .mutation(({ ctx, input }) => packs.generateMaterialSummary(ctx.user.id, input.materialId, localeOf(input.locale, ctx.user))),
   edit: coachConsentedProcedure
     .use(rateLimit("coachEdit", 60, MINUTE))
     .input(
@@ -114,6 +139,10 @@ const practiceRouter = router({
     .use(rateLimit("coachGenerate", 12, MINUTE))
     .input(z.object({ topicId: z.string().min(1).max(32), format: z.enum(PRACTICE_FORMATS), count: z.union([z.literal(5), z.literal(10), z.literal(15)]), locale: localeInput }))
     .mutation(({ ctx, input }) => practice.startQuiz(ctx.user.id, { ...input, locale: localeOf(input.locale, ctx.user) })),
+  startMaterial: coachConsentedProcedure
+    .use(rateLimit("coachGenerate", 12, MINUTE))
+    .input(z.object({ materialId: z.string().min(1).max(32), locale: localeInput }))
+    .mutation(({ ctx, input }) => practice.startMaterialQuiz(ctx.user.id, { materialId: input.materialId, locale: localeOf(input.locale, ctx.user) })),
   saveAnswer: coachConsentedProcedure
     .use(rateLimit("coachAnswer", 240, MINUTE))
     .input(quizIdInput.extend({ itemId: z.string().min(1).max(32), answer: studentAnswerSchema }))
@@ -197,6 +226,7 @@ export const studentCoachRouter = router({
     settings: await store.settingsOf(ctx.user.id),
     quota: await coachQuota(ctx.user.id),
     limits: await coachLimits(),
+    upload: await materials.uploadLimits(),
   })),
   acceptConsent: coachProcedure.use(rateLimit("coachSettings", 20, MINUTE)).mutation(({ ctx }) => store.acceptConsent(ctx.user.id)),
   saveSettings: coachProcedure
@@ -204,6 +234,7 @@ export const studentCoachRouter = router({
     .input(z.object({ recallMode: z.enum(RECALL_MODES).optional(), reminders: z.boolean().optional() }))
     .mutation(({ ctx, input }) => store.saveSettings(ctx.user.id, input)),
   materials: materialsRouter,
+  uploads: uploadsRouter,
   learn: learnRouter,
   practice: practiceRouter,
   review: reviewRouter,

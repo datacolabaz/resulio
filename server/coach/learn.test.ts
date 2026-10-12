@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyEdit, finishPack, packInputHash, packMessages, promptChunks } from "./packs";
+import { applyEdit, finishPack, packInputHash, packMessages, promptChunks, spreadChunks } from "./packs";
 import { bm25, foldText, quoteMatch, selectChunks, tokenize, verifyCites, type RetrievalChunk } from "./retrieval";
 
 const chunk = (ord: number, text: string, heading = ""): RetrievalChunk => ({ id: `id${ord}`, ord, pageFrom: ord + 1, pageTo: ord + 1, heading, text });
@@ -9,6 +9,21 @@ const chunks = [
   chunk(1, "Tənəffüs zamanı qlükoza oksidləşir və ATP şəklində enerji ayrılır.", "Tənəffüs"),
   chunk(2, "Mitoxondri hüceyrənin enerji stansiyası adlanır; burada ATP sintez olunur.", "Mitoxondri"),
 ];
+
+describe("whole-material summary and quiz input", () => {
+  const rows = ["t1", "t1", "t1", "t2", "t3", "t3"].map((topicId, i) => ({ id: `c${i}`, topicId, text: "x".repeat(1000) }));
+
+  it("gives every topic an equal share instead of only the first ones", () => {
+    const out = spreadChunks(["t1", "t2", "t3"], rows, 3000);
+    expect(out.map((c) => c.topicId)).toEqual(["t1", "t2", "t3"]);
+    expect(out.reduce((n, c) => n + c.text.length, 0)).toBeLessThanOrEqual(3000);
+  });
+
+  it("uses chunks of topics only (front matter has none)", () => {
+    expect(spreadChunks(["t2"], [...rows, { id: "front", topicId: null, text: "Mündəricat" }], 10_000).map((c) => c.id)).toEqual(["c3"]);
+    expect(spreadChunks([], rows, 10_000)).toEqual([]);
+  });
+});
 
 describe("retrieval", () => {
   it("folds case and Azerbaijani letters so spellings match", () => {

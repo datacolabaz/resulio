@@ -77,7 +77,7 @@ export function LearnTab({ topicId }: { topicId: string }) {
   );
 }
 
-function PackView({ pack }: { pack: Pack }) {
+export function PackView({ pack }: { pack: Pack }) {
   const { content } = pack;
   return (
     <article className="space-y-5">
@@ -162,6 +162,7 @@ function EditableText({ artifactId, at, text }: { artifactId: string; at: { sect
     onSuccess: () => {
       setEditing(false);
       void utils.student.coach.learn.pack.invalidate();
+      void utils.student.coach.learn.materialSummary.invalidate();
     },
     onError: (e) => toast.error(errorText(e)),
   });

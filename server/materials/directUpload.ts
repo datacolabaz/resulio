@@ -107,7 +107,7 @@ function requireSigner(): UploadSigner {
 }
 
 export async function startUpload(scope: TeacherScope, input: { fileName: string; sizeBytes: number; kind: MaterialKind }) {
-  const signer = requireSigner();
+  requireSigner();
   const settings = await getPlatformSettings();
   const quotaBytes = settings["storage.workspaceQuotaBytes"] || null;
   const check = checkDirectUpload({
@@ -117,11 +117,22 @@ export async function startUpload(scope: TeacherScope, input: { fileName: string
     usedBytes: quotaBytes ? await workspaceUsedBytes(scope.workspaceId) : 0,
   });
   if (!check.ok) throw new AppError(check.error);
+  return openUploadSession(scope, { fileName: input.fileName, sizeBytes: input.sizeBytes, mimeType: check.mimeType });
+}
+
+/**
+ * Records a PENDING session and returns the signed PUT or opens the multipart upload. Callers have
+ * already checked type, size and quota; the scope is a teacher's workspace or a student's private
+ * coach space (`coach-u<id>`, server/coach/uploads.ts).
+ */
+export async function openUploadSession(scope: TeacherScope, input: { fileName: string; sizeBytes: number; mimeType: string }) {
+  const signer = requireSigner();
+  const { mimeType } = input;
   const fileName = input.fileName.trim().slice(0, 255);
   const fileId = nanoid();
   const objectKey = objectKeyFor({ id: fileId, workspaceId: scope.workspaceId, fileName });
   const plan = planUpload(input.sizeBytes);
-  const multipartId = plan.mode === "multipart" ? await signer.createMultipart(objectKey, check.mimeType) : null;
+  const multipartId = plan.mode === "multipart" ? await signer.createMultipart(objectKey, mimeType) : null;
   const id = nanoid();
   await requireDb()
     .insert(uploadSessions)
@@ -131,7 +142,7 @@ export async function startUpload(scope: TeacherScope, input: { fileName: string
       userId: scope.userId,
       fileId,
       fileName,
-      mimeType: check.mimeType,
+      mimeType,
       sizeBytes: input.sizeBytes,
       bucket: signer.bucket,
       objectKey,
@@ -140,10 +151,10 @@ export async function startUpload(scope: TeacherScope, input: { fileName: string
       expiresAt: new Date(Date.now() + UPLOAD_SESSION_TTL_MS),
     });
   if (plan.mode === "single") {
-    const url = await signer.presignPut(objectKey, { contentType: check.mimeType, contentLength: input.sizeBytes, expiresIn: PUT_URL_TTL_SECONDS });
-    return { sessionId: id, mode: "single" as const, url, contentType: check.mimeType, partSize: null, partCount: 1 };
+    const url = await signer.presignPut(objectKey, { contentType: mimeType, contentLength: input.sizeBytes, expiresIn: PUT_URL_TTL_SECONDS });
+    return { sessionId: id, mode: "single" as const, url, contentType: mimeType, partSize: null, partCount: 1 };
   }
-  return { sessionId: id, mode: "multipart" as const, url: null, contentType: check.mimeType, partSize: plan.partSize, partCount: plan.partCount };
+  return { sessionId: id, mode: "multipart" as const, url: null, contentType: mimeType, partSize: plan.partSize, partCount: plan.partCount };
 }
 
 async function pendingSession(scope: TeacherScope, sessionId: string): Promise<UploadSession> {
@@ -168,8 +179,11 @@ export async function partUrls(scope: TeacherScope, sessionId: string, partNumbe
   );
 }
 
-/** Verifies the object and records the file; the session flips to COMPLETED exactly once. */
-export async function completeUpload(scope: TeacherScope, sessionId: string): Promise<SavedFile> {
+/**
+ * Verifies the object and records the file; the session flips to COMPLETED exactly once. Material
+ * files are public like their API uploads (access is decided per download); coach files are not.
+ */
+export async function completeUpload(scope: TeacherScope, sessionId: string, opts: { isPublic?: boolean } = {}): Promise<SavedFile> {
   const signer = requireSigner();
   const s = await pendingSession(scope, sessionId);
   if (s.multipartId) {
@@ -200,8 +214,7 @@ export async function completeUpload(scope: TeacherScope, sessionId: string): Pr
       mimeType: s.mimeType,
       sizeBytes: s.sizeBytes,
       dataBase64: "",
-      // Same as the server upload of a material: whether anyone may open it is decided per download.
-      isPublic: true,
+      isPublic: opts.isPublic ?? true,
     });
     await tx.insert(fileObjects).values({ fileId: s.fileId, backend: "r2", bucket: s.bucket, objectKey: s.objectKey, sizeBytes: s.sizeBytes });
   });

@@ -1,9 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { coachMistakes, coachQuizItems, coachQuizzes, coachTopicMastery, type CoachQuizItemRow, type CoachQuizRow } from "../../drizzle/schema";
+import { coachChunks, coachMistakes, coachQuizItems, coachQuizzes, coachTopicMastery, coachTopics, type CoachChunkRow, type CoachQuizItemRow, type CoachQuizRow } from "../../drizzle/schema";
 import type { StudentAnswer } from "../../shared/assessment";
-import { coachLocaleOf, coachTopicKey, type CoachItemStatus, type CoachLocale, type QuizFormat } from "../../shared/coach";
+import { COACH_MATERIAL_QUIZ_COUNT, coachLocaleOf, coachTopicKey, type CoachItemStatus, type CoachLocale, type QuizFormat } from "../../shared/coach";
 import { requireDb } from "../db";
 import { awardXp } from "../growth/xpStore";
 import { XP } from "../growth/xp";
@@ -15,7 +15,7 @@ import { addEvidence, canRegrade, coachMastery, gradeItem, mistakeCause, scoreQu
 import { assertNotInExam } from "./examLock";
 import { onMaterialDelete, ownedMaterial } from "./materials";
 import { coachModels } from "./models";
-import { ownedTopic, promptChunks, topicChunks } from "./packs";
+import { ownedTopic, promptChunks, spreadChunks, topicChunks } from "./packs";
 import { assertCoachAiAllowed, assertDailyCap, coachLimits, dailyRemaining } from "./quota";
 import { draftItems, enoughItems, quizJsonSchema, quizMessages, quizSchema } from "./quizgen";
 import { selectChunks } from "./retrieval";
@@ -127,25 +127,46 @@ export async function startQuiz(studentId: number, input: { topicId: string; for
   const material = await ownedMaterial(studentId, topic.materialId);
   if (material.status !== "READY") throw new AppError("COACH_NOT_READY");
   const chunks = await topicChunks(topic.id);
-  if (chunks.reduce((n, c) => n + c.text.trim().length, 0) < 200) throw new AppError("COACH_NOT_ENOUGH_CONTENT");
+  const selected = selectChunks(chunks, `${topic.title} ${chunks.map((c) => c.heading).join(" ")}`, QUIZ_MAX_CHARS);
+  return createQuiz(studentId, { ...input, materialId: material.id, topicId: topic.id, title: topic.title, chunks, selected });
+}
+
+/** Questions on a whole material: mixed, spread over its topics; each item keeps the topic it came from. */
+export async function startMaterialQuiz(studentId: number, input: { materialId: string; locale: CoachLocale }) {
+  await assertNotInExam(studentId);
+  const material = await ownedMaterial(studentId, input.materialId);
+  if (material.status !== "READY") throw new AppError("COACH_NOT_READY");
+  const db = requireDb();
+  const topics = await db.select({ id: coachTopics.id, title: coachTopics.title }).from(coachTopics).where(eq(coachTopics.materialId, material.id)).orderBy(asc(coachTopics.ord));
+  const chunks = (await db.select().from(coachChunks).where(eq(coachChunks.materialId, material.id)).orderBy(asc(coachChunks.ord))).filter((c) => c.topicId);
+  const selected = spreadChunks(topics.map((t) => t.id), chunks, QUIZ_MAX_CHARS);
+  const title = `${material.title} (${topics.map((t) => t.title).join("; ")})`.slice(0, 600);
+  return createQuiz(studentId, { materialId: material.id, topicId: null, title, chunks, selected, format: "MIXED", count: COACH_MATERIAL_QUIZ_COUNT, locale: input.locale });
+}
+
+async function createQuiz(
+  studentId: number,
+  input: { materialId: string; topicId: string | null; title: string; chunks: CoachChunkRow[]; selected: CoachChunkRow[]; format: QuizFormat; count: number; locale: CoachLocale },
+) {
+  if (input.chunks.reduce((n, c) => n + c.text.trim().length, 0) < 200) throw new AppError("COACH_NOT_ENOUGH_CONTENT");
   await assertDailyCap(studentId, "QUIZ_STARTED", (await coachLimits()).quizzesPerDay);
   await assertCoachAiAllowed(studentId);
 
+  const scope = input.topicId ? eq(coachQuizzes.topicId, input.topicId) : and(eq(coachQuizzes.materialId, input.materialId), isNull(coachQuizzes.topicId));
   const earlier = await requireDb()
     .select({ text: coachQuizItems.text })
     .from(coachQuizItems)
     .innerJoin(coachQuizzes, eq(coachQuizzes.id, coachQuizItems.quizId))
-    .where(and(eq(coachQuizzes.studentId, studentId), eq(coachQuizzes.topicId, topic.id)))
+    .where(and(eq(coachQuizzes.studentId, studentId), scope))
     .orderBy(desc(coachQuizItems.createdAt))
     .limit(15);
-  const selected = selectChunks(chunks, `${topic.title} ${chunks.map((c) => c.heading).join(" ")}`, QUIZ_MAX_CHARS);
-  const { prompt, byLabel } = promptChunks(selected);
+  const { prompt, byLabel } = promptChunks(input.selected);
   const { main } = await coachModels();
   const quizId = nanoid();
   const { data, model } = await withCoachAi(studentId, "COACH_QUIZ", () =>
     generateStructured({
       model: main,
-      messages: quizMessages({ format: input.format, count: input.count, topicTitle: topic.title, chunks: prompt, locale: input.locale, nonce: randomBytes(4).toString("hex"), avoid: earlier.map((e) => e.text) }),
+      messages: quizMessages({ format: input.format, count: input.count, topicTitle: input.title, chunks: prompt, locale: input.locale, nonce: randomBytes(4).toString("hex"), avoid: earlier.map((e) => e.text) }),
       schema: quizSchema,
       jsonSchema: quizJsonSchema,
       maxTokens: 12_000,
@@ -154,15 +175,16 @@ export async function startQuiz(studentId: number, input: { topicId: string; for
   );
   const drafts = draftItems(data.questions, input.format, input.count, byLabel, quizId);
   if (!enoughItems(drafts.length, input.count)) throw new AppError("AI_INVALID_OUTPUT");
+  const topicOfChunk = new Map(input.chunks.map((c) => [c.id, c.topicId]));
 
   const db = requireDb();
-  await db.insert(coachQuizzes).values({ id: quizId, studentId, materialId: material.id, topicId: topic.id, format: input.format, locale: input.locale, total: drafts.length, model });
+  await db.insert(coachQuizzes).values({ id: quizId, studentId, materialId: input.materialId, topicId: input.topicId, format: input.format, locale: input.locale, total: drafts.length, model });
   await db.insert(coachQuizItems).values(
     drafts.map((d, i) => ({
       id: nanoid(),
       quizId,
       studentId,
-      topicId: topic.id,
+      topicId: input.topicId ?? topicOfChunk.get(d.cites[0]?.chunkId ?? "") ?? null,
       ord: i,
       type: d.type,
       text: d.text,
@@ -205,10 +227,11 @@ const busy = new Set<string>();
 type ItemUpdate = Partial<CoachQuizItemRow> & { status: CoachItemStatus; score: number };
 type Answers = Record<string, StudentAnswer | undefined>;
 
-/** The material passages an open answer is judged against. */
-async function gradingChunks(topicId: string | null, questions: string[]) {
-  if (!topicId) return promptChunks([]).prompt;
-  const chunks = await topicChunks(topicId);
+/** The material passages an open answer is judged against: the topic's, or the whole material's for a material quiz. */
+async function gradingChunks(quiz: Pick<CoachQuizRow, "topicId" | "materialId">, questions: string[]) {
+  let chunks: CoachChunkRow[] = [];
+  if (quiz.topicId) chunks = await topicChunks(quiz.topicId);
+  else if (quiz.materialId) chunks = (await requireDb().select().from(coachChunks).where(eq(coachChunks.materialId, quiz.materialId)).orderBy(asc(coachChunks.ord))).filter((c) => c.topicId);
   return promptChunks(selectChunks(chunks, questions.join(" "), GRADE_MAX_CHARS)).prompt;
 }
 
@@ -236,7 +259,7 @@ async function gradeOpen(studentId: number, quiz: CoachQuizRow, items: CoachQuiz
   try {
     await assertCoachAiAllowed(studentId);
     const models = await coachModels();
-    const chunks = await gradingChunks(quiz.topicId, items.map((i) => i.text));
+    const chunks = await gradingChunks(quiz, items.map((i) => i.text));
     const first = await aiGrade({ studentId, model: models.main, items: items.map((i) => openItemOf(i, answers[i.id])), chunks, locale, gradedBy: "AI" });
     for (const [id, g] of first) out.set(id, fromGrade(g));
     const unsure = items.filter((i) => out.get(i.id)?.status === "PROVISIONAL");
@@ -351,7 +374,7 @@ export async function regradeItem(studentId: number, quizId: string, itemId: str
     const dispute = item.status !== "PENDING_REVIEW";
     await assertCoachAiAllowed(studentId);
     const models = await coachModels();
-    const chunks = await gradingChunks(quiz.topicId, [item.text]);
+    const chunks = await gradingChunks(quiz, [item.text]);
     let grades: Map<string, OpenGrade>;
     if (dispute) {
       await assertDailyCap(studentId, "PRO_GRADE", (await coachLimits()).proGradesPerDay);

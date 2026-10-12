@@ -3,9 +3,9 @@ import { UploadError, type UploadedFile } from "@/lib/uploadFile";
 import { MB, UPLOAD_TYPES, KIND_SIZE_CLASS, extensionOfName, type MaterialKind } from "@shared/materialTemplates";
 
 /**
- * Material files: up to the server limit (8 MB) through `/api/files/upload` as before; larger ones
- * straight to R2 with URLs the API signs (docs/MATERIALS.md, "Large uploads"). Both report
- * progress and stop on `signal`.
+ * Material and coach files: up to the server limit (8 MB) through `/api/files/upload` as before;
+ * larger ones straight to R2 with URLs the API signs (docs/MATERIALS.md, "Large uploads"). Both
+ * report progress and stop on `signal`.
  */
 
 export interface UploadConfig {
@@ -14,11 +14,28 @@ export interface UploadConfig {
   limitsMb: Record<string, number>;
 }
 
-export interface DirectUploadApi {
-  start(input: { fileName: string; sizeBytes: number; kind: MaterialKind }): Promise<{ sessionId: string; mode: "single" | "multipart"; url: string | null; contentType: string; partSize: number | null; partCount: number }>;
+export interface DirectSession {
+  sessionId: string;
+  mode: "single" | "multipart";
+  url: string | null;
+  contentType: string;
+  partSize: number | null;
+  partCount: number;
+}
+
+interface SessionApi {
   partUrls(input: { sessionId: string; partNumbers: number[] }): Promise<Array<{ partNumber: number; url: string }>>;
   complete(input: { sessionId: string }): Promise<{ id: string; name: string; size: number; mimeType: string }>;
   abort(input: { sessionId: string }): Promise<unknown>;
+}
+
+export interface DirectUploadApi extends SessionApi {
+  start(input: { fileName: string; sizeBytes: number; kind: MaterialKind }): Promise<DirectSession>;
+}
+
+/** The student's own coach files (student.coach.uploads.*). */
+export interface CoachUploadApi extends SessionApi {
+  start(input: { fileName: string; sizeBytes: number }): Promise<DirectSession>;
 }
 
 const PART_URL_BATCH = 20;
@@ -65,10 +82,10 @@ function send(method: "POST" | "PUT", url: string, body: Blob | FormData, opts: 
   });
 }
 
-async function viaServer(file: File, signal: AbortSignal, onProgress: (fraction: number) => void): Promise<UploadedFile> {
+async function viaServer(file: File, context: "material" | "coach", signal: AbortSignal, onProgress: (fraction: number) => void): Promise<UploadedFile> {
   const form = new FormData();
   form.append("file", file);
-  form.append("context", "material");
+  form.append("context", context);
   const xhr = await send("POST", `${API_BASE}/api/files/upload`, form, { signal, credentials: true, onProgress: (loaded) => onProgress(Math.min(loaded / file.size, 1)) });
   let body: { id?: string; name?: string; size?: number; mimeType?: string; error?: string } | null = null;
   try {
@@ -80,8 +97,8 @@ async function viaServer(file: File, signal: AbortSignal, onProgress: (fraction:
   return { fileId: body.id, name: body.name ?? file.name, size: body.size ?? file.size, mimeType: body.mimeType ?? "" };
 }
 
-async function direct(file: File, kind: MaterialKind, api: DirectUploadApi, signal: AbortSignal, onProgress: (fraction: number) => void): Promise<UploadedFile> {
-  const session = await api.start({ fileName: file.name, sizeBytes: file.size, kind });
+async function direct(file: File, start: () => Promise<DirectSession>, api: SessionApi, signal: AbortSignal, onProgress: (fraction: number) => void): Promise<UploadedFile> {
+  const session = await start();
   const stop = () => void api.abort({ sessionId: session.sessionId }).catch(() => undefined);
   try {
     const put = async (url: string, blob: Blob, report: (loaded: number) => void) => {
@@ -140,12 +157,29 @@ export async function uploadMaterialFile(
   const problem = precheck(file, kind, config);
   if (problem) throw new UploadError(problem);
   if (config.direct && file.size > config.serverMaxBytes) {
-    try {
-      return await direct(file, kind, api, opts.signal, opts.onProgress);
-    } catch (error) {
-      if (error instanceof UploadError) throw error;
-      throw new UploadError(error instanceof Error && /^[A-Z_]+$/.test(error.message) ? error.message : "UPLOAD_FAILED");
-    }
+    return asUploadError(direct(file, () => api.start({ fileName: file.name, sizeBytes: file.size, kind }), api, opts.signal, opts.onProgress));
   }
-  return viaServer(file, opts.signal, opts.onProgress);
+  return viaServer(file, "material", opts.signal, opts.onProgress);
+}
+
+async function asUploadError<T>(work: Promise<T>): Promise<T> {
+  try {
+    return await work;
+  } catch (error) {
+    if (error instanceof UploadError) throw error;
+    throw new UploadError(error instanceof Error && /^[A-Z_]+$/.test(error.message) ? error.message : "UPLOAD_FAILED");
+  }
+}
+
+/** A coach file: up to the API upload limit through `/api/files/upload`, larger ones straight to R2. Size and type are checked by the caller first. */
+export async function uploadCoachFile(
+  file: File,
+  config: { direct: boolean; serverMaxBytes: number },
+  api: CoachUploadApi,
+  opts: { signal: AbortSignal; onProgress: (fraction: number) => void },
+): Promise<UploadedFile> {
+  if (config.direct && file.size > config.serverMaxBytes) {
+    return asUploadError(direct(file, () => api.start({ fileName: file.name, sizeBytes: file.size }), api, opts.signal, opts.onProgress));
+  }
+  return viaServer(file, "coach", opts.signal, opts.onProgress);
 }

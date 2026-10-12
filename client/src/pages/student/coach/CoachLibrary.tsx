@@ -4,9 +4,10 @@ import { useI18n } from "@/i18n/locale";
 import { t } from "@/i18n/messages";
 import { errorText, fmtDay } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
-import { formatFileSize, uploadFile, UploadError } from "@/lib/uploadFile";
-import { COACH_UPLOAD_EXTENSIONS, MATERIAL_GOALS, type MaterialGoal } from "@shared/coach";
-import { FileText, FileUp, Type } from "lucide-react";
+import { uploadCoachFile } from "@/lib/materialUpload";
+import { formatFileSize, UploadError } from "@/lib/uploadFile";
+import { COACH_DB_MAX_UPLOAD_MB, COACH_UPLOAD_EXTENSIONS, coachFileProblem, MATERIAL_GOALS, type MaterialGoal } from "@shared/coach";
+import { FileText, FileUp, Info, Type } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation } from "wouter";
@@ -64,7 +65,8 @@ function AddMaterial({ status }: { status: CoachStatus }) {
   const [title, setTitle] = useState("");
   const [goal, setGoal] = useState<MaterialGoal>("LEARN_ALL");
   const [text, setText] = useState("");
-  const [uploading, setUploading] = useState(false);
+  const [uploading, setUploading] = useState<{ pct: number; abort: AbortController } | null>(null);
+  const [fileError, setFileError] = useState("");
   const input = useRef<HTMLInputElement>(null);
   const done = (m: { id: string }) => {
     void utils.student.coach.materials.list.invalidate();
@@ -72,24 +74,45 @@ function AddMaterial({ status }: { status: CoachStatus }) {
     setText("");
     nav(`/student/coach/m/${m.id}`);
   };
-  const fromFile = trpc.student.coach.materials.createFromFile.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
+  const fromFile = trpc.student.coach.materials.createFromFile.useMutation({ onSuccess: done, onError: (e) => setFileError(errorText(e)) });
   const fromText = trpc.student.coach.materials.createFromText.useMutation({ onSuccess: done, onError: (e) => toast.error(errorText(e)) });
+  const limits = status.upload;
+  const maxSize = formatFileSize(limits.maxBytes);
 
   const pick = async (picked: File | undefined) => {
+    if (input.current) input.current.value = "";
     if (!picked) return;
-    setUploading(true);
+    setFileError("");
+    const problem = coachFileProblem(picked, limits.maxBytes);
+    if (problem) {
+      setFileError(problem === "TYPE" ? t("coach.add.badType") : t("coach.add.tooLarge", { name: picked.name, size: formatFileSize(picked.size), max: maxSize }));
+      return;
+    }
+    const abort = new AbortController();
+    setUploading({ pct: 0, abort });
     try {
-      const file = await uploadFile(picked, "coach");
+      const file = await uploadCoachFile(
+        picked,
+        { direct: limits.direct, serverMaxBytes: COACH_DB_MAX_UPLOAD_MB * 1024 * 1024 },
+        {
+          start: (i) => utils.client.student.coach.uploads.start.mutate(i),
+          partUrls: (i) => utils.client.student.coach.uploads.partUrls.mutate(i),
+          complete: (i) => utils.client.student.coach.uploads.complete.mutate(i),
+          abort: (i) => utils.client.student.coach.uploads.abort.mutate(i),
+        },
+        { signal: abort.signal, onProgress: (f) => setUploading({ pct: Math.round(f * 100), abort }) },
+      );
       fromFile.mutate({ fileId: file.fileId, title: title.trim() || undefined, goal, locale });
     } catch (e) {
       const code = e instanceof UploadError ? e.code : "";
-      toast.error(code && code !== "UPLOAD_FAILED" ? errorText(new Error(code)) : t("files.uploadFailed"));
+      if (code === "UPLOAD_CANCELLED") return;
+      if (code === "FILE_TOO_LARGE") setFileError(t("coach.add.tooLarge", { name: picked.name, size: formatFileSize(picked.size), max: maxSize }));
+      else setFileError(code && code !== "UPLOAD_FAILED" ? errorText(new Error(code)) : t("files.uploadFailed"));
     } finally {
-      setUploading(false);
-      if (input.current) input.current.value = "";
+      setUploading(null);
     }
   };
-  const busy = uploading || fromFile.isPending || fromText.isPending;
+  const busy = !!uploading || fromFile.isPending || fromText.isPending;
 
   return (
     <Panel title={t("coach.add.title")}>
@@ -121,13 +144,42 @@ function AddMaterial({ status }: { status: CoachStatus }) {
           </label>
         </div>
         {mode === "file" ? (
-          <div className="space-y-2">
+          <div className="space-y-3 rounded-xl border border-dashed border-border bg-background p-4">
             <input ref={input} type="file" accept={ACCEPT} className="sr-only" aria-label={t("coach.add.chooseFile")} disabled={busy} onChange={(e) => void pick(e.target.files?.[0])} />
-            <Button type="button" disabled={busy} onClick={() => input.current?.click()}>
-              <FileUp className="mr-1 h-4 w-4" aria-hidden />
-              {busy ? t("coach.stage.CHECKING") : t("coach.add.chooseFile")}
-            </Button>
-            <p className="text-xs text-muted-foreground">{t("coach.add.limits", { size: formatFileSize(8 * 1024 * 1024), pages: 150 })}</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button type="button" disabled={busy} onClick={() => input.current?.click()}>
+                <FileUp className="mr-1 h-4 w-4" aria-hidden />
+                {busy ? t("coach.stage.CHECKING") : t("coach.add.chooseFile")}
+              </Button>
+              {uploading && (
+                <Button type="button" variant="ghost" size="sm" onClick={() => uploading.abort.abort()}>
+                  {t("common.cancel")}
+                </Button>
+              )}
+            </div>
+            {uploading && (
+              <div className="space-y-1" aria-live="polite">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={uploading.pct} aria-label={t("coach.add.uploading", { pct: uploading.pct })}>
+                  <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${uploading.pct}%` }} />
+                </div>
+                <p className="text-sm text-muted-foreground">{t("coach.add.uploading", { pct: uploading.pct })}</p>
+              </div>
+            )}
+            <div className="flex items-start gap-2 text-sm text-foreground">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+              <div className="min-w-0 space-y-1">
+                <p className="font-medium">{t("coach.add.limits", { size: maxSize, pages: limits.maxPages })}</p>
+                {limits.ocrPages > 0 && (
+                  <p>{limits.ocrPagesPerMonth > 0 ? t("coach.add.ocrCap", { ocr: limits.ocrPages, month: limits.ocrPagesPerMonth }) : t("coach.add.ocrCapNoMonth", { ocr: limits.ocrPages })}</p>
+                )}
+                {limits.reducedByStorage && <p className="text-warning">{t("coach.add.storageNote", { size: maxSize })}</p>}
+              </div>
+            </div>
+            {fileError && (
+              <p role="alert" className="rounded-lg bg-danger-surface px-3 py-2 text-sm text-destructive">
+                {fileError}
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">{t("coach.ocr.disclaimer")}</p>
           </div>
         ) : (

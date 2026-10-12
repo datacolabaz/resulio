@@ -87,11 +87,21 @@ describe("topics", () => {
     expect(normalizeTopics([], chunks)).toBeNull();
     expect(normalizeTopics([{ title: " ", firstChunk: 0 }], chunks)).toBeNull();
   });
-  it("falls back to headings, else fixed groups", () => {
+  it("falls back to headings, else groups of about 8 pages", () => {
     expect(fallbackTopics(chunks).map((t) => t.title)).toEqual(["Bölmə 1", "Bölmə 2", "Bölmə 3"]);
     const plain = chunks.map((c) => ({ ...c, heading: "" }));
-    const groups = fallbackTopics(plain);
-    expect(groups.map((t) => [t.from, t.to])).toEqual([[0, 5], [6, 7]]);
+    expect(fallbackTopics(plain).map((t) => [t.from, t.to])).toEqual([[0, 7]]);
+    const long = Array.from({ length: 20 }, (_, i) => ({ ...plain[0], ord: i, pageFrom: i + 1, pageTo: i + 1 }));
+    expect(fallbackTopics(long).map((t) => [t.pageFrom, t.pageTo])).toEqual([[1, 8], [9, 16], [17, 20]]);
+  });
+  it("merges headings when there are too many for the topic list", () => {
+    const many = Array.from({ length: 300 }, (_, i) => ({ ord: i, pageFrom: i + 1, pageTo: i + 1, heading: `Başlıq ${i + 1}`, text: para(10), method: "TEXT" as const, quality: null }));
+    const topics = fallbackTopics(many);
+    expect(topics.length).toBeLessThanOrEqual(30);
+    expect(topics.length).toBeGreaterThan(20);
+    expect(topics[0].from).toBe(0);
+    expect(topics.at(-1)!.to).toBe(299);
+    topics.slice(1).forEach((t, i) => expect(t.from).toBe(topics[i].to + 1));
   });
   it("asks for titles in the student's app language", () => {
     const system = String(segmentMessages(chunks, "ru")[0].content);
