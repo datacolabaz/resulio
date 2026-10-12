@@ -1,4 +1,4 @@
-import { t } from "@/i18n/messages";
+import { isMessageKey, t } from "@/i18n/messages";
 import type { MaterialStage } from "@shared/coach";
 import { Check } from "lucide-react";
 
@@ -13,6 +13,24 @@ const STAGE_CLASS: Record<MaterialStage, string> = {
 
 export function StageBadge({ stage }: { stage: MaterialStage }) {
   return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STAGE_CLASS[stage]}`}>{t(`coach.stage.${stage}`)}</span>;
+}
+
+const MASTERY_CLASS: Record<string, string> = {
+  STRONG: "bg-success-surface text-success",
+  REVIEW: "bg-warning-surface text-warning",
+  CRITICAL: "bg-danger-surface text-destructive",
+  INSUFFICIENT: "bg-muted text-muted-foreground",
+};
+
+/** A topic's mastery from the coach's quizzes, e.g. "72%" with its status as the accessible name. */
+export function MasteryBadge({ mastery, status }: { mastery: number; status: string }) {
+  const key = `coach.mastery.${status}`;
+  const label = isMessageKey(key) ? t(key) : status;
+  return (
+    <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${MASTERY_CLASS[status] ?? MASTERY_CLASS.INSUFFICIENT}`} title={label} aria-label={`${t("coach.mastery.title")}: ${Math.round(mastery)}% — ${label}`}>
+      {Math.round(mastery)}%
+    </span>
+  );
 }
 
 const STEPS = ["CHECKING", "PROCESSING", "READY"] as const;

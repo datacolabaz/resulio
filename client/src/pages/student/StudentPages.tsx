@@ -30,6 +30,7 @@ import { itemStatus, liveStatus } from "@/lib/status";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { fileDownloadUrl, type UploadedFile } from "@/lib/uploadFile";
 import { safeReturnPath } from "@/lib/syllabusLearn";
+import { CoachHomeCard } from "./coach/CoachHomeCard";
 import { ArrowLeft, CheckCircle2, Clock, History, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -54,6 +55,7 @@ export function StudentHome() {
         <div className="space-y-5">
           <ContinueLearning />
           <MyJoinRequests />
+          <CoachHomeCard />
           <div className="grid gap-4 sm:grid-cols-3">
             <StatCard label={t("student.activeExams")} value={d.data.active.length} />
             <StatCard label={t("student.upcoming")} value={d.data.upcoming.length} />

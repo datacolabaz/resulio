@@ -8,6 +8,7 @@ import { assertCoachEnabled, coachEnabledFor } from "./availability";
 import * as materials from "./materials";
 import * as packs from "./packs";
 import * as practice from "./practice";
+import * as review from "./review";
 import { coachLimits, coachQuota } from "./quota";
 import * as store from "./store";
 
@@ -127,6 +128,31 @@ const practiceRouter = router({
     .mutation(({ ctx, input }) => practice.regradeItem(ctx.user.id, input.quizId, input.itemId)),
 });
 
+const reviewRouter = router({
+  queue: coachConsentedProcedure.query(({ ctx }) => review.reviewQueue(ctx.user.id)),
+  /** Student home card: null when the coach is off, the notice not accepted, or reminders are off. */
+  home: studentProcedure.query(async ({ ctx }) => {
+    if (!(await coachEnabledFor(ctx.user.id))) return null;
+    try {
+      return await review.homeSummary(ctx.user.id);
+    } catch (error) {
+      if (isSchemaBehind(error)) return null;
+      throw error;
+    }
+  }),
+  mistakes: coachConsentedProcedure.input(z.object({ includeFixed: z.boolean().default(false) })).query(({ ctx, input }) => review.listMistakes(ctx.user.id, input.includeFixed)),
+  fixMistake: coachConsentedProcedure.input(idInput).mutation(({ ctx, input }) => review.markMistakeFixed(ctx.user.id, input.id)),
+  materialProgress: coachConsentedProcedure.input(idInput).query(({ ctx, input }) => review.materialProgress(ctx.user.id, input.id)),
+});
+
+/** "AI yaddaşı": what the coach remembers, deletable one by one or all at once. */
+const memoryRouter = router({
+  list: coachConsentedProcedure.query(({ ctx }) => review.memory(ctx.user.id)),
+  forgetTopic: coachConsentedProcedure.input(z.object({ topicId: z.string().min(1).max(32) })).mutation(({ ctx, input }) => review.forgetTopic(ctx.user.id, input.topicId)),
+  forgetMistake: coachConsentedProcedure.input(idInput).mutation(({ ctx, input }) => review.forgetMistake(ctx.user.id, input.id)),
+  forgetAll: coachConsentedProcedure.use(rateLimit("coachSettings", 20, MINUTE)).mutation(({ ctx }) => review.forgetAll(ctx.user.id)),
+});
+
 export const studentCoachRouter = router({
   enabled: studentProcedure.query(async ({ ctx }) => ({ enabled: await coachEnabledFor(ctx.user.id) })),
   status: coachProcedure.query(async ({ ctx }) => ({
@@ -142,4 +168,6 @@ export const studentCoachRouter = router({
   materials: materialsRouter,
   learn: learnRouter,
   practice: practiceRouter,
+  review: reviewRouter,
+  memory: memoryRouter,
 });

@@ -18,6 +18,7 @@ import { ownedTopic, promptChunks, topicChunks } from "./packs";
 import { assertCoachAiAllowed, assertDailyCap, coachLimits, dailyRemaining } from "./quota";
 import { draftItems, enoughItems, quizJsonSchema, quizMessages, quizSchema } from "./quizgen";
 import { selectChunks } from "./retrieval";
+import { nextReview } from "./review";
 import { logEvent } from "./store";
 
 /**
@@ -375,13 +376,6 @@ async function olderQuizIds(studentId: number, quiz: CoachQuizRow): Promise<stri
   return rows.map((r) => r.id).filter((id) => id !== quiz.id);
 }
 
-/** Hook for the review scheduler (P7): called with the topic's new mastery after every quiz. */
-export type MasteryHook = (input: { studentId: number; topicId: string; mastery: number; percentage: number | null; previousInterval: number; now: Date }) => { nextReviewAt: Date | null; intervalDays: number };
-let masteryHook: MasteryHook | null = null;
-export function setMasteryHook(fn: MasteryHook) {
-  masteryHook = fn;
-}
-
 async function updateMastery(studentId: number, topicId: string, materialId: string, quizId: string, outcomes: ItemOutcome[], now: Date, newAttempt: boolean) {
   const db = requireDb();
   const [prev] = await db.select().from(coachTopicMastery).where(and(eq(coachTopicMastery.studentId, studentId), eq(coachTopicMastery.topicId, topicId))).limit(1);
@@ -391,7 +385,7 @@ async function updateMastery(studentId: number, topicId: string, materialId: str
   const { mastery, status } = coachMastery(evidence);
   const percentage = scoreQuiz(outcomes).percentage;
   const review = newAttempt
-    ? (masteryHook?.({ studentId, topicId, mastery, percentage, previousInterval: prev?.intervalDays ?? 0, now }) ?? { nextReviewAt: prev?.nextReviewAt ?? null, intervalDays: prev?.intervalDays ?? 0 })
+    ? nextReview({ percentage, mastery, status, previousInterval: prev?.intervalDays ?? 0, now })
     : { nextReviewAt: prev?.nextReviewAt ?? null, intervalDays: prev?.intervalDays ?? 0 };
   const values = {
     materialId,

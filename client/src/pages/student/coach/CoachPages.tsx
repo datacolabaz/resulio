@@ -6,9 +6,11 @@ import { trpc } from "@/lib/trpc";
 import { RECALL_MODES, type RecallMode } from "@shared/coach";
 import { toast } from "sonner";
 import { CoachLibrary } from "./CoachLibrary";
+import { MemorySection } from "./CoachReview";
 import { CoachShell, PrivacyNotice, QuotaLine, type CoachStatus } from "./CoachShell";
 
 export { CoachMaterialPage } from "./CoachMaterial";
+export { CoachMistakesPage } from "./CoachReview";
 export { CoachTextEditorPage } from "./CoachTextEditor";
 export { CoachTopicPage } from "./CoachTopic";
 
@@ -30,6 +32,7 @@ export function CoachSettingsPage() {
       {(status) => (
         <>
           <CoachPreferences status={status} />
+          <MemorySection />
           <PrivacyNotice accepted />
         </>
       )}

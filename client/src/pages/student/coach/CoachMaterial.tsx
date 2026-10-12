@@ -10,7 +10,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useParams } from "wouter";
 import { CoachShell } from "./CoachShell";
-import { inProgress, StageBadge, StageSteps } from "./materialUi";
+import { inProgress, MasteryBadge, StageBadge, StageSteps } from "./materialUi";
 
 export type CoachMaterialDetail = RouterOutputs["student"]["coach"]["materials"]["get"];
 
@@ -157,6 +157,8 @@ function TextNotices({ m }: { m: CoachMaterialDetail }) {
 }
 
 function MaterialReady({ m }: { m: CoachMaterialDetail }) {
+  const mastery = trpc.student.coach.review.materialProgress.useQuery({ id: m.id });
+  const progress = new Map((mastery.data ?? []).map((r) => [r.topicId, r]));
   return (
     <>
       <TextNotices m={m} />
@@ -174,6 +176,7 @@ function MaterialReady({ m }: { m: CoachMaterialDetail }) {
               <Link href={`/student/coach/t/${topic.id}`} className="flex items-baseline gap-3 rounded-lg border border-border px-3 py-2 hover:border-link">
                 <span className="w-6 shrink-0 text-right text-xs text-muted-foreground">{topic.ord + 1}</span>
                 <span className="min-w-0 flex-1 break-words">{topic.title}</span>
+                {progress.get(topic.id) && <MasteryBadge mastery={progress.get(topic.id)!.mastery} status={progress.get(topic.id)!.status} />}
                 <span className="shrink-0 text-xs text-muted-foreground">{pagesLabel(topic.pageFrom, topic.pageTo)}</span>
               </Link>
             </li>

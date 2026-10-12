@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { Link, useLocation } from "wouter";
 import { QuotaLine, type CoachStatus } from "./CoachShell";
 import { StageBadge, inProgress } from "./materialUi";
+import { ReviewCard } from "./CoachReview";
 
 const inputClass = "mt-1 w-full rounded-lg border border-input bg-card px-3 py-2 text-foreground";
 const ACCEPT = COACH_UPLOAD_EXTENSIONS.join(",");
@@ -22,6 +23,7 @@ export function CoachLibrary({ status }: { status: CoachStatus }) {
   });
   return (
     <>
+      <ReviewCard />
       <AddMaterial status={status} />
       <Panel title={t("coach.library.title")}>
         {!list.data ? (
