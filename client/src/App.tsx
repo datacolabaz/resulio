@@ -62,6 +62,8 @@ const CoachTopicPage = lazyPage(() => import("@/pages/student/coach/CoachPages")
 const CoachSettingsPage = lazyPage(() => import("@/pages/student/coach/CoachPages").then((m) => ({ default: m.CoachSettingsPage })));
 const CoachMistakesPage = lazyPage(() => import("@/pages/student/coach/CoachPages").then((m) => ({ default: m.CoachMistakesPage })));
 const GrowthReportPage = lazyPage(() => import("@/pages/GrowthReport").then((m) => ({ default: m.GrowthReportPage })));
+const CoachSharesPage = lazyPage(() => import("@/pages/teacher/CoachShares").then((m) => ({ default: m.CoachSharesPage })));
+const CoachShareViewPage = lazyPage(() => import("@/pages/teacher/CoachShares").then((m) => ({ default: m.CoachShareViewPage })));
 const GrowthPage = lazyPage(() => import("@/pages/teacher/growth/GrowthPage").then((m) => ({ default: m.GrowthPage })));
 const QuestionImportPage = lazyPage(() => import("@/pages/teacher/QuestionImport").then((m) => ({ default: m.QuestionImportPage })));
 const QuestionImportReviewPage = lazyPage(() => import("@/pages/teacher/QuestionImport").then((m) => ({ default: m.QuestionImportReviewPage })));
@@ -171,6 +173,8 @@ function Router() {
       <Route path="/admin" component={AdminRoutes} />
 
       <Route path="/teacher">{teacher(<TeacherHome />)}</Route>
+      <Route path="/teacher/coach-shares">{teacher(<CoachSharesPage />)}</Route>
+      <Route path="/teacher/coach-shares/:id">{teacher(<CoachShareViewPage />)}</Route>
       <Route path="/teacher/assessments">{teacher(<AssessmentsPage />)}</Route>
       <Route path="/teacher/assessments/new">{teacher(<NewAssessmentPage />)}</Route>
       <Route path="/teacher/assessments/:id/edit">{teacher(<EditAssessmentPage />)}</Route>

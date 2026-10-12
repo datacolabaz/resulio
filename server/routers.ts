@@ -78,7 +78,7 @@ import { store } from "./resulioStore";
 import { announceGroupJoin } from "./syllabus/notify";
 import { publicSyllabusProcedure, studentSyllabusRouter, teacherSyllabusRouter } from "./syllabus/router";
 import { publicGrowthReport, studentGrowthRouter, teacherGrowthRouter } from "./growth/router";
-import { studentCoachRouter } from "./coach/router";
+import { studentCoachRouter, teacherCoachSharesRouter } from "./coach/router";
 import { SHARE_CAMPAIGNS, SHARE_CHANNELS, SHARE_TARGET_TYPES, VISITOR_ID_PATTERN } from "../shared/shareTracking";
 import {
   MATERIAL_KINDS,
@@ -827,6 +827,7 @@ const workspaceInput = z.object({
 });
 
 const teacherRouter = router({
+  coachShares: teacherCoachSharesRouter,
   /** The workspace resolved for this request (verified ownership), incl. its subscription. */
   workspace: teacherProcedure.query(({ ctx }) => ({ ...ctx.workspace, usage: store.usageOf(ctx.workspace.id) })),
   updateWorkspace: teacherProcedure

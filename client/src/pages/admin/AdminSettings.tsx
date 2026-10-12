@@ -5,6 +5,7 @@ import { t } from "@/i18n/messages";
 import { errorText } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import type { LimitValue } from "@shared/aiUsage";
+import { COACH_DEFAULT_DAILY_ACTIONS, COACH_DEFAULT_LIMITS, COACH_DEFAULT_MONTHLY_TOKENS, type CoachLimits } from "@shared/coach";
 import { DEFAULT_UPLOAD_LIMITS_MB, MAX_UPLOAD_LIMIT_MB, SIZE_CLASSES, type SizeClass } from "@shared/materialTemplates";
 import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
@@ -166,6 +167,88 @@ function UploadLimitsEditor({ limits, quotaBytes, readOnly }: { limits: UploadLi
   );
 }
 
+type CoachSettings = {
+  monthly: number | null;
+  daily: number | null;
+  limits: Partial<CoachLimits> | null;
+  models: Partial<Record<(typeof MODEL_KEYS)[number], string>> | null;
+};
+const LIMIT_KEYS = Object.keys(COACH_DEFAULT_LIMITS) as (keyof CoachLimits)[];
+const MODEL_KEYS = ["main", "lite", "pro", "ocr"] as const;
+
+/** AI Study Coach: free beta quotas, per-feature caps and model names (`coach.*`). Empty = default. */
+function CoachSettingsEditor({ current, readOnly }: { current: CoachSettings; readOnly: boolean }) {
+  const saved = useSettingsSaved();
+  const num = (v: number | null | undefined) => (v === null || v === undefined ? "" : String(v));
+  const init = () => ({
+    monthly: num(current.monthly),
+    daily: num(current.daily),
+    limits: Object.fromEntries(LIMIT_KEYS.map((k) => [k, num(current.limits?.[k])])) as Record<keyof CoachLimits, string>,
+    models: Object.fromEntries(MODEL_KEYS.map((k) => [k, current.models?.[k] ?? ""])) as Record<(typeof MODEL_KEYS)[number], string>,
+  });
+  const [form, setForm] = useState(init);
+  useEffect(() => setForm(init()), [current]); // eslint-disable-line react-hooks/exhaustive-deps
+  const monthly = parseOptionalNumber(form.monthly);
+  const daily = parseOptionalNumber(form.daily);
+  const limits = LIMIT_KEYS.map((k) => [k, parseOptionalNumber(form.limits[k])] as const);
+  const valid = isWholeOrNull(monthly) && isWholeOrNull(daily) && limits.every(([, v]) => isWholeOrNull(v));
+  const save = trpc.admin.ai.setCoachSettings.useMutation({ onSuccess: saved, onError: (e) => toast.error(errorText(e)) });
+  const setLimits = limits.filter(([, v]) => v !== null);
+  const setModels = MODEL_KEYS.map((k) => [k, form.models[k].trim()] as const).filter(([, v]) => v);
+  return (
+    <form
+      className="space-y-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!valid) return;
+        save.mutate({
+          studentMonthlyTokenQuota: monthly,
+          studentDailyActionCap: daily,
+          limits: setLimits.length ? Object.fromEntries(setLimits) : null,
+          models: setModels.length ? Object.fromEntries(setModels) : null,
+        });
+      }}
+    >
+      <p className="text-sm text-muted-foreground">{t("admin.coach.intro")}</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block">
+          <span className={fieldLabel}>{t("admin.coach.monthlyTokens")}</span>
+          <Input inputMode="numeric" value={form.monthly} disabled={readOnly} onChange={(e) => setForm({ ...form, monthly: e.target.value })} placeholder={String(COACH_DEFAULT_MONTHLY_TOKENS)} className="mt-1" />
+        </label>
+        <label className="block">
+          <span className={fieldLabel}>{t("admin.coach.dailyActions")}</span>
+          <Input inputMode="numeric" value={form.daily} disabled={readOnly} onChange={(e) => setForm({ ...form, daily: e.target.value })} placeholder={String(COACH_DEFAULT_DAILY_ACTIONS)} className="mt-1" />
+        </label>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {LIMIT_KEYS.map((k) => (
+          <label key={k} className="block">
+            <span className={fieldLabel}>{t(`admin.coach.limit.${k}`)}</span>
+            <Input
+              inputMode="numeric"
+              value={form.limits[k]}
+              disabled={readOnly}
+              onChange={(e) => setForm({ ...form, limits: { ...form.limits, [k]: e.target.value } })}
+              placeholder={String(COACH_DEFAULT_LIMITS[k])}
+              className="mt-1"
+            />
+          </label>
+        ))}
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {MODEL_KEYS.map((k) => (
+          <label key={k} className="block">
+            <span className={fieldLabel}>{t(`admin.coach.model.${k}`)}</span>
+            <Input value={form.models[k]} disabled={readOnly} maxLength={120} onChange={(e) => setForm({ ...form, models: { ...form.models, [k]: e.target.value } })} placeholder={t("admin.coach.modelDefault")} className="mt-1" />
+          </label>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">{t("admin.coach.hint")}</p>
+      {!readOnly && <Button type="submit" disabled={!valid || save.isPending}>{t("common.save")}</Button>}
+    </form>
+  );
+}
+
 /** Platform-wide values kept in `platform_settings`. Secrets never live here — only in the environment. */
 export default function AdminSettingsPage() {
   const { can } = useAdmin();
@@ -198,6 +281,12 @@ export default function AdminSettingsPage() {
             <p className="mb-4 text-sm text-muted-foreground">{t("admin.limits.semantics")}</p>
             <DefaultsEditor
               defaults={{ monthlyTokenQuota: s["ai.defaultMonthlyTokenQuota"], dailyRequestCap: s["ai.defaultDailyRequestCap"] }}
+              readOnly={!can("ai.manage")}
+            />
+          </Panel>
+          <Panel title={t("admin.coach.title")}>
+            <CoachSettingsEditor
+              current={{ monthly: s["coach.studentMonthlyTokenQuota"], daily: s["coach.studentDailyActionCap"], limits: s["coach.limits"], models: s["coach.models"] }}
               readOnly={!can("ai.manage")}
             />
           </Panel>

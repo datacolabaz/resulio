@@ -36,6 +36,8 @@ import { runDailyDigest, runDailyRetention } from "../syllabus/analytics";
 import { flushDueNotices } from "../syllabus/notify";
 import { installSyllabusHooks, reconcileDirty } from "../syllabus/progression";
 import { startGrowthJobs } from "../growth/jobs";
+import { runCoachRetention } from "../coach/retention";
+import { isSchemaBehind } from "../syllabus/availability";
 
 const SWEEP_INTERVAL_MS = 30_000;
 
@@ -137,6 +139,28 @@ function startSyllabusProgression() {
   }, SYLLABUS_DAILY_CHECK_MS).unref();
 }
 
+const COACH_RETENTION_CHECK_MS = 60 * 60_000;
+
+/** AI Study Coach retention, once per Baku day (checked hourly; deletes are idempotent across instances). */
+function startCoachRetention() {
+  if (!getDb()) return;
+  let lastDay = "";
+  let running = false;
+  setInterval(async () => {
+    const day = new Date(Date.now() + 4 * 3_600_000).toISOString().slice(0, 10);
+    if (running || day === lastDay) return;
+    running = true;
+    try {
+      await runCoachRetention();
+      lastDay = day;
+    } catch (error) {
+      if (!isSchemaBehind(error)) console.error("[Coach] Retention failed", error);
+    } finally {
+      running = false;
+    }
+  }, COACH_RETENTION_CHECK_MS).unref();
+}
+
 async function startServer() {
   await runAutoMigrate();
   installAiUsageLogging();
@@ -184,6 +208,7 @@ async function startServer() {
   logWebPushStatus();
   void resumeAnnouncements();
   startSyllabusProgression();
+  startCoachRetention();
   startMaterialSweepers();
   startGrowthJobs();
   if (getDb()) {

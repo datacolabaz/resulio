@@ -73,6 +73,7 @@ const TEACHER_NAV: { href: string; key: MessageKey; icon: typeof LayoutDashboard
   { href: "/teacher/results", key: "nav.results", icon: ListChecks },
   { href: "/teacher/analytics", key: "nav.analytics", icon: LineChart },
   { href: "/teacher/growth", key: "nav.growth", icon: Radar },
+  { href: "/teacher/coach-shares", key: "nav.coachShares", icon: Sparkles },
   { href: "/teacher/usage", key: "nav.usage", icon: Gauge },
   { href: "/partner", key: "nav.referral", icon: Handshake },
   { href: "/settings", key: "nav.settings", icon: Settings },
@@ -202,8 +203,12 @@ export function AppShell({
   }, [newestNote, area, utils]);
   const syllabusFlag = trpc.teacher.syllabus.enabled.useQuery(undefined, { enabled: area === "teaching", staleTime: 5 * 60_000 });
   const growthFlag = trpc.teacher.growth.enabled.useQuery(undefined, { enabled: area === "teaching", staleTime: 5 * 60_000 });
+  const coachShares = trpc.teacher.coachShares.list.useQuery(undefined, { enabled: area === "teaching", staleTime: 5 * 60_000, retry: false });
   const teacherNav = TEACHER_NAV.filter(
-    (i) => (i.href !== "/teacher/syllabus" || syllabusFlag.data?.enabled) && (i.href !== "/teacher/growth" || growthFlag.data?.enabled),
+    (i) =>
+      (i.href !== "/teacher/syllabus" || syllabusFlag.data?.enabled) &&
+      (i.href !== "/teacher/growth" || growthFlag.data?.enabled) &&
+      (i.href !== "/teacher/coach-shares" || !!coachShares.data?.length),
   );
   const studentSyllabus = trpc.student.syllabus.enabled.useQuery(undefined, { enabled: area === "learning", staleTime: 5 * 60_000 });
   const studentGrowth = trpc.student.growth.enabled.useQuery(undefined, { enabled: area === "learning", staleTime: 5 * 60_000 });
