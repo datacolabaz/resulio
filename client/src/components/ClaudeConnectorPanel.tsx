@@ -5,8 +5,11 @@ import { errorText, fmtDay, fmtRelative } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import { claudeInstallUrl, type McpEntitlementState } from "@shared/mcpConnector";
 import { ExternalLink, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
+
+/** The "Yeniliklər" card links here (`/settings#claude-connector`). */
+const PANEL_ID = "claude-connector";
 
 function statusText(e: McpEntitlementState) {
   if (e.status === "ACTIVE") return e.expiresAt ? t("connector.statusActiveUntil", { date: fmtDay(e.expiresAt) }) : t("connector.statusActiveForever");
@@ -36,12 +39,19 @@ export function ClaudeConnectorPanel() {
     },
     onError: (e) => toast.error(errorText(e)),
   });
+  const loaded = !!status.data?.isTeacher;
+  useEffect(() => {
+    if (!loaded || window.location.hash !== `#${PANEL_ID}`) return;
+    // After the page's own scroll-to-top on navigation.
+    const timer = window.setTimeout(() => document.getElementById(PANEL_ID)?.scrollIntoView({ block: "start" }), 50);
+    return () => window.clearTimeout(timer);
+  }, [loaded]);
   if (!status.data?.isTeacher) return null;
   const { entitlement, connectorUrl, clients, upgradeRequested } = status.data;
 
   if (entitlement.status !== "ACTIVE" || !connectorUrl) {
     return (
-      <Panel title={t("connector.premiumTitle")}>
+      <Panel id={PANEL_ID} title={t("connector.premiumTitle")} className="scroll-mt-20">
         <div className="flex items-start gap-3">
           <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-link" aria-hidden />
           <div className="min-w-0 space-y-1">
@@ -74,7 +84,7 @@ export function ClaudeConnectorPanel() {
   };
 
   return (
-    <Panel title={t("connector.title")}>
+    <Panel id={PANEL_ID} title={t("connector.title")} className="scroll-mt-20">
       <p className="text-sm font-medium">{statusText(entitlement)}</p>
       <p className="mt-1 text-sm text-muted-foreground">{t("connector.description")}</p>
       <Button className="mt-4 w-full sm:w-auto" onClick={() => void connect()}>

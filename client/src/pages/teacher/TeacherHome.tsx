@@ -1,6 +1,7 @@
 import { AssessmentActivity } from "@/components/ActivityCards";
 import { AppShell, EmptyState, Loading, Panel, StatCard } from "@/components/AppShell";
 import { StatusBadge } from "@/components/StatusBadge";
+import { WhatsNewCards } from "@/components/WhatsNew";
 import { TeacherHomeSyllabi } from "@/components/syllabus/CrossLinks";
 import { Button } from "@/components/ui/button";
 import { t } from "@/i18n/messages";
@@ -23,6 +24,7 @@ export default function TeacherHome() {
         <Loading />
       ) : (
         <div className="space-y-6">
+          <WhatsNewCards area="teaching" />
           <AssessmentActivity />
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard

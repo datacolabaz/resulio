@@ -10,6 +10,7 @@ import { HeroDashboardPreview } from "@/components/landing/HeroDashboardPreview"
 import { PartnersSection } from "@/components/landing/PartnersSection";
 import { SharePreview } from "@/components/landing/SharePreview";
 import { StudentSessionPreview } from "@/components/landing/StudentSessionPreview";
+import { WhatsNewSection } from "@/components/landing/WhatsNewSection";
 import { Button } from "@/components/ui/button";
 import { SiteFooter } from "@/pages/SitePages";
 import { safeReturnTo, startLogin } from "@/const";
@@ -159,6 +160,22 @@ export default function Home() {
             <DemoNote className="mt-3" />
           </div>
         </div>
+
+        <WhatsNewSection
+          action={
+            <Button
+              size="lg"
+              disabled={startingFree}
+              className={ctaActive}
+              onClick={() => {
+                setStartingFree(true);
+                startLogin(returnTo);
+              }}
+            >
+              {t("landing.hero.ctaPrimary")}
+            </Button>
+          }
+        />
 
         {/* 1. Exam builder */}
         <PreviewSection

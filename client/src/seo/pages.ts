@@ -1,3 +1,4 @@
+import { landingEntries, whatsNewKeys } from "../../../shared/whatsNew";
 import type { MessageKey } from "../i18n/messages";
 
 /**
@@ -62,6 +63,7 @@ export const HOME: SitePage = {
   sections: [
     { heading: "site.glance.title", paragraphs: ["site.definition"] },
     { heading: "site.glance.features", items: FEATURES },
+    { heading: "whatsNew.landing.title", paragraphs: ["whatsNew.landing.lead"], items: landingEntries().map((e) => whatsNewKeys(e).landing as MessageKey) },
     { heading: "site.faq.title", faq: faq("what", "who", "azerbaijan", "price", "founder") },
     { heading: "site.partners.title", paragraphs: ["site.partners.lead"], partners: true },
   ],

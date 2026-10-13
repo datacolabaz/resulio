@@ -4,6 +4,7 @@ import { AppShell, ChoiceChip, EmptyState, ErrorNote, Loading, Panel, Pill, Stat
 import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { SingleFileUpload } from "@/components/FileUpload";
 import { ResultPenalty } from "@/components/ResultPenalty";
+import { WhatsNewCards } from "@/components/WhatsNew";
 import { StatusBadge, toneSurface } from "@/components/StatusBadge";
 import { ContinueLearning } from "@/components/syllabus/CrossLinks";
 import { MyJoinRequests } from "@/components/syllabus/MyJoinRequests";
@@ -53,6 +54,7 @@ export function StudentHome() {
     <AppShell area="learning">
       {!d.data ? <Loading /> : (
         <div className="space-y-5">
+          <WhatsNewCards area="learning" />
           <ContinueLearning />
           <MyJoinRequests />
           <CoachHomeCard />
