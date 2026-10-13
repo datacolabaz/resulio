@@ -92,7 +92,7 @@ export default function ConnectClaudePage() {
             </label>
           )}
           <p className="text-xs text-muted-foreground">{t("connector.consent.noDelete")}</p>
-          <p className="break-all text-xs text-muted-foreground">{t("connector.consent.redirect", { host: d.redirectHost })}</p>
+          <p className="break-words text-xs text-muted-foreground">{t("connector.consent.redirect", { host: d.redirectHost })}</p>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Button className="sm:flex-1" disabled={busy} onClick={() => approve.mutate({ request, workspaceId: chosen })}>{t("connector.consent.approve")}</Button>
             <Button variant="outline" className="sm:flex-1" disabled={busy} onClick={() => deny.mutate({ request })}>{t("connector.consent.deny")}</Button>

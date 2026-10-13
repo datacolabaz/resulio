@@ -37,7 +37,7 @@ function SettingToggle({
         className
       )}
     >
-      <label htmlFor={id} className="min-w-0 flex-1 text-sm [overflow-wrap:anywhere]">
+      <label htmlFor={id} className="min-w-0 flex-1 break-words text-sm">
         <span className="block font-medium leading-snug">{label}</span>
         {hint && <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">{hint}</span>}
       </label>
