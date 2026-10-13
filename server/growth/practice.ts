@@ -1,30 +1,21 @@
-import { and, eq, gte, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
-import {
-  assessmentAssignments,
-  assessmentOrigins,
-  assessmentVersions,
-  assessments,
-  groupGrowthSettings,
-  groups,
-  providerWorkspaces,
-  results,
-  versionQuestions,
-} from "../../drizzle/schema";
+import { and, eq, gte, inArray, isNull, lt, or } from "drizzle-orm";
+import { assessmentAssignments, assessmentOrigins, assessments, groupGrowthSettings, groups, providerWorkspaces } from "../../drizzle/schema";
 import { requireDb } from "../db";
 import type { TeacherScope } from "../modules/access";
 import { AppError } from "../modules/errors";
 import { assertGroupOwner } from "../modules/groups";
 import { dayKey } from "../modules/motivation";
 import { studentGroupWorkspace, studentGrowthGroups } from "./availability";
-import { retakeCandidates } from "./actions";
+import { topicCandidates } from "./actions";
+import { closedForEveryoneIds, type QuestionExposure } from "./eligibility";
 import { createPersonalTest } from "./personalTest";
-import { pickRetakeQuestions, RETAKE_MIN } from "./retake";
+import { pickRetakeQuestions, RETAKE_MIN, type RetakeCandidate } from "./retake";
 import { releasedMastery } from "./studentView";
 
 /**
  * Self-practice: a student starts a short test on one topic. Off per group until the teacher turns
- * it on, and it only reuses questions of exams already assigned to that group or student whose
- * window has closed (or that the student already took) — never an upcoming or running exam.
+ * it on, and it only reuses questions of exams assigned to that group or student that are closed
+ * for everyone — never an upcoming or running exam, even one the student has already taken.
  */
 
 export const PRACTICE_QUESTIONS = 10;
@@ -58,28 +49,26 @@ export async function practiceGroups(userId: number, workspaceId: string): Promi
   return rows.map((r) => r.groupId);
 }
 
-/** Bank question ids that appeared in exams already behind the student (assigned to these groups or to them). */
-export async function pastExamQuestionIds(workspaceId: string, studentId: number, groupIds: string[], now = new Date()): Promise<Set<string>> {
-  const db = requireDb();
+/** Exams (not personal tests) assigned to these groups or to the student. */
+export async function assignedAssessmentIds(workspaceId: string, studentId: number, groupIds: string[]): Promise<Set<string>> {
   const target = groupIds.length ? or(eq(assessmentAssignments.studentId, studentId), inArray(assessmentAssignments.groupId, groupIds)) : eq(assessmentAssignments.studentId, studentId);
-  const assigned = await db
-    .select({ id: assessments.id, endAt: assessments.endAt, availableUntil: assessmentAssignments.availableUntil, status: assessments.status })
+  const rows = await requireDb()
+    .selectDistinct({ id: assessments.id })
     .from(assessmentAssignments)
     .innerJoin(assessments, eq(assessments.id, assessmentAssignments.assessmentId))
     .leftJoin(assessmentOrigins, eq(assessmentOrigins.assessmentId, assessments.id))
     .where(and(eq(assessments.providerWorkspaceId, workspaceId), eq(assessmentAssignments.status, "ACTIVE"), isNull(assessmentOrigins.assessmentId), target));
-  if (!assigned.length) return new Set();
-  const taken = new Set(
-    (await db.selectDistinct({ id: results.assessmentId }).from(results).where(and(eq(results.studentId, studentId), inArray(results.assessmentId, assigned.map((a) => a.id))))).map((r) => r.id),
-  );
-  const closed = assigned.filter((a) => a.status === "CLOSED" || taken.has(a.id) || ((a.availableUntil ?? a.endAt)?.getTime() ?? Infinity) < now.getTime()).map((a) => a.id);
-  if (!closed.length) return new Set();
-  const rows = await db
-    .selectDistinct({ questionId: versionQuestions.sourceQuestionId })
-    .from(versionQuestions)
-    .innerJoin(assessmentVersions, eq(assessmentVersions.id, versionQuestions.versionId))
-    .where(and(inArray(assessmentVersions.assessmentId, [...new Set(closed)]), isNotNull(versionQuestions.sourceQuestionId)));
-  return new Set(rows.map((r) => r.questionId!));
+  return new Set(rows.map((r) => r.id));
+}
+
+/**
+ * Candidates a student may practise: from an exam assigned to them that is closed for everyone
+ * (having taken it is not enough — classmates may still be sitting it), and in no exam that is
+ * still open, upcoming or a draft.
+ */
+export function practisable(candidates: RetakeCandidate[], exposure: QuestionExposure, assigned: ReadonlySet<string>): RetakeCandidate[] {
+  const eligible = closedForEveryoneIds(exposure);
+  return candidates.filter((c) => eligible.has(c.id) && [...(exposure.closedIn.get(c.id) ?? [])].some((a) => assigned.has(a)));
 }
 
 async function practicesToday(workspaceId: string, studentId: number, now: Date) {
@@ -96,9 +85,8 @@ export async function startPractice(userId: number, input: { groupId: string; to
   const allowed = await practiceGroups(userId, workspaceId);
   if (!allowed.length) throw new AppError("GROWTH_PRACTICE_OFF");
   if ((await practicesToday(workspaceId, userId, now)) >= PRACTICE_PER_DAY) throw new AppError("GROWTH_PRACTICE_LIMIT");
-  const pool = await pastExamQuestionIds(workspaceId, userId, allowed, now);
-  const candidates = (await retakeCandidates(workspaceId, userId, [input.topicKey])).filter((c) => pool.has(c.id));
-  const { ids } = pickRetakeQuestions(candidates, PRACTICE_QUESTIONS);
+  const [{ candidates, exposure }, assigned] = await Promise.all([topicCandidates(workspaceId, userId, [input.topicKey], now), assignedAssessmentIds(workspaceId, userId, allowed)]);
+  const { ids } = pickRetakeQuestions(practisable(candidates, exposure, assigned), PRACTICE_QUESTIONS);
   if (ids.length < RETAKE_MIN) throw new AppError("GROWTH_NOT_ENOUGH_QUESTIONS");
   const db = requireDb();
   const [ws] = await db.select({ ownerUserId: providerWorkspaces.ownerUserId }).from(providerWorkspaces).where(eq(providerWorkspaces.id, workspaceId)).limit(1);

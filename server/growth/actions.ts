@@ -1,8 +1,6 @@
-import { and, desc, eq, gt, inArray, isNotNull, ne, or } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, ne } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
-  assessmentQuestions,
-  assessments,
   questionMeta,
   questions,
   resultItems,
@@ -20,6 +18,7 @@ import { AppError } from "../modules/errors";
 import { assertTeacherHasStudent, teacherStudents } from "../modules/groups";
 import { dayKey } from "../modules/motivation";
 import { dispatch } from "../notifications/dispatcher";
+import { questionExposure, type QuestionExposure } from "./eligibility";
 import { isDismissed } from "./risk";
 import { dismissRisk, growthSettingsOf, risksOf } from "./riskStore";
 import { createPersonalTest } from "./personalTest";
@@ -112,10 +111,18 @@ export async function shareMaterial(scope: TeacherScope, studentId: number, mate
 }
 
 /**
- * Bank questions on the chosen topics that may go into a retake: never one sitting in a draft or a
- * not-yet-started exam (that would leak it), never a long answer (it needs manual grading).
+ * Bank questions on the chosen topics that may go into a retake: never one held by an assessment
+ * that is not closed for everyone — a draft, an upcoming or running exam, or one with an attempt in
+ * progress (a retake shows its answers, so that would leak it) — and never a long answer (it needs
+ * manual grading).
  */
 export async function retakeCandidates(workspaceId: string, studentId: number, topicKeys: string[]): Promise<RetakeCandidate[]> {
+  const { candidates, exposure } = await topicCandidates(workspaceId, studentId, topicKeys);
+  return candidates.filter((c) => !exposure.blocked.has(c.id));
+}
+
+/** Every usable bank question on the topics, with where each one has been used (see eligibility.ts). */
+export async function topicCandidates(workspaceId: string, studentId: number, topicKeys: string[], now = new Date()): Promise<{ candidates: RetakeCandidate[]; exposure: QuestionExposure }> {
   const db = requireDb();
   const sectionIds = topicKeys.filter(isSectionKey).map((k) => sectionIdOfKey(k)!);
   const textKeys = new Set(topicKeys.filter(isTextKey).map((k) => k.slice(TEXT_KEY_PREFIX.length)));
@@ -140,20 +147,8 @@ export async function retakeCandidates(workspaceId: string, studentId: number, t
     }
   }
   const usable = rows.filter((r) => r.type !== "LONG_ANSWER");
-  if (!usable.length) return [];
-  const now = new Date();
-  const upcoming = await db
-    .selectDistinct({ questionId: assessmentQuestions.questionId })
-    .from(assessmentQuestions)
-    .innerJoin(assessments, eq(assessments.id, assessmentQuestions.assessmentId))
-    .where(
-      and(
-        eq(assessments.providerWorkspaceId, workspaceId),
-        inArray(assessmentQuestions.questionId, usable.map((r) => r.id)),
-        or(eq(assessments.status, "DRAFT"), and(eq(assessments.status, "PUBLISHED"), gt(assessments.startAt, now))),
-      ),
-    );
-  const blocked = new Set(upcoming.map((u) => u.questionId));
+  if (!usable.length) return { candidates: [], exposure: { blocked: new Set(), closedIn: new Map() } };
+  const exposure = await questionExposure(workspaceId, usable.map((r) => r.id), now, db);
   const resultIds = (await studentResults(workspaceId, studentId, db)).map((r) => r.id);
   const seenRows = resultIds.length
     ? await db
@@ -163,7 +158,7 @@ export async function retakeCandidates(workspaceId: string, studentId: number, t
         .where(and(inArray(resultItems.resultId, resultIds), isNotNull(versionQuestions.sourceQuestionId)))
     : [];
   const seen = new Set(seenRows.map((s) => s.questionId));
-  return usable.filter((r) => !blocked.has(r.id)).map((r) => ({ id: r.id, topicKey: r.topicKey, difficulty: r.difficulty, seen: seen.has(r.id) }));
+  return { candidates: usable.map((r) => ({ id: r.id, topicKey: r.topicKey, difficulty: r.difficulty, seen: seen.has(r.id) })), exposure };
 }
 
 export async function retakePreview(scope: TeacherScope, studentId: number, topicKeys: string[]) {
