@@ -393,6 +393,13 @@
       "when": 1791840165123,
       "tag": "0059_mcp_connector",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "5",
+      "when": 1791900236032,
+      "tag": "0060_user_feature_seen",
+      "breakpoints": true
     }
   ]
 }

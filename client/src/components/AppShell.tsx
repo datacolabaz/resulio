@@ -1,5 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Wordmark } from "@/components/BrandMark";
+import { NewBadge } from "@/components/WhatsNew";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,6 +18,8 @@ import { availableContexts, CONTEXT_HOME, contextLabel, getActiveWorkspaceId, se
 import { errorText, fmtDateTime } from "@/lib/format";
 import { notificationTarget } from "@/lib/notificationLink";
 import { trpc } from "@/lib/trpc";
+import { useWhatsNew } from "@/lib/whatsNew";
+import { badgeFor, entriesVisitedAt } from "@shared/whatsNew";
 import {
   Bell,
   BookOpen,
@@ -61,7 +64,7 @@ export const THEME_OPTIONS: { value: ThemePreference; icon: typeof Sun }[] = [
   { value: "system", icon: Monitor },
 ];
 
-type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; exact?: boolean };
+type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; exact?: boolean; isNew?: boolean };
 
 const TEACHER_NAV: { href: string; key: MessageKey; icon: typeof LayoutDashboard; exact?: boolean }[] = [
   { href: "/teacher", key: "nav.home", icon: LayoutDashboard, exact: true },
@@ -220,6 +223,14 @@ export function AppShell({
       (i.href !== "/student/coach" || studentCoach.data?.enabled),
   );
   const drawerOpen = open && !desktop;
+  const whatsNew = useWhatsNew(area);
+  const navAudience = area === "teaching" ? "teacher" : area === "learning" ? "student" : null;
+  // Opening a new feature's page clears its badge and its home card.
+  const visitedNew = entriesVisitedAt(location, whatsNew.fresh).map((e) => e.id).join(",");
+  const { markSeen } = whatsNew;
+  useEffect(() => {
+    if (visitedNew) markSeen(visitedNew.split(","));
+  }, [visitedNew, markSeen]);
 
   useEffect(() => {
     if (!drawerOpen && !inboxOpen) return;
@@ -239,7 +250,8 @@ export function AppShell({
     if (drawerOpen) drawer.current?.querySelector<HTMLElement>("a[href], button")?.focus();
   }, [drawerOpen]);
 
-  const toItems = (list: typeof TEACHER_NAV): NavItem[] => list.map((i) => ({ href: i.href, label: t(i.key), icon: i.icon, exact: i.exact }));
+  const toItems = (list: typeof TEACHER_NAV): NavItem[] =>
+    list.map((i) => ({ href: i.href, label: t(i.key), icon: i.icon, exact: i.exact, isNew: !!navAudience && !!badgeFor(i.href, whatsNew.fresh, navAudience) }));
   const partnerNav: NavItem[] = [
     { href: "/partner", label: contextLabel("partner"), icon: Handshake, exact: true },
     { href: "/settings", label: t("nav.settings"), icon: Settings },
@@ -252,6 +264,7 @@ export function AppShell({
   const activeWorkspace = user?.workspaces.find((w) => w.id === getActiveWorkspaceId()) ?? user?.workspaces[0];
   const isActive = (i: NavItem) => (i.exact ? location === i.href : location === i.href || location.startsWith(`${i.href}/`));
   const title = titleOverride ?? items.find(isActive)?.label ?? "Resulio";
+  const menuHasNew = items.some((i) => i.isNew);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -304,6 +317,7 @@ export function AppShell({
                 >
                   <item.icon className={`h-4 w-4 shrink-0 ${active ? "text-sidebar-primary" : ""}`} aria-hidden />
                   {item.label}
+                  {item.isNew && <NewBadge className="ml-auto" />}
                 </Link>
               );
             })}
@@ -321,13 +335,14 @@ export function AppShell({
               <button
                 ref={menuButton}
                 type="button"
-                className="rounded-md p-1 lg:hidden"
+                className="relative rounded-md p-1 lg:hidden"
                 onClick={() => setOpen(true)}
-                aria-label={t("shell.openMenu")}
+                aria-label={menuHasNew ? `${t("shell.openMenu")}. ${t("whatsNew.menuHasNew")}` : t("shell.openMenu")}
                 aria-expanded={drawerOpen}
                 aria-controls="app-sidebar"
               >
                 <Menu className="h-5 w-5" aria-hidden />
+                {menuHasNew && <span className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full bg-brand ring-2 ring-card" aria-hidden />}
               </button>
               <h1 className="truncate text-lg font-semibold tracking-tight" title={title}>{title}</h1>
             </div>

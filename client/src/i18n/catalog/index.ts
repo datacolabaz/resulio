@@ -19,9 +19,10 @@ import { syllabusShare } from "./syllabusShare";
 import { syllabusUx } from "./syllabusUx";
 import { teacher } from "./teacher";
 import { teachingCategories } from "./teachingCategories";
+import { whatsNew } from "./whatsNew";
 
 /** Every domain catalog; the i18n test checks that no key is defined twice. */
-export const domains = { common, format, app, teacher, builder, student, admin, teachingCategories, site, syllabus, syllabusLearn, syllabusAnalytics, syllabusUx, syllabusImport, syllabusShare, questionBank, publishPlain, materials, growth, coach, connector } as const;
+export const domains = { common, format, app, teacher, builder, student, admin, teachingCategories, site, syllabus, syllabusLearn, syllabusAnalytics, syllabusUx, syllabusImport, syllabusShare, questionBank, publishPlain, materials, growth, coach, connector, whatsNew } as const;
 
 export const catalog = {
   ...common,
@@ -45,4 +46,5 @@ export const catalog = {
   ...growth,
   ...coach,
   ...connector,
+  ...whatsNew,
 } as const;

@@ -43,6 +43,7 @@ import * as directUpload from "./materials/directUpload";
 import * as materialService from "./materials/service";
 import * as materialTags from "./materials/tags";
 import { mcpConnectorRouter } from "./mcp/router";
+import { whatsNewRouter } from "./whatsNew";
 import { canEnterContext, defaultContext, ensurePartnerProfile, resolveAccess, type TeacherScope } from "./modules/access";
 import * as activity from "./modules/activity";
 import { adminView } from "./modules/admin/authz";
@@ -1254,6 +1255,7 @@ export const appRouter = router({
   devices: devicesRouter,
   webPush: webPushRouter,
   mcpConnector: mcpConnectorRouter,
+  whatsNew: whatsNewRouter,
 });
 
 export type AppRouter = typeof appRouter;
