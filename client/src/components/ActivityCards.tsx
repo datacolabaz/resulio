@@ -105,6 +105,22 @@ function ActivityPanel({ c, now }: { c: Card; now: number }) {
   );
 }
 
+/**
+ * One status counter. The label is never split inside a word: font metrics differ per OS, so when it
+ * does not fit beside the number it moves below it as a whole.
+ */
+function Counter({ icon: Icon, count, label, className = "", iconClassName = "" }: { icon: LucideIcon; count: number; label: string; className?: string; iconClassName?: string }) {
+  return (
+    <li className={`flex min-w-0 items-start gap-1.5 ${className}`}>
+      <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${iconClassName}`} aria-hidden />
+      <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 leading-snug">
+        <span className="min-w-6 text-right font-semibold tabular-nums">{count}</span>
+        <span className="break-normal">{label}</span>
+      </span>
+    </li>
+  );
+}
+
 /** Counts are plain content (always readable); details open from an explicit button, or on hover with a mouse. */
 function StatusArea({ c, now }: { c: Card; now: number }) {
   const mobile = useIsMobile();
@@ -138,19 +154,18 @@ function StatusArea({ c, now }: { c: Card; now: number }) {
       <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={t("activity.finishedBar")}>
         <div className="h-full rounded-full bg-link" style={{ width: `${pct}%` }} />
       </div>
-      <ul id={listId} aria-label={t("activity.bucketsLabel")} className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-x-3 gap-y-1.5 text-sm">
+      <ul id={listId} aria-label={t("activity.bucketsLabel")} className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(min(100%,9.75rem),1fr))] gap-x-3 gap-y-1.5 text-sm">
         {buckets(c).map((b) => (
-          <li key={b.key} className={`flex items-start gap-1.5 ${b.count ? "" : "text-muted-foreground"}`}>
-            <b.icon className={`mt-0.5 h-4 w-4 shrink-0 ${b.count ? TONE_TEXT[b.tone] : ""}`} aria-hidden />
-            <span className="w-6 shrink-0 text-right font-semibold tabular-nums">{b.count}</span>
-            <span className="min-w-0 break-words leading-snug">{t(b.label)}</span>
-          </li>
+          <Counter
+            key={b.key}
+            icon={b.icon}
+            count={b.count}
+            label={t(b.label)}
+            className={b.count ? "" : "text-muted-foreground"}
+            iconClassName={b.count ? TONE_TEXT[b.tone] : ""}
+          />
         ))}
-        <li className="flex items-start gap-1.5 text-foreground-secondary">
-          <Eye className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-          <span className="w-6 shrink-0 text-right font-semibold tabular-nums">{c.summary.viewed}</span>
-          <span className="min-w-0 break-words leading-snug">{t("activity.bucket.viewed")}</span>
-        </li>
+        <Counter icon={Eye} count={c.summary.viewed} label={t("activity.bucket.viewed")} className="text-foreground-secondary" />
       </ul>
     </div>
   );
@@ -274,7 +289,7 @@ export function AssessmentActivity() {
           title={t("activity.panel")}
           action={<Link href="/teacher/assessments" className="text-sm text-link underline-offset-4 hover:underline">{t("common.all")}</Link>}
         >
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,22rem),1fr))] gap-4">
             {d.cards.map((c) => (
               <AssessmentActivityCard key={c.id} c={c} now={now} />
             ))}

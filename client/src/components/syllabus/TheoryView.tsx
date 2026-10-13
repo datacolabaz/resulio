@@ -17,7 +17,7 @@ export function MaterialRefLink({ m, className }: { m: MaterialRef; className: s
     return (
       <a href={href} target="_blank" rel="noopener noreferrer nofollow" className={className}>
         <ExternalLink className="h-4 w-4 shrink-0" aria-hidden />
-        <span className="min-w-0 break-all">{m.title}</span>
+        <span className="min-w-0 break-words">{m.title}</span>
       </a>
     );
   }
