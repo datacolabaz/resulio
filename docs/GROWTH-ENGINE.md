@@ -64,8 +64,16 @@ CRITICAL topic gets a second cycle when the plan is ten days or longer. Unfinish
 next day with room, up to three times, then they are skipped.
 
 Self practice: when the teacher turns it on for a group, a student can start a ten-question test on a
-plan topic, drawn only from exams already assigned to them; three a day. Generated tests are marked in
+plan topic, drawn only from exams assigned to them that are closed for everyone; three a day. Generated tests are marked in
 `assessment_origins`, are personal, and stay out of the teacher's exam list and the group analytics.
+
+Personal tests (retakes and self practice) show correct answers and explanations, so their questions go
+through `eligibility.ts`: a bank question is left out while any assessment holding it (draft list or a
+published version, via `version_questions.sourceQuestionId`) is a draft, upcoming, still open for some
+assignment (the latest of the exam's end and every active assignment's `availableUntil`), or has an attempt
+in progress. Results released at submission do not count as closed. Self practice also needs the question
+to have appeared in an assigned exam that is closed for everyone; a teacher's retake may still use bank
+questions no exam has used.
 
 ## XP
 
