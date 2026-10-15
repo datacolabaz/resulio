@@ -341,4 +341,23 @@ export const questionBank = {
     "Closed questions: {earned} points, {net} after the penalty. The score above already includes it.",
     "Закрытые вопросы: {earned} баллов, после штрафа {net}. Результат выше уже учитывает штраф.",
   ],
+
+  "qbank.summary.button": ["AI konspekt", "AI summary", "AI конспект"],
+  "qbank.summary.needsQuestions": [
+    "Konspekt üçün bu bölmədə ən azı bir sual olmalıdır.",
+    "This section needs at least one question for a summary.",
+    "В этом разделе должен быть хотя бы один вопрос для конспекта.",
+  ],
+  "qbank.summary.title": ["Konspekt: {name}", "Summary: {name}", "Конспект: {name}"],
+  "qbank.summary.description": [
+    "AI bu bölmənin sualları əsasında qısa konspekt hazırlayır. Göndərmədən əvvəl mətni yoxlayıb redaktə edin.",
+    "The AI drafts a short summary from this section's questions. Review and edit it before sending.",
+    "AI составит краткий конспект по вопросам этого раздела. Проверьте и отредактируйте текст перед отправкой.",
+  ],
+  "qbank.summary.generating": ["Konspekt hazırlanır...", "Drafting the summary...", "Готовится конспект..."],
+  "qbank.summary.regenerate": ["Yenidən yarat", "Regenerate", "Создать заново"],
+  "qbank.summary.recipients": ["Hansı qruplara göndərilsin?", "Send to which groups?", "Каким группам отправить?"],
+  "qbank.summary.noGroups": ["Hələ qrup yoxdur.", "No groups yet.", "Пока нет групп."],
+  "qbank.summary.publish": ["Qrupa göndər", "Send to group", "Отправить группе"],
+  "qbank.summary.published": ["Konspekt material kimi göndərildi.", "The summary was sent as a material.", "Конспект отправлен как материал."],
 } as const satisfies Record<string, Entry>;

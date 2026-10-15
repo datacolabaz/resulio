@@ -136,6 +136,8 @@ export const ENV = {
   },
   /** Question import from PDF/images runs only when the LLM is configured and QUESTION_IMPORT_DISABLED is not "1". */
   get questionImportEnabled() { return this.llmConfigured && envString("QUESTION_IMPORT_DISABLED") !== "1"; },
+  /** AI konspekt (topic study-note) drafting runs only when the LLM is configured and QUESTION_SUMMARY_DISABLED is not "1". */
+  get questionSummaryEnabled() { return this.llmConfigured && envString("QUESTION_SUMMARY_DISABLED") !== "1"; },
   /** Optional model for question import (must read PDFs/images); empty = AI_MODEL / the provider default. */
   get questionImportModel() { return envString("QUESTION_IMPORT_MODEL"); },
   /** "native" sends the PDF itself, "text" only its extracted text; empty = native where the provider supports it. */

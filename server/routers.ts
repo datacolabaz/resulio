@@ -76,7 +76,7 @@ import * as notificationPreferences from "./notifications/preferences";
 import * as push from "./notifications/push";
 import * as webPush from "./notifications/webPush";
 import * as bank from "./questionBank/bank";
-import { questionBankFilter, questionImportRouter, questionTopicsRouter, sectionPicksSchema } from "./questionBank/router";
+import { questionBankFilter, questionImportRouter, questionSummaryRouter, questionTopicsRouter, sectionPicksSchema } from "./questionBank/router";
 import { store } from "./resulioStore";
 import { announceGroupJoin } from "./syllabus/notify";
 import { publicSyllabusProcedure, studentSyllabusRouter, teacherSyllabusRouter } from "./syllabus/router";
@@ -827,6 +827,7 @@ const teacherRouter = router({
   questions: teacherQuestionsRouter,
   questionTopics: questionTopicsRouter,
   questionImport: questionImportRouter,
+  questionSummary: questionSummaryRouter,
   assessments: teacherAssessmentsRouter,
   results: teacherResultsRouter,
   analytics: teacherAnalyticsRouter,

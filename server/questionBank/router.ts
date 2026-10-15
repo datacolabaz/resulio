@@ -5,6 +5,7 @@ import { topicInputSchema, topicNameSchema } from "../../shared/questionImport";
 import { rateLimit, router, teacherProcedure } from "../_core/trpc";
 import { isMissingTable } from "../notifications/preferences";
 import * as imports from "./importJobs";
+import * as summary from "./summary";
 import * as topics from "./topics";
 
 const MINUTE = 60_000;
@@ -98,4 +99,15 @@ export const questionImportRouter = router({
     .use(rateLimit("questionImportAccept", 30, MINUTE))
     .input(z.object({ jobId: entityId, ids: z.union([ids, z.literal("ALL")]), skipDuplicates: z.boolean().default(false) }))
     .mutation(({ ctx, input }) => imports.acceptItems(ctx.scope, input.jobId, input.ids, { skipDuplicates: input.skipDuplicates })),
+});
+
+export const questionSummaryRouter = router({
+  draft: bankProcedure
+    .use(rateLimit("questionSummaryDraft", 20, MINUTE))
+    .input(z.object({ sectionId: entityId }))
+    .mutation(({ ctx, input }) => summary.draftSectionSummary(ctx.scope, input.sectionId)),
+  publish: bankProcedure
+    .use(rateLimit("questionSummaryPublish", 20, MINUTE))
+    .input(z.object({ sectionId: entityId, text: z.string().trim().min(1).max(12_000), groupIds: z.array(entityId).min(1).max(50) }))
+    .mutation(({ ctx, input }) => summary.publishSectionSummary(ctx.scope, input)),
 });

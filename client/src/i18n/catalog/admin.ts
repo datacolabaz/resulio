@@ -223,6 +223,7 @@ export const admin = {
   "admin.ai.feature.SYLLABUS_IMPORT": ["Sillabus importu", "Syllabus import", "Импорт силлабуса"],
   "admin.ai.feature.SUBMISSION_REVIEW": ["Tapşırıqların AI yoxlaması", "Submission review", "ИИ-проверка работ"],
   "admin.ai.feature.ANSWER_KEY_DRAFT": ["Cavab açarı", "Answer key draft", "Черновик ключа ответов"],
+  "admin.ai.feature.TOPIC_SUMMARY": ["Mövzu konspekti", "Topic summary", "Конспект темы"],
   "admin.ai.feature.OTHER": ["Digər", "Other", "Другое"],
   "admin.ai.status.OK": ["Uğurlu", "OK", "Успешно"],
   "admin.ai.status.ERROR": ["Xəta", "Error", "Ошибка"],

@@ -9,6 +9,7 @@ import { Check, FolderTree, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { bankRef } from "@shared/questionImport";
+import { SectionSummaryButton } from "./SummaryDialog";
 
 export type TopicRow = RouterOutputs["teacher"]["questionTopics"]["list"][number];
 
@@ -344,6 +345,7 @@ function SectionLine({ section, topics, outline }: { section: TopicRow; topics: 
               </optgroup>
             ))}
           </select>
+          <SectionSummaryButton sectionId={section.id} sectionName={section.name} questionCount={section.questionCount} />
           <TopicActions topic={section} remove={remove} onRename={() => setRenaming(true)} />
         </>
       )}
