@@ -49,7 +49,7 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     id: "topic-summary",
     audiences: ["teacher"],
     releasedAt: "2026-10-16",
-    route: "/teacher/assignments",
+    route: "/teacher/library",
     icon: "sparkles",
     cta: "try",
   },
