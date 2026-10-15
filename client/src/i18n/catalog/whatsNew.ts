@@ -111,6 +111,13 @@ export const whatsNew = {
     "Ученики делятся с вами материалами и конспектами из ИИ-помощника — они здесь.",
   ],
 
+  "whatsNew.topic-summary.title": ["AI konspekt", "AI summary", "AI конспект"],
+  "whatsNew.topic-summary.body": [
+    "Bölmənin suallarından AI konspekt hazırla, redaktə et və qrupa material kimi göndər.",
+    "Draft an AI summary from a section's questions, edit it, and send it to a group as a material.",
+    "Создайте AI-конспект по вопросам раздела, отредактируйте и отправьте группе как материал.",
+  ],
+
   "whatsNew.group-approval.title": ["Müəllim təsdiqi ilə qoşulma", "Join with teacher approval", "Вступление с одобрением учителя"],
   "whatsNew.group-approval.body": [
     "Qrup linki ilə gələnlər siz təsdiqləyənə qədər gözləyir, tanıdığınız şagirdlər isə dərhal qoşulur.",

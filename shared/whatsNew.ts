@@ -46,6 +46,14 @@ const DAY_MS = 86_400_000;
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "topic-summary",
+    audiences: ["teacher"],
+    releasedAt: "2026-10-16",
+    route: "/teacher/assignments",
+    icon: "sparkles",
+    cta: "try",
+  },
+  {
     id: "claude-connector",
     audiences: ["teacher", "public"],
     releasedAt: "2026-10-13",
