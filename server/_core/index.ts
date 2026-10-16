@@ -23,6 +23,9 @@ import { sweepExpiredAttempts } from "../modules/attempts";
 import { groupLinkPreview, groupPreviewRoute } from "../modules/groupLinkPreview";
 import { runJoinSourceBackfill } from "../modules/groupJoinSources";
 import { runGroupProfileBackfill } from "../modules/groupProfiles";
+import { examLinkPreview, examPreviewRoute } from "../modules/examLinkPreview";
+import { materialLinkPreview, materialPreviewRoute } from "../modules/materialLinkPreview";
+import { taskLinkPreview, taskPreviewRoute } from "../modules/taskLinkPreview";
 import { runUploadSweep } from "../materials/directUpload";
 import { runMaterialMetaBackfill } from "../materials/meta";
 import { runScheduledMaterialSweep } from "../materials/notify";
@@ -201,6 +204,9 @@ async function startServer() {
     res.set("Cache-Control", "no-store").type("application/javascript").send(publicPlatformScript());
   });
   app.get("/api/public/syllabus-preview/:code", syllabusPreviewRoute);
+  app.get("/api/public/task-preview/:code", taskPreviewRoute);
+  app.get("/api/public/material-preview/:code", materialPreviewRoute);
+  app.get("/api/public/exam-preview/:code", examPreviewRoute);
   app.get("/api/public/group-preview/:kind/:key", groupPreviewRoute);
   registerGoogleAuthRoutes(app);
   registerFileRoutes(app);
@@ -212,12 +218,19 @@ async function startServer() {
       createContext,
     }),
   );
+  const previewSources = {
+    syllabusPreview: syllabusLinkPreview,
+    taskPreview: taskLinkPreview,
+    materialPreview: materialLinkPreview,
+    examPreview: examLinkPreview,
+    groupPreview: groupLinkPreview,
+  };
   if (process.env.NODE_ENV === "development") {
-    await setupVite(app, server, { syllabusPreview: syllabusLinkPreview, groupPreview: groupLinkPreview });
+    await setupVite(app, server, previewSources);
   } else if (ENV.frontendUrl) {
     app.use(frontendRedirect(ENV.frontendUrl));
   } else {
-    serveStatic(app, { syllabusPreview: syllabusLinkPreview, groupPreview: groupLinkPreview });
+    serveStatic(app, previewSources);
   }
 
   startAttemptSweeper();

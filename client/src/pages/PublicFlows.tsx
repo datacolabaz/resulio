@@ -26,6 +26,7 @@ import { visitorId } from "@/lib/visitor";
 import { useSharePageMeta } from "@/seo/usePageMeta";
 import { groupPageTitle } from "@shared/groupLinks";
 import { linkHost } from "@shared/materialTemplates";
+import { examPageTitle, materialPageTitle, taskPageTitle } from "@shared/taskMaterialShare";
 import type { GroupType } from "@shared/groupType";
 import type { ClassScheduleEntry } from "@shared/schedule";
 import { DEFAULT_SHARE_CAMPAIGN, parseShareCampaign, parseShareSource, type ShareTargetType } from "@shared/shareTracking";
@@ -350,6 +351,7 @@ export function PublicExamPage() {
   const e = exam.data;
   useShareAttribution("EXAM", shareCode, Boolean(e));
   const returnTo = `/exam/${shareCode}${window.location.search}`;
+  useSharePageMeta(e ? examPageTitle(e.title) : null, e ? e.description || [e.teacherName, e.subject].filter(Boolean).join(" · ") : "");
   return (
     <Card>
       {exam.isLoading ? <p role="status" className="mt-4 text-sm text-muted-foreground">{t("common.loading")}</p> : !e ? (
@@ -401,6 +403,7 @@ export function PublicTaskPage() {
   const a = page?.task;
   const { channel, campaign, visitorId: vid } = useShareAttribution("TASK", shareCode, Boolean(page));
   const returnTo = `/task/${shareCode}${window.location.search}`;
+  useSharePageMeta(a ? taskPageTitle(a.title) : null, a ? a.description || t("modules.deadlineValue", { date: fmtDateTime(a.deadline) }) : "");
   return (
     <Card>
       {task.isLoading ? <p role="status" className="mt-4 text-sm text-muted-foreground">{t("common.loading")}</p> : !page ? (
@@ -491,6 +494,7 @@ export function PublicMaterialPage() {
   const m = page?.material;
   const { channel, campaign, visitorId: vid } = useShareAttribution("MATERIAL", shareCode, Boolean(page));
   const returnTo = `/material/${shareCode}${window.location.search}`;
+  useSharePageMeta(m ? materialPageTitle(m.title) : null, m ? m.description || [m.subject, m.topic].filter(Boolean).join(" · ") : "");
   return (
     <Card>
       {material.isLoading ? <p role="status" className="mt-4 text-sm text-muted-foreground">{t("common.loading")}</p> : !page ? (

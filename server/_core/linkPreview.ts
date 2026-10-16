@@ -1,14 +1,22 @@
 import { SITE } from "../../client/src/seo/config";
 import { groupPageTitle } from "../../shared/groupLinks";
 import { normalizeShareCode, syllabusPageTitle, syllabusSharePath } from "../../shared/syllabusJoin";
+import { examPageTitle, materialPageTitle, normalizeTaskMaterialCode, taskPageTitle } from "../../shared/taskMaterialShare";
 import { escapeHtml, publicAppUrl } from "./email";
 
 /**
  * Link previews (WhatsApp, Telegram, Facebook, LinkedIn, X, iMessage) for shared links: a syllabus
- * (`/syllabus/<code>`) and group invitations (`/join/<code>`, `/g/<token>`, `/invite/<token>`).
- * Those crawlers do not run JavaScript, so the page's head is written on the server. Kept free of
- * database imports: the static frontend service bundles this file and gets previews from the API
- * over HTTP; the API serving the SPA itself looks them up directly.
+ * (`/syllabus/<code>`), a task (`/task/<code>`), a material (`/material/<code>`), and group
+ * invitations (`/join/<code>`, `/g/<token>`, `/invite/<token>`). Those crawlers do not run
+ * JavaScript, so the page's head is written on the server. Kept free of database imports: the
+ * static frontend service bundles this file and gets previews from the API over HTTP; the API
+ * serving the SPA itself looks them up directly.
+ *
+ * A task/material preview intentionally shows its own title (and a short description) even for a
+ * GROUPS-restricted task or a RECIPIENTS-only material that an anonymous crawler could not actually
+ * open — same as the syllabus/group previews already do: naming what's behind the link isn't the
+ * protected part, only its content (files, submissions, answer key, …) is, and that still goes
+ * through the full access check in the tRPC `public.task`/`public.material` queries.
  */
 
 /** Only what the public syllabus page already shows. */
@@ -18,6 +26,32 @@ export interface SyllabusPreview {
   moduleCount: number;
   duration: { value: number; unit: "WEEKS" | "MONTHS" } | null;
   durationLabel: string;
+  teacherName: string;
+}
+
+/** Only what the public task page already shows, before sign-in/access is checked — the task's name
+ *  and own description are not the protected part of a share link, only its files/submission are. */
+export interface TaskPreview {
+  title: string;
+  description: string;
+  teacherName: string;
+}
+
+/** Only what the public material page already shows, same reasoning as TaskPreview. */
+export interface MaterialPreview {
+  title: string;
+  description: string;
+  subject: string;
+  topic: string;
+  teacherName: string;
+}
+
+/** Only what the public exam page already shows — unlike tasks, there is no sign-in gate on these
+ *  facts at all; the public page shows them to anyone with the link, login is only needed to start it. */
+export interface ExamPreview {
+  title: string;
+  description: string;
+  subject: string;
   teacherName: string;
 }
 
@@ -37,6 +71,9 @@ export type GroupLinkKind = "code" | "link" | "email";
 /** null = nothing to show for this key; a throw = could not tell. */
 export type Lookup<T> = (key: string) => Promise<T | null>;
 export type PreviewLookup = Lookup<SyllabusPreview>;
+export type TaskPreviewLookup = Lookup<TaskPreview>;
+export type MaterialPreviewLookup = Lookup<MaterialPreview>;
+export type ExamPreviewLookup = Lookup<ExamPreview>;
 export type GroupPreviewLookup = (kind: GroupLinkKind, key: string) => Promise<GroupLinkPreview | null>;
 
 export type Resolved<T> = { status: "FOUND"; code: string; preview: T } | { status: "NOT_FOUND"; code: string | null } | { status: "UNAVAILABLE"; code: string };
@@ -63,6 +100,24 @@ export function syllabusPathCode(urlPath: string): { code: string | null } | nul
   return match && { code: match.segment === null ? null : normalizeShareCode(match.segment) };
 }
 
+/** The share code of a `/task/<code>` path (any case), or null for every other path. */
+export function taskPathCode(urlPath: string): { code: string | null } | null {
+  const match = pathSegment(urlPath, "task");
+  return match && { code: match.segment === null ? null : normalizeTaskMaterialCode(match.segment) };
+}
+
+/** The share code of a `/material/<code>` path (any case), or null for every other path. */
+export function materialPathCode(urlPath: string): { code: string | null } | null {
+  const match = pathSegment(urlPath, "material");
+  return match && { code: match.segment === null ? null : normalizeTaskMaterialCode(match.segment) };
+}
+
+/** The share code of an `/exam/<code>` path (any case), or null for every other path. */
+export function examPathCode(urlPath: string): { code: string | null } | null {
+  const match = pathSegment(urlPath, "exam");
+  return match && { code: match.segment === null ? null : normalizeTaskMaterialCode(match.segment) };
+}
+
 /** Same formats the server accepts (groups.ts invite codes, groupInviteLinks.ts / groupEmailInvites.ts tokens). */
 const GROUP_KEYS: Record<GroupLinkKind, { prefix: string; normalize: (s: string) => string | null }> = {
   code: { prefix: "join", normalize: (s) => (/^[A-Za-z0-9_-]{4,32}$/.test(s.trim()) ? s.trim().toUpperCase() : null) },
@@ -85,7 +140,8 @@ export function groupPathKey(urlPath: string): { kind: GroupLinkKind; key: strin
 }
 
 /** Paths whose HTML gets a link-preview head (and `noindex`). */
-export const isLinkPreviewPath = (urlPath: string) => !!syllabusPathCode(urlPath) || !!groupPathKey(urlPath);
+export const isLinkPreviewPath = (urlPath: string) =>
+  !!syllabusPathCode(urlPath) || !!taskPathCode(urlPath) || !!materialPathCode(urlPath) || !!examPathCode(urlPath) || !!groupPathKey(urlPath);
 
 const oneLine = (s: string, max: number) => {
   const t = s.replace(/\s+/g, " ").trim();
@@ -101,6 +157,12 @@ type Text = { title: string; description: string };
 
 const SYLLABUS_NOT_FOUND: Text = { title: "Syllabus link — Resulio", description: "Bu link aktiv deyil və ya tapılmadı." };
 const SYLLABUS_UNAVAILABLE: Text = { title: "Syllabus — Resulio", description: "Resulio-da paylaşılan kurs proqramı. Proqrama baxmaq və qoşulma sorğusu göndərmək üçün linki açın." };
+const TASK_NOT_FOUND: Text = { title: "Tapşırıq linki — Resulio", description: "Bu link aktiv deyil və ya tapılmadı." };
+const TASK_UNAVAILABLE: Text = { title: "Tapşırıq — Resulio", description: "Resulio-da paylaşılan tapşırıq. Təfərrüatlara baxmaq üçün linki açın." };
+const MATERIAL_NOT_FOUND: Text = { title: "Material linki — Resulio", description: "Bu link aktiv deyil və ya tapılmadı." };
+const MATERIAL_UNAVAILABLE: Text = { title: "Material — Resulio", description: "Resulio-da paylaşılan material. Təfərrüatlara baxmaq üçün linki açın." };
+const EXAM_NOT_FOUND: Text = { title: "İmtahan linki — Resulio", description: "Bu link aktiv deyil və ya tapılmadı." };
+const EXAM_UNAVAILABLE: Text = { title: "İmtahan — Resulio", description: "Resulio-da paylaşılan imtahan. Təfərrüatlara baxmaq üçün linki açın." };
 const GROUP_NOT_FOUND: Text = { title: "Qrup linki — Resulio", description: "Bu link aktiv deyil və ya tapılmadı." };
 const GROUP_UNAVAILABLE: Text = { title: "Qrup dəvəti — Resulio", description: "Resulio-da qrupa dəvət. Qrupa qoşulmaq üçün linkə daxil olun." };
 
@@ -112,6 +174,41 @@ export function syllabusPreviewText(p: SyllabusPreview): Text {
   return {
     title: syllabusPageTitle(oneLine(p.title, 100)),
     description: sentences([facts, teacher && `Müəllim: ${teacher}`, "Proqrama baxın və qoşulma sorğusu göndərin"]),
+  };
+}
+
+/** "<description>. Müəllim: X. Tapşırığa baxın." — falls back to the teacher + CTA alone when the
+ *  task has no description, same shape as the syllabus/group previews. This is the whole point of
+ *  the fix: the task's OWN title/description, not the site-wide "Resulio — onlayn imtahan …" card. */
+export function taskPreviewText(p: TaskPreview): Text {
+  const teacher = oneLine(p.teacherName, 80);
+  const desc = oneLine(p.description, 200);
+  return {
+    title: taskPageTitle(oneLine(p.title, 100)),
+    description: sentences([desc, teacher && `Müəllim: ${teacher}`, "Tapşırığa baxın"]),
+  };
+}
+
+/** Same shape as taskPreviewText; falls back to "Fənn: X · Mövzu: Y" facts when the material has no
+ *  description of its own. */
+export function materialPreviewText(p: MaterialPreview): Text {
+  const teacher = oneLine(p.teacherName, 80);
+  const desc = oneLine(p.description, 200);
+  const facts = [p.subject && `Fənn: ${oneLine(p.subject, 60)}`, p.topic && `Mövzu: ${oneLine(p.topic, 60)}`].filter(Boolean).join(" · ");
+  return {
+    title: materialPageTitle(oneLine(p.title, 100)),
+    description: sentences([desc || facts, teacher && `Müəllim: ${teacher}`, "Materiala baxın"]),
+  };
+}
+
+/** Same shape as taskPreviewText; falls back to "Fənn: X" when the exam has no description. */
+export function examPreviewText(p: ExamPreview): Text {
+  const teacher = oneLine(p.teacherName, 80);
+  const desc = oneLine(p.description, 200);
+  const subject = p.subject && `Fənn: ${oneLine(p.subject, 60)}`;
+  return {
+    title: examPageTitle(oneLine(p.title, 100)),
+    description: sentences([desc || subject, teacher && `Müəllim: ${teacher}`, "İmtahana baxın"]),
   };
 }
 
@@ -163,6 +260,21 @@ export type PreviewHead = ReturnType<typeof previewHead>;
 export function syllabusPreviewHead(result: PreviewResult, origin = publicAppUrl()): PreviewHead {
   const text = result.status === "FOUND" ? syllabusPreviewText(result.preview) : result.status === "NOT_FOUND" ? SYLLABUS_NOT_FOUND : SYLLABUS_UNAVAILABLE;
   return previewHead(text, result.code ? syllabusSharePath(result.code) : null, origin);
+}
+
+export function taskPreviewHead(result: Resolved<TaskPreview>, origin = publicAppUrl()): PreviewHead {
+  const text = result.status === "FOUND" ? taskPreviewText(result.preview) : result.status === "NOT_FOUND" ? TASK_NOT_FOUND : TASK_UNAVAILABLE;
+  return previewHead(text, result.code ? `/task/${encodeURIComponent(result.code)}` : null, origin);
+}
+
+export function materialPreviewHead(result: Resolved<MaterialPreview>, origin = publicAppUrl()): PreviewHead {
+  const text = result.status === "FOUND" ? materialPreviewText(result.preview) : result.status === "NOT_FOUND" ? MATERIAL_NOT_FOUND : MATERIAL_UNAVAILABLE;
+  return previewHead(text, result.code ? `/material/${encodeURIComponent(result.code)}` : null, origin);
+}
+
+export function examPreviewHead(result: Resolved<ExamPreview>, origin = publicAppUrl()): PreviewHead {
+  const text = result.status === "FOUND" ? examPreviewText(result.preview) : result.status === "NOT_FOUND" ? EXAM_NOT_FOUND : EXAM_UNAVAILABLE;
+  return previewHead(text, result.code ? `/exam/${encodeURIComponent(result.code)}` : null, origin);
 }
 
 /** og:url only for the group's own invite code; secret tokens (`/g/`, `/invite/`) are not repeated in the page. */
@@ -219,19 +331,25 @@ const unconfigured = async <T>(code: string | null): Promise<Resolved<T>> => (co
 
 export interface PreviewSources {
   syllabusPreview?: PreviewLookup;
+  taskPreview?: TaskPreviewLookup;
+  materialPreview?: MaterialPreviewLookup;
+  examPreview?: ExamPreviewLookup;
   groupPreview?: GroupPreviewLookup;
 }
 
 /** Resolvers per link type, each with its own timeout and cache. */
 export function previewResolvers(sources: PreviewSources, opts?: Parameters<typeof previewResolver>[1]) {
   const syllabus: Resolver<SyllabusPreview> = sources.syllabusPreview ? previewResolver(sources.syllabusPreview, opts) : unconfigured;
+  const task: Resolver<TaskPreview> = sources.taskPreview ? previewResolver(sources.taskPreview, opts) : unconfigured;
+  const material: Resolver<MaterialPreview> = sources.materialPreview ? previewResolver(sources.materialPreview, opts) : unconfigured;
+  const exam: Resolver<ExamPreview> = sources.examPreview ? previewResolver(sources.examPreview, opts) : unconfigured;
   const group = Object.fromEntries(
     GROUP_LINK_KINDS.map((kind) => {
       const source = sources.groupPreview;
       return [kind, source ? previewResolver<GroupLinkPreview>((key) => source(kind, key), opts) : unconfigured];
     }),
   ) as Record<GroupLinkKind, Resolver<GroupLinkPreview>>;
-  return { syllabus, group };
+  return { syllabus, task, material, exam, group };
 }
 export type PreviewResolvers = ReturnType<typeof previewResolvers>;
 
@@ -246,6 +364,27 @@ export function parsePreview(raw: unknown): SyllabusPreview | null {
   const duration: SyllabusPreview["duration"] = unit && typeof d?.value === "number" && Number.isFinite(d.value) && d.value > 0 ? { value: d.value, unit } : null;
   const moduleCount = typeof r.moduleCount === "number" && Number.isInteger(r.moduleCount) && r.moduleCount >= 0 ? r.moduleCount : 0;
   return { title: str(r.title, 255), subject: str(r.subject, 255), moduleCount, duration, durationLabel: str(r.durationLabel, 255), teacherName: str(r.teacherName, 255) };
+}
+
+/** A task preview from untrusted JSON, or null when it is not one. */
+export function parseTaskPreview(raw: unknown): TaskPreview | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  return { title: str(r.title, 255), description: str(r.description, 2000), teacherName: str(r.teacherName, 255) };
+}
+
+/** A material preview from untrusted JSON, or null when it is not one. */
+export function parseMaterialPreview(raw: unknown): MaterialPreview | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  return { title: str(r.title, 255), description: str(r.description, 2000), subject: str(r.subject, 255), topic: str(r.topic, 255), teacherName: str(r.teacherName, 255) };
+}
+
+/** An exam preview from untrusted JSON, or null when it is not one. */
+export function parseExamPreview(raw: unknown): ExamPreview | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  return { title: str(r.title, 255), description: str(r.description, 2000), subject: str(r.subject, 255), teacherName: str(r.teacherName, 255) };
 }
 
 /** A group preview from untrusted JSON, or null when it is not one. */
@@ -277,6 +416,33 @@ export function httpPreviewLookup(apiUrl: string, timeoutMs = PREVIEW_TIMEOUT_MS
   };
 }
 
+/** The frontend service's task lookup: `GET /api/public/task-preview/<code>` on the API. */
+export function httpTaskPreviewLookup(apiUrl: string, timeoutMs = PREVIEW_TIMEOUT_MS): TaskPreviewLookup {
+  const base = apiUrl.replace(/\/+$/, "");
+  return async (code) => {
+    const preview = await fetchPreview(`${base}/api/public/task-preview/${encodeURIComponent(code)}`, timeoutMs);
+    return preview ? parseTaskPreview(preview) : null;
+  };
+}
+
+/** The frontend service's material lookup: `GET /api/public/material-preview/<code>` on the API. */
+export function httpMaterialPreviewLookup(apiUrl: string, timeoutMs = PREVIEW_TIMEOUT_MS): MaterialPreviewLookup {
+  const base = apiUrl.replace(/\/+$/, "");
+  return async (code) => {
+    const preview = await fetchPreview(`${base}/api/public/material-preview/${encodeURIComponent(code)}`, timeoutMs);
+    return preview ? parseMaterialPreview(preview) : null;
+  };
+}
+
+/** The frontend service's exam lookup: `GET /api/public/exam-preview/<code>` on the API. */
+export function httpExamPreviewLookup(apiUrl: string, timeoutMs = PREVIEW_TIMEOUT_MS): ExamPreviewLookup {
+  const base = apiUrl.replace(/\/+$/, "");
+  return async (code) => {
+    const preview = await fetchPreview(`${base}/api/public/exam-preview/${encodeURIComponent(code)}`, timeoutMs);
+    return preview ? parseExamPreview(preview) : null;
+  };
+}
+
 /** The frontend service's group lookup: `GET /api/public/group-preview/<kind>/<key>` on the API. */
 export function httpGroupPreviewLookup(apiUrl: string, timeoutMs = PREVIEW_TIMEOUT_MS): GroupPreviewLookup {
   const base = apiUrl.replace(/\/+$/, "");
@@ -290,6 +456,12 @@ export function httpGroupPreviewLookup(apiUrl: string, timeoutMs = PREVIEW_TIMEO
 export async function linkPreviewHtml(shell: string, urlPath: string, resolvers: PreviewResolvers): Promise<string | null> {
   const syllabus = syllabusPathCode(urlPath);
   if (syllabus) return injectPreviewHead(shell, syllabusPreviewHead(await resolvers.syllabus(syllabus.code)));
+  const task = taskPathCode(urlPath);
+  if (task) return injectPreviewHead(shell, taskPreviewHead(await resolvers.task(task.code)));
+  const material = materialPathCode(urlPath);
+  if (material) return injectPreviewHead(shell, materialPreviewHead(await resolvers.material(material.code)));
+  const exam = examPathCode(urlPath);
+  if (exam) return injectPreviewHead(shell, examPreviewHead(await resolvers.exam(exam.code)));
   const group = groupPathKey(urlPath);
   if (group) return injectPreviewHead(shell, groupPreviewHead(group.kind, await resolvers.group[group.kind](group.key)));
   return null;
