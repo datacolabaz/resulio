@@ -103,6 +103,10 @@ export const questionBank = {
   "qbank.topics.linkSyllabusLabel": ["{name} fənninin syllabusu", "Syllabus of subject {name}", "Силлабус предмета «{name}»"],
   "qbank.topics.moveLabel": ["Fənn:", "Subject:", "Предмет:"],
   "qbank.topics.moduleLabel": ["Modul:", "Module:", "Модуль:"],
+  "qbank.topics.linkSyllabusShort": ["Syllabusa bağla", "Link syllabus", "Привязать силлабус"],
+  "qbank.topics.linkModuleShort": ["Modula bağla", "Link module", "Привязать модуль"],
+  "qbank.topics.toggleSections": ["{name}: bölmələri aç/bağla", "Toggle sections of {name}", "Показать/скрыть разделы «{name}»"],
+  "qbank.topics.moreActions": ["{name} üçün əlavə əməliyyatlar", "More actions for {name}", "Дополнительные действия для «{name}»"],
   "qbank.topics.notEmpty": ["Bölmədə suallar var", "The section has questions", "В разделе есть вопросы"],
   "qbank.topics.deleteSubjectConfirm": [
     "“{name}” fənni və onun boş bölmələri silinsin?",

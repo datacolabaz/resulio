@@ -1,15 +1,17 @@
 import { Loading } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { t } from "@/i18n/messages";
 import { errorText } from "@/lib/format";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
-import { Check, FolderTree, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ArrowRightLeft, BookOpen, Check, ChevronRight, EllipsisVertical, FolderTree, Link2, Pencil, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { bankRef } from "@shared/questionImport";
-import { SectionSummaryButton } from "./SummaryDialog";
+import { SummaryDialog } from "./SummaryDialog";
 
 export type TopicRow = RouterOutputs["teacher"]["questionTopics"]["list"][number];
 
@@ -303,71 +305,114 @@ function TopicActions({ topic, onRename, remove }: { topic: TopicRow; onRename: 
   );
 }
 
+/**
+ * One section. Its two secondary links (which subject it's under, which syllabus module it maps
+ * to) are small toggle buttons, not permanently-open selects: the row reads as a single line of
+ * name + count + actions until the teacher asks to change one of them.
+ */
 function SectionLine({ section, topics, outline }: { section: TopicRow; topics: TopicRow[]; outline: Outline }) {
   const [renaming, setRenaming] = useState(false);
+  const [panel, setPanel] = useState<"NONE" | "MOVE" | "LINK">("NONE");
+  const [summaryOpen, setSummaryOpen] = useState(false);
   const { update, remove } = useTopicMutations(() => setRenaming(false));
+  const linkedModule = section.syllabusModuleId ? outline.flatMap((s) => s.modules).find((m) => m.id === section.syllabusModuleId) : undefined;
   return (
-    <li className="py-2 ps-5">
+    <li className="py-1.5">
       {renaming ? (
-        <div className="flex items-center gap-2">
-          <RenameForm name={section.name} pending={update.isPending} onCancel={() => setRenaming(false)} onSave={(name) => update.mutate({ id: section.id, patch: { name } })} />
-        </div>
+        <RenameForm name={section.name} pending={update.isPending} onCancel={() => setRenaming(false)} onSave={(name) => update.mutate({ id: section.id, patch: { name } })} />
       ) : (
         <>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="min-w-0 flex-1 break-words text-sm">{section.name}</span>
-            <span className="text-xs text-muted-foreground">{t("qbank.topics.count", { count: section.questionCount })}</span>
-            <SectionSummaryButton sectionId={section.id} sectionName={section.name} questionCount={section.questionCount} />
+          <div className="flex items-center gap-1.5">
+            <span className="min-w-0 flex-1 truncate text-sm">{section.name}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">{t("qbank.topics.count", { count: section.questionCount })}</span>
             <TopicActions topic={section} remove={remove} onRename={() => setRenaming(true)} />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" aria-label={t("qbank.topics.moreActions", { name: section.name })}>
+                  <EllipsisVertical className="h-4 w-4" aria-hidden />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  disabled={section.questionCount === 0}
+                  title={section.questionCount === 0 ? t("qbank.summary.needsQuestions") : undefined}
+                  onSelect={() => setSummaryOpen(true)}
+                >
+                  <Sparkles className="h-4 w-4" aria-hidden /> {t("qbank.summary.button")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setPanel((p) => (p === "MOVE" ? "NONE" : "MOVE"))}>
+                  <ArrowRightLeft className="h-4 w-4" aria-hidden /> {t("qbank.topics.moveSection", { name: section.name })}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              {t("qbank.topics.moveLabel")}
-              <select
-                className={smallSelect}
-                aria-label={t("qbank.topics.moveSection", { name: section.name })}
-                value={section.parentId ?? ""}
-                disabled={update.isPending}
-                onChange={(e) => update.mutate({ id: section.id, patch: { parentId: e.target.value } })}
-              >
-                {subjectsOf(topics).map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              {t("qbank.topics.moduleLabel")}
-              <select
-                className={smallSelect}
-                aria-label={t("qbank.topics.linkModuleLabel", { name: section.name })}
-                value={section.syllabusModuleId ?? ""}
-                disabled={update.isPending}
-                onChange={(e) => update.mutate({ id: section.id, patch: { syllabusModuleId: e.target.value || null } })}
-              >
-                <option value="">{t("qbank.topics.noLink")}</option>
-                {outline.map((s) => (
-                  <optgroup key={s.id} label={s.title}>
-                    {s.modules.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.title}
+          <div className="mt-0.5">
+            <Button type="button" size="sm" variant="ghost" className="h-6 gap-1 px-1.5 text-xs text-muted-foreground" onClick={() => setPanel((p) => (p === "LINK" ? "NONE" : "LINK"))}>
+              <Link2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span className="truncate">{linkedModule ? linkedModule.title : t("qbank.topics.linkModuleShort")}</span>
+            </Button>
+          </div>
+          {panel !== "NONE" && (
+            <div className="mt-1 flex flex-wrap items-center gap-2 rounded-lg bg-muted p-2">
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                {panel === "MOVE" ? t("qbank.topics.moveLabel") : t("qbank.topics.moduleLabel")}
+                {panel === "MOVE" ? (
+                  <select
+                    className={smallSelect}
+                    aria-label={t("qbank.topics.moveSection", { name: section.name })}
+                    value={section.parentId ?? ""}
+                    disabled={update.isPending}
+                    onChange={(e) => update.mutate({ id: section.id, patch: { parentId: e.target.value } })}
+                  >
+                    {subjectsOf(topics).map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
                       </option>
                     ))}
-                  </optgroup>
-                ))}
-              </select>
-            </label>
-          </div>
+                  </select>
+                ) : (
+                  <select
+                    className={smallSelect}
+                    aria-label={t("qbank.topics.linkModuleLabel", { name: section.name })}
+                    value={section.syllabusModuleId ?? ""}
+                    disabled={update.isPending}
+                    onChange={(e) => update.mutate({ id: section.id, patch: { syllabusModuleId: e.target.value || null } })}
+                  >
+                    <option value="">{t("qbank.topics.noLink")}</option>
+                    {outline.map((s) => (
+                      <optgroup key={s.id} label={s.title}>
+                        {s.modules.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.title}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                )}
+              </label>
+              <Button type="button" size="icon" variant="ghost" className="h-7 w-7 shrink-0" aria-label={t("common.cancel")} onClick={() => setPanel("NONE")}>
+                <X className="h-4 w-4" aria-hidden />
+              </Button>
+            </div>
+          )}
         </>
       )}
+      {summaryOpen && <SummaryDialog sectionId={section.id} sectionName={section.name} onClose={() => setSummaryOpen(false)} />}
     </li>
   );
 }
 
+/**
+ * One subject card: name, roll-up question count, its own syllabus link (same small-toggle
+ * pattern as a section's module link), and a collapsible tree of its sections. Collapsing hides
+ * the sections, not the card itself, so "Bölmə əlavə et" always stays reachable.
+ */
 function SubjectBlock({ subject, topics, outline }: { subject: TopicRow; topics: TopicRow[]; outline: Outline }) {
   const [renaming, setRenaming] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [linking, setLinking] = useState(false);
+  const [open, setOpen] = useState(true);
   const refresh = useRefreshTopics();
   const { update, remove } = useTopicMutations(() => setRenaming(false));
   const create = trpc.teacher.questionTopics.create.useMutation({
@@ -379,54 +424,84 @@ function SubjectBlock({ subject, topics, outline }: { subject: TopicRow; topics:
     onError: (e) => toast.error(errorText(e)),
   });
   const sections = sectionsOf(topics, subject.id);
+  const linkedSyllabus = subject.syllabusId ? outline.find((s) => s.id === subject.syllabusId) : undefined;
   return (
-    <li className="py-2">
-      <div className="flex flex-wrap items-center gap-2">
-        {renaming ? (
-          <RenameForm name={subject.name} pending={update.isPending} onCancel={() => setRenaming(false)} onSave={(name) => update.mutate({ id: subject.id, patch: { name } })} />
-        ) : (
-          <>
-            <span className="min-w-0 flex-1 break-words text-sm font-semibold">{subject.name}</span>
-            <span className="text-xs text-muted-foreground">{t("qbank.topics.count", { count: subject.questionCount })}</span>
-            <TopicActions topic={subject} remove={remove} onRename={() => setRenaming(true)} />
-          </>
+    <div className="rounded-xl border border-border bg-card p-3">
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <div className="flex items-center gap-1.5">
+          {sections.length > 0 ? (
+            <CollapsibleTrigger asChild>
+              <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0" aria-label={t("qbank.topics.toggleSections", { name: subject.name })}>
+                <ChevronRight className={`h-4 w-4 transition-transform ${open ? "rotate-90" : ""}`} aria-hidden />
+              </Button>
+            </CollapsibleTrigger>
+          ) : (
+            <span className="w-8 shrink-0" aria-hidden />
+          )}
+          {renaming ? (
+            <RenameForm name={subject.name} pending={update.isPending} onCancel={() => setRenaming(false)} onSave={(name) => update.mutate({ id: subject.id, patch: { name } })} />
+          ) : (
+            <>
+              <FolderTree className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+              <span className="min-w-0 flex-1 truncate text-sm font-semibold">{subject.name}</span>
+              <span className="shrink-0 text-xs text-muted-foreground">{t("qbank.topics.count", { count: subject.questionCount })}</span>
+              <TopicActions topic={subject} remove={remove} onRename={() => setRenaming(true)} />
+            </>
+          )}
+        </div>
+        {!renaming && (
+          <div className="ms-10 mt-0.5">
+            <Button type="button" size="sm" variant="ghost" className="h-6 gap-1 px-1.5 text-xs text-muted-foreground" onClick={() => setLinking((v) => !v)}>
+              <Link2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span className="truncate">{linkedSyllabus ? linkedSyllabus.title : t("qbank.topics.linkSyllabusShort")}</span>
+            </Button>
+          </div>
         )}
-      </div>
-      {!renaming && (
-        <label className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-          {t("qbank.topics.link")}
-          <select
-            className={smallSelect}
-            aria-label={t("qbank.topics.linkSyllabusLabel", { name: subject.name })}
-            value={subject.syllabusId ?? ""}
-            disabled={update.isPending}
-            onChange={(e) => update.mutate({ id: subject.id, patch: { syllabusId: e.target.value || null } })}
-          >
-            <option value="">{t("qbank.topics.noLink")}</option>
-            {outline.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.title}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      <ul className="divide-y">
-        {sections.map((x) => (
-          <SectionLine key={x.id} section={x} topics={topics} outline={outline} />
-        ))}
-      </ul>
-      <div className="ps-5 pt-1">
-        {adding ? (
-          <InlineCreate label={t("qbank.newSectionName")} pending={create.isPending} onCreate={(name) => create.mutate({ name, parentId: subject.id })} onCancel={() => setAdding(false)} />
-        ) : (
-          <Button size="sm" variant="ghost" onClick={() => setAdding(true)}>
-            <Plus className="h-4 w-4" aria-hidden />
-            {t("qbank.topics.addSection")}
-          </Button>
+        {linking && !renaming && (
+          <div className="ms-10 mt-1 flex flex-wrap items-center gap-2 rounded-lg bg-muted p-2">
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              {t("qbank.topics.link")}
+              <select
+                className={smallSelect}
+                aria-label={t("qbank.topics.linkSyllabusLabel", { name: subject.name })}
+                value={subject.syllabusId ?? ""}
+                disabled={update.isPending}
+                onChange={(e) => update.mutate({ id: subject.id, patch: { syllabusId: e.target.value || null } })}
+              >
+                <option value="">{t("qbank.topics.noLink")}</option>
+                {outline.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Button type="button" size="icon" variant="ghost" className="h-7 w-7 shrink-0" aria-label={t("common.cancel")} onClick={() => setLinking(false)}>
+              <X className="h-4 w-4" aria-hidden />
+            </Button>
+          </div>
         )}
-      </div>
-    </li>
+        {sections.length > 0 && (
+          <CollapsibleContent>
+            <ul className="mt-1 ms-4 border-s border-border ps-3 sm:ps-4">
+              {sections.map((x) => (
+                <SectionLine key={x.id} section={x} topics={topics} outline={outline} />
+              ))}
+            </ul>
+          </CollapsibleContent>
+        )}
+        <div className="pt-1.5 ps-4 sm:ps-10">
+          {adding ? (
+            <InlineCreate label={t("qbank.newSectionName")} pending={create.isPending} onCreate={(name) => create.mutate({ name, parentId: subject.id })} onCancel={() => setAdding(false)} />
+          ) : (
+            <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setAdding(true)}>
+              <Plus className="h-4 w-4" aria-hidden />
+              {t("qbank.topics.addSection")}
+            </Button>
+          )}
+        </div>
+      </Collapsible>
+    </div>
   );
 }
 
@@ -525,7 +600,7 @@ export function TopicManagerDialog({ open, onOpenChange }: { open: boolean; onOp
   }, [open]);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FolderTree className="h-5 w-5" aria-hidden />
@@ -542,7 +617,7 @@ export function TopicManagerDialog({ open, onOpenChange }: { open: boolean; onOp
               </Button>
               {outline.length > 0 && (
                 <Button type="button" variant="outline" size="sm" onClick={() => setPanel("SYLLABUS")}>
-                  <FolderTree className="h-4 w-4" aria-hidden />
+                  <BookOpen className="h-4 w-4" aria-hidden />
                   {t("qbank.topics.fromSyllabus")}
                 </Button>
               )}
@@ -559,11 +634,11 @@ export function TopicManagerDialog({ open, onOpenChange }: { open: boolean; onOp
           ) : !list.length ? (
             <p className="text-sm text-muted-foreground">{t("qbank.topics.empty")}</p>
           ) : (
-            <ul className="divide-y">
+            <div className="space-y-2">
               {subjectsOf(list).map((s) => (
                 <SubjectBlock key={s.id} subject={s} topics={list} outline={outline} />
               ))}
-            </ul>
+            </div>
           )}
         </DialogBody>
       </DialogContent>
