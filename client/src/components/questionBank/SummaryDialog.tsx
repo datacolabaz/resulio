@@ -1,9 +1,10 @@
+import { CompactGroupStudentPicker, useGroupStudentTargets } from "@/components/GroupStudentPicker";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { t } from "@/i18n/messages";
 import { errorText } from "@/lib/format";
+import { recipientsPayload } from "@/lib/groupStudentSelection";
 import { trpc } from "@/lib/trpc";
 import { Loader2, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -11,8 +12,9 @@ import { toast } from "sonner";
 
 /**
  * "AI konspekt": drafts a study note from one bank section's own questions, lets the teacher edit
- * it, then saves it as a material for the groups they pick. The AI output is never sent to
- * students unreviewed -- draft and publish are two separate steps the teacher triggers themselves.
+ * it, then saves it as a material for the groups/students they pick -- the same recipient picker
+ * every other material uses. The AI output is never sent to students unreviewed -- draft and
+ * publish are two separate steps the teacher triggers themselves.
  */
 export function SectionSummaryButton({ sectionId, sectionName, questionCount }: { sectionId: string; sectionName: string; questionCount: number }) {
   const [open, setOpen] = useState(false);
@@ -26,10 +28,9 @@ export function SectionSummaryButton({ sectionId, sectionName, questionCount }: 
   );
 }
 
-function SummaryDialog({ sectionId, sectionName, onClose }: { sectionId: string; sectionName: string; onClose: () => void }) {
+export function SummaryDialog({ sectionId, sectionName, onClose }: { sectionId: string; sectionName: string; onClose: () => void }) {
   const [text, setText] = useState("");
-  const [groupIds, setGroupIds] = useState<string[]>([]);
-  const groupsQuery = trpc.teacher.groups.list.useQuery();
+  const targets = useGroupStudentTargets(undefined);
   const draft = trpc.teacher.questionSummary.draft.useMutation({
     onSuccess: (r) => setText(r.text),
     onError: (e) => {
@@ -51,7 +52,8 @@ function SummaryDialog({ sectionId, sectionName, onClose }: { sectionId: string;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sectionId]);
 
-  const toggleGroup = (id: string, checked: boolean) => setGroupIds((cur) => (checked ? [...cur, id] : cur.filter((x) => x !== id)));
+  const recipients = recipientsPayload(targets.selection, targets.students, { kept: targets.kept });
+  const hasRecipients = recipients.groupIds.length > 0 || recipients.studentIds.length > 0;
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
@@ -71,18 +73,19 @@ function SummaryDialog({ sectionId, sectionName, onClose }: { sectionId: string;
               <Button size="sm" variant="ghost" className="w-fit" disabled={draft.isPending} onClick={() => draft.mutate({ sectionId })}>
                 <Sparkles className="h-4 w-4" aria-hidden /> {t("qbank.summary.regenerate")}
               </Button>
-              <div className="grid gap-2">
-                <span className="text-sm font-medium">{t("qbank.summary.recipients")}</span>
-                <div className="grid max-h-40 gap-1.5 overflow-y-auto rounded-lg border border-input p-2">
-                  {(groupsQuery.data ?? []).length === 0 && <span className="text-sm text-muted-foreground">{t("qbank.summary.noGroups")}</span>}
-                  {(groupsQuery.data ?? []).map((g) => (
-                    <label key={g.id} className="flex items-center gap-2 text-sm">
-                      <Checkbox checked={groupIds.includes(g.id)} onCheckedChange={(v) => toggleGroup(g.id, v === true)} />
-                      {g.name}
-                    </label>
-                  ))}
-                </div>
-              </div>
+              {targets.ready && (
+                <section className="grid gap-2 border-t pt-3">
+                  <h3 className="text-sm font-semibold">{t("modules.materialSharing")}</h3>
+                  <CompactGroupStudentPicker
+                    groups={targets.groups}
+                    students={targets.students}
+                    value={targets.selection}
+                    onChange={targets.setSelection}
+                    keptCount={targets.kept.length}
+                    hints={{ whole: t("modules.materialGroupWhole"), partial: t("modules.materialGroupPartial") }}
+                  />
+                </section>
+              )}
             </>
           )}
         </DialogBody>
@@ -90,7 +93,7 @@ function SummaryDialog({ sectionId, sectionName, onClose }: { sectionId: string;
           <Button variant="ghost" onClick={onClose}>
             {t("common.cancel")}
           </Button>
-          <Button disabled={draft.isPending || publish.isPending || !text.trim() || !groupIds.length} onClick={() => publish.mutate({ sectionId, text, groupIds })}>
+          <Button disabled={draft.isPending || publish.isPending || !text.trim() || !hasRecipients} onClick={() => publish.mutate({ sectionId, text, ...recipients })}>
             {publish.isPending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />} {t("qbank.summary.publish")}
           </Button>
         </DialogFooter>

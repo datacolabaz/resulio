@@ -115,6 +115,7 @@ export interface PublishSummaryInput {
   /** The teacher's (possibly edited) draft text. */
   text: string;
   groupIds: string[];
+  studentIds: number[];
 }
 
 const slug = (name: string) =>
@@ -129,7 +130,7 @@ export async function publishSectionSummary(scope: TeacherScope, input: PublishS
   const section = await guardBankTables(() => ownedSection(scope, input.sectionId));
   const text = input.text.trim().slice(0, SUMMARY_MAX_TEXT_CHARS);
   if (!text) throw new AppError("MATERIAL_SOURCE_REQUIRED");
-  if (!input.groupIds.length) throw new AppError("TASK_GROUPS_REQUIRED");
+  if (!input.groupIds.length && !input.studentIds.length) throw new AppError("MATERIAL_RECIPIENTS_REQUIRED");
 
   const buffer = Buffer.from(text, "utf8");
   const fileName = `konspekt-${slug(section.name)}.txt`;
@@ -147,7 +148,7 @@ export async function publishSectionSummary(scope: TeacherScope, input: PublishS
       mimeType: saved.mimeType,
       sizeBytes: saved.size,
       groupIds: input.groupIds,
-      studentIds: [],
+      studentIds: input.studentIds,
     },
     { details: { template: "GENERAL", kind: "FILE", values: { topics: [section.name] } }, status: "PUBLISHED", notify: true },
   );

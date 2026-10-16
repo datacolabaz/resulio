@@ -108,6 +108,13 @@ export const questionSummaryRouter = router({
     .mutation(({ ctx, input }) => summary.draftSectionSummary(ctx.scope, input.sectionId)),
   publish: bankProcedure
     .use(rateLimit("questionSummaryPublish", 20, MINUTE))
-    .input(z.object({ sectionId: entityId, text: z.string().trim().min(1).max(12_000), groupIds: z.array(entityId).min(1).max(50) }))
+    .input(
+      z.object({
+        sectionId: entityId,
+        text: z.string().trim().min(1).max(12_000),
+        groupIds: z.array(entityId).max(50).default([]),
+        studentIds: z.array(z.number().int().positive()).max(500).default([]),
+      }),
+    )
     .mutation(({ ctx, input }) => summary.publishSectionSummary(ctx.scope, input)),
 });

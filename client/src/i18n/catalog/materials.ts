@@ -199,6 +199,7 @@ export const materials = {
   "material.card.minutes": ["{count} dəq", "{count} min", "{count} мин"],
 
   "error.MATERIAL_SOURCE_REQUIRED": ["Fayl və ya link əlavə edin (ikisindən yalnız biri).", "Add a file or a link (only one of them).", "Добавьте файл или ссылку (только что-то одно)."],
+  "error.MATERIAL_RECIPIENTS_REQUIRED": ["Ən azı bir qrup və ya tələbə seçin.", "Choose at least one group or student.", "Выберите хотя бы одну группу или ученика."],
   "error.MATERIAL_NOT_AVAILABLE": ["Bu material hələ paylaşılmayıb.", "This material has not been shared yet.", "Этот материал ещё не опубликован."],
   "error.MATERIAL_RESTRICTED": ["Bu material yalnız seçilmiş tələbələr üçündür.", "This material is only for the chosen students.", "Этот материал только для выбранных студентов."],
   "error.DIRECT_UPLOAD_UNAVAILABLE": ["Böyük faylları yükləmək hazırda mümkün deyil (maks. 8 MB).", "Large uploads are not available right now (max 8 MB).", "Загрузка больших файлов сейчас недоступна (макс. 8 МБ)."],

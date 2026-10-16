@@ -83,9 +83,9 @@ export const questionBank = {
   "qbank.topics.title": ["Fənlər və bölmələr", "Subjects and sections", "Предметы и разделы"],
   "qbank.topics.manage": ["Fənlər və bölmələr", "Subjects and sections", "Предметы и разделы"],
   "qbank.topics.help": [
-    "Bank fənlərə, fənlər isə bölmələrə (modul, mövzu) bölünür. Hər sual bir bölmədədir və orada öz nömrəsini alır, məsələn: İnformatika / İnformasiya prosesləri / #12. Nömrələr təkrar verilmir.",
-    "The bank is organised by subject, and each subject into sections (modules, topics). Every question sits in one section and has its own number there, e.g. Computer Science / Information processes / #12. Numbers are never reused.",
-    "Банк делится на предметы, а предметы на разделы (модули, темы). Каждый вопрос находится в одном разделе и имеет там свой номер, например: Информатика / Информационные процессы / #12. Номера не используются повторно.",
+    "Bank fənlərə, fənlər isə bölmələrə bölünür. Hər sual bir bölmədədir və orada öz nömrəsini alır, məsələn: İnformatika / İnformasiya prosesləri / #12. Nömrələr təkrar verilmir.",
+    "The bank is organised by subject, and each subject into sections. Every question sits in one section and has its own number there, e.g. Computer Science / Information processes / #12. Numbers are never reused.",
+    "Банк делится на предметы, а предметы на разделы. Каждый вопрос находится в одном разделе и имеет там свой номер, например: Информатика / Информационные процессы / #12. Номера не используются повторно.",
   ],
   "qbank.topics.empty": [
     "Hələ fənn yoxdur. Fənn yaradın və ya syllabusdan gətirin.",
@@ -358,6 +358,8 @@ export const questionBank = {
   "qbank.summary.regenerate": ["Yenidən yarat", "Regenerate", "Создать заново"],
   "qbank.summary.recipients": ["Hansı qruplara göndərilsin?", "Send to which groups?", "Каким группам отправить?"],
   "qbank.summary.noGroups": ["Hələ qrup yoxdur.", "No groups yet.", "Пока нет групп."],
-  "qbank.summary.publish": ["Qrupa göndər", "Send to group", "Отправить группе"],
+  "qbank.summary.publish": ["Göndər", "Send", "Отправить"],
   "qbank.summary.published": ["Konspekt material kimi göndərildi.", "The summary was sent as a material.", "Конспект отправлен как материал."],
+  "qbank.summary.pickSection": ["Hansı bölmədən?", "From which section?", "Из какого раздела?"],
+  "qbank.summary.fromMaterials": ["AI-dan konspekt", "AI summary", "AI-конспект"],
 } as const satisfies Record<string, Entry>;

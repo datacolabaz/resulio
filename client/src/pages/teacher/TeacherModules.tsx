@@ -4,6 +4,7 @@ import { MultiFileUpload } from "@/components/FileUpload";
 import { GroupStudentPicker, useGroupStudentTargets } from "@/components/GroupStudentPicker";
 import { MaterialFormDialog, type MaterialInitial } from "@/components/materials/MaterialFormDialog";
 import { MaterialLinkButton, MaterialMeta } from "@/components/materials/MaterialMeta";
+import { SummaryDialog } from "@/components/questionBank/SummaryDialog";
 import { draftFromQuestion, QuestionEditor } from "@/components/QuestionEditor";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ShareBox, ShareFunnelSummary } from "@/components/ShareBox";
@@ -590,15 +591,47 @@ function MaterialsTab() {
   const [editing, setEditing] = useState<MaterialInitial | null>(null);
   const [shareId, setShareId] = useState<string | null>(null);
   const [activityId, setActivityId] = useState<string | null>(null);
+  const [aiPicking, setAiPicking] = useState(false);
+  const [aiSection, setAiSection] = useState<{ id: string; name: string } | null>(null);
+  const topics = useTopics();
   const activityQ = trpc.teacher.tasks.materialActivity.useQuery({ id: activityId ?? "" }, { enabled: !!activityId });
   const shareFunnelQ = trpc.teacher.tasks.materialShareFunnel.useQuery({ id: shareId ?? "" }, { enabled: !!shareId, refetchInterval: 30_000 });
   const remove = trpc.teacher.tasks.removeMaterial.useMutation({
     onSuccess: () => void utils.teacher.tasks.materials.invalidate(),
     onError: (e) => toast.error(errorText(e)),
   });
+  const pickAiSection = (sectionId: string) => {
+    const section = (topics.data ?? []).find((s) => s.id === sectionId);
+    if (!section) return;
+    if (!section.questionCount) {
+      toast.error(t("qbank.summary.needsQuestions"));
+      return;
+    }
+    setAiSection({ id: section.id, name: section.name });
+    setAiPicking(false);
+  };
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-end gap-3">
+        {aiPicking ? (
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <SectionSelect
+              topics={topics.data ?? []}
+              value=""
+              onChange={pickAiSection}
+              emptyLabel={t("qbank.summary.pickSection")}
+              ariaLabel={t("qbank.summary.pickSection")}
+              className={filterSelect}
+            />
+            <Button size="sm" variant="ghost" onClick={() => setAiPicking(false)}>
+              {t("common.cancel")}
+            </Button>
+          </div>
+        ) : (
+          <Button variant="outline" onClick={() => setAiPicking(true)}>
+            <Sparkles className="mr-1 h-4 w-4" aria-hidden /> {t("qbank.summary.fromMaterials")}
+          </Button>
+        )}
         <Button onClick={() => setOpen(true)}>{t("modules.newMaterial")}</Button>
       </div>
       {!list.data?.length ? <EmptyState title={t("modules.noMaterials")} body={t("modules.noMaterialsBody")} /> : (
@@ -682,6 +715,7 @@ function MaterialsTab() {
       )}
       {open && <MaterialFormDialog open onOpenChange={setOpen} />}
       {editing && <MaterialFormDialog open onOpenChange={(v) => !v && setEditing(null)} initial={editing} />}
+      {aiSection && <SummaryDialog sectionId={aiSection.id} sectionName={aiSection.name} onClose={() => setAiSection(null)} />}
     </div>
   );
 }
