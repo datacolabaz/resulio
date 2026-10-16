@@ -467,14 +467,17 @@ export async function assessmentActivityCards(scope: TeacherScope) {
 
 /** Records a MATERIAL_VIEWED/ASSIGNMENT_VIEWED event the first time each item is seen by this
  *  student, in one batched existence check + one batched insert. Safe to call on every list
- *  fetch — after the first time, it's a single SELECT with nothing to insert. */
+ *  fetch — after the first time, it's a single SELECT with nothing to insert. Returns the ids
+ *  that had never been seen before THIS call — i.e. the ones this very fetch is the first view
+ *  of, which is what a "Yeni" badge keys off (it must come from the pre-insert check, not from
+ *  whether the row exists now, since this call itself just created it). */
 async function markFirstViews(
   entityType: Extract<ActivityEntityType, "MATERIAL" | "ASSIGNMENT">,
   eventType: Extract<ActivityEventType, "MATERIAL_VIEWED" | "ASSIGNMENT_VIEWED">,
   items: { id: string; providerWorkspaceId: string }[],
   studentId: number,
-) {
-  if (!items.length) return;
+): Promise<Set<string>> {
+  if (!items.length) return new Set();
   const db = requireDb();
   const ids = items.map((m) => m.id);
   const existing = await db
@@ -490,7 +493,7 @@ async function markFirstViews(
     );
   const seen = new Set(existing.map((e) => e.entityId));
   const toInsert = items.filter((m) => !seen.has(m.id));
-  if (!toInsert.length) return;
+  if (!toInsert.length) return new Set();
   await db.insert(studentActivityEvents).values(
     toInsert.map((m) => ({
       userId: studentId,
@@ -501,6 +504,7 @@ async function markFirstViews(
       eventType,
     })),
   );
+  return new Set(toInsert.map((m) => m.id));
 }
 
 export const markMaterialsViewed = (items: { id: string; providerWorkspaceId: string }[], studentId: number) =>

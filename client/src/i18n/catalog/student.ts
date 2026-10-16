@@ -90,6 +90,7 @@ export const student = {
   "student.noTasksBody": ["Müəlliminiz tapşırıq göndərdikdə burada görünəcək.", "Assignments appear here when your teacher sends them.", "Задания появятся, когда преподаватель их отправит."],
   "student.late": ["Gecikmə ilə", "Submitted late", "С опозданием"],
   "student.onTime": ["Təhvil verilib", "Submitted", "Сдано"],
+  "student.newTask": ["Yeni", "New", "Новое"],
   "student.submittedFiles": ["Göndərilən fayl(lar): {names}", "Submitted file(s): {names}", "Отправленные файлы: {names}"],
   "student.noMaterials": ["Material yoxdur", "No materials", "Материалов нет"],
   "student.noMaterialsBody": ["Müəlliminiz material paylaşdıqda burada görünəcək.", "Materials appear here when your teacher shares them.", "Материалы появятся, когда преподаватель ими поделится."],

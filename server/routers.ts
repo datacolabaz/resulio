@@ -963,8 +963,11 @@ const studentRouter = router({
     }),
   tasks: studentProcedure.query(async ({ ctx }) => {
     const rows = await tasks.studentAssignments(ctx.user.id, await groups.activeGroupIdsOfStudent(ctx.user.id));
-    await activity.markAssignmentsViewed(rows.map((r) => ({ id: r.id, providerWorkspaceId: r.providerWorkspaceId })), ctx.user.id);
-    return rows;
+    // firstView holds the ids this very fetch is marking as seen for the first time -- i.e. the
+    // ones that were still unseen a moment ago, which is exactly what "Yeni" means. A task the
+    // student already submitted is never "new" even if this is somehow its first recorded view.
+    const firstView = await activity.markAssignmentsViewed(rows.map((r) => ({ id: r.id, providerWorkspaceId: r.providerWorkspaceId })), ctx.user.id);
+    return rows.map((r) => ({ ...r, isNew: firstView.has(r.id) && !r.submission }));
   }),
   /** Exam progress scoped to one of the student's groups — see analytics.studentGroupProgress. */
   /** Group leaderboard: classmates' names, ranks and first places only. */

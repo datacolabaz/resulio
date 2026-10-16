@@ -603,6 +603,8 @@ export function StudentTasks() {
                 a.submission.status === "LATE"
                   ? <StatusBadge tone="warning">{t("student.late")}</StatusBadge>
                   : <StatusBadge tone="success">{t("student.onTime")}</StatusBadge>
+              ) : a.isNew ? (
+                <StatusBadge tone="info" icon={Sparkles}>{t("student.newTask")}</StatusBadge>
               ) : undefined}
             >
               <p className="break-words text-sm text-foreground-secondary">{a.description}</p>
