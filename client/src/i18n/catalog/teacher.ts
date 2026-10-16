@@ -525,6 +525,9 @@ export const teacher = {
   ],
   "modules.engagementNoAccess": ["girişi yoxdur", "no access", "нет доступа"],
   "modules.engagementNotOpenedMembers": ["Hələ açmayan qrup üzvləri ({count}):", "Group members who haven't opened it yet ({count}):", "Участники групп, ещё не открывшие ({count}):"],
+  "modules.engagementSummaryViewed": ["{count} nəfər görüb", "{count} viewed", "Посмотрели: {count}"],
+  "modules.engagementSummaryDownloaded": ["{count} nəfər yükləyib", "{count} downloaded", "Скачали: {count}"],
+  "modules.engagementSummaryNone": ["Hələ heç kim baxmayıb", "No one has viewed it yet", "Пока никто не смотрел"],
   "modules.accessTitle": ["Kimin girişi var", "Who has access", "Кто имеет доступ"],
   "modules.accessPublic": ["Linki olan hər kəs", "Anyone with the link", "Все, у кого есть ссылка"],
   "modules.accessPublicHint": [

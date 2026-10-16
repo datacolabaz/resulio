@@ -60,6 +60,7 @@ export async function recordShareEvent(e: {
 
 export type ShareEventRow = {
   id: number;
+  targetId: string;
   channel: ShareChannel;
   eventType: ShareEventType;
   actorUserId: number | null;
@@ -73,6 +74,7 @@ export async function shareEventsFor(targetType: ShareTargetType, targetId: stri
   return requireDb()
     .select({
       id: shareEvents.id,
+      targetId: shareEvents.targetId,
       channel: shareEvents.channel,
       eventType: shareEvents.eventType,
       actorUserId: shareEvents.actorUserId,

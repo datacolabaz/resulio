@@ -798,6 +798,8 @@ const teacherTasksRouter = router({
     .mutation(({ ctx, input }) => tasks.gradeSubmission(ctx.scope, input)),
   /** Share funnel (incl. submissions per channel) plus who opened, downloaded and submitted this task. */
   engagement: teacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => activity.taskEngagement(ctx.scope, input.id)),
+  /** Per-task viewed/downloaded counts for every task at once, shown directly on the task cards. */
+  engagementSummary: teacherProcedure.query(({ ctx }) => activity.taskEngagementSummaries(ctx.scope)),
   /** Clicks/opens/joins on this material's share link, broken down by channel. */
   materialShareFunnel: teacherProcedure.input(z.object({ id: entityId })).query(async ({ ctx, input }) => {
     const row = await tasks.materialOf(ctx.scope, input.id);

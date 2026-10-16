@@ -714,3 +714,65 @@ export async function taskEngagement(scope: TeacherScope, taskId: string) {
     anonymous: { visitors: anonymous.visitors.size, opens: anonymous.opens, downloads: anonymous.downloads },
   };
 }
+
+export type TaskEngagementSummary = { taskId: string; viewedCount: number; downloadCount: number };
+
+/**
+ * Glance-level numbers for every task in the workspace at once (how many distinct students opened
+ * it, how many downloaded a file) -- the counts shown directly on the "Tapşırıqlar" cards, without
+ * clicking "Paylaş" or "{count} təslim" first. Two batched queries cover every task (student
+ * dashboard views/downloads, then share-link events for every shareCode together), not one query
+ * per card. Unlike `taskEngagement`, this skips the roster and anonymous-visitor accounting -- it
+ * only counts people who did something, which is all a summary line needs.
+ */
+export async function taskEngagementSummaries(scope: TeacherScope): Promise<TaskEngagementSummary[]> {
+  const db = requireDb();
+  const tasksRows = await tasksModule.listForWorkspace(scope.workspaceId);
+  if (!tasksRows.length) return [];
+  const ownerId = await workspaceOwnerId(scope.workspaceId);
+  const taskIds = tasksRows.map((r) => r.id);
+  const shareCodeToTaskId = new Map(tasksRows.map((r) => [r.shareCode, r.id]));
+  const excludedByTask = new Map(tasksRows.map((r) => [r.id, new Set([scope.userId, r.createdBy, ...(ownerId ? [ownerId] : [])])]));
+
+  const [activityRows, shareRows] = await Promise.all([
+    db
+      .select({ taskId: studentActivityEvents.entityId, userId: studentActivityEvents.userId, eventType: studentActivityEvents.eventType })
+      .from(studentActivityEvents)
+      .where(
+        and(
+          eq(studentActivityEvents.providerWorkspaceId, scope.workspaceId),
+          eq(studentActivityEvents.entityType, "ASSIGNMENT"),
+          inArray(studentActivityEvents.entityId, taskIds),
+          inArray(studentActivityEvents.eventType, ["ASSIGNMENT_VIEWED", "FILE_DOWNLOADED"]),
+        ),
+      ),
+    shareTracking.shareEventsFor(
+      "TASK",
+      tasksRows.map((r) => r.shareCode),
+    ),
+  ]);
+
+  const viewed = new Map<string, Set<number>>();
+  const downloaded = new Map<string, Set<number>>();
+  const add = (map: Map<string, Set<number>>, taskId: string, userId: number) => {
+    if (!map.has(taskId)) map.set(taskId, new Set());
+    map.get(taskId)!.add(userId);
+  };
+
+  for (const a of activityRows) {
+    if (excludedByTask.get(a.taskId)?.has(a.userId)) continue;
+    add(a.eventType === "ASSIGNMENT_VIEWED" ? viewed : downloaded, a.taskId, a.userId);
+  }
+
+  const { userOf } = shareTracking.identifyPeople(shareRows);
+  for (const r of shareRows) {
+    if (r.eventType !== "OPENED" && r.eventType !== "DOWNLOADED") continue;
+    const userId = userOf(r);
+    if (userId === null) continue; // anonymous visitors are skipped in this glance-level summary
+    const taskId = shareCodeToTaskId.get(r.targetId);
+    if (!taskId || excludedByTask.get(taskId)?.has(userId)) continue;
+    add(r.eventType === "OPENED" ? viewed : downloaded, taskId, userId);
+  }
+
+  return tasksRows.map((r) => ({ taskId: r.id, viewedCount: viewed.get(r.id)?.size ?? 0, downloadCount: downloaded.get(r.id)?.size ?? 0 }));
+}

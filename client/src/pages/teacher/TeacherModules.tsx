@@ -24,7 +24,7 @@ import { recipientsPayload } from "@/lib/groupStudentSelection";
 import { fileDownloadUrl } from "@/lib/uploadFile";
 import { trpc } from "@/lib/trpc";
 import { QUESTION_TYPES } from "@shared/assessment";
-import { FileUp, FolderTree, Sparkles } from "lucide-react";
+import { Download, Eye, FileUp, FolderTree, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
@@ -252,6 +252,10 @@ export function AssignmentsPage() {
   const studentByI = new Map((students.data ?? []).map((s) => [s.id, s]));
   const groupsQ = trpc.teacher.groups.list.useQuery();
   const groupNames = new Map((groupsQ.data ?? []).map((g) => [g.id, g.name]));
+  // Glance-level "N görüb / N yükləyib" shown directly on every card, no click needed: one bulk
+  // query for the whole list instead of a per-card lazy fetch.
+  const engagementSummaryQ = trpc.teacher.tasks.engagementSummary.useQuery();
+  const engagementSummaryOf = new Map((engagementSummaryQ.data ?? []).map((s) => [s.taskId, s]));
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<AssignmentInitial | null>(null);
   const [shareId, setShareId] = useState<string | null>(null);
@@ -317,6 +321,27 @@ export function AssignmentsPage() {
                   )}
                   {a.answerKeyState === "GENERATING" && <span className="text-xs text-muted-foreground">{t("modules.answerKeyGenerating")}</span>}
                 </div>
+                {(() => {
+                  const summary = engagementSummaryOf.get(a.id);
+                  if (!summary) return null;
+                  if (!summary.viewedCount && !summary.downloadCount) {
+                    return <p className="mt-2 text-xs text-muted-foreground">{t("modules.engagementSummaryNone")}</p>;
+                  }
+                  return (
+                    <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Eye className="h-3.5 w-3.5" aria-hidden />
+                        {t("modules.engagementSummaryViewed", { count: summary.viewedCount })}
+                      </span>
+                      {summary.downloadCount > 0 && (
+                        <span className="flex items-center gap-1">
+                          <Download className="h-3.5 w-3.5" aria-hidden />
+                          {t("modules.engagementSummaryDownloaded", { count: summary.downloadCount })}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
                 {a.attachments.length > 0 && (
                   <ul className="mt-2 flex flex-wrap gap-1.5">
                     {a.attachments.map((file) => (
