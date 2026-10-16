@@ -174,17 +174,17 @@ function CountCell({ total, unique }: { total: number; unique: number }) {
  * many recipients joined/claimed it ("Qoşulma") and, for tasks, how many of them then submitted.
  * "Direct" collects visits through untagged links (typed by hand, or shared before tagging existed).
  */
-export function ShareFunnelSummary({ data, showSubmitted = false }: { data: ShareFunnel | undefined; showSubmitted?: boolean }) {
+export function ShareFunnelSummary({ data, showSubmitted = false, showOpensAndDownloads = true }: { data: ShareFunnel | undefined; showSubmitted?: boolean; showOpensAndDownloads?: boolean }) {
   if (!data) return null;
   const rows = SHARE_CHANNELS.map((c) => ({ channel: c, ...data.byChannel[c] })).filter(
-    (r) => r.channel !== "DIRECT" || r.opened > 0 || r.downloaded > 0 || r.joined > 0 || r.submitted > 0,
+    (r) => r.channel !== "DIRECT" || r.joined > 0 || (showOpensAndDownloads && (r.opened > 0 || r.downloaded > 0)) || (showSubmitted && r.submitted > 0),
   );
-  const hasAny = data.totals.clicked > 0 || data.totals.opened > 0 || data.totals.downloaded > 0 || data.totals.joined > 0;
+  const hasAny = data.totals.clicked > 0 || data.totals.joined > 0 || (showOpensAndDownloads && (data.totals.opened > 0 || data.totals.downloaded > 0)) || (showSubmitted && data.totals.submitted > 0);
   const cells = (r: ShareChannelStats, isDirect: boolean) => (
     <>
       <td className="py-1">{isDirect ? "—" : r.clicked}</td>
-      <CountCell total={r.opened} unique={r.openedUnique} />
-      <CountCell total={r.downloaded} unique={r.downloadedUnique} />
+      {showOpensAndDownloads && <CountCell total={r.opened} unique={r.openedUnique} />}
+      {showOpensAndDownloads && <CountCell total={r.downloaded} unique={r.downloadedUnique} />}
       <td className="py-1">{r.joined}</td>
       {showSubmitted && <td className="py-1">{r.submitted}</td>}
     </>
@@ -202,8 +202,8 @@ export function ShareFunnelSummary({ data, showSubmitted = false }: { data: Shar
                 <tr className="text-left text-muted-foreground">
                   <th className="py-1 font-normal">{t("share.funnelChannel")}</th>
                   <th className="py-1 font-normal">{t("share.funnelClicked")}</th>
-                  <th className="py-1 font-normal">{t("share.funnelOpened")}</th>
-                  <th className="py-1 font-normal">{t("share.funnelDownloaded")}</th>
+                  {showOpensAndDownloads && <th className="py-1 font-normal">{t("share.funnelOpened")}</th>}
+                  {showOpensAndDownloads && <th className="py-1 font-normal">{t("share.funnelDownloaded")}</th>}
                   <th className="py-1 font-normal">{t("share.funnelJoined")}</th>
                   {showSubmitted && <th className="py-1 font-normal">{t("share.funnelSubmitted")}</th>}
                 </tr>

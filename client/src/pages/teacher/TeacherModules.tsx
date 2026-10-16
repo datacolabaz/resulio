@@ -722,7 +722,7 @@ function MaterialsTab() {
                     tracking={{ targetType: "MATERIAL", targetId: m.shareCode, campaign: "material_share" }}
                     onTracked={() => void shareFunnelQ.refetch()}
                   />
-                  <ShareFunnelSummary data={shareFunnelQ.data} />
+                  <ShareFunnelSummary data={shareFunnelQ.data} showOpensAndDownloads={false} />
                 </div>
               )}
             </Panel>
