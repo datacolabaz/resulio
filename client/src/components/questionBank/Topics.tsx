@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { t } from "@/i18n/messages";
 import { errorText } from "@/lib/format";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
-import { Check, FolderTree, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ArrowRightLeft, Check, FolderTree, Link2, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { bankRef } from "@shared/questionImport";
@@ -314,37 +314,43 @@ function SectionLine({ section, topics, outline }: { section: TopicRow; topics: 
         <>
           <span className="min-w-0 flex-1 break-words text-sm">{section.name}</span>
           <span className="text-xs text-muted-foreground">{t("qbank.topics.count", { count: section.questionCount })}</span>
-          <select
-            className={smallSelect}
-            aria-label={t("qbank.topics.moveSection", { name: section.name })}
-            value={section.parentId ?? ""}
-            disabled={update.isPending}
-            onChange={(e) => update.mutate({ id: section.id, patch: { parentId: e.target.value } })}
-          >
-            {subjectsOf(topics).map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-          <select
-            className={smallSelect}
-            aria-label={t("qbank.topics.linkModuleLabel", { name: section.name })}
-            value={section.syllabusModuleId ?? ""}
-            disabled={update.isPending}
-            onChange={(e) => update.mutate({ id: section.id, patch: { syllabusModuleId: e.target.value || null } })}
-          >
-            <option value="">{t("qbank.topics.noLink")}</option>
-            {outline.map((s) => (
-              <optgroup key={s.id} label={s.title}>
-                {s.modules.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.title}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+          <span className="flex items-center gap-1" title={t("qbank.topics.moveSection", { name: section.name })}>
+            <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+            <select
+              className={smallSelect}
+              aria-label={t("qbank.topics.moveSection", { name: section.name })}
+              value={section.parentId ?? ""}
+              disabled={update.isPending}
+              onChange={(e) => update.mutate({ id: section.id, patch: { parentId: e.target.value } })}
+            >
+              {subjectsOf(topics).map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </span>
+          <span className="flex items-center gap-1" title={t("qbank.topics.linkModuleLabel", { name: section.name })}>
+            <Link2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+            <select
+              className={smallSelect}
+              aria-label={t("qbank.topics.linkModuleLabel", { name: section.name })}
+              value={section.syllabusModuleId ?? ""}
+              disabled={update.isPending}
+              onChange={(e) => update.mutate({ id: section.id, patch: { syllabusModuleId: e.target.value || null } })}
+            >
+              <option value="">{t("qbank.topics.noLink")}</option>
+              {outline.map((s) => (
+                <optgroup key={s.id} label={s.title}>
+                  {s.modules.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.title}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </span>
           <SectionSummaryButton sectionId={section.id} sectionName={section.name} questionCount={section.questionCount} />
           <TopicActions topic={section} remove={remove} onRename={() => setRenaming(true)} />
         </>
@@ -376,20 +382,23 @@ function SubjectBlock({ subject, topics, outline }: { subject: TopicRow; topics:
           <>
             <span className="min-w-0 flex-1 break-words text-sm font-semibold">{subject.name}</span>
             <span className="text-xs text-muted-foreground">{t("qbank.topics.count", { count: subject.questionCount })}</span>
-            <select
-              className={smallSelect}
-              aria-label={t("qbank.topics.linkSyllabusLabel", { name: subject.name })}
-              value={subject.syllabusId ?? ""}
-              disabled={update.isPending}
-              onChange={(e) => update.mutate({ id: subject.id, patch: { syllabusId: e.target.value || null } })}
-            >
-              <option value="">{t("qbank.topics.noLink")}</option>
-              {outline.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.title}
-                </option>
-              ))}
-            </select>
+            <span className="flex items-center gap-1" title={t("qbank.topics.linkSyllabusLabel", { name: subject.name })}>
+              <Link2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+              <select
+                className={smallSelect}
+                aria-label={t("qbank.topics.linkSyllabusLabel", { name: subject.name })}
+                value={subject.syllabusId ?? ""}
+                disabled={update.isPending}
+                onChange={(e) => update.mutate({ id: subject.id, patch: { syllabusId: e.target.value || null } })}
+              >
+                <option value="">{t("qbank.topics.noLink")}</option>
+                {outline.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.title}
+                  </option>
+                ))}
+              </select>
+            </span>
             <TopicActions topic={subject} remove={remove} onRename={() => setRenaming(true)} />
           </>
         )}
@@ -413,22 +422,21 @@ function SubjectBlock({ subject, topics, outline }: { subject: TopicRow; topics:
   );
 }
 
-function NewSubjectForm({ outline }: { outline: Outline }) {
+function NewSubjectForm({ outline, onDone }: { outline: Outline; onDone: () => void }) {
   const refresh = useRefreshTopics();
   const [name, setName] = useState("");
   const [syllabusId, setSyllabusId] = useState("");
   const create = trpc.teacher.questionTopics.create.useMutation({
     onSuccess: () => {
-      setName("");
-      setSyllabusId("");
       toast.success(t("qbank.topics.saved"));
       refresh();
+      onDone();
     },
     onError: (e) => toast.error(errorText(e)),
   });
   return (
     <form
-      className="grid gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
+      className="grid gap-2 rounded-xl border border-border bg-muted p-3 sm:grid-cols-[1fr_1fr_auto_auto] sm:items-end"
       onSubmit={(e) => {
         e.preventDefault();
         if (name.trim()) create.mutate({ name: name.trim(), syllabusId: syllabusId || null });
@@ -436,7 +444,7 @@ function NewSubjectForm({ outline }: { outline: Outline }) {
     >
       <label className="text-sm">
         <span className="text-foreground-secondary">{t("qbank.newSubjectName")}</span>
-        <Input maxLength={120} value={name} onChange={(e) => setName(e.target.value)} placeholder={t("qbank.subjectPlaceholder")} />
+        <Input autoFocus maxLength={120} value={name} onChange={(e) => setName(e.target.value)} placeholder={t("qbank.subjectPlaceholder")} />
       </label>
       <label className="text-sm">
         <span className="text-foreground-secondary">{t("qbank.topics.link")}</span>
@@ -452,24 +460,33 @@ function NewSubjectForm({ outline }: { outline: Outline }) {
       <Button type="submit" disabled={create.isPending || !name.trim()}>
         {t("qbank.topics.newSubject")}
       </Button>
+      <Button type="button" size="icon" variant="ghost" className="h-9 w-9 shrink-0" aria-label={t("common.cancel")} onClick={onDone}>
+        <X className="h-4 w-4" aria-hidden />
+      </Button>
     </form>
   );
 }
 
-function FromSyllabus({ outline }: { outline: Outline }) {
+function FromSyllabus({ outline, onDone }: { outline: Outline; onDone: () => void }) {
   const refresh = useRefreshTopics();
   const [syllabusId, setSyllabusId] = useState("");
   const build = trpc.teacher.questionTopics.fromSyllabus.useMutation({
     onSuccess: (r) => {
       toast.success(t("qbank.topics.built", { count: r.count }));
       refresh();
+      onDone();
     },
     onError: (e) => toast.error(errorText(e)),
   });
   if (!outline.length) return null;
   return (
     <div className="space-y-2 rounded-xl border border-border bg-muted p-3">
-      <div className="text-sm font-medium">{t("qbank.topics.fromSyllabus")}</div>
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-sm font-medium">{t("qbank.topics.fromSyllabus")}</div>
+        <Button type="button" size="icon" variant="ghost" className="h-7 w-7 shrink-0" aria-label={t("common.cancel")} onClick={onDone}>
+          <X className="h-4 w-4" aria-hidden />
+        </Button>
+      </div>
       <p className="text-xs text-muted-foreground">{t("qbank.topics.fromSyllabusHelp")}</p>
       <div className="flex flex-wrap gap-2">
         <select className={topicSelectClass} aria-label={t("qbank.topics.pickSyllabus")} value={syllabusId} onChange={(e) => setSyllabusId(e.target.value)}>
@@ -494,6 +511,10 @@ export function TopicManagerDialog({ open, onOpenChange }: { open: boolean; onOp
   const outlineQuery = trpc.teacher.questionTopics.syllabusOutline.useQuery(undefined, { enabled: open, retry: false });
   const list = topics.data ?? [];
   const outline = outlineQuery.data ?? [];
+  const [panel, setPanel] = useState<"NONE" | "NEW" | "SYLLABUS">("NONE");
+  useEffect(() => {
+    if (!open) setPanel("NONE");
+  }, [open]);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
@@ -505,8 +526,24 @@ export function TopicManagerDialog({ open, onOpenChange }: { open: boolean; onOp
           <DialogDescription>{t("qbank.topics.help")}</DialogDescription>
         </DialogHeader>
         <DialogBody className="grid content-start gap-4">
-          <NewSubjectForm outline={outline} />
-          <FromSyllabus outline={outline} />
+          {panel === "NONE" ? (
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setPanel("NEW")}>
+                <Plus className="h-4 w-4" aria-hidden />
+                {t("qbank.topics.newSubject")}
+              </Button>
+              {outline.length > 0 && (
+                <Button type="button" variant="outline" size="sm" onClick={() => setPanel("SYLLABUS")}>
+                  <FolderTree className="h-4 w-4" aria-hidden />
+                  {t("qbank.topics.fromSyllabus")}
+                </Button>
+              )}
+            </div>
+          ) : panel === "NEW" ? (
+            <NewSubjectForm outline={outline} onDone={() => setPanel("NONE")} />
+          ) : (
+            <FromSyllabus outline={outline} onDone={() => setPanel("NONE")} />
+          )}
           {topics.isLoading ? (
             <Loading />
           ) : topics.error ? (
