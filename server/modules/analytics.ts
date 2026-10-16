@@ -190,7 +190,12 @@ export async function groupAnalytics(scope: TeacherScope, groupId: string) {
     : [];
   const taskProgress = groupTasks
     .map((t) => {
-      const mine = taskSubs.filter((s) => s.taskId === t.id && memberIds.includes(s.studentId));
+      const mine = taskSubs.filter((s) => s.taskId === t.id && memberIds.includes(s.studentId) && s.submittedAt !== null);
+      const graded = mine.filter((s) => s.gradedAt !== null && s.score !== null);
+      const firstSubmittedAt = mine.reduce<Date | null>((first, s) => {
+        const submittedAt = s.firstSubmittedAt ?? s.submittedAt;
+        return submittedAt && (!first || submittedAt < first) ? submittedAt : first;
+      }, null);
       return {
         id: t.id,
         title: t.title,
@@ -198,6 +203,9 @@ export async function groupAnalytics(scope: TeacherScope, groupId: string) {
         targetCount: memberIds.length,
         submittedCount: mine.length,
         lateCount: mine.filter((s) => s.status === "LATE").length,
+        gradedCount: graded.length,
+        averageScore: graded.length ? round1(graded.reduce((sum, s) => sum + (s.score ?? 0), 0) / graded.length) : null,
+        firstSubmittedAt,
       };
     })
     .sort((a, b) => b.deadline.getTime() - a.deadline.getTime());
@@ -279,6 +287,11 @@ export async function groupsOverview(scope: TeacherScope) {
   const out = [];
   for (const g of gs) {
     const ga = await groupAnalytics(scope, g.id);
+    const taskTargetCount = ga.taskProgress.reduce((sum, task) => sum + task.targetCount, 0);
+    const taskSubmittedCount = ga.taskProgress.reduce((sum, task) => sum + task.submittedCount, 0);
+    const gradedTaskCount = ga.taskProgress.reduce((sum, task) => sum + task.gradedCount, 0);
+    const firstSubmissionAt = ga.taskProgress.reduce<Date | null>((first, task) =>
+      task.firstSubmittedAt && (!first || task.firstSubmittedAt < first) ? task.firstSubmittedAt : first, null);
     out.push({
       groupId: g.id,
       name: g.name,
@@ -288,6 +301,14 @@ export async function groupsOverview(scope: TeacherScope) {
       participation: ga.history.length
         ? round1(ga.history.reduce((s, h) => s + h.participationRate, 0) / ga.history.length)
         : 0,
+      taskCount: ga.taskProgress.length,
+      taskTargetCount,
+      taskSubmittedCount,
+      taskSubmissionRate: taskTargetCount ? round1((taskSubmittedCount / taskTargetCount) * 100) : 0,
+      taskAverageScore: gradedTaskCount
+        ? round1(ga.taskProgress.reduce((sum, task) => sum + (task.averageScore ?? 0) * task.gradedCount, 0) / gradedTaskCount)
+        : null,
+      firstSubmissionAt,
       weakTopics: ga.weakTopics.slice(0, 3).map((t) => t.topic),
     });
   }
