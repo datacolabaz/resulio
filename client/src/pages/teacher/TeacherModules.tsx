@@ -256,7 +256,6 @@ export function AssignmentsPage() {
   const [editing, setEditing] = useState<AssignmentInitial | null>(null);
   const [shareId, setShareId] = useState<string | null>(null);
   const [submissionsId, setSubmissionsId] = useState<string | null>(null);
-  const activityQ = trpc.teacher.tasks.activity.useQuery({ id: submissionsId ?? "" }, { enabled: !!submissionsId });
   const reviewsQ = trpc.teacher.tasks.reviews.useQuery(
     { taskId: submissionsId ?? "" },
     { enabled: !!submissionsId, refetchInterval: (q) => (q.state.data?.reviews.some((r) => r.status === "PENDING" && !r.stale) ? 4000 : false) },
@@ -274,7 +273,10 @@ export function AssignmentsPage() {
     onSuccess: () => void reviewsQ.refetch(),
     onError: (e) => toast.error(errorText(e)),
   });
-  const engagementQ = trpc.teacher.tasks.engagement.useQuery({ id: shareId ?? "" }, { enabled: !!shareId, refetchInterval: 30_000 });
+  const engagementQ = trpc.teacher.tasks.engagement.useQuery(
+    { id: shareId ?? submissionsId ?? "" },
+    { enabled: !!shareId || !!submissionsId, refetchInterval: 30_000 },
+  );
   const remove = trpc.teacher.tasks.remove.useMutation({
     onSuccess: () => void utils.teacher.tasks.list.invalidate(),
     onError: (e) => toast.error(errorText(e)),
@@ -382,28 +384,7 @@ export function AssignmentsPage() {
                     {!reviewsQ.data.autoGrade.available && <p className="mt-1 text-muted-foreground">{t("aiReview.autoGradeUnavailable")}</p>}
                   </div>
                 )}
-                {submissionsId === a.id && !!activityQ.data?.eligible.length && (() => {
-                  const submittedIds = new Set(a.submissions.map((s) => s.studentId));
-                  const viewedNotSubmitted = activityQ.data!.eligible.filter((e) => e.viewedAt && !submittedIds.has(e.studentId));
-                  const notViewed = activityQ.data!.eligible.filter((e) => !e.viewedAt && !submittedIds.has(e.studentId));
-                  if (!viewedNotSubmitted.length && !notViewed.length) return null;
-                  return (
-                    <div className="mt-3 space-y-2 text-xs">
-                      {viewedNotSubmitted.length > 0 && (
-                        <div>
-                          <p className="font-medium text-foreground-secondary">{t("modules.viewedNotSubmitted")}</p>
-                          <p className="mt-1 break-words text-muted-foreground">{viewedNotSubmitted.map((e) => e.name ?? e.email ?? `#${e.studentId}`).join(", ")}</p>
-                        </div>
-                      )}
-                      {notViewed.length > 0 && (
-                        <div>
-                          <p className="font-medium text-foreground-secondary">{t("modules.notViewed")}</p>
-                          <p className="mt-1 break-words text-muted-foreground">{notViewed.map((e) => e.name ?? e.email ?? `#${e.studentId}`).join(", ")}</p>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
+                {submissionsId === a.id && <TaskEngagementList data={engagementQ.data} />}
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={() => setShareId(shareId === a.id ? null : a.id)}>{t("common.share")}</Button>
                   <Button size="sm" variant="outline" onClick={() => setEditing(a)}>{t("common.edit")}</Button>
@@ -426,7 +407,6 @@ export function AssignmentsPage() {
                       onTracked={() => void engagementQ.refetch()}
                     />
                     <ShareFunnelSummary data={engagementQ.data?.funnel} showSubmitted />
-                    <TaskEngagementList data={engagementQ.data} />
                   </div>
                 )}
               </Panel>
