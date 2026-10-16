@@ -101,6 +101,8 @@ export const questionBank = {
   "qbank.topics.moveSection": ["{name} bölməsini başqa fənnə köçür", "Move section {name} to another subject", "Перенести раздел «{name}» в другой предмет"],
   "qbank.topics.linkModuleLabel": ["{name} bölməsinin syllabus modulu", "Syllabus module of section {name}", "Модуль силлабуса для раздела «{name}»"],
   "qbank.topics.linkSyllabusLabel": ["{name} fənninin syllabusu", "Syllabus of subject {name}", "Силлабус предмета «{name}»"],
+  "qbank.topics.moveLabel": ["Fənn:", "Subject:", "Предмет:"],
+  "qbank.topics.moduleLabel": ["Modul:", "Module:", "Модуль:"],
   "qbank.topics.notEmpty": ["Bölmədə suallar var", "The section has questions", "В разделе есть вопросы"],
   "qbank.topics.deleteSubjectConfirm": [
     "“{name}” fənni və onun boş bölmələri silinsin?",

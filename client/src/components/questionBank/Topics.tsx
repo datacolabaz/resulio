@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { t } from "@/i18n/messages";
 import { errorText } from "@/lib/format";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
-import { ArrowRightLeft, Check, FolderTree, Link2, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Check, FolderTree, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { bankRef } from "@shared/questionImport";
@@ -307,52 +307,58 @@ function SectionLine({ section, topics, outline }: { section: TopicRow; topics: 
   const [renaming, setRenaming] = useState(false);
   const { update, remove } = useTopicMutations(() => setRenaming(false));
   return (
-    <li className="flex flex-wrap items-center gap-2 py-2 ps-5">
+    <li className="py-2 ps-5">
       {renaming ? (
-        <RenameForm name={section.name} pending={update.isPending} onCancel={() => setRenaming(false)} onSave={(name) => update.mutate({ id: section.id, patch: { name } })} />
+        <div className="flex items-center gap-2">
+          <RenameForm name={section.name} pending={update.isPending} onCancel={() => setRenaming(false)} onSave={(name) => update.mutate({ id: section.id, patch: { name } })} />
+        </div>
       ) : (
         <>
-          <span className="min-w-0 flex-1 break-words text-sm">{section.name}</span>
-          <span className="text-xs text-muted-foreground">{t("qbank.topics.count", { count: section.questionCount })}</span>
-          <span className="flex items-center gap-1" title={t("qbank.topics.moveSection", { name: section.name })}>
-            <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
-            <select
-              className={smallSelect}
-              aria-label={t("qbank.topics.moveSection", { name: section.name })}
-              value={section.parentId ?? ""}
-              disabled={update.isPending}
-              onChange={(e) => update.mutate({ id: section.id, patch: { parentId: e.target.value } })}
-            >
-              {subjectsOf(topics).map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </span>
-          <span className="flex items-center gap-1" title={t("qbank.topics.linkModuleLabel", { name: section.name })}>
-            <Link2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
-            <select
-              className={smallSelect}
-              aria-label={t("qbank.topics.linkModuleLabel", { name: section.name })}
-              value={section.syllabusModuleId ?? ""}
-              disabled={update.isPending}
-              onChange={(e) => update.mutate({ id: section.id, patch: { syllabusModuleId: e.target.value || null } })}
-            >
-              <option value="">{t("qbank.topics.noLink")}</option>
-              {outline.map((s) => (
-                <optgroup key={s.id} label={s.title}>
-                  {s.modules.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.title}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          </span>
-          <SectionSummaryButton sectionId={section.id} sectionName={section.name} questionCount={section.questionCount} />
-          <TopicActions topic={section} remove={remove} onRename={() => setRenaming(true)} />
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="min-w-0 flex-1 break-words text-sm">{section.name}</span>
+            <span className="text-xs text-muted-foreground">{t("qbank.topics.count", { count: section.questionCount })}</span>
+            <SectionSummaryButton sectionId={section.id} sectionName={section.name} questionCount={section.questionCount} />
+            <TopicActions topic={section} remove={remove} onRename={() => setRenaming(true)} />
+          </div>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              {t("qbank.topics.moveLabel")}
+              <select
+                className={smallSelect}
+                aria-label={t("qbank.topics.moveSection", { name: section.name })}
+                value={section.parentId ?? ""}
+                disabled={update.isPending}
+                onChange={(e) => update.mutate({ id: section.id, patch: { parentId: e.target.value } })}
+              >
+                {subjectsOf(topics).map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              {t("qbank.topics.moduleLabel")}
+              <select
+                className={smallSelect}
+                aria-label={t("qbank.topics.linkModuleLabel", { name: section.name })}
+                value={section.syllabusModuleId ?? ""}
+                disabled={update.isPending}
+                onChange={(e) => update.mutate({ id: section.id, patch: { syllabusModuleId: e.target.value || null } })}
+              >
+                <option value="">{t("qbank.topics.noLink")}</option>
+                {outline.map((s) => (
+                  <optgroup key={s.id} label={s.title}>
+                    {s.modules.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.title}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </label>
+          </div>
         </>
       )}
     </li>
@@ -382,27 +388,29 @@ function SubjectBlock({ subject, topics, outline }: { subject: TopicRow; topics:
           <>
             <span className="min-w-0 flex-1 break-words text-sm font-semibold">{subject.name}</span>
             <span className="text-xs text-muted-foreground">{t("qbank.topics.count", { count: subject.questionCount })}</span>
-            <span className="flex items-center gap-1" title={t("qbank.topics.linkSyllabusLabel", { name: subject.name })}>
-              <Link2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
-              <select
-                className={smallSelect}
-                aria-label={t("qbank.topics.linkSyllabusLabel", { name: subject.name })}
-                value={subject.syllabusId ?? ""}
-                disabled={update.isPending}
-                onChange={(e) => update.mutate({ id: subject.id, patch: { syllabusId: e.target.value || null } })}
-              >
-                <option value="">{t("qbank.topics.noLink")}</option>
-                {outline.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.title}
-                  </option>
-                ))}
-              </select>
-            </span>
             <TopicActions topic={subject} remove={remove} onRename={() => setRenaming(true)} />
           </>
         )}
       </div>
+      {!renaming && (
+        <label className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+          {t("qbank.topics.link")}
+          <select
+            className={smallSelect}
+            aria-label={t("qbank.topics.linkSyllabusLabel", { name: subject.name })}
+            value={subject.syllabusId ?? ""}
+            disabled={update.isPending}
+            onChange={(e) => update.mutate({ id: subject.id, patch: { syllabusId: e.target.value || null } })}
+          >
+            <option value="">{t("qbank.topics.noLink")}</option>
+            {outline.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.title}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <ul className="divide-y">
         {sections.map((x) => (
           <SectionLine key={x.id} section={x} topics={topics} outline={outline} />
@@ -489,7 +497,7 @@ function FromSyllabus({ outline, onDone }: { outline: Outline; onDone: () => voi
       </div>
       <p className="text-xs text-muted-foreground">{t("qbank.topics.fromSyllabusHelp")}</p>
       <div className="flex flex-wrap gap-2">
-        <select className={topicSelectClass} aria-label={t("qbank.topics.pickSyllabus")} value={syllabusId} onChange={(e) => setSyllabusId(e.target.value)}>
+        <select className={`${topicSelectClass} w-full sm:w-auto`} aria-label={t("qbank.topics.pickSyllabus")} value={syllabusId} onChange={(e) => setSyllabusId(e.target.value)}>
           <option value="">{t("qbank.topics.pickSyllabus")}</option>
           {outline.map((s) => (
             <option key={s.id} value={s.id}>
