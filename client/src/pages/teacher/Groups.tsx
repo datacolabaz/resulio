@@ -176,6 +176,14 @@ export function GroupsPage() {
                     <div className="flex flex-col-reverse"><dt className="text-xs text-muted-foreground">{t("groups.statExams")}</dt><dd className="text-lg font-semibold">{o?.examCount ?? 0}</dd></div>
                     <div className="flex flex-col-reverse"><dt className="text-xs text-muted-foreground">{t("groups.statAverage")}</dt><dd className="text-lg font-semibold">{o ? `${o.averageScore}%` : "—"}</dd></div>
                   </dl>
+                  {!!o?.taskCount && (
+                    <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 border-t pt-3 text-center text-sm">
+                      <div className="flex flex-col-reverse"><dt className="text-xs text-muted-foreground">{t("groups.statTasks")}</dt><dd className="font-semibold">{o.taskCount}</dd></div>
+                      <div className="flex flex-col-reverse"><dt className="text-xs text-muted-foreground">{t("groups.statTaskSubmissions")}</dt><dd className="font-semibold">{o.taskSubmittedCount}/{o.taskTargetCount} ({o.taskSubmissionRate}%)</dd></div>
+                      <div className="flex flex-col-reverse"><dt className="text-xs text-muted-foreground">{t("groups.statTaskAverage")}</dt><dd className="font-semibold">{o.taskAverageScore === null ? "—" : `${o.taskAverageScore}%`}</dd></div>
+                      <div className="flex flex-col-reverse"><dt className="text-xs text-muted-foreground">{t("groups.statFirstSubmission")}</dt><dd className="text-xs font-medium">{o.firstSubmissionAt ? fmtDateTime(o.firstSubmissionAt) : "—"}</dd></div>
+                    </dl>
+                  )}
                 </Link>
               );
             })}
