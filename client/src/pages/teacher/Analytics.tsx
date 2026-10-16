@@ -1,6 +1,7 @@
 import { ProgressChart, TopicBars } from "@/components/AnalyticsBlocks";
 import { AppShell, Loading, Panel, StatCard } from "@/components/AppShell";
 import { ResponsiveTable } from "@/components/ResponsiveTable";
+import { StatusBadge } from "@/components/StatusBadge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { t } from "@/i18n/messages";
 import { fmtDateTime } from "@/lib/format";
@@ -19,12 +20,14 @@ export function AnalyticsPage() {
           <TabsTrigger value="students">{t("common.students")}</TabsTrigger>
           <TabsTrigger value="questions">{t("common.questions")}</TabsTrigger>
           <TabsTrigger value="topics">{t("common.topics")}</TabsTrigger>
+          <TabsTrigger value="tasks">{t("analytics.tab.tasks")}</TabsTrigger>
         </TabsList>
         <TabsContent value="overview" className="pt-3"><OverviewTab /></TabsContent>
         <TabsContent value="groups" className="pt-3"><GroupsTab /></TabsContent>
         <TabsContent value="students" className="pt-3"><StudentsTab /></TabsContent>
         <TabsContent value="questions" className="pt-3"><QuestionsTab /></TabsContent>
         <TabsContent value="topics" className="pt-3"><TopicsTab /></TabsContent>
+        <TabsContent value="tasks" className="pt-3"><TasksTab /></TabsContent>
       </Tabs>
     </AppShell>
   );
@@ -164,6 +167,58 @@ function TopicsTab() {
     <div className="grid gap-5 lg:grid-cols-2">
       <Panel title={t("common.topics")}><TopicBars rows={topics.data.topics} /></Panel>
       <Panel title={t("common.skills")}><TopicBars rows={topics.data.skills} empty={t("analytics.addSkills")} /></Panel>
+    </div>
+  );
+}
+
+function TasksTab() {
+  const q = trpc.teacher.analytics.tasks.useQuery();
+  if (!q.data) return <Loading />;
+  const { summary, tasks } = q.data;
+  if (!tasks.length) return <Panel><p className="text-sm text-muted-foreground">{t("analytics.noTasks")}</p></Panel>;
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label={t("analytics.taskCount")} value={summary.taskCount} />
+        <StatCard label={t("analytics.submissionRate")} value={`${summary.submissionRate}%`} />
+        <StatCard label={t("analytics.onTimeRate")} value={`${summary.onTimeRate}%`} />
+        <StatCard label={t("analytics.avgGradingTime")} value={summary.avgGradingHours != null ? t("analytics.hours", { count: summary.avgGradingHours }) : "—"} />
+      </div>
+      <Panel>
+        <ResponsiveTable
+          rows={tasks}
+          rowKey={(tp) => tp.id}
+          columns={[
+            {
+              key: "task",
+              header: t("modules.task"),
+              thClassName: "py-2",
+              tdClassName: "break-words py-2 pr-3",
+              card: "title",
+              cell: (tp) => <Link href="/teacher/assignments" className="text-link underline-offset-4 hover:underline">{tp.title}</Link>,
+            },
+            { key: "deadline", header: t("modules.deadline"), tdClassName: "whitespace-nowrap pr-3 text-muted-foreground", cell: (tp) => fmtDateTime(tp.deadline) },
+            {
+              key: "completion",
+              header: t("groups.completion"),
+              tdClassName: "flex items-center gap-2 pr-3",
+              cell: (tp) => (
+                <>
+                  <span className="font-semibold">{tp.submittedCount}/{tp.targetCount}</span>
+                  {!!tp.lateCount && <StatusBadge tone="warning">{t("groups.lateCount", { count: tp.lateCount })}</StatusBadge>}
+                </>
+              ),
+              cardCell: (tp) => (
+                <span className="inline-flex flex-wrap items-center justify-end gap-2">
+                  <span className="font-semibold">{tp.submittedCount}/{tp.targetCount}</span>
+                  {!!tp.lateCount && <StatusBadge tone="warning">{t("groups.lateCount", { count: tp.lateCount })}</StatusBadge>}
+                </span>
+              ),
+            },
+            { key: "graded", header: t("analytics.col.graded"), tdClassName: "text-muted-foreground", cell: (tp) => tp.gradedCount },
+          ]}
+        />
+      </Panel>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import {
   assessments,
   attempts,
+  groupMembers,
   groups,
   resultItems,
   results,
@@ -25,6 +26,7 @@ import {
 } from "./engine";
 import { visibilityForResults } from "./attempts";
 import { activeStudentIdsOfGroups, assertGroupOwner, assertTeacherHasStudent } from "./groups";
+import * as tasksModule from "./tasks";
 import type { TeacherScope } from "./access";
 
 async function resultsOfAssessments(assessmentIds: string[]) {
@@ -359,6 +361,71 @@ export async function topicsAnalytics(scope: TeacherScope) {
   const rows = await resultsOfAssessments(list.map((a) => a.id));
   const items = await itemsOfResults(rows.map((r) => r.r.id));
   return { topics: topicStats(items), skills: topicStats(items.filter((i) => i.skill), "skill") };
+}
+
+/**
+ * Delivery/submission snapshot across every task in the workspace: how many students each task
+ * reaches, how many have turned something in, how many were late, and how long grading takes.
+ * Submissions come straight off `listForWorkspace`'s already-batched rows; only "how many students
+ * does this task reach" needs its own query, batched once across every group any task targets
+ * (never one query per task).
+ */
+export async function tasksAnalytics(scope: TeacherScope) {
+  const db = requireDb();
+  const rows = await tasksModule.listForWorkspace(scope.workspaceId);
+  const empty = { taskCount: 0, totalAssigned: 0, totalSubmitted: 0, submissionRate: 0, onTimeRate: 0, avgGradingHours: null as number | null };
+  if (!rows.length) return { summary: empty, tasks: [] };
+
+  const allGroupIds = [...new Set(rows.flatMap((r) => r.groupIds))];
+  const memberRows = allGroupIds.length
+    ? await db
+        .select({ groupId: groupMembers.groupId, userId: groupMembers.userId })
+        .from(groupMembers)
+        .where(and(inArray(groupMembers.groupId, allGroupIds), eq(groupMembers.status, "ACTIVE"), eq(groupMembers.membershipRole, "STUDENT")))
+    : [];
+  const membersByGroup = new Map<string, Set<number>>();
+  for (const m of memberRows) {
+    if (!membersByGroup.has(m.groupId)) membersByGroup.set(m.groupId, new Set());
+    membersByGroup.get(m.groupId)!.add(m.userId);
+  }
+
+  const taskRows = rows
+    .map((task) => {
+      const roster = new Set<number>();
+      for (const groupId of task.groupIds) for (const userId of membersByGroup.get(groupId) ?? []) roster.add(userId);
+      if (task.accessMode !== "GROUPS") for (const studentId of task.studentIds) roster.add(studentId);
+      const submitted = task.submissions.filter((s) => s.status === "SUBMITTED" || s.status === "LATE" || s.status === "REVIEWED");
+      const graded = task.submissions.filter((s) => s.gradedAt && s.submittedAt);
+      const gradingHours = graded.map((s) => (s.gradedAt!.getTime() - s.submittedAt!.getTime()) / 3_600_000);
+      return {
+        id: task.id,
+        title: task.title,
+        deadline: task.deadline,
+        targetCount: roster.size,
+        submittedCount: submitted.length,
+        lateCount: submitted.filter((s) => s.status === "LATE").length,
+        gradedCount: graded.length,
+        avgGradingHours: gradingHours.length ? round1(gradingHours.reduce((a, b) => a + b, 0) / gradingHours.length) : null,
+      };
+    })
+    .sort((a, b) => b.deadline.getTime() - a.deadline.getTime());
+
+  const reachable = taskRows.filter((t) => t.targetCount > 0);
+  const totalAssigned = reachable.reduce((sum, t) => sum + t.targetCount, 0);
+  const totalSubmitted = reachable.reduce((sum, t) => sum + t.submittedCount, 0);
+  const totalLate = reachable.reduce((sum, t) => sum + t.lateCount, 0);
+  const gradedTasks = taskRows.filter((t) => t.avgGradingHours != null);
+
+  const summary = {
+    taskCount: taskRows.length,
+    totalAssigned,
+    totalSubmitted,
+    submissionRate: totalAssigned ? round1((totalSubmitted / totalAssigned) * 100) : 0,
+    onTimeRate: totalSubmitted ? round1(((totalSubmitted - totalLate) / totalSubmitted) * 100) : 0,
+    avgGradingHours: gradedTasks.length ? round1(gradedTasks.reduce((sum, t) => sum + (t.avgGradingHours ?? 0), 0) / gradedTasks.length) : null,
+  };
+
+  return { summary, tasks: taskRows };
 }
 
 export async function teacherOverview(scope: TeacherScope) {

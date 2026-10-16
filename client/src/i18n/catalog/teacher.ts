@@ -658,6 +658,7 @@ export const teacher = {
   "results.itemStatusPoints": ["{status} · {earned}/{max} bal", "{status} · {earned}/{max} pts", "{status} · {earned}/{max} б."],
 
   "analytics.tab.overview": ["Ümumi", "Overview", "Обзор"],
+  "analytics.tab.tasks": ["Tapşırıqlar", "Tasks", "Задания"],
   "analytics.resultCount": ["Nəticə sayı", "Number of results", "Число результатов"],
   "analytics.highest": ["Ən yüksək", "Highest", "Максимум"],
   "analytics.noWeakTopics": ["Zəif mövzu yoxdur.", "No weak topics.", "Слабых тем нет."],
@@ -679,4 +680,11 @@ export const teacher = {
   "analytics.col.answers": ["Cavab", "Answers", "Ответы"],
   "analytics.weak": ["Zəif", "Weak", "Слабая"],
   "analytics.strong": ["Güclü", "Strong", "Сильная"],
+  "analytics.taskCount": ["Tapşırıq sayı", "Number of tasks", "Число заданий"],
+  "analytics.submissionRate": ["Təslim faizi", "Submission rate", "Процент сдачи"],
+  "analytics.onTimeRate": ["Vaxtında təslim faizi", "On-time rate", "Процент сдачи в срок"],
+  "analytics.avgGradingTime": ["Orta qiymətləndirmə müddəti", "Average grading time", "Среднее время проверки"],
+  "analytics.hours": ["{count} saat", "{count} h", "{count} ч"],
+  "analytics.noTasks": ["Hələ tapşırıq yoxdur.", "No tasks yet.", "Заданий пока нет."],
+  "analytics.col.graded": ["Qiymətləndirilib", "Graded", "Проверено"],
 } as const satisfies Record<string, Entry>;

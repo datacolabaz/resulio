@@ -594,6 +594,7 @@ const teacherAnalyticsRouter = router({
     .input(z.object({ studentId: z.number().int().positive() }))
     .query(({ ctx, input }) => analytics.studentProgress(input.studentId, ctx.scope)),
   topics: teacherProcedure.query(({ ctx }) => analytics.topicsAnalytics(ctx.scope)),
+  tasks: teacherProcedure.query(({ ctx }) => analytics.tasksAnalytics(ctx.scope)),
 });
 
 const teacherAiRouter = router({
