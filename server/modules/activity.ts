@@ -780,3 +780,50 @@ export async function taskEngagementSummaries(scope: TeacherScope): Promise<Task
 
   return tasksRows.map((r) => ({ taskId: r.id, viewedCount: viewed.get(r.id)?.size ?? 0, downloadCount: downloaded.get(r.id)?.size ?? 0 }));
 }
+
+export type MaterialEngagementSummary = { materialId: string; viewedCount: number; downloadCount: number };
+
+/** Distinct, identified viewers and downloaders for all material cards in one batched summary. */
+export async function materialEngagementSummaries(scope: TeacherScope): Promise<MaterialEngagementSummary[]> {
+  const db = requireDb();
+  const materialRows = await tasksModule.listMaterialsForWorkspace(scope.workspaceId);
+  if (!materialRows.length) return [];
+  const ownerId = await workspaceOwnerId(scope.workspaceId);
+  const materialIds = materialRows.map((r) => r.id);
+  const shareCodeToMaterialId = new Map(materialRows.map((r) => [r.shareCode, r.id]));
+  const excludedByMaterial = new Map(materialRows.map((r) => [r.id, new Set([scope.userId, r.createdBy, ...(ownerId ? [ownerId] : [])])]));
+
+  const [activityRows, shareRows] = await Promise.all([
+    db
+      .select({ materialId: studentActivityEvents.entityId, userId: studentActivityEvents.userId, eventType: studentActivityEvents.eventType })
+      .from(studentActivityEvents)
+      .where(and(
+        eq(studentActivityEvents.providerWorkspaceId, scope.workspaceId),
+        eq(studentActivityEvents.entityType, "MATERIAL"),
+        inArray(studentActivityEvents.entityId, materialIds),
+        inArray(studentActivityEvents.eventType, ["MATERIAL_VIEWED", "MATERIAL_DOWNLOADED"]),
+      )),
+    shareTracking.shareEventsFor("MATERIAL", materialRows.map((r) => r.shareCode)),
+  ]);
+
+  const viewed = new Map<string, Set<number>>();
+  const downloaded = new Map<string, Set<number>>();
+  const add = (map: Map<string, Set<number>>, materialId: string, userId: number) => {
+    if (!map.has(materialId)) map.set(materialId, new Set());
+    map.get(materialId)!.add(userId);
+  };
+  for (const event of activityRows) {
+    if (excludedByMaterial.get(event.materialId)?.has(event.userId)) continue;
+    add(event.eventType === "MATERIAL_VIEWED" ? viewed : downloaded, event.materialId, event.userId);
+  }
+  const { userOf } = shareTracking.identifyPeople(shareRows);
+  for (const event of shareRows) {
+    if (event.eventType !== "OPENED" && event.eventType !== "DOWNLOADED") continue;
+    const userId = userOf(event);
+    if (userId === null) continue;
+    const materialId = shareCodeToMaterialId.get(event.targetId);
+    if (!materialId || excludedByMaterial.get(materialId)?.has(userId)) continue;
+    add(event.eventType === "OPENED" ? viewed : downloaded, materialId, userId);
+  }
+  return materialRows.map((r) => ({ materialId: r.id, viewedCount: viewed.get(r.id)?.size ?? 0, downloadCount: downloaded.get(r.id)?.size ?? 0 }));
+}

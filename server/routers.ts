@@ -800,6 +800,8 @@ const teacherTasksRouter = router({
   engagement: teacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => activity.taskEngagement(ctx.scope, input.id)),
   /** Per-task viewed/downloaded counts for every task at once, shown directly on the task cards. */
   engagementSummary: teacherProcedure.query(({ ctx }) => activity.taskEngagementSummaries(ctx.scope)),
+  /** Per-material viewed/downloaded counts for every material card at once. */
+  materialEngagementSummary: teacherProcedure.query(({ ctx }) => activity.materialEngagementSummaries(ctx.scope)),
   /** Clicks/opens/joins on this material's share link, broken down by channel. */
   materialShareFunnel: teacherProcedure.input(z.object({ id: entityId })).query(async ({ ctx, input }) => {
     const row = await tasks.materialOf(ctx.scope, input.id);
