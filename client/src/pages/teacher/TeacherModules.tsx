@@ -591,6 +591,8 @@ function QuestionBankTab() {
 function MaterialsTab() {
   const utils = trpc.useUtils();
   const list = trpc.teacher.tasks.materials.useQuery();
+  const engagementSummaryQ = trpc.teacher.tasks.materialEngagementSummary.useQuery();
+  const engagementSummaryOf = new Map((engagementSummaryQ.data ?? []).map((s) => [s.materialId, s]));
   const syllabusUsage = useMaterialSyllabusUsage();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<MaterialInitial | null>(null);
@@ -658,6 +660,15 @@ function MaterialsTab() {
               {m.description && <p className="line-clamp-3 break-words text-sm text-foreground-secondary">{m.description}</p>}
               {m.subject && <p className="mt-1 break-words text-xs text-muted-foreground">{m.subject}</p>}
               <MaterialMeta meta={m.meta} />
+              {engagementSummaryOf.has(m.id) && (() => {
+                const summary = engagementSummaryOf.get(m.id)!;
+                return (
+                  <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground" aria-live="polite">
+                    <span className="flex items-center gap-1"><Eye className="h-3.5 w-3.5" aria-hidden />{t("modules.engagementSummaryViewed", { count: summary.viewedCount })}</span>
+                    <span className="flex items-center gap-1"><Download className="h-3.5 w-3.5" aria-hidden />{t("modules.engagementSummaryDownloaded", { count: summary.downloadCount })}</span>
+                  </div>
+                );
+              })()}
               <MaterialUsageBadge count={syllabusUsage.get(m.id)} />
               {m.meta.url ? (
                 <MaterialLinkButton url={m.meta.url} />
