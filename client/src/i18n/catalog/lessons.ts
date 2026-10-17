@@ -42,6 +42,8 @@ export const lessons = {
   "lessons.form.groupPartial": ["qismən", "partially", "частично"],
   "lessons.form.recipientsRequired": ["Ən azı bir qrup və ya tələbə seçin", "Pick at least one group or student", "Выберите хотя бы одну группу или ученика"],
   "lessons.form.created": ["Dərs yaradıldı", "Lesson created", "Урок создан"],
+  "lessons.form.editTitle": ["Dərsi redaktə et", "Edit lesson", "Редактировать урок"],
+  "lessons.form.updated": ["Dərs yeniləndi", "Lesson updated", "Урок обновлён"],
 
   "lessons.status.SCHEDULED": ["Planlaşdırılıb", "Scheduled", "Запланирован"],
   "lessons.status.LIVE": ["Canlı", "Live", "Идёт сейчас"],
@@ -61,6 +63,14 @@ export const lessons = {
   "lessons.list.retried": ["Yenidən cəhd edildi", "Retried", "Повторная попытка выполнена"],
   "lessons.list.retry": ["Yenidən cəhd et", "Retry", "Повторить"],
   "lessons.list.cancel": ["Ləğv et", "Cancel", "Отменить"],
+  "lessons.list.edit": ["Redaktə et", "Edit", "Редактировать"],
+  "lessons.list.delete": ["Sil", "Delete", "Удалить"],
+  "lessons.list.deleteConfirm": [
+    "Bu dərsi həmişəlik silmək istədiyinizə əminsiniz? Bütün qeydlər, qatılım və yazılar da silinəcək.",
+    "Delete this lesson for good? Its notes, attendance and recordings will be deleted too.",
+    "Удалить этот урок навсегда? Его заметки, посещаемость и записи также будут удалены.",
+  ],
+  "lessons.list.deleted": ["Dərs silindi", "Lesson deleted", "Урок удалён"],
   "lessons.list.openDetail": ["Ətraflı", "Details", "Подробнее"],
 
   "lessons.student.emptyBody": ["Müəllim onlayn dərs təyin edəndə burada görünəcək.", "It'll show up here once a teacher schedules an online lesson.", "Появится здесь, когда учитель назначит онлайн-урок."],
