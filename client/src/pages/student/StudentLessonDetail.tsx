@@ -27,8 +27,14 @@ export function StudentLessonDetailPage() {
     onError: (e) => toast.error(errorText(e)),
   });
 
+  const ackConsent = trpc.student.lessons.ackConsent.useMutation({
+    onSuccess: () => void utils.student.lessons.get.invalidate({ lessonId: id }),
+    onError: (e) => toast.error(errorText(e)),
+  });
+
   if (!detail.data) return <AppShell area="learning"><Loading /></AppShell>;
-  const { lesson, meeting, notes, records } = detail.data;
+  const { lesson, meeting, notes, records, consentAcked } = detail.data;
+  const canJoin = meeting?.status === "CREATED" && lesson.status !== "CANCELLED";
 
   return (
     <AppShell area="learning">
@@ -40,7 +46,15 @@ export function StudentLessonDetailPage() {
 
         <Panel title={t("lessons.detail.whenTitle")}>
           <p className="text-sm">{fmtWindow(lesson.startsAt, lesson.endsAt)}</p>
-          {meeting?.status === "CREATED" && lesson.status !== "CANCELLED" && (
+          {canJoin && !consentAcked && (
+            <div className="mt-3 space-y-2 rounded-lg bg-warning-surface p-3 text-sm text-warning">
+              <p>{t("lessons.consent.notice")}</p>
+              <Button size="sm" disabled={ackConsent.isPending} onClick={() => ackConsent.mutate({ lessonId: id })}>
+                {t("lessons.consent.accept")}
+              </Button>
+            </div>
+          )}
+          {canJoin && consentAcked && (
             <Button asChild className="mt-3" size="sm">
               <a href={`/api/lessons/${lesson.id}/join`}>{t("lessons.student.join")}</a>
             </Button>

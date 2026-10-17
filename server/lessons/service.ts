@@ -164,7 +164,8 @@ export async function studentLessonDetail(studentId: number, studentGroupIds: st
   const all = await db.select().from(lessonNotes).where(eq(lessonNotes.lessonId, lessonId)).orderBy(lessonNotes.createdAt);
   const notes = all.filter((n) => n.authorId === studentId || (n.visibility === "SHARED" && n.authorId === lesson.createdBy));
   const records = await db.select().from(lessonRecords).where(eq(lessonRecords.lessonId, lessonId));
-  return { lesson, meeting: meeting ?? null, notes, records };
+  const consentAcked = await hasAckedConsent(studentId, lessonId);
+  return { lesson, meeting: meeting ?? null, notes, records, consentAcked };
 }
 
 // ---------------------------------------------------------------------------

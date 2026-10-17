@@ -85,4 +85,11 @@ export const lessons = {
   "lessons.detail.teacherOnly": ["yalnız müəllim", "teacher only", "только учитель"],
   "lessons.detail.notePlaceholder": ["Qeyd yazın...", "Write a note...", "Напишите заметку..."],
   "lessons.detail.addNote": ["Qeyd əlavə et", "Add note", "Добавить заметку"],
+
+  "lessons.consent.notice": [
+    "Bu dərs qeydə alına bilər (video, transkript və ya söhbət qeydi). Qoşulmazdan əvvəl bunu qəbul etməlisiniz.",
+    "This lesson may be recorded (video, transcript or chat log). You need to accept this before joining.",
+    "Этот урок может быть записан (видео, транскрипт или журнал чата). Перед подключением вам нужно принять это.",
+  ],
+  "lessons.consent.accept": ["Qəbul edirəm və qoşuluram", "I accept and join", "Я принимаю и присоединяюсь"],
 } as const;

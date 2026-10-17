@@ -7,6 +7,7 @@ import { requireDb } from "../db";
 import { activeGroupIdsOfStudent } from "../modules/groups";
 import { workspaceOwnerId } from "../modules/workspaces";
 import { lessonJoinDecision } from "./access";
+import { hasAckedConsent } from "./service";
 import { nanoid } from "nanoid";
 
 /**
@@ -50,6 +51,12 @@ export function registerLessonJoinRoute(app: Express) {
       res.status(403).type("text/plain").send("The join window for this lesson has closed.");
       return;
     }
+    // GDPR: a student must acknowledge the recording notice before Resulio hands them the meeting
+    // URL at all -- the teacher (OWNER) started the recording and isn't gated by their own notice.
+    if (decision !== "OWNER" && !(await hasAckedConsent(auth.user.id, lessonId))) {
+      res.redirect(302, studentLessonReturn(req, lessonId));
+      return;
+    }
     const [meeting] = await db.select().from(lessonMeetings).where(eq(lessonMeetings.lessonId, lessonId)).limit(1);
     if (!meeting || meeting.status !== "CREATED" || !meeting.joinUrl) {
       res.status(503).type("text/plain").send("The meeting hasn't been created yet. Try again shortly.");
@@ -78,5 +85,14 @@ function loginReturn(req: Request): string {
   const dest = new URL(origin || `http://${req.get("host") || "localhost:3000"}`);
   dest.pathname = "/";
   dest.searchParams.set("returnTo", req.originalUrl);
+  return dest.toString();
+}
+
+/** Back to the SPA's own lesson detail page, where the consent notice lives, flagged so it's shown even if already loaded in the background. */
+function studentLessonReturn(req: Request, lessonId: string): string {
+  const origin = ENV.frontendUrl;
+  const dest = new URL(origin || `http://${req.get("host") || "localhost:3000"}`);
+  dest.pathname = `/student/lessons/${lessonId}`;
+  dest.searchParams.set("consent", "required");
   return dest.toString();
 }
