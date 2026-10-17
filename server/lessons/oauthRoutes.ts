@@ -37,12 +37,18 @@ function safeReturnTo(value: unknown): string {
   return value.slice(0, 512);
 }
 
-function settingsRedirect(req: Request, returnTo: string, params: Record<string, string>): string {
+export function settingsRedirect(req: Request, returnTo: string, params: Record<string, string>): string {
   const origin = ENV.frontendUrl;
   const dest = new URL(origin || `${isSecureRequest(req) ? "https" : "http"}://${req.get("host") || "localhost:3000"}`);
-  dest.pathname = returnTo.split("?")[0];
+  // returnTo may carry a client-side anchor (e.g. "/settings#lesson-integration"). A hash has to
+  // land in dest.hash, never in dest.pathname -- the URL class silently percent-encodes a literal
+  // "#" inside pathname (-> "/settings%23lesson-integration"), which doesn't match any client
+  // route and 404s on the SPA's own not-found page instead of reaching /settings at all.
+  const [withoutHash, hash] = returnTo.split("#");
+  dest.pathname = withoutHash.split("?")[0];
   dest.search = "";
   for (const [key, value] of Object.entries(params)) dest.searchParams.set(key, value);
+  dest.hash = hash ?? "";
   return dest.toString();
 }
 
