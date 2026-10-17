@@ -61,6 +61,19 @@ export const ENV = {
   get googleConfigured() { return Boolean(this.googleClientId && this.googleClientSecret); },
   /** Optional explicit callback URL; otherwise derived from the request origin. */
   get googleRedirectUri() { return envString("GOOGLE_REDIRECT_URI").replace(/\/+$/, ""); },
+  /** Google Meet lesson integration: a separate OAuth client from Sign-In so Meet/Calendar scopes are requested only when a teacher connects it. */
+  get googleMeetClientId() { return envString("GOOGLE_MEET_CLIENT_ID") || envString("GOOGLE_CLIENT_ID"); },
+  get googleMeetClientSecret() { return envString("GOOGLE_MEET_CLIENT_SECRET") || envString("GOOGLE_CLIENT_SECRET"); },
+  get googleMeetConfigured() { return Boolean(this.googleMeetClientId && this.googleMeetClientSecret); },
+  get googleMeetRedirectUri() { return envString("GOOGLE_MEET_REDIRECT_URI").replace(/\/+$/, ""); },
+  get zoomClientId() { return envString("ZOOM_CLIENT_ID"); },
+  get zoomClientSecret() { return envString("ZOOM_CLIENT_SECRET"); },
+  get zoomConfigured() { return Boolean(this.zoomClientId && this.zoomClientSecret); },
+  get zoomRedirectUri() { return envString("ZOOM_REDIRECT_URI").replace(/\/+$/, ""); },
+  /** Zoom webhook signature secret ("Secret Token" from the app's Feature > Event Subscriptions page). */
+  get zoomWebhookSecret() { return envString("ZOOM_WEBHOOK_SECRET"); },
+  /** 32-byte key (base64 or hex) encrypting stored meeting-provider OAuth tokens at rest. */
+  get lessonTokenEncryptionKey() { return envString("LESSON_TOKEN_ENCRYPTION_KEY"); },
   /** Optional comma-separated allowlist of emails permitted to create a Provider Workspace. Empty = open. */
   get teacherEmailAllowlist() {
     return (process.env.TEACHER_EMAIL_ALLOWLIST ?? "")
