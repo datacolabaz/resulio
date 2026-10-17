@@ -400,6 +400,13 @@
       "when": 1791900236032,
       "tag": "0060_user_feature_seen",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "5",
+      "when": 1792233350770,
+      "tag": "0061_lesson_integration",
+      "breakpoints": true
     }
   ]
 }

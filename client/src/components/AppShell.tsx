@@ -47,6 +47,7 @@ import {
   TrendingUp,
   Trophy,
   Users,
+  Video,
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -70,6 +71,7 @@ const TEACHER_NAV: { href: string; key: MessageKey; icon: typeof LayoutDashboard
   { href: "/teacher", key: "nav.home", icon: LayoutDashboard, exact: true },
   { href: "/teacher/assessments", key: "nav.exams", icon: ClipboardList },
   { href: "/teacher/groups", key: "nav.groups", icon: Users },
+  { href: "/teacher/lessons", key: "nav.lessons", icon: Video },
   { href: "/teacher/assignments", key: "nav.assignments", icon: FileText },
   { href: "/teacher/syllabus", key: "nav.syllabus", icon: BookOpen },
   { href: "/teacher/library", key: "nav.materials", icon: FolderOpen },
@@ -85,6 +87,7 @@ const TEACHER_NAV: { href: string; key: MessageKey; icon: typeof LayoutDashboard
 const STUDENT_NAV: typeof TEACHER_NAV = [
   { href: "/student", key: "nav.home", icon: LayoutDashboard, exact: true },
   { href: "/student/assessments", key: "nav.exams", icon: ClipboardList },
+  { href: "/student/lessons", key: "nav.myLessons", icon: Video },
   { href: "/student/assignments", key: "nav.assignments", icon: FileText },
   { href: "/student/syllabus", key: "nav.mySyllabi", icon: BookOpen },
   { href: "/student/materials", key: "nav.materials", icon: FolderOpen },

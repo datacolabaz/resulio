@@ -182,6 +182,8 @@ export const common = {
   "nav.myResults": ["Nəticələrim", "My results", "Мои результаты"],
   "nav.myProgress": ["İnkişafım", "My progress", "Мой прогресс"],
   "nav.myProfile": ["Profilim", "My profile", "Мой профиль"],
+  "nav.lessons": ["Onlayn dərslər", "Online lessons", "Онлайн-уроки"],
+  "nav.myLessons": ["Onlayn dərslərim", "My online lessons", "Мои онлайн-уроки"],
   "motivation.tab": ["Aktivlik", "Activity", "Активность"],
   "motivation.chartTitle": ["Gündəlik aktivlik", "Daily activity", "Активность по дням"],
   "motivation.lastDays": ["{count} gün", "{count} {count|day|days}", "{count} {count|день|дня|дней}"],

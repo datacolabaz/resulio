@@ -1100,3 +1100,26 @@ export function buildExamResultEmail(input: {
   const text = [tx.heading, "", tx.intro(title), score, counts, ...penalty, "", `${tx.button}: ${url}`, "", tx.footer].join("\n");
   return { to: input.to, subject: tx.subject(title), html, text };
 }
+
+// ---------------------------------------------------------------------------
+// Online dərs (Google Meet / Zoom): a lesson is scheduled, to its recipients
+// ---------------------------------------------------------------------------
+
+const LESSON_SCHEDULED: Record<ServerLocale, { title: string; body: string }> = {
+  az: { title: "Yeni onlayn dərs təyin olundu", body: "«{lesson}» dərsi {when} tarixində keçiriləcək." },
+  en: { title: "A new online lesson was scheduled", body: "“{lesson}” is scheduled for {when}." },
+  ru: { title: "Назначен новый онлайн-урок", body: "Урок «{lesson}» назначен на {when}." },
+};
+
+export function lessonScheduledInApp(locale: ServerLocale, title: string, startsAtIso: string) {
+  const t = LESSON_SCHEDULED[locale];
+  return { title: t.title, body: fillTemplate(t.body, { lesson: cleanTitle(title, 120), when: noticeDate(locale, startsAtIso) }) };
+}
+
+export function studentLessonPath(lessonId: string): string {
+  return `/student/lessons/${lessonId}`;
+}
+
+export function teacherLessonPath(lessonId: string): string {
+  return `/teacher/lessons/${lessonId}`;
+}

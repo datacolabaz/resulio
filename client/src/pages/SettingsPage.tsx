@@ -10,6 +10,7 @@ import { availableContexts, canEnter, CONTEXT_HOME, contextLabel } from "@/lib/c
 import { errorText, partnerStatusLabel, providerLabel, subscriptionLabel } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import { ClaudeConnectorPanel } from "@/components/ClaudeConnectorPanel";
+import { MeetingProviderSettings } from "@/components/lessons/MeetingProviderSettings";
 import { PASSWORD_MIN_LENGTH } from "@shared/auth";
 import { Check } from "lucide-react";
 import { useState } from "react";
@@ -100,7 +101,7 @@ function AiUsagePanel() {
   );
 }
 
-const STUDENT_EVENTS = ["TASK_ASSIGNED", "TASK_UPDATED", "MATERIAL_SHARED", "AI_GRADE_READY", "GRADE_RELEASED", "GRADE_UPDATED", "EXAM_RESULT_READY", "GROUP_JOIN_DECIDED", "SYLLABUS_JOIN_DECIDED", "ANNOUNCEMENT", "RETAKE_ASSIGNED", "PLAN_REMINDER"];
+const STUDENT_EVENTS = ["TASK_ASSIGNED", "TASK_UPDATED", "MATERIAL_SHARED", "AI_GRADE_READY", "GRADE_RELEASED", "GRADE_UPDATED", "EXAM_RESULT_READY", "GROUP_JOIN_DECIDED", "SYLLABUS_JOIN_DECIDED", "ANNOUNCEMENT", "RETAKE_ASSIGNED", "PLAN_REMINDER", "LESSON_SCHEDULED"];
 const SHOWN_CHANNELS = ["IN_APP", "EMAIL", "PUSH"] as const;
 
 /** Which notifications reach this user in the app, by e-mail and as push (browser and mobile app alike). */
@@ -217,6 +218,8 @@ export default function SettingsPage() {
         {user.workspaces.length > 0 && <AiUsagePanel />}
 
         {user.workspaces.length > 0 && <ClaudeConnectorPanel />}
+
+        {user.workspaces.length > 0 && <MeetingProviderSettings />}
 
         <NotificationPreferencesPanel teaching={user.workspaces.length > 0} />
 
