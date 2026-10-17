@@ -8,6 +8,8 @@ import { ENV } from "./env";
 import { registerGoogleAuthRoutes } from "./googleAuth";
 import { registerLessonOAuthRoutes } from "../lessons/oauthRoutes";
 import { registerLessonJoinRoute } from "../lessons/joinRoute";
+import { registerLessonWebhookRoutes } from "../lessons/webhookRoutes";
+import { startLessonCaptureSweeper } from "../lessons/captureSweeper";
 import { startLessonMeetingSweeper } from "../lessons/sweepers";
 import { frontendRedirect, hostRedirect } from "./hostRedirect";
 import { securityHeaders } from "./spa";
@@ -197,7 +199,9 @@ async function startServer() {
   app.use(requestIdMiddleware);
   app.use(apiCors);
   app.use(csrfGuard);
-  app.use(express.json({ limit: "2mb" }));
+  // `verify` stashes the exact request bytes on req.rawBody before JSON-parsing them -- the Zoom
+  // webhook route needs those raw bytes (not a re-serialization of the parsed body) to check Zoom's signature.
+  app.use(express.json({ limit: "2mb", verify: (req, _res, buf) => { (req as express.Request & { rawBody?: Buffer }).rawBody = buf; } }));
   app.use(express.urlencoded({ limit: "2mb", extended: true }));
   app.get("/api/health", (_req, res) => {
     const { state, latest } = getMigrationStatus();
@@ -214,6 +218,7 @@ async function startServer() {
   registerGoogleAuthRoutes(app);
   registerLessonOAuthRoutes(app);
   registerLessonJoinRoute(app);
+  registerLessonWebhookRoutes(app);
   registerFileRoutes(app);
   registerMcpRoutes(app);
   app.use(
@@ -248,6 +253,7 @@ async function startServer() {
   startMaterialSweepers();
   startGrowthJobs();
   startLessonMeetingSweeper();
+  startLessonCaptureSweeper();
   if (getDb()) {
     runMaterialMetaBackfill().catch((error) => console.error("[Materials] meta backfill failed", error instanceof Error ? error.message : error));
     runJoinSourceBackfill().catch((error) => console.error("[Groups] join source backfill failed", error instanceof Error ? error.message : error));

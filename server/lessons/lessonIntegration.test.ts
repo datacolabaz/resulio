@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { daysUntilProviderDeletion, derivedLessonStatus, occurrenceStarts, recurrenceNeedsUntil, withinJoinWindow } from "../../shared/lessonIntegration";
+import {
+  daysUntilProviderDeletion,
+  derivedLessonStatus,
+  occurrenceStarts,
+  recordingRetentionExpired,
+  recurrenceNeedsUntil,
+  withinJoinWindow,
+  zoomRecordFileKind,
+} from "../../shared/lessonIntegration";
 
 describe("recurrenceNeedsUntil", () => {
   it("is false for ONCE and true for recurring patterns", () => {
@@ -87,5 +95,37 @@ describe("daysUntilProviderDeletion", () => {
     expect(daysUntilProviderDeletion("GOOGLE_MEET", endedAt, new Date("2026-11-17T11:00:00Z"))).toBe(1);
     // Past the provider's own deletion point: negative, signalling the rescue window already closed.
     expect(daysUntilProviderDeletion("GOOGLE_MEET", endedAt, new Date("2026-11-20T11:00:00Z"))).toBeLessThan(0);
+  });
+});
+
+describe("recordingRetentionExpired", () => {
+  const endedAt = new Date("2026-10-19T11:00:00Z");
+
+  it("is never expired for Zoom, which has no Resulio-tracked retention clock", () => {
+    expect(recordingRetentionExpired("ZOOM", endedAt, new Date("2030-01-01T00:00:00Z"))).toBe(false);
+  });
+
+  it("is false for Google Meet before the 30-day mark and true after it", () => {
+    expect(recordingRetentionExpired("GOOGLE_MEET", endedAt, new Date("2026-11-17T11:00:00Z"))).toBe(false);
+    expect(recordingRetentionExpired("GOOGLE_MEET", endedAt, new Date("2026-11-20T11:00:00Z"))).toBe(true);
+  });
+});
+
+describe("zoomRecordFileKind", () => {
+  it("maps the Zoom recording file types Resulio rescues", () => {
+    expect(zoomRecordFileKind("MP4")).toBe("RECORDING");
+    expect(zoomRecordFileKind("TRANSCRIPT")).toBe("TRANSCRIPT");
+    expect(zoomRecordFileKind("CHAT")).toBe("CHAT_LOG");
+    expect(zoomRecordFileKind("SUMMARY")).toBe("AI_SUMMARY");
+  });
+
+  it("is case-insensitive", () => {
+    expect(zoomRecordFileKind("mp4")).toBe("RECORDING");
+  });
+
+  it("is null for file types Resulio doesn't keep a copy of", () => {
+    expect(zoomRecordFileKind("M4A")).toBeNull();
+    expect(zoomRecordFileKind("CC")).toBeNull();
+    expect(zoomRecordFileKind("TIMELINE")).toBeNull();
   });
 });

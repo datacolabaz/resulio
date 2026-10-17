@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { ENV } from "../../_core/env";
 
 /**
@@ -86,4 +87,26 @@ export async function createZoomMeeting(accessToken: string, args: { title: stri
 export async function deleteZoomMeeting(accessToken: string, externalMeetingId: string): Promise<void> {
   const res = await fetch(`https://api.zoom.us/v2/meetings/${externalMeetingId}`, { method: "DELETE", headers: { authorization: `Bearer ${accessToken}` } });
   if (!res.ok && res.status !== 404) throw new Error(`Zoom meeting deletion returned ${res.status}`);
+}
+
+// ---------------------------------------------------------------------------
+// Webhooks (recording.completed and friends). Zoom signs every webhook body with the per-app
+// "Secret Token" (never the OAuth client secret) -- see docs/LESSON-INTEGRATION.md.
+// ---------------------------------------------------------------------------
+
+function timingSafeEqualStr(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  return bufA.length === bufB.length && timingSafeEqual(bufA, bufB);
+}
+
+/** `x-zm-signature` is `v0=` + HMAC-SHA256(secretToken, "v0:{timestamp}:{rawBody}") in hex. */
+export function verifyZoomWebhookSignature(rawBody: string, timestamp: string, signatureHeader: string, secretToken: string): boolean {
+  const hash = createHmac("sha256", secretToken).update(`v0:${timestamp}:${rawBody}`).digest("hex");
+  return timingSafeEqualStr(`v0=${hash}`, signatureHeader);
+}
+
+/** Zoom's one-time "endpoint.url_validation" handshake: echo `plainToken` plus its HMAC under `encryptedToken`. */
+export function zoomWebhookChallengeResponse(plainToken: string, secretToken: string): { plainToken: string; encryptedToken: string } {
+  return { plainToken, encryptedToken: createHmac("sha256", secretToken).update(plainToken).digest("hex") };
 }

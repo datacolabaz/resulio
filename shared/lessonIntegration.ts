@@ -139,3 +139,29 @@ export function daysUntilProviderDeletion(provider: MeetingProvider, lessonEnded
   const deadline = lessonEndedAt.getTime() + GOOGLE_MEET_RETENTION_DAYS * DAY_MS;
   return Math.ceil((deadline - now.getTime()) / DAY_MS);
 }
+
+/** Has Google Meet's own 30-day window already closed? Zoom is never time-boxed here (see `daysUntilProviderDeletion`). */
+export function recordingRetentionExpired(provider: MeetingProvider, lessonEndedAt: Date, now: Date): boolean {
+  const days = daysUntilProviderDeletion(provider, lessonEndedAt, now);
+  return days !== null && days < 0;
+}
+
+/**
+ * Zoom's `recording_files[].file_type` → the `RecordKind` Resulio rescues it as, or null for a
+ * file type that isn't worth keeping a copy of (closed captions, the raw per-second timeline
+ * JSON, audio-only when the video track is already captured separately).
+ */
+export function zoomRecordFileKind(fileType: string): RecordKind | null {
+  switch (fileType.toUpperCase()) {
+    case "MP4":
+      return "RECORDING";
+    case "TRANSCRIPT":
+      return "TRANSCRIPT";
+    case "CHAT":
+      return "CHAT_LOG";
+    case "SUMMARY":
+      return "AI_SUMMARY";
+    default:
+      return null;
+  }
+}
