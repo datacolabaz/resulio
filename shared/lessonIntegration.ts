@@ -69,6 +69,16 @@ export const lessonSeriesInput = z.object({
 });
 export type LessonSeriesInput = z.infer<typeof lessonSeriesInput>;
 
+/** Edits a single lesson occurrence (not the whole series) -- title, platform and timing only; recipients/recurrence stay as created. */
+export const lessonUpdateInput = z.object({
+  lessonId: z.string().trim().min(1).max(32),
+  title: z.string().trim().min(1).max(255),
+  platform: z.enum(MEETING_PROVIDERS),
+  startsAt: z.coerce.date(),
+  durationMinutes: z.number().int().min(5).max(480),
+});
+export type LessonUpdateInput = z.infer<typeof lessonUpdateInput>;
+
 export const lessonNoteInput = z.object({
   lessonId: z.string().trim().min(1).max(32),
   body: z.string().trim().min(1).max(10_000),

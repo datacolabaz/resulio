@@ -12,7 +12,7 @@ import {
   type LessonMeetingRow,
   type LessonRow,
 } from "../../drizzle/schema";
-import { occurrenceStarts, type LessonNoteInput, type LessonSeriesInput } from "../../shared/lessonIntegration";
+import { occurrenceStarts, type LessonNoteInput, type LessonSeriesInput, type LessonUpdateInput } from "../../shared/lessonIntegration";
 import { requireDb } from "../db";
 import type { TeacherScope } from "../modules/access";
 import { AppError } from "../modules/errors";
@@ -131,6 +131,45 @@ export async function lessonDetail(scope: TeacherScope, lessonId: string) {
 export async function cancelLesson(scope: TeacherScope, lessonId: string): Promise<void> {
   await lessonOrThrow(scope, lessonId);
   await requireDb().update(lessons).set({ status: "CANCELLED" }).where(eq(lessons.id, lessonId));
+}
+
+/**
+ * Edits one lesson occurrence's title/platform/timing (never the recipients/recurrence, which are
+ * series-level). Also un-cancels it -- the common case for this is a teacher who cancelled a lesson
+ * after its meeting failed to create and now wants to fix it and try again, not leave it cancelled.
+ * The existing meeting row (if any) is reset and a fresh one attempted, the same way a brand-new
+ * lesson's first meeting is created, so an edit doesn't leave a stale joinUrl pointing at the old time.
+ */
+export async function updateLesson(scope: TeacherScope, input: LessonUpdateInput): Promise<void> {
+  await lessonOrThrow(scope, input.lessonId);
+  const db = requireDb();
+  const endsAt = new Date(input.startsAt.getTime() + input.durationMinutes * 60_000);
+  await db
+    .update(lessons)
+    .set({ title: input.title, platform: input.platform, startsAt: input.startsAt, endsAt, status: "SCHEDULED" })
+    .where(eq(lessons.id, input.lessonId));
+
+  const connection = await connectionOf(scope.userId, input.platform);
+  if (connection && connection.status === "ACTIVE") {
+    const lesson = await lessonOrThrow(scope, input.lessonId);
+    await createMeetingForLesson(lesson, connection);
+  } else {
+    // No active connection for the (possibly new) platform: clear any stale meeting from before the
+    // edit rather than leaving a CREATED row whose joinUrl/time no longer matches the lesson.
+    await db.delete(lessonMeetings).where(eq(lessonMeetings.lessonId, input.lessonId));
+  }
+}
+
+/** Permanently removes a lesson occurrence and everything recorded against it. Used to clean up a lesson created by mistake (e.g. while the meeting-provider connection was still broken), not as a routine action on a real, taught lesson. */
+export async function deleteLesson(scope: TeacherScope, lessonId: string): Promise<void> {
+  await lessonOrThrow(scope, lessonId);
+  const db = requireDb();
+  await db.delete(lessonAttendance).where(eq(lessonAttendance.lessonId, lessonId));
+  await db.delete(lessonRecords).where(eq(lessonRecords.lessonId, lessonId));
+  await db.delete(lessonNotes).where(eq(lessonNotes.lessonId, lessonId));
+  await db.delete(lessonConsentAcks).where(eq(lessonConsentAcks.lessonId, lessonId));
+  await db.delete(lessonMeetings).where(eq(lessonMeetings.lessonId, lessonId));
+  await db.delete(lessons).where(eq(lessons.id, lessonId));
 }
 
 /** Manual retry for a lesson whose meeting failed (or is still pending because the provider wasn't connected yet when it was created). */

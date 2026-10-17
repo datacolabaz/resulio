@@ -7,8 +7,11 @@ import { errorText, fromLocalInput, toLocalInput } from "@/lib/format";
 import { recipientsPayload } from "@/lib/groupStudentSelection";
 import { trpc } from "@/lib/trpc";
 import { DEFAULT_JOIN_WINDOW_AFTER_MIN, DEFAULT_JOIN_WINDOW_BEFORE_MIN, LESSON_RECURRENCES, MEETING_PROVIDERS, recurrenceNeedsUntil, type LessonRecurrence, type MeetingProvider } from "@shared/lessonIntegration";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
+
+/** The subset of a lesson occurrence the dialog needs to pre-fill when editing one. */
+export type EditableLesson = { id: string; title: string; platform: MeetingProvider; startsAt: Date | string; endsAt: Date | string };
 
 const labelText = "text-sm text-foreground-secondary";
 const selectClass = "mt-1 w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground";
@@ -21,10 +24,26 @@ function providerLabel(p: MeetingProvider): string {
   return p === "GOOGLE_MEET" ? t("lessons.provider.googleMeet") : t("lessons.provider.zoom");
 }
 
-/** "Yeni dərs": platform/recurrence choice, group+student recipients, and the meeting's time window. */
-export function LessonFormDialog({ open, onOpenChange, connectedProviders }: { open: boolean; onOpenChange: (open: boolean) => void; connectedProviders: MeetingProvider[] }) {
+/**
+ * "Yeni dərs" / "Dərsi redaktə et": platform/recurrence choice, group+student recipients, and the
+ * meeting's time window. Passing `lesson` switches the dialog into edit mode for that one
+ * occurrence -- recurrence and recipients are series-level and stay fixed, so those fields are
+ * hidden and only title/platform/time are editable.
+ */
+export function LessonFormDialog({
+  open,
+  onOpenChange,
+  connectedProviders,
+  lesson,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  connectedProviders: MeetingProvider[];
+  lesson?: EditableLesson | null;
+}) {
   const ids = useId();
   const utils = trpc.useUtils();
+  const isEdit = !!lesson;
   const targets = useGroupStudentTargets(undefined);
   const [title, setTitle] = useState("");
   const [platform, setPlatform] = useState<MeetingProvider>(connectedProviders[0] ?? "GOOGLE_MEET");
@@ -33,25 +52,58 @@ export function LessonFormDialog({ open, onOpenChange, connectedProviders }: { o
   const [durationMinutes, setDurationMinutes] = useState(45);
   const [recurrenceUntil, setRecurrenceUntil] = useState("");
 
+  // Re-seed the form from the lesson being edited (or reset to blank for a new one) each time the dialog opens.
+  useEffect(() => {
+    if (!open) return;
+    if (lesson) {
+      setTitle(lesson.title);
+      setPlatform(lesson.platform);
+      setStartsAt(toLocalInput(lesson.startsAt));
+      const ms = new Date(lesson.endsAt).getTime() - new Date(lesson.startsAt).getTime();
+      setDurationMinutes(Math.max(5, Math.round(ms / 60_000)));
+    } else {
+      setTitle("");
+      setPlatform(connectedProviders[0] ?? "GOOGLE_MEET");
+      setRecurrence("ONCE");
+      setStartsAt("");
+      setDurationMinutes(45);
+      setRecurrenceUntil("");
+    }
+    // Only re-seed on open/lesson-identity change, not on every keystroke into the fields below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, lesson?.id]);
+
   const create = trpc.teacher.lessons.create.useMutation({
     onSuccess: () => {
       toast.success(t("lessons.form.created"));
       void utils.teacher.lessons.list.invalidate();
       onOpenChange(false);
-      setTitle("");
-      setStartsAt("");
-      setRecurrenceUntil("");
     },
     onError: (e) => toast.error(errorText(e)),
   });
+  const update = trpc.teacher.lessons.update.useMutation({
+    onSuccess: () => {
+      toast.success(t("lessons.form.updated"));
+      void utils.teacher.lessons.list.invalidate();
+      void utils.teacher.lessons.get.invalidate();
+      onOpenChange(false);
+    },
+    onError: (e) => toast.error(errorText(e)),
+  });
+  const saving = create.isPending || update.isPending;
 
   const startsAtDate = fromLocalInput(startsAt);
   const untilDate = recurrenceNeedsUntil(recurrence) ? fromLocalInput(recurrenceUntil) : null;
-  const missingRecipients = !targets.selection.groupIds.length && !targets.selection.extra.length;
-  const canSave = !!title.trim() && !!startsAtDate && !missingRecipients && (!recurrenceNeedsUntil(recurrence) || !!untilDate) && targets.ready;
+  const missingRecipients = !isEdit && !targets.selection.groupIds.length && !targets.selection.extra.length;
+  const canSave =
+    !!title.trim() && !!startsAtDate && !missingRecipients && (isEdit || !recurrenceNeedsUntil(recurrence) || !!untilDate) && (isEdit || targets.ready);
 
   const save = () => {
     if (!canSave || !startsAtDate) return;
+    if (isEdit && lesson) {
+      update.mutate({ lessonId: lesson.id, title: title.trim(), platform, startsAt: startsAtDate, durationMinutes });
+      return;
+    }
     create.mutate({
       title: title.trim(),
       platform,
@@ -70,7 +122,7 @@ export function LessonFormDialog({ open, onOpenChange, connectedProviders }: { o
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>{t("lessons.form.title")}</DialogTitle>
+          <DialogTitle>{isEdit ? t("lessons.form.editTitle") : t("lessons.form.title")}</DialogTitle>
         </DialogHeader>
         <DialogBody className="grid gap-3">
           <label className="block">
@@ -90,14 +142,16 @@ export function LessonFormDialog({ open, onOpenChange, connectedProviders }: { o
                 ))}
               </select>
             </label>
-            <label className="block">
-              <span className={labelText}>{t("lessons.form.recurrence")}</span>
-              <select id={`${ids}-recurrence`} className={selectClass} value={recurrence} onChange={(e) => setRecurrence(e.target.value as LessonRecurrence)}>
-                {LESSON_RECURRENCES.map((r) => (
-                  <option key={r} value={r}>{recurrenceLabel(r)}</option>
-                ))}
-              </select>
-            </label>
+            {!isEdit && (
+              <label className="block">
+                <span className={labelText}>{t("lessons.form.recurrence")}</span>
+                <select id={`${ids}-recurrence`} className={selectClass} value={recurrence} onChange={(e) => setRecurrence(e.target.value as LessonRecurrence)}>
+                  {LESSON_RECURRENCES.map((r) => (
+                    <option key={r} value={r}>{recurrenceLabel(r)}</option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -111,7 +165,7 @@ export function LessonFormDialog({ open, onOpenChange, connectedProviders }: { o
             </label>
           </div>
 
-          {recurrenceNeedsUntil(recurrence) && (
+          {!isEdit && recurrenceNeedsUntil(recurrence) && (
             <label className="block">
               <span className={labelText}>{t("lessons.form.recurrenceUntil")}</span>
               <Input className="mt-1" type="datetime-local" value={recurrenceUntil} onChange={(e) => setRecurrenceUntil(e.target.value)} />
@@ -122,21 +176,23 @@ export function LessonFormDialog({ open, onOpenChange, connectedProviders }: { o
             <p role="status" className="rounded-lg bg-warning-surface px-3 py-2 text-sm text-warning">{t("lessons.form.willNeedConnection")}</p>
           )}
 
-          <section className="grid gap-2 border-t pt-3">
-            <h3 className="text-sm font-semibold">{t("lessons.form.recipients")}</h3>
-            <CompactGroupStudentPicker
-              groups={targets.groups}
-              students={targets.students}
-              value={targets.selection}
-              onChange={targets.setSelection}
-              hints={{ whole: t("lessons.form.groupWhole"), partial: t("lessons.form.groupPartial") }}
-            />
-            {missingRecipients && <p role="alert" className="text-xs text-destructive">{t("lessons.form.recipientsRequired")}</p>}
-          </section>
+          {!isEdit && (
+            <section className="grid gap-2 border-t pt-3">
+              <h3 className="text-sm font-semibold">{t("lessons.form.recipients")}</h3>
+              <CompactGroupStudentPicker
+                groups={targets.groups}
+                students={targets.students}
+                value={targets.selection}
+                onChange={targets.setSelection}
+                hints={{ whole: t("lessons.form.groupWhole"), partial: t("lessons.form.groupPartial") }}
+              />
+              {missingRecipients && <p role="alert" className="text-xs text-destructive">{t("lessons.form.recipientsRequired")}</p>}
+            </section>
+          )}
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
-          <Button disabled={!canSave || create.isPending} onClick={save}>{t("common.save")}</Button>
+          <Button disabled={!canSave || saving} onClick={save}>{t("common.save")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

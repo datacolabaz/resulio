@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { studentProcedure, teacherProcedure, router } from "../_core/trpc";
-import { lessonSeriesInput, lessonNoteInput, MEETING_PROVIDERS, type MeetingProvider } from "../../shared/lessonIntegration";
+import { lessonSeriesInput, lessonNoteInput, lessonUpdateInput, MEETING_PROVIDERS, type MeetingProvider } from "../../shared/lessonIntegration";
 import { activeGroupIdsOfStudent } from "../modules/groups";
 import * as service from "./service";
 import { connectionsOf, disconnect } from "./tokenStore";
@@ -52,6 +52,8 @@ export const teacherLessonsRouter = router({
   list: teacherProcedure.query(({ ctx }) => service.listForWorkspace(ctx.scope)),
   get: teacherProcedure.input(lessonIdInput).query(({ ctx, input }) => service.lessonDetail(ctx.scope, input.lessonId)),
   cancel: teacherProcedure.input(lessonIdInput).mutation(({ ctx, input }) => service.cancelLesson(ctx.scope, input.lessonId)),
+  update: teacherProcedure.input(lessonUpdateInput).mutation(({ ctx, input }) => service.updateLesson(ctx.scope, input)),
+  delete: teacherProcedure.input(lessonIdInput).mutation(({ ctx, input }) => service.deleteLesson(ctx.scope, input.lessonId)),
   retryMeeting: teacherProcedure.input(lessonIdInput).mutation(({ ctx, input }) => service.retryMeeting(ctx.scope, input.lessonId)),
   addNote: teacherProcedure.input(lessonNoteInput).mutation(({ ctx, input }) => service.addTeacherNote(ctx.scope, input)),
 });
