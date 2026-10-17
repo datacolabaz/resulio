@@ -6,6 +6,7 @@ import { apiCors } from "./cors";
 import { csrfGuard } from "./csrf";
 import { ENV } from "./env";
 import { registerGoogleAuthRoutes } from "./googleAuth";
+import { registerLessonOAuthRoutes } from "../lessons/oauthRoutes";
 import { frontendRedirect, hostRedirect } from "./hostRedirect";
 import { securityHeaders } from "./spa";
 import { publicPlatformScript } from "./publicConfig";
@@ -209,6 +210,7 @@ async function startServer() {
   app.get("/api/public/exam-preview/:code", examPreviewRoute);
   app.get("/api/public/group-preview/:kind/:key", groupPreviewRoute);
   registerGoogleAuthRoutes(app);
+  registerLessonOAuthRoutes(app);
   registerFileRoutes(app);
   registerMcpRoutes(app);
   app.use(

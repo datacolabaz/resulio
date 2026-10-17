@@ -10,6 +10,7 @@ import { availableContexts, canEnter, CONTEXT_HOME, contextLabel } from "@/lib/c
 import { errorText, partnerStatusLabel, providerLabel, subscriptionLabel } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import { ClaudeConnectorPanel } from "@/components/ClaudeConnectorPanel";
+import { MeetingProviderSettings } from "@/components/lessons/MeetingProviderSettings";
 import { PASSWORD_MIN_LENGTH } from "@shared/auth";
 import { Check } from "lucide-react";
 import { useState } from "react";
@@ -217,6 +218,8 @@ export default function SettingsPage() {
         {user.workspaces.length > 0 && <AiUsagePanel />}
 
         {user.workspaces.length > 0 && <ClaudeConnectorPanel />}
+
+        {user.workspaces.length > 0 && <MeetingProviderSettings />}
 
         <NotificationPreferencesPanel teaching={user.workspaces.length > 0} />
 
