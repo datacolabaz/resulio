@@ -7,6 +7,8 @@ import { csrfGuard } from "./csrf";
 import { ENV } from "./env";
 import { registerGoogleAuthRoutes } from "./googleAuth";
 import { registerLessonOAuthRoutes } from "../lessons/oauthRoutes";
+import { registerLessonJoinRoute } from "../lessons/joinRoute";
+import { startLessonMeetingSweeper } from "../lessons/sweepers";
 import { frontendRedirect, hostRedirect } from "./hostRedirect";
 import { securityHeaders } from "./spa";
 import { publicPlatformScript } from "./publicConfig";
@@ -211,6 +213,7 @@ async function startServer() {
   app.get("/api/public/group-preview/:kind/:key", groupPreviewRoute);
   registerGoogleAuthRoutes(app);
   registerLessonOAuthRoutes(app);
+  registerLessonJoinRoute(app);
   registerFileRoutes(app);
   registerMcpRoutes(app);
   app.use(
@@ -244,6 +247,7 @@ async function startServer() {
   startOAuthSweep();
   startMaterialSweepers();
   startGrowthJobs();
+  startLessonMeetingSweeper();
   if (getDb()) {
     runMaterialMetaBackfill().catch((error) => console.error("[Materials] meta backfill failed", error instanceof Error ? error.message : error));
     runJoinSourceBackfill().catch((error) => console.error("[Groups] join source backfill failed", error instanceof Error ? error.message : error));

@@ -26,12 +26,16 @@ import {
   StudentResults,
   StudentTasks,
 } from "@/pages/student/StudentPages";
+import { StudentLessonDetailPage } from "@/pages/student/StudentLessonDetail";
+import { StudentLessonsPage } from "@/pages/student/StudentLessons";
 import StudentProfile from "@/pages/student/StudentProfile";
 import StudentSession from "@/pages/student/StudentSession";
 import { AnalyticsPage } from "@/pages/teacher/Analytics";
 import { AssessmentDetailPage, AssessmentsPage } from "@/pages/teacher/Assessments";
 import { EditAssessmentPage, NewAssessmentPage } from "@/pages/teacher/ExamBuilder";
 import { GroupDetailPage, GroupsPage } from "@/pages/teacher/Groups";
+import { LessonDetailPage } from "@/pages/teacher/LessonDetailPage";
+import { LessonsPage } from "@/pages/teacher/LessonsPage";
 import { AssessmentParticipantsPage } from "@/pages/teacher/Participants";
 import { ResultDetailPage, ResultsPage } from "@/pages/teacher/Results";
 import TeacherHome from "@/pages/teacher/TeacherHome";
@@ -198,6 +202,8 @@ function Router() {
       <Route path="/teacher/results/:id">{teacher(<ResultDetailPage />)}</Route>
       <Route path="/teacher/analytics">{teacher(<AnalyticsPage />)}</Route>
       <Route path="/teacher/growth">{teacher(<GrowthPage />)}</Route>
+      <Route path="/teacher/lessons">{teacher(<LessonsPage />)}</Route>
+      <Route path="/teacher/lessons/:id">{teacher(<LessonDetailPage />)}</Route>
       <Route path="/teacher/usage">{teacher(<UsagePage />)}</Route>
       <Route path="/teacher/ksq"><Redirect to="/teacher/assessments?type=KSQ" /></Route>
       <Route path="/teacher/bsq"><Redirect to="/teacher/assessments?type=BSQ" /></Route>
@@ -217,6 +223,8 @@ function Router() {
       <Route path="/student/results/:id">{student(<StudentResultDetail />)}</Route>
       <Route path="/student/progress">{student(<StudentProgress />)}</Route>
       <Route path="/student/growth">{student(<StudentGrowthPage />)}</Route>
+      <Route path="/student/lessons">{student(<StudentLessonsPage />)}</Route>
+      <Route path="/student/lessons/:id">{student(<StudentLessonDetailPage />)}</Route>
       <Route path="/student/coach">{student(<CoachLibraryPage />)}</Route>
       <Route path="/student/coach/settings">{student(<CoachSettingsPage />)}</Route>
       <Route path="/student/coach/mistakes">{student(<CoachMistakesPage />)}</Route>

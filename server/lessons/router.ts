@@ -1,6 +1,8 @@
 import { z } from "zod";
-import { teacherProcedure, router } from "../_core/trpc";
-import { MEETING_PROVIDERS, type MeetingProvider } from "../../shared/lessonIntegration";
+import { studentProcedure, teacherProcedure, router } from "../_core/trpc";
+import { lessonSeriesInput, lessonNoteInput, MEETING_PROVIDERS, type MeetingProvider } from "../../shared/lessonIntegration";
+import { activeGroupIdsOfStudent } from "../modules/groups";
+import * as service from "./service";
 import { connectionsOf, disconnect } from "./tokenStore";
 
 /**
@@ -42,6 +44,23 @@ const connectionsRouter = router({
   }),
 });
 
+const lessonIdInput = z.object({ lessonId: z.string().trim().min(1).max(32) });
+
 export const teacherLessonsRouter = router({
   connections: connectionsRouter,
+  create: teacherProcedure.input(lessonSeriesInput).mutation(({ ctx, input }) => service.createSeries(ctx.scope, input)),
+  list: teacherProcedure.query(({ ctx }) => service.listForWorkspace(ctx.scope)),
+  get: teacherProcedure.input(lessonIdInput).query(({ ctx, input }) => service.lessonDetail(ctx.scope, input.lessonId)),
+  cancel: teacherProcedure.input(lessonIdInput).mutation(({ ctx, input }) => service.cancelLesson(ctx.scope, input.lessonId)),
+  retryMeeting: teacherProcedure.input(lessonIdInput).mutation(({ ctx, input }) => service.retryMeeting(ctx.scope, input.lessonId)),
+  addNote: teacherProcedure.input(lessonNoteInput).mutation(({ ctx, input }) => service.addTeacherNote(ctx.scope, input)),
+});
+
+export const studentLessonsRouter = router({
+  list: studentProcedure.query(async ({ ctx }) => service.studentLessons(ctx.user.id, await activeGroupIdsOfStudent(ctx.user.id))),
+  get: studentProcedure.input(lessonIdInput).query(async ({ ctx, input }) => service.studentLessonDetail(ctx.user.id, await activeGroupIdsOfStudent(ctx.user.id), input.lessonId)),
+  addNote: studentProcedure
+    .input(lessonNoteInput.omit({ visibility: true }))
+    .mutation(async ({ ctx, input }) => service.addStudentNote(ctx.user.id, await activeGroupIdsOfStudent(ctx.user.id), input)),
+  ackConsent: studentProcedure.input(lessonIdInput).mutation(({ ctx, input }) => service.ackRecordingConsent(ctx.user.id, input.lessonId)),
 });

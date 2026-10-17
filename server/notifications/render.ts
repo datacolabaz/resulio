@@ -22,7 +22,9 @@ import {
   gradeInAppText,
   groupJoinDecidedInApp,
   groupMemberJoinedInApp,
+  lessonScheduledInApp,
   studentGroupPath,
+  studentLessonPath,
   studentTaskPath,
   taskAssignedInApp,
   taskAssignedPath,
@@ -170,6 +172,10 @@ export function renderNotification<E extends EventType>(event: E, data: EventDat
     case "PLAN_REMINDER": {
       const d = data as EventData["PLAN_REMINDER"];
       return { ...planReminderInApp(locale, d), path: studentGrowthPath, email: null };
+    }
+    case "LESSON_SCHEDULED": {
+      const d = data as EventData["LESSON_SCHEDULED"];
+      return { ...lessonScheduledInApp(locale, d.title, d.startsAt), path: studentLessonPath(d.lessonId), email: null };
     }
     default:
       throw new Error(`No renderer for ${String(event)}`);

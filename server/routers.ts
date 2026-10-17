@@ -81,7 +81,7 @@ import { store } from "./resulioStore";
 import { announceGroupJoin } from "./syllabus/notify";
 import { publicSyllabusProcedure, studentSyllabusRouter, teacherSyllabusRouter } from "./syllabus/router";
 import { publicGrowthReport, studentGrowthRouter, teacherGrowthRouter } from "./growth/router";
-import { teacherLessonsRouter } from "./lessons/router";
+import { studentLessonsRouter, teacherLessonsRouter } from "./lessons/router";
 import { studentCoachRouter, teacherCoachSharesRouter } from "./coach/router";
 import { SHARE_CAMPAIGNS, SHARE_CHANNELS, SHARE_TARGET_TYPES, VISITOR_ID_PATTERN } from "../shared/shareTracking";
 import {
@@ -1050,6 +1050,7 @@ const studentRouter = router({
   syllabus: studentSyllabusRouter,
   growth: studentGrowthRouter,
   coach: studentCoachRouter,
+  lessons: studentLessonsRouter,
 });
 
 // ---------------------------------------------------------------------------

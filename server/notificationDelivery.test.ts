@@ -256,6 +256,7 @@ describe("dispatcher", () => {
         GROWTH_RISK_DIGEST: { count: 7, names: ["A", "B"] },
         RETAKE_ASSIGNED: { assessmentId: "a1", topics: ["Kəsrlər"], from: "Müəllim" },
         PLAN_REMINDER: { planId: "p1", items: 2, minutes: 35 },
+        LESSON_SCHEDULED: { lessonId: "l1", title: "Riyaziyyat", startsAt: "2026-10-20T10:00:00Z" },
       }[event];
       const rendered = renderNotification(event, data, { locale: "az", email: "a@b.c" }, "https://resulio.co");
       expect(rendered.title.length).toBeGreaterThan(0);
