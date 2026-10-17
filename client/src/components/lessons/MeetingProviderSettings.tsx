@@ -1,5 +1,6 @@
 import { Panel } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
+import { API_BASE } from "@/const";
 import { t } from "@/i18n/messages";
 import { errorText } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
@@ -54,7 +55,7 @@ export function MeetingProviderSettings() {
   const connect = (provider: MeetingProvider) => {
     const workspaceId = workspace.data?.id;
     const params = new URLSearchParams({ returnTo: RETURN_TO, ...(workspaceId ? { workspaceId } : {}) });
-    window.location.href = `/api/lessons/oauth/${PROVIDER_SLUG[provider]}/start?${params.toString()}`;
+    window.location.href = `${API_BASE}/api/lessons/oauth/${PROVIDER_SLUG[provider]}/start?${params.toString()}`;
   };
 
   return (

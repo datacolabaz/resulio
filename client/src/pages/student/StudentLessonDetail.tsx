@@ -1,6 +1,7 @@
 import { AppShell, Loading, Panel, Pill } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { API_BASE } from "@/const";
 import { t } from "@/i18n/messages";
 import { errorText, fmtDateTime, fmtWindow } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
@@ -56,7 +57,7 @@ export function StudentLessonDetailPage() {
           )}
           {canJoin && consentAcked && (
             <Button asChild className="mt-3" size="sm">
-              <a href={`/api/lessons/${lesson.id}/join`}>{t("lessons.student.join")}</a>
+              <a href={`${API_BASE}/api/lessons/${lesson.id}/join`}>{t("lessons.student.join")}</a>
             </Button>
           )}
         </Panel>

@@ -1,5 +1,6 @@
 import { AppShell, EmptyState, Loading, Panel, Pill } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
+import { API_BASE } from "@/const";
 import { t } from "@/i18n/messages";
 import { fmtWindow } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
@@ -33,7 +34,7 @@ export function StudentLessonsPage() {
                   <div className="flex flex-wrap items-center gap-2 pt-1">
                     {lesson.status !== "CANCELLED" && lesson.meeting?.status === "CREATED" && (
                       <Button asChild size="sm">
-                        <a href={`/api/lessons/${lesson.id}/join`}>{t("lessons.student.join")}</a>
+                        <a href={`${API_BASE}/api/lessons/${lesson.id}/join`}>{t("lessons.student.join")}</a>
                       </Button>
                     )}
                     <Link href={`/student/lessons/${lesson.id}`} className="text-sm font-medium text-link underline underline-offset-4">

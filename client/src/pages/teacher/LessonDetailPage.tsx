@@ -1,6 +1,7 @@
 import { AppShell, Loading, Panel, Pill } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { API_BASE } from "@/const";
 import { t } from "@/i18n/messages";
 import { errorText, fmtDateTime, fmtWindow } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
@@ -44,7 +45,7 @@ export function LessonDetailPage() {
           <p className="text-sm">{fmtWindow(lesson.startsAt, lesson.endsAt)}</p>
           {meeting?.status === "CREATED" && lesson.status !== "CANCELLED" && (
             <Button asChild className="mt-3" size="sm">
-              <a href={`/api/lessons/${lesson.id}/join`}>{t("lessons.detail.startMeeting")}</a>
+              <a href={`${API_BASE}/api/lessons/${lesson.id}/join`}>{t("lessons.detail.startMeeting")}</a>
             </Button>
           )}
           {meeting?.status === "FAILED" && <p className="mt-2 text-sm text-destructive">{t("lessons.list.meetingFailed")}</p>}
