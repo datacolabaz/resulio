@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, isNull, or } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, or } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
 import type { PartnerStatus } from "../../shared/adminPermissions";
 import {
@@ -7,6 +7,7 @@ import {
   platformRoles,
   providerWorkspaces,
   syllabusAccessGrants,
+  workspaceMembers,
   type PartnerProfile,
   type PlatformRole,
   type ProviderWorkspace,
@@ -32,12 +33,39 @@ const LEGACY_GATE_STATUSES: readonly PartnerStatus[] = ["PENDING", "INFO_REQUEST
 /** Resolved teaching authority for one request: the managed workspace plus the acting user. */
 export type TeacherScope = { workspaceId: string; userId: number };
 
-export async function managedWorkspaces(userId: number, db: DbOrTx = requireDb()) {
+/** Strictly the workspaces this user owns (`providerWorkspaces.ownerUserId`) -- never widened by
+ * organization membership. Only `createWorkspace`'s MAX_WORKSPACES_PER_USER quota should use
+ * this; everything that decides "can this user act on workspace X as if they owned it" should use
+ * `managedWorkspaces` below instead. */
+export async function ownedWorkspaces(userId: number, db: DbOrTx = requireDb()) {
   return db
     .select()
     .from(providerWorkspaces)
     .where(eq(providerWorkspaces.ownerUserId, userId))
     .orderBy(asc(providerWorkspaces.createdAt));
+}
+
+/**
+ * Every workspace this user may manage as if they owned it: the workspaces they own, plus any
+ * workspace where they hold an ACTIVE `workspace_members` row with role OWNER or ADMIN (see
+ * shared/organization.ts's `isOwnerEquivalent`). This is the one seam that makes nearly every
+ * existing teacher-facing subsystem (exams, groups, question bank, files, tasks...) "just work"
+ * for an org's Admin without touching those subsystems: they all resolve access through this
+ * function or `resolveWorkspace`/`teacherProcedure`, which call it. Finer-grained roles
+ * (HR_ADMIN/TRAINER/MANAGER) are deliberately NOT included here yet -- see shared/organization.ts.
+ */
+export async function managedWorkspaces(userId: number, db: DbOrTx = requireDb()) {
+  const owned = await ownedWorkspaces(userId, db);
+  const adminMemberships = await db
+    .select({ workspaceId: workspaceMembers.workspaceId })
+    .from(workspaceMembers)
+    .where(and(eq(workspaceMembers.userId, userId), eq(workspaceMembers.status, "ACTIVE"), eq(workspaceMembers.role, "ADMIN")));
+  if (!adminMemberships.length) return owned;
+  const ownedIds = new Set(owned.map((w) => w.id));
+  const extraIds = [...new Set(adminMemberships.map((m) => m.workspaceId))].filter((id) => !ownedIds.has(id));
+  if (!extraIds.length) return owned;
+  const extra = await db.select().from(providerWorkspaces).where(inArray(providerWorkspaces.id, extraIds));
+  return [...owned, ...extra].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 }
 
 /**

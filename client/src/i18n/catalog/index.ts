@@ -8,6 +8,7 @@ import { format } from "./format";
 import { growth } from "./growth";
 import { lessons } from "./lessons";
 import { materials } from "./materials";
+import { organization } from "./organization";
 import { publishPlain } from "./publishPlain";
 import { questionBank } from "./questionBank";
 import { site } from "./site";
@@ -23,7 +24,7 @@ import { teachingCategories } from "./teachingCategories";
 import { whatsNew } from "./whatsNew";
 
 /** Every domain catalog; the i18n test checks that no key is defined twice. */
-export const domains = { common, format, app, teacher, builder, student, admin, teachingCategories, site, syllabus, syllabusLearn, syllabusAnalytics, syllabusUx, syllabusImport, syllabusShare, questionBank, publishPlain, materials, growth, coach, connector, whatsNew, lessons } as const;
+export const domains = { common, format, app, teacher, builder, student, admin, teachingCategories, site, syllabus, syllabusLearn, syllabusAnalytics, syllabusUx, syllabusImport, syllabusShare, questionBank, publishPlain, materials, growth, coach, connector, whatsNew, lessons, organization } as const;
 
 export const catalog = {
   ...common,
@@ -49,4 +50,5 @@ export const catalog = {
   ...connector,
   ...whatsNew,
   ...lessons,
+  ...organization,
 } as const;

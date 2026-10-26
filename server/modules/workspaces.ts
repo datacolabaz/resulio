@@ -4,7 +4,7 @@ import { PROVIDER_TYPES, providerWorkspaces } from "../../drizzle/schema";
 import type { TeachingCategory } from "../../shared/teachingCategories";
 import { ENV } from "../_core/env";
 import { requireDb } from "../db";
-import { managedWorkspaces, type TeacherScope } from "./access";
+import { ownedWorkspaces, type TeacherScope } from "./access";
 import { AppError } from "./errors";
 
 export const MAX_WORKSPACES_PER_USER = 5;
@@ -26,7 +26,9 @@ export async function createWorkspace(user: { id: number; email: string | null }
   if (allow.length && !allow.includes((user.email ?? "").toLowerCase())) throw new AppError("WORKSPACE_NOT_ALLOWED");
   const db = requireDb();
   return db.transaction(async (tx) => {
-    const owned = await managedWorkspaces(user.id, tx);
+    // Strictly owned workspaces only -- being an org Admin on someone else's workspace must never
+    // eat into this account's own creation quota.
+    const owned = await ownedWorkspaces(user.id, tx);
     if (owned.length >= MAX_WORKSPACES_PER_USER) throw new AppError("WORKSPACE_LIMIT");
     const id = nanoid();
     await tx.insert(providerWorkspaces).values({ id, ownerUserId: user.id, ...input });

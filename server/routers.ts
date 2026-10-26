@@ -82,6 +82,7 @@ import { announceGroupJoin } from "./syllabus/notify";
 import { publicSyllabusProcedure, studentSyllabusRouter, teacherSyllabusRouter } from "./syllabus/router";
 import { publicGrowthReport, studentGrowthRouter, teacherGrowthRouter } from "./growth/router";
 import { studentLessonsRouter, teacherLessonsRouter } from "./lessons/router";
+import { organizationRouter } from "./organization/router";
 import { studentCoachRouter, teacherCoachSharesRouter } from "./coach/router";
 import { SHARE_CAMPAIGNS, SHARE_CHANNELS, SHARE_TARGET_TYPES, VISITOR_ID_PATTERN } from "../shared/shareTracking";
 import {
@@ -1258,6 +1259,7 @@ export const appRouter = router({
   system: systemRouter,
   auth: authRouter,
   workspaces: workspacesRouter,
+  organization: organizationRouter,
   partner: partnerRouter,
   admin: adminRouter,
   teacher: teacherRouter,

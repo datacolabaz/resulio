@@ -407,6 +407,13 @@
       "when": 1792233350770,
       "tag": "0061_lesson_integration",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "5",
+      "when": 1793038387471,
+      "tag": "0062_organization_workspace",
+      "breakpoints": true
     }
   ]
 }
