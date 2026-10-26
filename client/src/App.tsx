@@ -9,6 +9,7 @@ import { trpc } from "@/lib/trpc";
 import AdminRoutes from "@/pages/admin/Admin";
 import Home from "@/pages/Home";
 import NotFound from "@/pages/NotFound";
+import { OrganizationAcceptPage } from "@/pages/OrganizationAccept";
 import PartnerPage from "@/pages/PartnerPage";
 import WelcomePage from "@/pages/WelcomePage";
 import { InviteLinkPage, JoinGroupPage, PublicEmailInvitePage, PublicExamPage, PublicMaterialPage, PublicTaskPage } from "@/pages/PublicFlows";
@@ -164,6 +165,7 @@ function Router() {
       <Route path="/welcome" component={WelcomePage} />
       <Route path="/choose-role">{() => <Redirect to={`/welcome${window.location.search}`} />}</Route>
       <Route path="/join/:inviteCode" component={JoinGroupPage} />
+      <Route path="/organization/accept" component={OrganizationAcceptPage} />
       <Route path="/invite/:token" component={PublicEmailInvitePage} />
       <Route path="/g/:token" component={InviteLinkPage} />
       <Route path="/report/:token" component={GrowthReportPage} />

@@ -2334,4 +2334,5 @@ export type SubmissionGrading = typeof submissionGrading.$inferSelect;
 export * from "./coachSchema";
 export * from "./lessonSchema";
 export * from "./mcpSchema";
+export * from "./organizationSchema";
 export * from "./whatsNewSchema";

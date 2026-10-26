@@ -11,6 +11,7 @@ import { errorText, partnerStatusLabel, providerLabel, subscriptionLabel } from 
 import { trpc } from "@/lib/trpc";
 import { ClaudeConnectorPanel } from "@/components/ClaudeConnectorPanel";
 import { MeetingProviderSettings } from "@/components/lessons/MeetingProviderSettings";
+import { OrganizationSettings } from "@/components/organization/OrganizationSettings";
 import { PASSWORD_MIN_LENGTH } from "@shared/auth";
 import { Check } from "lucide-react";
 import { useState } from "react";
@@ -220,6 +221,8 @@ export default function SettingsPage() {
         {user.workspaces.length > 0 && <ClaudeConnectorPanel />}
 
         {user.workspaces.length > 0 && <MeetingProviderSettings />}
+
+        {user.workspaces.length > 0 && <OrganizationSettings />}
 
         <NotificationPreferencesPanel teaching={user.workspaces.length > 0} />
 
