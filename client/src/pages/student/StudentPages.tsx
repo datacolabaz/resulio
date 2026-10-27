@@ -425,6 +425,7 @@ export function StudentGroups() {
                       <>
                         <GroupProgressPanel groupId={g.id} />
                         <GroupBoardPanel groupId={g.id} />
+                        <GroupExamStatsPanel groupId={g.id} />
                       </>
                     )}
                   </li>
@@ -540,6 +541,30 @@ function GroupProgressPanel({ groupId }: { groupId: string }) {
         <StatCard label={t("student.resultCount")} value={p.data.summary.count} />
       </div>
       <TopicBars rows={p.data.topics} />
+    </div>
+  );
+}
+
+/**
+ * The group's aggregate exam statistics (average score, weak/strong topics) -- only when the
+ * teacher has turned this on for the group (off by default). Renders nothing when it's off or
+ * there's not yet anything to show, same as GroupBoardPanel does for its own off-state; this panel
+ * never carries another student's name, individual result or answers -- see
+ * analytics.studentGroupExamStats server-side.
+ */
+function GroupExamStatsPanel({ groupId }: { groupId: string }) {
+  const s = trpc.student.groupExamStats.useQuery({ groupId });
+  if (!s.data?.visible) return null;
+  return (
+    <div className="mt-2 space-y-3 rounded-lg bg-muted/40 p-3">
+      <div className="grid grid-cols-2 gap-2">
+        <StatCard label={t("student.groupExamAverage")} value={`${s.data.averageScore}%`} />
+        <StatCard label={t("common.student")} value={s.data.studentCount} />
+      </div>
+      <div>
+        <h4 className="mb-1.5 text-xs font-medium text-foreground-secondary">{t("common.topics")}</h4>
+        <TopicBars rows={s.data.topics} />
+      </div>
     </div>
   );
 }

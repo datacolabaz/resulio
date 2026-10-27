@@ -14,6 +14,7 @@ import { t, type MessageKey } from "@/i18n/messages";
 import { errorText, fmtDuration, fromLocalInput, questionTypeLabel, releaseLabel, reviewLabel, toLocalInput, typeLabel } from "@/lib/format";
 import { recipientsPayload } from "@/lib/groupStudentSelection";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
+import { formatFileSize, uploadFile, UploadError, type UploadedFile } from "@/lib/uploadFile";
 import { CLOSED_QUESTION_TYPES, DEFAULT_WRONG_PENALTY, QUESTION_TYPES, type AssessmentType, type QuestionType } from "@shared/assessment";
 import { builderPath, safeSyllabusEditorPath } from "@/lib/syllabusLearn";
 import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Check, FileUp, Library, Pencil, Replace, Sparkles, Trash2 } from "lucide-react";
@@ -69,15 +70,35 @@ function BackToSyllabus({ href }: { href: string }) {
   );
 }
 
-/** `/teacher/assessments/new` — step 1 creates the draft, then continues in the edit route. */
+/**
+ * `/teacher/assessments/new` — step 1 creates the draft, then continues in the edit route.
+ *
+ * Also the landing page of the GROUP_WEAK_TOPIC_DIGEST notification's deep link
+ * (`?groupId=&topic=`): when those are present, the new draft is targeted at that group right
+ * away and the questions step opens with the AI dialog pre-filled to that topic, so following up
+ * on a weak-topic notice takes the teacher straight into generating questions for it.
+ */
 export function NewAssessmentPage() {
   const [, nav] = useLocation();
   const search = new URLSearchParams(useSearch());
   const initialType = (search.get("type") ?? "EXAM") as AssessmentType;
   const returnTo = safeSyllabusEditorPath(search.get("returnTo"));
-  const [form, setForm] = useState({ type: initialType, title: "", subject: "", description: "", instructions: "" });
+  const digestGroupId = search.get("groupId");
+  const digestTopic = search.get("topic");
+  const [form, setForm] = useState({ type: initialType, title: digestTopic ?? "", subject: "", description: "", instructions: "" });
+  const setTargets = trpc.teacher.assessments.setTargets.useMutation();
   const create = trpc.teacher.assessments.create.useMutation({
-    onSuccess: (a) => nav(builderPath(`/teacher/assessments/${a.id}/edit?step=questions`, returnTo)),
+    onSuccess: async (a) => {
+      if (digestGroupId) {
+        try {
+          await setTargets.mutateAsync({ id: a.id, targets: { groupIds: [digestGroupId], studentIds: [] } });
+        } catch (e) {
+          toast.error(errorText(e));
+        }
+      }
+      const extra = digestTopic ? `&topic=${encodeURIComponent(digestTopic)}` : "";
+      nav(builderPath(`/teacher/assessments/${a.id}/edit?step=questions${extra}`, returnTo));
+    },
     onError: (e) => toast.error(errorText(e)),
   });
   return (
@@ -182,7 +203,7 @@ export function EditAssessmentPage() {
             <div className="rounded-xl border border-warning/40 bg-warning-surface p-3 text-sm text-foreground">{t("builder.editingPublished")}</div>
           )}
           {step === "basics" && <BasicsStep a={a} onNext={next} />}
-          {step === "questions" && <QuestionsStep a={a} onNext={next} />}
+          {step === "questions" && <QuestionsStep a={a} onNext={next} initialAiTopic={search.get("topic")} />}
           {step === "participants" && <ParticipantsStep a={a} onNext={next} />}
           {step === "rules" && <RulesStep a={a} onNext={next} />}
           {step === "publish" && <PublishStep a={a} />}
@@ -215,7 +236,7 @@ function BasicsStep({ a, onNext }: { a: Detail; onNext: () => void }) {
   );
 }
 
-function QuestionsStep({ a, onNext }: { a: Detail; onNext: () => void }) {
+function QuestionsStep({ a, onNext, initialAiTopic }: { a: Detail; onNext: () => void; initialAiTopic?: string | null }) {
   const invalidate = useInvalidateDetail(a.id);
   const utils = trpc.useUtils();
   const topics = useTopics();
@@ -225,7 +246,9 @@ function QuestionsStep({ a, onNext }: { a: Detail; onNext: () => void }) {
   const [bankOpen, setBankOpen] = useState(false);
   const [buildOpen, setBuildOpen] = useState(false);
   const [replacing, setReplacing] = useState<Detail["questions"][number] | null>(null);
-  const [aiOpen, setAiOpen] = useState(false);
+  // Arriving from the GROUP_WEAK_TOPIC_DIGEST deep link (?topic=): open the AI dialog right away,
+  // pre-filled to that topic, instead of making the teacher find and open it themselves.
+  const [aiOpen, setAiOpen] = useState(!!initialAiTopic);
   const onError = (e: unknown) => toast.error(errorText(e));
   const create = trpc.teacher.assessments.createQuestion.useMutation({
     onSuccess: () => {
@@ -320,7 +343,7 @@ function QuestionsStep({ a, onNext }: { a: Detail; onNext: () => void }) {
       <BankDialog open={bankOpen} onOpenChange={setBankOpen} assessmentId={a.id} existing={a.questions.map((q) => q.id)} />
       {buildOpen && <BuildFromBankDialog onOpenChange={setBuildOpen} a={a} topics={topicList} />}
       {replacing && <ReplaceDialog onOpenChange={(v) => !v && setReplacing(null)} a={a} question={replacing} topics={topicList} />}
-      <AiDialog open={aiOpen} onOpenChange={setAiOpen} assessmentId={a.id} />
+      <AiDialog open={aiOpen} onOpenChange={setAiOpen} assessmentId={a.id} initialTopic={initialAiTopic ?? undefined} />
     </div>
   );
 }
@@ -576,11 +599,43 @@ function BankDialog({ open, onOpenChange, assessmentId, existing }: { open: bool
 }
 
 const AI_TYPES = ["MULTIPLE_CHOICE", "MULTIPLE_SELECT", "TRUE_FALSE", "SHORT_ANSWER", "FILL_BLANK", "NUMERIC"] as const;
+/** Formats `sourceMaterialFromFile` (server/modules/ai.ts) can actually read as source material. */
+const AI_SOURCE_ACCEPT = ".pdf,.docx,.pptx,.csv,.xlsx,.txt,.png,.jpg,.jpeg";
 
-function AiDialog({ open, onOpenChange, assessmentId }: { open: boolean; onOpenChange: (v: boolean) => void; assessmentId: string }) {
-  const [form, setForm] = useState({ topic: "", grade: "", language: "az" as "az" | "ru" | "en" | "de", difficulty: "MEDIUM" as "EASY" | "MEDIUM" | "HARD", questionType: "MULTIPLE_CHOICE" as (typeof AI_TYPES)[number], count: 5, points: 1 });
+function AiDialog({
+  open,
+  onOpenChange,
+  assessmentId,
+  initialTopic,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  assessmentId: string;
+  /** Pre-fills the topic field -- arriving from the GROUP_WEAK_TOPIC_DIGEST deep link. */
+  initialTopic?: string;
+}) {
+  const [form, setForm] = useState({ topic: initialTopic ?? "", grade: "", language: "az" as "az" | "ru" | "en" | "de", difficulty: "MEDIUM" as "EASY" | "MEDIUM" | "HARD", questionType: "MULTIPLE_CHOICE" as (typeof AI_TYPES)[number], count: 5, points: 1 });
   const [picked, setPicked] = useState<string[]>([]);
   const [sectionId, setSectionId] = useState("");
+  // Source material (point A of the approved plan): a file the teacher attaches, or pasted text.
+  // At most one is sent -- the file wins if both are set (see sourceMaterialOf server-side).
+  const [sourceFile, setSourceFile] = useState<UploadedFile | null>(null);
+  const [sourceUploading, setSourceUploading] = useState(false);
+  const [sourceText, setSourceText] = useState("");
+  const sourceInput = useRef<HTMLInputElement>(null);
+  const pickSource = async (picked: File | undefined) => {
+    if (!picked) return;
+    setSourceUploading(true);
+    try {
+      setSourceFile(await uploadFile(picked, "ai-source"));
+      setSourceText("");
+    } catch (e) {
+      const code = e instanceof UploadError ? e.code : "UPLOAD_FAILED";
+      toast.error(code === "FILE_TOO_LARGE" ? t("files.tooLarge") : code === "FILE_TYPE_NOT_ALLOWED" ? t("error.AI_SOURCE_FILE_TYPE") : t("files.uploadFailed"));
+    } finally {
+      setSourceUploading(false);
+    }
+  };
   const usage = trpc.teacher.ai.usage.useQuery(undefined, { enabled: open });
   const invalidate = useInvalidateDetail(assessmentId);
   const generate = trpc.teacher.ai.generate.useMutation({
@@ -588,10 +643,18 @@ function AiDialog({ open, onOpenChange, assessmentId }: { open: boolean; onOpenC
     onError: (e) => toast.error(errorText(e)),
   });
   const accept = trpc.teacher.ai.accept.useMutation({
-    onSuccess: (rows) => { toast.success(t("builder.aiAdded", { count: rows.length })); generate.reset(); void invalidate(); onOpenChange(false); },
+    onSuccess: (rows) => {
+      toast.success(t("builder.aiAdded", { count: rows.length }));
+      generate.reset();
+      setSourceFile(null);
+      setSourceText("");
+      void invalidate();
+      onOpenChange(false);
+    },
     onError: (e) => toast.error(errorText(e)),
   });
   const draft = generate.data;
+  const source = sourceFile ? { fileId: sourceFile.fileId } : sourceText.trim() ? { text: sourceText.trim() } : undefined;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -618,9 +681,35 @@ function AiDialog({ open, onOpenChange, assessmentId }: { open: boolean; onOpenC
             </label>
             <label className="text-sm"><span className={fieldLabel}>{t("builder.aiCount")}</span><Input type="number" min={1} max={10} value={form.count} onChange={(e) => setForm({ ...form, count: Math.min(10, Math.max(1, Number(e.target.value) || 1)) })} /></label>
             <label className="text-sm"><span className={fieldLabel}>{t("builder.aiPoints")}</span><Input type="number" min={0.5} step={0.5} value={form.points} onChange={(e) => setForm({ ...form, points: Number(e.target.value) || 1 })} /></label>
+            <div className="space-y-1.5 sm:col-span-2">
+              <span className={fieldLabel}>{t("builder.aiSourceLabel")}</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <input ref={sourceInput} type="file" accept={AI_SOURCE_ACCEPT} className="sr-only" aria-label={t("builder.aiSourceAttach")} disabled={sourceUploading} onChange={(e) => void pickSource(e.target.files?.[0])} />
+                <Button type="button" variant="outline" size="sm" disabled={sourceUploading} onClick={() => sourceInput.current?.click()}>
+                  <FileUp className="mr-1 h-4 w-4" aria-hidden />
+                  {sourceUploading ? t("builder.aiSourceUploading") : t("builder.aiSourceAttach")}
+                </Button>
+                {sourceFile && (
+                  <span className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border bg-muted px-2.5 py-1.5 text-sm">
+                    <span className="min-w-0 truncate">{sourceFile.name}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">({formatFileSize(sourceFile.size)})</span>
+                    <button type="button" aria-label={t("builder.aiSourceRemove")} onClick={() => setSourceFile(null)}>
+                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+                    </button>
+                  </span>
+                )}
+              </div>
+              {!sourceFile && (
+                <>
+                  <div className="text-xs text-muted-foreground">{t("builder.aiSourceOr")}</div>
+                  <Textarea rows={3} value={sourceText} onChange={(e) => setSourceText(e.target.value)} placeholder={t("builder.aiSourceTextPlaceholder")} />
+                </>
+              )}
+              <p className="text-xs text-muted-foreground">{t("builder.aiSourceHint")}</p>
+            </div>
             <div className="flex flex-wrap items-center justify-between gap-2 sm:col-span-2">
               <span className="text-xs text-muted-foreground">{t("builder.aiUsage", { used: usage.data?.used ?? 0, limit: usage.data?.limit ?? 100 })}</span>
-              <Button disabled={form.topic.trim().length < 2 || generate.isPending} onClick={() => generate.mutate(form)}>{generate.isPending ? t("builder.aiGenerating") : t("builder.aiGenerate")}</Button>
+              <Button disabled={form.topic.trim().length < 2 || generate.isPending} onClick={() => generate.mutate({ ...form, source })}>{generate.isPending ? t("builder.aiGenerating") : t("builder.aiGenerate")}</Button>
             </div>
           </DialogBody>
         ) : (

@@ -28,6 +28,7 @@ import { sweepExpiredAttempts } from "../modules/attempts";
 import { groupLinkPreview, groupPreviewRoute } from "../modules/groupLinkPreview";
 import { runJoinSourceBackfill } from "../modules/groupJoinSources";
 import { runGroupProfileBackfill } from "../modules/groupProfiles";
+import { runGroupWeakTopicDigest } from "../modules/groupWeakTopicDigest";
 import { examLinkPreview, examPreviewRoute } from "../modules/examLinkPreview";
 import { materialLinkPreview, materialPreviewRoute } from "../modules/materialLinkPreview";
 import { taskLinkPreview, taskPreviewRoute } from "../modules/taskLinkPreview";
@@ -149,6 +150,25 @@ function startSyllabusProgression() {
   }, SYLLABUS_DAILY_CHECK_MS).unref();
 }
 
+const GROUP_DIGEST_CHECK_MS = 15 * 60_000;
+
+/** GROUP_WEAK_TOPIC_DIGEST (after 08:00 Baku): every workspace, not gated behind the Growth Engine flag. */
+function startGroupDigestJob() {
+  if (!getDb()) return;
+  let running = false;
+  setInterval(async () => {
+    if (running) return;
+    running = true;
+    try {
+      await runGroupWeakTopicDigest();
+    } catch (error) {
+      if (!isSchemaBehind(error)) console.error("[Groups] weak-topic digest failed", error);
+    } finally {
+      running = false;
+    }
+  }, GROUP_DIGEST_CHECK_MS).unref();
+}
+
 const COACH_RETENTION_CHECK_MS = 60 * 60_000;
 
 /** AI Study Coach retention, once per Baku day (checked hourly; deletes are idempotent across instances). */
@@ -252,6 +272,7 @@ async function startServer() {
   startOAuthSweep();
   startMaterialSweepers();
   startGrowthJobs();
+  startGroupDigestJob();
   startLessonMeetingSweeper();
   startLessonCaptureSweeper();
   if (getDb()) {

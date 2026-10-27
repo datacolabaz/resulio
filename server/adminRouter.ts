@@ -182,8 +182,8 @@ export const adminRouter = router({
 
   users: router({
     search: adminProcedure("users.search")
-      .input(z.object({ query: z.string().trim().max(255).optional(), before: userId.optional(), limit }).optional())
-      .query(({ input }) => adminUsers.searchUsers(input?.query, input?.before, input?.limit)),
+      .input(z.object({ query: z.string().trim().max(255).optional(), before: userId.optional(), limit, sortBy: z.enum(adminUsers.USER_SORTS).optional() }).optional())
+      .query(({ input }) => adminUsers.searchUsers(input?.query, input?.before, input?.limit, input?.sortBy)),
     get: adminProcedure("users.view")
       .input(z.object({ userId }))
       .query(({ input }) => adminUsers.getUser(input.userId)),

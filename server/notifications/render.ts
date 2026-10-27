@@ -2,7 +2,17 @@ import { pickAnnouncementText } from "../../shared/announcements";
 import type { EmailMessage } from "../_core/email";
 import type { ServerLocale } from "../_core/locale";
 import { isEventType, type EventData, type EventType } from "./events";
-import { buildRiskDigestEmail, planReminderInApp, retakeAssignedInApp, riskDigestInApp, studentAssessmentsPath, studentGrowthPath, teacherGrowthPath } from "./growthTemplates";
+import {
+  buildGroupWeakTopicDigestEmail,
+  buildRiskDigestEmail,
+  groupWeakTopicDigestInApp,
+  planReminderInApp,
+  retakeAssignedInApp,
+  riskDigestInApp,
+  studentAssessmentsPath,
+  studentGrowthPath,
+  teacherGrowthPath,
+} from "./growthTemplates";
 import {
   aiAlertText,
   aiGradeInAppText,
@@ -43,6 +53,7 @@ import {
   teacherGroupPath,
   teacherGroupRequestsPath,
   teacherJoinRequestsPath,
+  teacherWeakTopicExamPath,
 } from "./templates";
 
 export interface Recipient {
@@ -164,6 +175,12 @@ export function renderNotification<E extends EventType>(event: E, data: EventDat
     case "GROWTH_RISK_DIGEST": {
       const d = data as EventData["GROWTH_RISK_DIGEST"];
       return { ...riskDigestInApp(locale, d), path: teacherGrowthPath, email: buildRiskDigestEmail({ ...d, to, locale, appUrl }) };
+    }
+    case "GROUP_WEAK_TOPIC_DIGEST": {
+      const d = data as EventData["GROUP_WEAK_TOPIC_DIGEST"];
+      const path = d.topics[0] ? teacherWeakTopicExamPath(d.groupId, d.topics[0]) : teacherGroupPath(d.groupId);
+      const email = buildGroupWeakTopicDigestEmail({ ...d, url: `${appUrl}${path}`, to, locale });
+      return { ...groupWeakTopicDigestInApp(locale, d), path, email };
     }
     case "RETAKE_ASSIGNED": {
       const d = data as EventData["RETAKE_ASSIGNED"];

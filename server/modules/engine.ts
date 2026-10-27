@@ -3,7 +3,7 @@
  * Everything that decides what a student may see, whether an attempt may start
  * and how an answer is graded lives here.
  */
-import { CLOSED_QUESTION_TYPES } from "../../shared/assessment";
+import { CLOSED_QUESTION_TYPES, MIN_QUESTION_SAMPLE } from "../../shared/assessment";
 import type {
   AnswerKey,
   AssessmentSettings,
@@ -545,6 +545,18 @@ export function questionStats(rows: ItemRow[], points: number) {
     maxPoints: points,
     difficulty: !attempts ? "NO_DATA" : accuracy < 50 ? "DIFFICULT" : accuracy >= 80 ? "EASY" : "MEDIUM",
   } as const;
+}
+
+/**
+ * Whether a question's stats are solid enough, and the question itself trusted enough, to appear
+ * in a "hardest/weakest question" ranking (mostMissed, weakQuestions/strongQuestions). A
+ * teacher-flagged question is excluded outright -- looking hard may mean the question is broken,
+ * not that students don't know the material -- and a question with too few answered attempts is
+ * excluded because one or two data points can't tell "students struggle here" from noise. Neither
+ * exclusion hides the question or its raw stats elsewhere; see server/modules/analytics.ts.
+ */
+export function rankableQuestion(q: { attempts: number; flagged: boolean }, minSample = MIN_QUESTION_SAMPLE): boolean {
+  return !q.flagged && q.attempts >= minSample;
 }
 
 export function topicStats(rows: ItemRow[], by: "topic" | "skill" = "topic") {

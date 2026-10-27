@@ -153,6 +153,19 @@ export const teacher = {
   "assessment.distribution": ["Bal paylanması", "Score distribution", "Распределение баллов"],
   "assessment.mostMissed": ["Ən çox səhv edilən suallar", "Most-missed questions", "Самые сложные вопросы"],
   "assessment.allQuestions": ["Bütün suallar", "All questions", "Все вопросы"],
+  "assessment.flagQuestion": ["Şübhəli işarələ", "Flag as doubtful", "Отметить как спорный"],
+  "assessment.unflagQuestion": ["İşarəni götür", "Unflag", "Снять отметку"],
+  "assessment.flagged": ["Şübhəli", "Flagged", "Спорный"],
+  "assessment.flaggedHint": [
+    "Bu sual reytinqdən çıxarılıb — sual özü şübhəli ola bilər deyə statistikaya daxil edilmir.",
+    "Excluded from the rankings — may be flagged because the question itself is doubtful.",
+    "Исключён из рейтингов — возможно, сам вопрос спорный.",
+  ],
+  "assessment.insufficientSample": [
+    "Kifayət qədər cavab yoxdur (min. {count})",
+    "Not enough answers yet (min. {count})",
+    "Пока недостаточно ответов (мин. {count})",
+  ],
 
   "groups.new": ["+ Yeni qrup", "+ New group", "+ Новая группа"],
   "groups.empty": ["Qrup yoxdur", "No groups", "Групп нет"],
@@ -307,6 +320,12 @@ export const teacher = {
     "Students see the task scores you have shown to their groupmates. When off, everyone sees only their own scores.",
     "Студенты видят баллы одногруппников, которые вы им показали. Если выключено, каждый видит только свои баллы.",
   ],
+  "groups.examStatsVisibleLabel": ["İmtahan statistikası qrupda görünsün", "Show exam stats within the group", "Показывать статистику экзаменов внутри группы"],
+  "groups.examStatsVisibleHint": [
+    "Standart olaraq söndürülüb. Aktiv etsəniz, tələbələr yalnız qrupun ümumi orta balını və zəif/güclü mövzularını görür — heç kimin fərdi nəticəsi, adı və ya cavabları açılmır.",
+    "Off by default. When on, students see only the group's overall average and its weak/strong topics — no individual student's result, name or answers are ever shown.",
+    "По умолчанию выключено. При включении студенты видят только общий средний балл группы и слабые/сильные темы — индивидуальные результаты, имена и ответы никому не показываются.",
+  ],
   "groups.scheduleVisibleHint": [
     "Aktiv olduqda başlama tarixi, dərs günləri və saatı qoşulma preview-ündə görünür.",
     "When on, the start date, class days and time appear on the join-preview screen.",
@@ -377,6 +396,8 @@ export const teacher = {
   "groups.tab.requestsCount": ["Sorğular ({count})", "Requests ({count})", "Запросы ({count})"],
   "groups.noStudents": ["Hələ tələbə yoxdur. \"Dəvət et\" ilə link göndərin.", "No students yet. Use \"Invite\" to send a link.", "Студентов пока нет. Отправьте ссылку через «Пригласить»."],
   "groups.joined": ["Qoşulub", "Joined", "Вступил"],
+  "groups.lastSeen": ["Son aktivlik", "Last active", "Последняя активность"],
+  "groups.neverSeen": ["Heç vaxt", "Never", "Никогда"],
   "groups.removeConfirm": ["Tələbəni qrupdan çıxarmaq istəyirsiniz?", "Remove this student from the group?", "Удалить студента из группы?"],
   "groups.remove": ["Çıxar", "Remove", "Удалить"],
   "groups.removeStudent": ["{name} tələbəsini qrupdan çıxar", "Remove {name} from the group", "Удалить {name} из группы"],

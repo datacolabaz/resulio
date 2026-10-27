@@ -4,6 +4,7 @@ import {
   attempts,
   groupMembers,
   groups,
+  questions,
   resultItems,
   results,
   taskSubmissions,
@@ -11,13 +12,14 @@ import {
   users,
   versionQuestions,
 } from "../../drizzle/schema";
-import { requireDb } from "../db";
+import { requireDb, type DbOrTx } from "../db";
 import { assignedStudentIds, getTargets, ownedAssessment, summary } from "./assessments";
 import { AppError } from "./errors";
 import {
   bestPerStudent,
   questionStats,
   rank,
+  rankableQuestion,
   round1,
   scoreDistribution,
   summarizeScores,
@@ -103,6 +105,14 @@ export async function ranking(scope: TeacherScope, assessmentId: string) {
   }));
 }
 
+/** Live bank questions (by id) the teacher has flagged as doubtful themselves — see `questions.flagged`. */
+async function flaggedSourceIds(sourceQuestionIds: (string | null)[], db: DbOrTx) {
+  const ids = [...new Set(sourceQuestionIds.filter((id): id is string => !!id))];
+  if (!ids.length) return new Set<string>();
+  const rows = await db.select({ id: questions.id }).from(questions).where(and(inArray(questions.id, ids), eq(questions.flagged, true)));
+  return new Set(rows.map((r) => r.id));
+}
+
 /** Per-question accuracy across every version of the assessment, hardest first. */
 export async function questionAnalytics(scope: TeacherScope, assessmentId: string) {
   const db = requireDb();
@@ -113,13 +123,24 @@ export async function questionAnalytics(scope: TeacherScope, assessmentId: strin
   const qs = versionIds.length
     ? await db.select().from(versionQuestions).where(inArray(versionQuestions.versionId, versionIds)).orderBy(asc(versionQuestions.position))
     : [];
-  const questions = qs.map((q) => {
+  const flagged = await flaggedSourceIds(qs.map((q) => q.sourceQuestionId), db);
+  const questionRows = qs.map((q) => {
     const stats = questionStats(items.filter((i) => i.questionId === q.id), q.points);
-    return { questionId: q.id, versionId: q.versionId, position: q.position, text: q.text, type: q.type, topic: q.topic, ...stats };
+    return {
+      questionId: q.id,
+      sourceQuestionId: q.sourceQuestionId,
+      versionId: q.versionId,
+      position: q.position,
+      text: q.text,
+      type: q.type,
+      topic: q.topic,
+      flagged: !!q.sourceQuestionId && flagged.has(q.sourceQuestionId),
+      ...stats,
+    };
   });
   return {
-    questions: [...questions].sort((x, y) => x.accuracyPercentage - y.accuracyPercentage),
-    mostMissed: questions.filter((q) => q.attempts > 0).sort((x, y) => y.wrongPercentage - x.wrongPercentage).slice(0, 5),
+    questions: [...questionRows].sort((x, y) => x.accuracyPercentage - y.accuracyPercentage),
+    mostMissed: questionRows.filter(rankableQuestion).sort((x, y) => y.wrongPercentage - x.wrongPercentage).slice(0, 5),
     topics: topicStats(items),
     skills: topicStats(items.filter((i) => i.skill), "skill"),
   };
@@ -173,8 +194,16 @@ export async function groupAnalytics(scope: TeacherScope, groupId: string) {
 
   const vqIds = [...new Set(items.map((i) => i.questionId))];
   const vqs = vqIds.length ? await db.select().from(versionQuestions).where(inArray(versionQuestions.id, vqIds)) : [];
+  const groupFlagged = await flaggedSourceIds(vqs.map((q) => q.sourceQuestionId), db);
   const questionRows = vqs
-    .map((q) => ({ questionId: q.id, text: q.text, topic: q.topic, ...questionStats(items.filter((i) => i.questionId === q.id), q.points) }))
+    .map((q) => ({
+      questionId: q.id,
+      sourceQuestionId: q.sourceQuestionId,
+      text: q.text,
+      topic: q.topic,
+      flagged: !!q.sourceQuestionId && groupFlagged.has(q.sourceQuestionId),
+      ...questionStats(items.filter((i) => i.questionId === q.id), q.points),
+    }))
     .filter((q) => q.attempts > 0);
   const allScores = byAssessment.filter((a) => a.completedCount > 0);
   const topics = topicStats(items);
@@ -216,8 +245,14 @@ export async function groupAnalytics(scope: TeacherScope, groupId: string) {
     averageScore: allScores.length ? round1(allScores.reduce((s, a) => s + a.averageScore, 0) / allScores.length) : 0,
     history: byAssessment,
     ranking: studentRanking,
-    weakQuestions: [...questionRows].sort((a, b) => a.accuracyPercentage - b.accuracyPercentage).slice(0, 5),
-    strongQuestions: [...questionRows].sort((a, b) => b.accuracyPercentage - a.accuracyPercentage).slice(0, 5),
+    weakQuestions: questionRows
+      .filter(rankableQuestion)
+      .sort((a, b) => a.accuracyPercentage - b.accuracyPercentage)
+      .slice(0, 5),
+    strongQuestions: questionRows
+      .filter(rankableQuestion)
+      .sort((a, b) => b.accuracyPercentage - a.accuracyPercentage)
+      .slice(0, 5),
     weakTopics: topics.filter((t) => t.classification === "WEAK"),
     strongTopics: topics.filter((t) => t.classification === "STRONG"),
     topics,
@@ -279,6 +314,55 @@ export async function studentGroupProgress(studentId: number, groupId: string) {
     topics: topicStats(items),
     skills: topicStats(items.filter((i) => i.skill), "skill"),
   };
+}
+
+/**
+ * Narrows a full `groupAnalytics` result down to what's safe to hand a group MEMBER rather than
+ * their teacher. Pure and exported so the redaction itself -- not just the DB plumbing around it --
+ * is directly unit-testable (see analytics.test.ts): `groupAnalytics`'s `ranking`/`history` carry
+ * other students' names and individual scores, which must never reach a classmate, so this only
+ * ever reads the aggregate fields off `full` and never spreads it wholesale.
+ */
+export function groupExamStatsView(
+  group: { id: string; name: string },
+  visible: boolean,
+  full?: Pick<Awaited<ReturnType<typeof groupAnalytics>>, "studentCount" | "averageScore" | "topics" | "weakTopics" | "strongTopics" | "weakQuestions" | "strongQuestions" | "progress">,
+) {
+  if (!visible || !full) return { group, visible: false as const };
+  return {
+    group,
+    visible: true as const,
+    studentCount: full.studentCount,
+    averageScore: full.averageScore,
+    topics: full.topics,
+    weakTopics: full.weakTopics,
+    strongTopics: full.strongTopics,
+    weakQuestions: full.weakQuestions.map((q) => ({ text: q.text, topic: q.topic, accuracyPercentage: q.accuracyPercentage })),
+    strongQuestions: full.strongQuestions.map((q) => ({ text: q.text, topic: q.topic, accuracyPercentage: q.accuracyPercentage })),
+    progress: full.progress,
+  };
+}
+
+/**
+ * The group-wide AGGREGATE exam/assessment statistics a student may see about their own group --
+ * gated by `study_groups.examStatsVisibleToGroup` (off by default; a teacher opt-in, separate from
+ * `scoresVisibleToGroup`, which only covers task scores). Unlike `studentGroupProgress` above, this
+ * is not the student's own history: it's group-level numbers, redacted by `groupExamStatsView`.
+ */
+export async function studentGroupExamStats(studentId: number, groupId: string) {
+  const db = requireDb();
+  const [row] = await db
+    .select({ id: groups.id, name: groups.name, workspaceId: groups.providerWorkspaceId, visible: groups.examStatsVisibleToGroup })
+    .from(groupMembers)
+    .innerJoin(groups, eq(groups.id, groupMembers.groupId))
+    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, studentId), eq(groupMembers.status, "ACTIVE"), eq(groupMembers.membershipRole, "STUDENT")))
+    .limit(1);
+  if (!row) throw new AppError("NOT_FOUND");
+  const group = { id: row.id, name: row.name };
+  if (!row.visible) return groupExamStatsView(group, false);
+
+  const full = await groupAnalytics({ workspaceId: row.workspaceId, userId: studentId }, groupId);
+  return groupExamStatsView(group, true, full);
 }
 
 export async function groupsOverview(scope: TeacherScope) {

@@ -254,6 +254,7 @@ describe("dispatcher", () => {
         SYLLABUS_JOIN_DECIDED: { requestId: "r1", syllabusTitle: "S", decision: "ACCEPTED" as const, groupName: "G", note: null, path: "/student" },
         ANNOUNCEMENT: { announcementId: 1, language: "AUTO" as const, texts: { az: { title: "T", body: "B" } }, url: "/" },
         GROWTH_RISK_DIGEST: { count: 7, names: ["A", "B"] },
+        GROUP_WEAK_TOPIC_DIGEST: { groupId: "g1", groupName: "G", count: 2, topics: ["Kəsrlər", "Faizlər"] },
         RETAKE_ASSIGNED: { assessmentId: "a1", topics: ["Kəsrlər"], from: "Müəllim" },
         PLAN_REMINDER: { planId: "p1", items: 2, minutes: 35 },
         LESSON_SCHEDULED: { lessonId: "l1", title: "Riyaziyyat", startsAt: "2026-10-20T10:00:00Z" },

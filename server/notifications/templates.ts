@@ -462,6 +462,11 @@ export function syllabusApprovalInApp(locale: ServerLocale, d: { syllabusTitle: 
 
 export const teacherGroupPath = (groupId: string) => `/teacher/groups/${encodeURIComponent(groupId)}`;
 
+/** The GROUP_WEAK_TOPIC_DIGEST deep link: a new exam draft already targeted at the group, with the
+ * AI question dialog pre-filled to the weakest topic -- see NewAssessmentPage/QuestionsStep. */
+export const teacherWeakTopicExamPath = (groupId: string, topic: string) =>
+  `/teacher/assessments/new?groupId=${encodeURIComponent(groupId)}&topic=${encodeURIComponent(topic)}`;
+
 const GROUP_JOINED: Record<ServerLocale, { title: string; body: (name: string, group: string) => string; someone: string }> = {
   az: {
     title: "Yeni tələbə qoşuldu",

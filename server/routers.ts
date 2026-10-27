@@ -323,6 +323,8 @@ const groupInput = z.object({
     .default([]),
   scheduleVisible: z.boolean().default(false),
   scoresVisibleToGroup: z.boolean().default(true),
+  /** Off by default -- exam results are more sensitive than task scores, so sharing is an explicit opt-in. */
+  examStatsVisibleToGroup: z.boolean().default(false),
 });
 
 /** Turns the wire-format ISO string into a Date for Drizzle, passing through null/undefined untouched. */
@@ -353,6 +355,7 @@ const teacherGroupsRouter = router({
           level: groupInput.shape.level.removeDefault().optional(),
           scheduleVisible: z.boolean().optional(),
           scoresVisibleToGroup: z.boolean().optional(),
+          examStatsVisibleToGroup: z.boolean().optional(),
         }),
       }),
     )
@@ -483,6 +486,10 @@ const teacherQuestionsRouter = router({
   confirmAnswers: teacherProcedure
     .input(z.object({ ids: z.array(entityId).min(1).max(200) }))
     .mutation(({ ctx, input }) => bank.confirmBankAnswers(ctx.scope, input.ids)),
+  /** Marks (or clears) a question as doubtful, so it's excluded from "hardest question" rankings. */
+  setFlagged: teacherProcedure
+    .input(z.object({ id: entityId, flagged: z.boolean() }))
+    .mutation(({ ctx, input }) => assessments.setQuestionFlagged(ctx.scope, input.id, input.flagged)),
 });
 
 const teacherAssessmentsRouter = router({
@@ -984,6 +991,10 @@ const studentRouter = router({
   groupProgress: studentProcedure
     .input(z.object({ groupId: entityId }))
     .query(({ ctx, input }) => analytics.studentGroupProgress(ctx.user.id, input.groupId)),
+  /** Group-wide aggregate exam stats (off by default) -- see analytics.studentGroupExamStats. */
+  groupExamStats: studentProcedure
+    .input(z.object({ groupId: entityId }))
+    .query(({ ctx, input }) => analytics.studentGroupExamStats(ctx.user.id, input.groupId)),
   submitTask: studentProcedure
     .use(rateLimit("submitTask", 20, MINUTE))
     .input(
