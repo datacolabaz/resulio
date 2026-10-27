@@ -77,6 +77,7 @@ export const student = {
     "Вы вступите в группу и получите уведомление, когда преподаватель одобрит заявку.",
   ],
   "student.groupProgress": ["Bu qrupdakı proqresim", "Progress in this group", "Прогресс в этой группе"],
+  "student.groupExamAverage": ["Qrupun orta balı", "Group average", "Средний балл группы"],
   "student.taskSubmitted": ["Təhvil verildi", "Submitted", "Сдано"],
   "student.answerLabel": ["Cavabınız (istəyə görə fayl da əlavə edin)", "Your answer (you can also attach a file)", "Ваш ответ (можно также приложить файл)"],
   "student.answerPlaceholder": ["Cavabınızı bura yazın…", "Type your answer here…", "Напишите ответ здесь…"],

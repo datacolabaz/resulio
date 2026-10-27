@@ -1,7 +1,8 @@
-import { ResponsiveTable } from "@/components/ResponsiveTable";
+import { ResponsiveTable, type ResponsiveColumn } from "@/components/ResponsiveTable";
 import { t } from "@/i18n/messages";
 import { fmtDuration, questionTypeLabel } from "@/lib/format";
-import { TrendingDown, TrendingUp } from "lucide-react";
+import { MIN_QUESTION_SAMPLE } from "@shared/assessment";
+import { Flag, TrendingDown, TrendingUp } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Link } from "wouter";
 
@@ -85,8 +86,25 @@ export function RankingTable({
 
 export function QuestionStatsTable({
   rows,
+  onToggleFlag,
+  flagPending,
 }: {
-  rows: { questionId: string; position?: number; text: string; type?: string; topic: string; attempts: number; accuracyPercentage: number; wrongPercentage: number; unansweredPercentage: number }[];
+  rows: {
+    questionId: string;
+    sourceQuestionId?: string | null;
+    position?: number;
+    text: string;
+    type?: string;
+    topic: string;
+    attempts: number;
+    accuracyPercentage: number;
+    wrongPercentage: number;
+    unansweredPercentage: number;
+    flagged?: boolean;
+  }[];
+  /** When given, a flag/unflag action is shown per row that has a `sourceQuestionId` (a live bank question). */
+  onToggleFlag?: (q: { sourceQuestionId: string; flagged: boolean }) => void;
+  flagPending?: boolean;
 }) {
   if (!rows.length) return <p className="text-sm text-muted-foreground">{t("common.noData")}</p>;
   const accuracy = (q: (typeof rows)[number]) => (
@@ -95,32 +113,58 @@ export function QuestionStatsTable({
       {q.accuracyPercentage}%
     </span>
   );
-  return (
-    <ResponsiveTable
-      rows={rows}
-      rowKey={(q) => q.questionId}
-      columns={[
-        {
-          key: "question",
-          header: t("common.question"),
-          thClassName: "py-2",
-          tdClassName: "max-w-md py-2",
-          card: "title",
-          cell: (q) => (
-            <>
-              <div className="line-clamp-2 font-normal" title={q.text}>{q.position ? `${q.position}. ` : ""}{q.text}</div>
-              {q.type && <div className="text-xs font-normal text-muted-foreground">{questionTypeLabel(q.type)}</div>}
-            </>
-          ),
-        },
-        { key: "topic", header: t("common.topic"), tdClassName: "text-muted-foreground", cell: (q) => q.topic || "—" },
-        { key: "answers", header: t("analytics.col.answers"), cell: (q) => q.attempts },
-        { key: "correct", header: t("common.correct"), cell: accuracy },
-        { key: "wrong", header: t("common.wrong"), cell: (q) => `${q.wrongPercentage}%` },
-        { key: "unanswered", header: t("common.unanswered"), cell: (q) => `${q.unansweredPercentage}%` },
-      ]}
-    />
-  );
+  const columns: ResponsiveColumn<(typeof rows)[number]>[] = [
+    {
+      key: "question",
+      header: t("common.question"),
+      thClassName: "py-2",
+      tdClassName: "max-w-md py-2",
+      card: "title",
+      cell: (q) => (
+        <>
+          <div className="line-clamp-2 font-normal" title={q.text}>{q.position ? `${q.position}. ` : ""}{q.text}</div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs font-normal text-muted-foreground">
+            {q.type && <span>{questionTypeLabel(q.type)}</span>}
+            {q.flagged && (
+              <span className="inline-flex items-center gap-1 font-medium text-warning" title={t("assessment.flaggedHint")}>
+                <Flag className="h-3 w-3" aria-hidden />
+                {t("assessment.flagged")}
+              </span>
+            )}
+            {!q.flagged && q.attempts < MIN_QUESTION_SAMPLE && (
+              <span>{t("assessment.insufficientSample", { count: MIN_QUESTION_SAMPLE })}</span>
+            )}
+          </div>
+        </>
+      ),
+    },
+    { key: "topic", header: t("common.topic"), tdClassName: "text-muted-foreground", cell: (q) => q.topic || "—" },
+    { key: "answers", header: t("analytics.col.answers"), cell: (q) => q.attempts },
+    { key: "correct", header: t("common.correct"), cell: accuracy },
+    { key: "wrong", header: t("common.wrong"), cell: (q) => `${q.wrongPercentage}%` },
+    { key: "unanswered", header: t("common.unanswered"), cell: (q) => `${q.unansweredPercentage}%` },
+  ];
+  if (onToggleFlag) {
+    columns.push({
+      key: "flag",
+      header: t("common.view"),
+      srOnlyHeader: true,
+      tdClassName: "text-right",
+      card: "action",
+      cell: (q) =>
+        q.sourceQuestionId ? (
+          <button
+            type="button"
+            disabled={flagPending}
+            onClick={() => onToggleFlag({ sourceQuestionId: q.sourceQuestionId!, flagged: !q.flagged })}
+            className="text-xs text-link underline-offset-4 hover:underline disabled:opacity-50"
+          >
+            {q.flagged ? t("assessment.unflagQuestion") : t("assessment.flagQuestion")}
+          </button>
+        ) : null,
+    });
+  }
+  return <ResponsiveTable rows={rows} rowKey={(q) => q.questionId} columns={columns} />;
 }
 
 export function TopicBars({ rows, empty }: { rows: { topic: string; questionCount: number; accuracyPercentage: number; classification: string }[]; empty?: string }) {

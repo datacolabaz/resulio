@@ -6,19 +6,36 @@ import { AppError } from "../errors";
 import { appendAudit } from "./audit";
 import type { AdminContext } from "./authz";
 
-/** Paginated lookup by name/email substring — the admin UI's "find a user" box. No query returns the most recent signups. */
-export async function searchUsers(query: string | undefined, before: number | undefined, limit = 25) {
+export const USER_SORTS = ["newest", "lastSeen"] as const;
+export type UserSort = (typeof USER_SORTS)[number];
+
+/**
+ * Paginated lookup by name/email substring — the admin UI's "find a user" box. No query returns
+ * the most recent signups. `sortBy: "lastSeen"` answers "who's active on the site" by ordering on
+ * `users.lastSeenAt` (kept live by `markSeen`, see server/_core/sdk.ts's `authenticateRequest` —
+ * not a new tracking mechanism, just a new way to read the existing column); the `before` id
+ * cursor only means anything for the default id-ordered paging, so it's ignored in that mode.
+ */
+export async function searchUsers(query: string | undefined, before: number | undefined, limit = 25, sortBy: UserSort = "newest") {
   const db = requireDb();
   const needle = query?.trim();
   const conditions = [
-    before ? sql`${users.id} < ${before}` : undefined,
+    sortBy === "newest" && before ? sql`${users.id} < ${before}` : undefined,
     needle ? or(like(users.name, `%${needle}%`), like(users.email, `%${needle}%`)) : undefined,
   ].filter((c): c is NonNullable<typeof c> => c !== undefined);
   const rows = await db
-    .select({ id: users.id, name: users.name, email: users.email, accountStatus: users.accountStatus, createdAt: users.createdAt, lastSignedIn: users.lastSignedIn })
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      accountStatus: users.accountStatus,
+      createdAt: users.createdAt,
+      lastSignedIn: users.lastSignedIn,
+      lastSeenAt: users.lastSeenAt,
+    })
     .from(users)
     .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(desc(users.id))
+    .orderBy(sortBy === "lastSeen" ? desc(users.lastSeenAt) : desc(users.id))
     .limit(limit);
   return rows;
 }

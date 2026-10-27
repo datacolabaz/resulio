@@ -527,10 +527,15 @@ export function ResultsTable({
 }
 
 export function AssessmentAnalytics({ id }: { id: string }) {
+  const utils = trpc.useUtils();
   const stats = trpc.teacher.analytics.assessment.useQuery({ id });
   const ranking = trpc.teacher.analytics.ranking.useQuery({ id });
   const questions = trpc.teacher.analytics.questions.useQuery({ id });
+  const setFlagged = trpc.teacher.questions.setFlagged.useMutation({
+    onSuccess: () => void utils.teacher.analytics.questions.invalidate({ id }),
+  });
   if (!stats.data) return <Loading />;
+  const onToggleFlag = (q: { sourceQuestionId: string; flagged: boolean }) => setFlagged.mutate({ id: q.sourceQuestionId, flagged: q.flagged });
   return (
     <div className="space-y-5">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -544,10 +549,14 @@ export function AssessmentAnalytics({ id }: { id: string }) {
         <Panel title={t("common.ranking")}><RankingTable rows={ranking.data ?? []} /></Panel>
       </div>
       <div className="grid gap-5 lg:grid-cols-3">
-        <Panel className="lg:col-span-2" title={t("assessment.mostMissed")}><QuestionStatsTable rows={questions.data?.mostMissed ?? []} /></Panel>
+        <Panel className="lg:col-span-2" title={t("assessment.mostMissed")}>
+          <QuestionStatsTable rows={questions.data?.mostMissed ?? []} onToggleFlag={onToggleFlag} flagPending={setFlagged.isPending} />
+        </Panel>
         <Panel title={t("common.topics")}><TopicBars rows={questions.data?.topics ?? []} /></Panel>
       </div>
-      <Panel title={t("assessment.allQuestions")}><QuestionStatsTable rows={questions.data?.questions ?? []} /></Panel>
+      <Panel title={t("assessment.allQuestions")}>
+        <QuestionStatsTable rows={questions.data?.questions ?? []} onToggleFlag={onToggleFlag} flagPending={setFlagged.isPending} />
+      </Panel>
       {(questions.data?.skills.length ?? 0) > 0 && <Panel title={t("common.skills")}><TopicBars rows={questions.data?.skills ?? []} /></Panel>}
     </div>
   );

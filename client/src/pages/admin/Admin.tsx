@@ -67,11 +67,12 @@ function AdminUsersPage({ params }: { params: { id?: string } }) {
   const utils = trpc.useUtils();
   const [, navigate] = useLocation();
   const [query, setQuery] = useState("");
+  const [sortBy, setSortBy] = useState<"newest" | "lastSeen">("newest");
   const parsed = Number(params.id);
   const selected = Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   const setSelected = (id: number | null) => navigate(id === null ? "/admin/users" : `/admin/users/${id}`);
   const [action, setAction] = useState<"suspend" | "unsuspend" | "revoke" | null>(null);
-  const search = trpc.admin.users.search.useQuery({ query: query.trim() || undefined }, { enabled: can("users.search") });
+  const search = trpc.admin.users.search.useQuery({ query: query.trim() || undefined, sortBy }, { enabled: can("users.search") });
   const detail = trpc.admin.users.get.useQuery({ userId: selected ?? 0 }, { enabled: selected !== null && can("users.view") });
 
   const refresh = () => { void utils.admin.users.search.invalidate(); void utils.admin.users.get.invalidate(); };
@@ -95,6 +96,7 @@ function AdminUsersPage({ params }: { params: { id?: string } }) {
               <div><span className="text-foreground-secondary">{t("common.status")}:</span> <StatusBadge tone={STATUS_TONE[d.accountStatus] ?? "neutral"}>{d.accountStatus}</StatusBadge></div>
               <div><span className="text-foreground-secondary">{t("admin.users.roles")}:</span> {d.roles.length ? d.roles.join(", ") : "—"}</div>
               <div><span className="text-foreground-secondary">{t("groups.joined")}:</span> {fmtDateTime(d.createdAt)}</div>
+              <div><span className="text-foreground-secondary">{t("admin.users.lastSeen")}:</span> {d.lastSeenAt ? fmtDateTime(d.lastSeenAt) : t("admin.users.neverSeen")}</div>
               {can("users.suspend") && (
                 <div className="flex flex-wrap gap-2 pt-2">
                   {d.accountStatus === "ACTIVE" ? (
@@ -111,7 +113,17 @@ function AdminUsersPage({ params }: { params: { id?: string } }) {
       )}
 
       <Panel title={t("admin.nav.users")}>
-        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("admin.users.searchPlaceholder")} />
+        <div className="flex flex-wrap items-center gap-2">
+          <Input className="flex-1" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("admin.users.searchPlaceholder")} />
+          <div className="flex items-center gap-1 rounded-md border border-input p-0.5">
+            <Button type="button" size="sm" variant={sortBy === "newest" ? "secondary" : "ghost"} onClick={() => setSortBy("newest")}>
+              {t("admin.users.sortNewest")}
+            </Button>
+            <Button type="button" size="sm" variant={sortBy === "lastSeen" ? "secondary" : "ghost"} onClick={() => setSortBy("lastSeen")}>
+              {t("admin.users.sortLastSeen")}
+            </Button>
+          </div>
+        </div>
         {search.error && <ErrorNote error={search.error} />}
         {search.isLoading ? <Loading /> : (
           <ul className="mt-3 divide-y text-sm">
@@ -127,7 +139,10 @@ function AdminUsersPage({ params }: { params: { id?: string } }) {
                     <span className="block break-words font-medium">{u.name ?? "—"}</span>
                     <span className="block break-all text-xs text-muted-foreground">{u.email}</span>
                   </span>
-                  <StatusBadge tone={STATUS_TONE[u.accountStatus] ?? "neutral"}>{u.accountStatus}</StatusBadge>
+                  <span className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">{u.lastSeenAt ? fmtDateTime(u.lastSeenAt) : t("admin.users.neverSeen")}</span>
+                    <StatusBadge tone={STATUS_TONE[u.accountStatus] ?? "neutral"}>{u.accountStatus}</StatusBadge>
+                  </span>
                 </button>
               </li>
             ))}

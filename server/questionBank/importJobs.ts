@@ -14,7 +14,7 @@ import {
 } from "../../shared/questionImport";
 import { isGeminiUrl } from "../_core/aiConfig";
 import { ENV } from "../_core/env";
-import { invokeLLM, LlmHttpError, llmFailureReason, type MessageContent } from "../_core/llm";
+import { invokeLLM, LlmHttpError, llmFailureReason } from "../_core/llm";
 import { withAiUsage } from "../aiUsage/context";
 import { assertAiAllowed } from "../aiUsage/limits";
 import { requireDb } from "../db";
@@ -22,6 +22,7 @@ import type { TeacherScope } from "../modules/access";
 import { providerAlertFor, sendAiAlert } from "../modules/aiAlerts";
 import { AppError } from "../modules/errors";
 import { extensionOf, fileBytes, fileRow, MAX_FILE_BYTES } from "../modules/files";
+import { filePart, pdfInputMode, type InputMode } from "../modules/llmFileParts";
 import { createBankQuestion } from "./bank";
 import { buildExtractionMessages, findDuplicates, normalizeItem, parseExtraction, planChunks, type ImportDraft, type SectionContext } from "./extraction";
 import { pdfPageCount, pdfPageTexts, pdfSlice } from "./pdf";
@@ -44,26 +45,9 @@ const BANK_SCAN_LIMIT = 5000;
 
 const MIME_BY_EXT: Record<string, string> = { ".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg" };
 
-export type InputMode = "native" | "text";
-
-/** How a PDF reaches the model: Gemini and OpenAI read PDFs, Manus takes file_url; others get the text. */
-export function pdfInputMode(config: { source: "ai" | "manus" | null; baseUrl: string }, forced: "native" | "text" | ""): InputMode {
-  if (forced) return forced;
-  if (config.source === "manus" || isGeminiUrl(config.baseUrl)) return "native";
-  try {
-    return new URL(config.baseUrl).hostname === "api.openai.com" ? "native" : "text";
-  } catch {
-    return "text";
-  }
-}
-
-export function filePart(mimeType: string, bytes: Uint8Array, fileName: string, config: { source: "ai" | "manus" | null; baseUrl: string }): MessageContent {
-  const url = `data:${mimeType};base64,${Buffer.from(bytes).toString("base64")}`;
-  if (mimeType.startsWith("image/")) return { type: "image_url", image_url: { url, detail: "high" } };
-  if (config.source === "manus") return { type: "file_url", file_url: { url, mime_type: "application/pdf" } };
-  if (isGeminiUrl(config.baseUrl)) return { type: "image_url", image_url: { url } };
-  return { type: "file", file: { filename: fileName, file_data: url } };
-}
+// Re-exported for existing importers of this module (coach/ocr.ts, questionImport.test.ts) --
+// the implementation moved to modules/llmFileParts.ts so modules/ai.ts can use it too without a cycle.
+export { filePart, pdfInputMode, type InputMode };
 
 // ---------------------------------------------------------------------------
 // Usage cap

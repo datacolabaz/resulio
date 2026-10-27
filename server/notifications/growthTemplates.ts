@@ -73,3 +73,43 @@ export function retakeAssignedInApp(locale: ServerLocale, d: { topics: string[];
   const tx = RETAKE[locale];
   return { title: tx.title, body: tx.body(cleanTitle(d.from, 60), d.topics.map((t) => cleanTitle(t, 60)).join(", ")) };
 }
+
+const GROUP_WEAK_TOPIC: Record<ServerLocale, { title: (group: string) => string; body: (topics: string) => string; more: (n: number) => string; heading: string; button: string; footer: string }> = {
+  az: {
+    title: (group) => `${group}: zəif mövzular aşkarlandı`,
+    body: (topics) => `Qrupun nəticələrinə görə zəif mövzular: ${topics}. Bu mövzularda qısa təkrar test hazırlaya bilərsiniz.`,
+    more: (n) => `və daha ${n} mövzu`,
+    heading: "Qrupda zəif mövzular",
+    button: "Təkrar test hazırla",
+    footer: "Bu xülasəni qrupun ayarlarında söndürə bilərsiniz.",
+  },
+  en: {
+    title: (group) => `${group}: weak topics found`,
+    body: (topics) => `Based on this group's results, these topics are weak: ${topics}. You can prepare a short follow-up test for them.`,
+    more: (n) => `and ${n} more`,
+    heading: "Weak topics in this group",
+    button: "Prepare a follow-up test",
+    footer: "You can turn this digest off in the group's settings.",
+  },
+  ru: {
+    title: (group) => `${group}: обнаружены слабые темы`,
+    body: (topics) => `По результатам группы слабыми оказались темы: ${topics}. Можно подготовить короткий повторный тест по ним.`,
+    more: (n) => `и ещё ${n}`,
+    heading: "Слабые темы в этой группе",
+    button: "Подготовить повторный тест",
+    footer: "Эту сводку можно отключить в настройках группы.",
+  },
+};
+
+export function groupWeakTopicDigestInApp(locale: ServerLocale, d: { groupName: string; count: number; topics: string[] }) {
+  const tx = GROUP_WEAK_TOPIC[locale];
+  return { title: tx.title(cleanTitle(d.groupName, 60)), body: tx.body(joinNames(d.topics, d.count - d.topics.length, tx.more)) };
+}
+
+export function buildGroupWeakTopicDigestEmail(d: { groupName: string; count: number; topics: string[]; url: string; to: string; locale: ServerLocale }): EmailMessage {
+  const tx = GROUP_WEAK_TOPIC[d.locale];
+  const line = tx.body(joinNames(d.topics, d.count - d.topics.length, tx.more));
+  const title = tx.title(cleanTitle(d.groupName, 60));
+  const html = emailLayout({ heading: escapeHtml(tx.heading), paragraphs: [escapeHtml(line)], buttonLabel: escapeHtml(tx.button), buttonUrl: escapeHtml(d.url), footer: escapeHtml(tx.footer) });
+  return { to: d.to, subject: title, html, text: [tx.heading, "", line, "", `${tx.button}: ${d.url}`, "", tx.footer].join("\n") };
+}

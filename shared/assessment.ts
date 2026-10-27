@@ -242,6 +242,14 @@ export const wrongPenaltySchema = z.object({
 export type WrongPenalty = z.infer<typeof wrongPenaltySchema>;
 export const DEFAULT_WRONG_PENALTY: WrongPenalty = { enabled: false, ratio: 4 };
 
+/**
+ * A question's accuracy stat isn't treated as a definitive "this is the hardest question" signal
+ * below this many answered attempts -- too small a sample to tell "students don't know this" from
+ * noise. Used only to gate the "mostMissed"/"weakQuestions" rankings in analytics.ts; a question
+ * under this count still shows its raw stats when the teacher opens it directly.
+ */
+export const MIN_QUESTION_SAMPLE = 5;
+
 export const assessmentSettingsSchema = z.object({
   title: z.string().trim().min(1).max(255),
   description: z.string().trim().max(5000).default(""),

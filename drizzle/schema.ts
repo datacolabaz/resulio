@@ -210,6 +210,13 @@ export const groups = mysqlTable(
     scheduleVisible: boolean("scheduleVisible").notNull().default(false),
     /** Whether members see each other's released task scores; their own released scores are always visible. */
     scoresVisibleToGroup: boolean("scoresVisibleToGroup").notNull().default(true),
+    /**
+     * Whether members see the group's AGGREGATE exam/assessment statistics (average score, weak/strong
+     * topics -- never another student's name, individual result, or answers). Off by default, unlike
+     * scoresVisibleToGroup above: exam results are more sensitive than task scores, so sharing here is an
+     * explicit opt-in. See server/modules/motivation.ts::groupExamStatsBoard.
+     */
+    examStatsVisibleToGroup: boolean("examStatsVisibleToGroup").notNull().default(false),
     inviteCode: varchar("inviteCode", { length: 32 }).notNull().unique(),
     joinPolicy: mysqlEnum("joinPolicy", GROUP_JOIN_POLICIES).notNull().default("AUTO"),
     /** Deactivating stops new joins without burning the code value the way regenerating does. */
@@ -446,6 +453,12 @@ export const questions = mysqlTable(
     content: json("content").$type<QuestionContent>().notNull(),
     answerKey: json("answerKey").$type<AnswerKey>().notNull(),
     source: mysqlEnum("source", ["MANUAL", "AI"]).notNull().default("MANUAL"),
+    /** Teacher-raised doubt about the question itself (ambiguous, miskeyed...). Excludes it from
+     * "hardest/weakest question" rankings in analytics (a flagged question looking hard may mean
+     * the question is broken, not that students don't know the material) without hiding its raw
+     * stats or deleting it. See server/modules/analytics.ts. */
+    flagged: boolean("flagged").notNull().default(false),
+    flaggedAt: timestamp("flaggedAt"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },

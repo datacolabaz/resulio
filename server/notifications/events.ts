@@ -31,6 +31,7 @@ export const EVENT_TYPES = [
   "SYLLABUS_JOIN_DECIDED",
   "ANNOUNCEMENT",
   "GROWTH_RISK_DIGEST",
+  "GROUP_WEAK_TOPIC_DIGEST",
   "RETAKE_ASSIGNED",
   "PLAN_REMINDER",
   "LESSON_SCHEDULED",
@@ -82,6 +83,14 @@ export interface EventData {
   ANNOUNCEMENT: { announcementId: number; language: AnnouncementLanguage; texts: AnnouncementTexts; url: string };
   /** To the teacher, once a day: students who moved to high risk today (`names` holds at most five). */
   GROWTH_RISK_DIGEST: { count: number; names: string[] };
+  /**
+   * To the group's teacher, once a day while it holds: topics this GROUP is weak on across its
+   * exams (`topics` holds at most five, weakest first; `count` is the true total). The deep link
+   * (teacherWeakTopicExamPath) opens a new exam draft targeted at the group with the AI dialog
+   * pre-filled to `topics[0]`, the single weakest one -- any AI-drafted question still needs the
+   * teacher's normal review/accept before it's added to the bank.
+   */
+  GROUP_WEAK_TOPIC_DIGEST: { groupId: string; groupName: string; count: number; topics: string[] };
   /** To the student: the teacher assigned a personal retake on these topics. */
   RETAKE_ASSIGNED: { assessmentId: string; topics: string[]; from: string };
   /** To the student, once a day in the afternoon: unfinished steps of today in their review plan. */
@@ -148,6 +157,8 @@ export const EVENTS: Record<EventType, EventDefinition> = {
   ANNOUNCEMENT: { channels: ["IN_APP", "PUSH"] },
   // Growth Engine: daily teacher digest like the syllabus one; a retake and the plan reminder are in-app and push.
   GROWTH_RISK_DIGEST: { channels: ["IN_APP", "EMAIL"], defaultOff: ["EMAIL"] },
+  // Same cadence/shape as the risk digest, scoped to one group's weak exam topics instead of students.
+  GROUP_WEAK_TOPIC_DIGEST: { channels: ["IN_APP", "EMAIL"], defaultOff: ["EMAIL"] },
   RETAKE_ASSIGNED: { channels: ["IN_APP", "PUSH"] },
   PLAN_REMINDER: { channels: ["IN_APP", "PUSH"] },
   LESSON_SCHEDULED: { channels: ["IN_APP", "PUSH"] },

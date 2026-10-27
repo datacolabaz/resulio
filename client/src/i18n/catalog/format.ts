@@ -68,6 +68,8 @@ export const format = {
   "error.AI_UNAVAILABLE": ["AI xidməti konfiqurasiya olunmayıb.", "The AI service is not configured.", "Сервис AI не настроен."],
   "error.AI_INVALID_OUTPUT": ["AI etibarlı sual qaytarmadı. Yenidən cəhd edin.", "The AI did not return valid questions. Please try again.", "AI не вернул корректные вопросы. Повторите попытку."],
   "error.AI_USAGE_LIMIT_REACHED": ["AI istifadə limiti bitib.", "The AI usage limit has been reached.", "Лимит использования AI исчерпан."],
+  "error.AI_SOURCE_FILE_TYPE": ["Bu fayl formatı mənbə kimi dəstəklənmir.", "This file format isn't supported as a source.", "Этот формат файла не поддерживается как источник."],
+  "error.AI_SOURCE_UNREADABLE": ["Fayl oxuna bilmədi. Başqa fayl sınayın.", "The file couldn't be read. Try a different file.", "Не удалось прочитать файл. Попробуйте другой файл."],
   "error.AI_TEACHER_MONTHLY_LIMIT": [
     "Bu ay üçün AI limitiniz bitib. Limit {date} tarixində yenilənir.",
     "Your AI limit for this month is used up. It resets on {date}.",

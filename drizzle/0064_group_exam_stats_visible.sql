@@ -1,0 +1,1 @@
+ALTER TABLE `study_groups` ADD `examStatsVisibleToGroup` boolean DEFAULT false NOT NULL;

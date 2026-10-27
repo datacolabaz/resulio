@@ -324,6 +324,21 @@ export async function updateQuestion(scope: TeacherScope, id: string, input: Que
   return ownedQuestion(scope, id);
 }
 
+/**
+ * Teacher-raised doubt about the question itself (ambiguous wording, miskeyed answer...).
+ * Flagging excludes it from the "hardest/weakest question" rankings in analytics.ts without
+ * hiding its raw stats or deleting it -- see questions.flagged.
+ */
+export async function setQuestionFlagged(scope: TeacherScope, id: string, flagged: boolean) {
+  const db = requireDb();
+  await ownedQuestion(scope, id);
+  await db
+    .update(questions)
+    .set({ flagged, flaggedAt: flagged ? new Date() : null })
+    .where(eq(questions.id, id));
+  return ownedQuestion(scope, id);
+}
+
 export async function addQuestionToAssessment(scope: TeacherScope, assessmentId: string, questionId: string) {
   const db = requireDb();
   const a = await ownedAssessment(scope, assessmentId);

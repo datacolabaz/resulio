@@ -209,6 +209,7 @@ interface GroupFormInitial {
   classSchedule: ClassScheduleEntry[];
   scheduleVisible: boolean;
   scoresVisibleToGroup: boolean;
+  examStatsVisibleToGroup: boolean;
   joinPolicy: JoinPolicy;
   autoApproveKnown: boolean;
 }
@@ -291,6 +292,7 @@ function GroupFormDialog({
     classSchedule: initial?.classSchedule ?? ([] as ClassScheduleEntry[]),
     scheduleVisible: initial?.scheduleVisible ?? false,
     scoresVisibleToGroup: initial?.scoresVisibleToGroup ?? true,
+    examStatsVisibleToGroup: initial?.examStatsVisibleToGroup ?? false,
     joinPolicy: initial?.joinPolicy ?? ("AUTO" as JoinPolicy),
     autoApproveKnown: initial?.autoApproveKnown ?? true,
   });
@@ -450,6 +452,13 @@ function GroupFormDialog({
             hint={t("groups.scoresVisibleHint")}
             checked={f.scoresVisibleToGroup}
             onCheckedChange={(v) => setF({ ...f, scoresVisibleToGroup: v })}
+          />
+          <SettingToggle
+            id="exam-stats-visible"
+            label={t("groups.examStatsVisibleLabel")}
+            hint={t("groups.examStatsVisibleHint")}
+            checked={f.examStatsVisibleToGroup}
+            onCheckedChange={(v) => setF({ ...f, examStatsVisibleToGroup: v })}
           />
           <JoinPolicyField
             value={f.joinPolicy}
@@ -1046,6 +1055,12 @@ export function GroupDetailPage() {
                       },
                       { key: "email", header: t("common.email"), tdClassName: "break-all pr-3 text-muted-foreground", card: "hidden", cell: (m) => m.email },
                       { key: "joined", header: t("groups.joined"), tdClassName: "whitespace-nowrap pr-3 text-muted-foreground", cell: (m) => fmtDateTime(m.joinedAt) },
+                      {
+                        key: "lastSeen",
+                        header: t("groups.lastSeen"),
+                        tdClassName: "whitespace-nowrap pr-3 text-muted-foreground",
+                        cell: (m) => (m.lastSeenAt ? fmtDateTime(m.lastSeenAt) : t("groups.neverSeen")),
+                      },
                       {
                         key: "via",
                         header: t("groups.joinedVia"),

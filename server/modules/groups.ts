@@ -89,6 +89,7 @@ export interface GroupScheduleInput {
   classSchedule: ClassScheduleEntry[];
   scheduleVisible: boolean;
   scoresVisibleToGroup: boolean;
+  examStatsVisibleToGroup: boolean;
 }
 
 type GroupIdentity = { name: string; subject: string; grade: string; description: string; groupType: GroupType; level: string };
@@ -148,6 +149,7 @@ export async function groupMembersList(scope: TeacherScope, groupId: string) {
       name: users.name,
       email: users.email,
       avatarUrl: users.avatarUrl,
+      lastSeenAt: users.lastSeenAt,
     })
     .from(groupMembers)
     .innerJoin(users, eq(users.id, groupMembers.userId))

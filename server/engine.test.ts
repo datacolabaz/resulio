@@ -14,6 +14,7 @@ import {
   parseNumber,
   questionOrderFor,
   rank,
+  rankableQuestion,
   resultVisibility,
   seededShuffle,
   summarizeScores,
@@ -304,5 +305,25 @@ describe("analytics helpers", () => {
     expect(topicStats(rows.filter((r) => r.skill), "skill")).toEqual([
       expect.objectContaining({ topic: "reading", questionCount: 2, accuracyPercentage: 50 }),
     ]);
+  });
+});
+
+describe("rankableQuestion", () => {
+  it("excludes a flagged question regardless of sample size", () => {
+    expect(rankableQuestion({ attempts: 50, flagged: true })).toBe(false);
+  });
+
+  it("excludes an unflagged question below the minimum sample", () => {
+    expect(rankableQuestion({ attempts: 4, flagged: false })).toBe(false);
+  });
+
+  it("includes an unflagged question at or above the minimum sample", () => {
+    expect(rankableQuestion({ attempts: 5, flagged: false })).toBe(true);
+    expect(rankableQuestion({ attempts: 9, flagged: false })).toBe(true);
+  });
+
+  it("respects a custom minimum sample override", () => {
+    expect(rankableQuestion({ attempts: 2, flagged: false }, 2)).toBe(true);
+    expect(rankableQuestion({ attempts: 1, flagged: false }, 2)).toBe(false);
   });
 });
