@@ -1,12 +1,15 @@
-import { ProgressChart, TopicBars } from "@/components/AnalyticsBlocks";
+import { DistributionChart, ProgressChart, TopicBars } from "@/components/AnalyticsBlocks";
 import { AppShell, Loading, Panel, StatCard } from "@/components/AppShell";
 import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { StatusBadge } from "@/components/StatusBadge";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { t } from "@/i18n/messages";
-import { fmtDateTime } from "@/lib/format";
+import { errorText, fmtDateTime } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
+import { Sparkles } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { Link } from "wouter";
 import { AssessmentAnalytics } from "./Assessments";
 
@@ -171,8 +174,67 @@ function TopicsTab() {
   );
 }
 
+/** A single task's score analytics (average/median/distribution, lowest-scoring students) plus
+ *  the AI "tez-tez rast gəlinən səhvlər" clustering, built on `taskSubmissionStats`/
+ *  `clusterTaskMistakes` -- the per-task counterpart of `AssessmentAnalytics` for exams. */
+function TaskScoreAnalytics({ id }: { id: string }) {
+  const stats = trpc.teacher.tasks.analytics.useQuery({ id });
+  const cluster = trpc.teacher.tasks.clusterMistakes.useMutation({ onError: (e) => toast.error(errorText(e)) });
+  if (!stats.data) return <Loading />;
+  const s = stats.data;
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label={t("analytics.submissionRate")} value={`${s.submissionRate}%`} hint={`${s.submittedCount}/${s.assignedCount}`} />
+        <StatCard label={t("analytics.col.graded")} value={s.gradedCount} />
+        <StatCard label={t("assessment.stat.avgMedian")} value={`${s.averageScore}% / ${s.medianScore}%`} />
+        <StatCard label={t("assessment.stat.highLow")} value={`${s.highestScore}% / ${s.lowestScore}%`} />
+      </div>
+      <div className="grid gap-5 lg:grid-cols-2">
+        <Panel title={t("assessment.distribution")}><DistributionChart data={s.distribution} /></Panel>
+        <Panel title={t("analytics.lowestScoring")}>
+          {!s.lowestScoringStudents.length ? <p className="text-sm text-muted-foreground">{t("common.noResults")}</p> : (
+            <ul className="divide-y">
+              {s.lowestScoringStudents.map((row) => (
+                <li key={row.studentId} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+                  <span className="break-words">{row.studentName ?? "—"}</span>
+                  <span className="font-semibold">{row.score}%</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+      </div>
+      <Panel
+        title={t("analytics.commonMistakes")}
+        action={
+          <Button size="sm" variant="outline" disabled={cluster.isPending} onClick={() => cluster.mutate({ taskId: id })}>
+            <Sparkles className="h-4 w-4" aria-hidden /> {cluster.isPending ? t("builder.aiGenerating") : t("analytics.analyzeMistakes")}
+          </Button>
+        }
+      >
+        {!cluster.data ? (
+          <p className="text-sm text-muted-foreground">{t("analytics.commonMistakesHint")}</p>
+        ) : !cluster.data.clusters.length ? (
+          <p className="text-sm text-muted-foreground">{t("analytics.noCommonMistakes")}</p>
+        ) : (
+          <ul className="divide-y">
+            {cluster.data.clusters.map((c, i) => (
+              <li key={i} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+                <span className="min-w-0 break-words">{c.theme}</span>
+                <StatusBadge tone="neutral">{t("analytics.mistakeCount", { count: c.count })}</StatusBadge>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
 function TasksTab() {
   const q = trpc.teacher.analytics.tasks.useQuery();
+  const [selected, setSelected] = useState("");
   if (!q.data) return <Loading />;
   const { summary, tasks } = q.data;
   if (!tasks.length) return <Panel><p className="text-sm text-muted-foreground">{t("analytics.noTasks")}</p></Panel>;
@@ -188,6 +250,9 @@ function TasksTab() {
         <ResponsiveTable
           rows={tasks}
           rowKey={(tp) => tp.id}
+          rowClassName={(tp) => `cursor-pointer hover:bg-muted ${selected === tp.id ? "bg-info-surface" : ""}`}
+          cardClassName={(tp) => `cursor-pointer ${selected === tp.id ? "bg-info-surface" : ""}`}
+          onRowClick={(tp) => setSelected(tp.id)}
           columns={[
             {
               key: "task",
@@ -219,6 +284,7 @@ function TasksTab() {
           ]}
         />
       </Panel>
+      {selected && <TaskScoreAnalytics id={selected} />}
     </div>
   );
 }

@@ -116,6 +116,9 @@ const AI_GRADE: Record<ServerLocale, {
   button: string;
   footer: string;
   inApp: { title: string; body: (title: string, score: string) => string };
+  /** A task with only a quiz part (no free text/file expected) has nothing for the AI to review,
+   *  so the auto-grade feedback is just the quiz result -- see `formatQuizOnlyFeedback`. */
+  quizOnly: (score: number, max: number) => string;
 }> = {
   az: {
     subject: (t) => `Nəticəniz hazırdır: ${t}`,
@@ -130,6 +133,7 @@ const AI_GRADE: Record<ServerLocale, {
     button: "Nəticəyə bax",
     footer: "Bu məktub Resulio tərəfindən avtomatik göndərilib.",
     inApp: { title: "Nəticəniz hazırdır", body: (t, s) => `«${t}»: ${s} · AI tərəfindən qiymətləndirilib` },
+    quizOnly: (score, max) => `Test nəticəsi: ${score}/${max}`,
   },
   en: {
     subject: (t) => `Your result is ready: ${t}`,
@@ -144,6 +148,7 @@ const AI_GRADE: Record<ServerLocale, {
     button: "View result",
     footer: "Resulio sent this e-mail automatically.",
     inApp: { title: "Your result is ready", body: (t, s) => `“${t}”: ${s} · Graded by AI` },
+    quizOnly: (score, max) => `Quiz result: ${score}/${max}`,
   },
   ru: {
     subject: (t) => `Ваш результат готов: ${t}`,
@@ -158,6 +163,7 @@ const AI_GRADE: Record<ServerLocale, {
     button: "Посмотреть результат",
     footer: "Это письмо отправлено Resulio автоматически.",
     inApp: { title: "Ваш результат готов", body: (t, s) => `«${t}»: ${s} · Оценено ИИ` },
+    quizOnly: (score, max) => `Результат теста: ${score}/${max}`,
   },
 };
 
@@ -175,6 +181,12 @@ export function formatAiGradeFeedback(locale: ServerLocale, input: { feedback: s
   const { feedback, strengths, improvements } = cleanAiFeedback(input);
   const section = (heading: string, items: string[]) => (items.length ? [`${heading}:\n${items.map((i) => `- ${i}`).join("\n")}`] : []);
   return [feedback, ...section(tx.strengths, strengths), ...section(tx.improvements, improvements)].filter(Boolean).join("\n\n").slice(0, GRADE_FEEDBACK_MAX_CHARS);
+}
+
+/** Feedback text for a quiz-only task's auto-release -- there's no free-text/file part for the AI
+ *  to have reviewed, so the submission's feedback is just the quiz result. */
+export function formatQuizOnlyFeedback(locale: ServerLocale, quizScore: number, quizMaxScore: number): string {
+  return AI_GRADE[locale].quizOnly(Math.round(quizScore * 10) / 10, Math.round(quizMaxScore * 10) / 10);
 }
 
 export function buildAiGradeEmail(input: {

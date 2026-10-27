@@ -18,6 +18,8 @@ export const AI_FEATURES = [
   "COACH_QUIZ",
   "COACH_GRADE",
   "COACH_TUTOR",
+  "TASK_TEXT_GENERATE",
+  "TASK_MISTAKE_CLUSTER",
 ] as const;
 export type AiFeature = (typeof AI_FEATURES)[number];
 /** AI Study Coach features: paid from the student's own coach quota, never from a teacher's. */

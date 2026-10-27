@@ -9,6 +9,7 @@ import { serverLocale } from "../_core/locale";
 import { withAiUsage } from "../aiUsage/context";
 import { aiLimitCheck, assertAiAllowed } from "../aiUsage/limits";
 import { requireDb } from "../db";
+import { store } from "../resulioStore";
 import { managedWorkspaces, type TeacherScope } from "./access";
 import { extractJson } from "./ai";
 import { fitReviewContext, LANGUAGE_NAME, loadTaskAttachments, sanitizeForPrompt, type ReviewTask } from "./aiContext";
@@ -425,6 +426,74 @@ export async function reviewsForTask(scope: TeacherScope, taskId: string) {
       completedAt: r.completedAt,
     })),
   };
+}
+
+const MAX_CLUSTER_ITEMS = 300;
+const MAX_CLUSTER_CHARS = 20_000;
+
+/**
+ * AI-powered grouping of a task's "what to improve" notes (each submission's own AI review,
+ * `submissionAiReviews.details.improvements`) into common-mistake themes -- the "tez-tez rast
+ * gəlinən səhvlər" view, built on top of the existing per-submission review rather than a
+ * separate analysis pass. Stateless: nothing is persisted, so the teacher re-runs it ("Analiz
+ * et") whenever they want a fresh read, e.g. after grading more submissions.
+ */
+export async function clusterTaskMistakes(scope: TeacherScope, taskId: string) {
+  if (!ENV.llmConfigured) throw new AppError("AI_UNAVAILABLE");
+  const db = requireDb();
+  const [task] = await db.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.id, taskId), eq(tasks.providerWorkspaceId, scope.workspaceId))).limit(1);
+  if (!task) throw new AppError("NOT_FOUND");
+
+  const rows = await db
+    .select({ details: submissionAiReviews.details })
+    .from(submissionAiReviews)
+    .where(and(eq(submissionAiReviews.taskId, taskId), eq(submissionAiReviews.status, "DONE")));
+  const reviewedCount = rows.length;
+  const notes = rows.flatMap((r) => r.details?.improvements ?? []).filter((s): s is string => !!s?.trim());
+  if (!notes.length) return { clusters: [], reviewedCount };
+
+  const usage = store.usageOf(scope.workspaceId);
+  if (usage.used + 1 > usage.limit) throw new AppError("AI_USAGE_LIMIT_REACHED");
+  await assertAiAllowed(scope.userId);
+
+  const material = notes.slice(0, MAX_CLUSTER_ITEMS).join("\n").slice(0, MAX_CLUSTER_CHARS);
+  const result = await withAiUsage({ feature: "TASK_MISTAKE_CLUSTER", userId: scope.userId, workspaceId: scope.workspaceId }, () => invokeLLM({
+    messages: [
+      {
+        role: "system",
+        content:
+          "Each line below is one student's own improvement note from a separate submission of the same assignment. " +
+          "Group them into common mistake themes. Reply with JSON only: " +
+          '{"clusters":[{"theme":"...","count":n}]}. ' +
+          "theme is a short (under 100 characters) description, in the SAME LANGUAGE as the notes; " +
+          "count is how many of the given lines belong to that theme; at most 8 clusters, most common first; " +
+          "never invent a theme the given lines don't support.",
+      },
+      { role: "user", content: material },
+    ],
+    responseFormat: { type: "json_object" },
+  })).catch(async (error: unknown) => {
+    const alert = providerAlertFor(error);
+    if (alert) await sendAiAlert(scope.workspaceId, alert);
+    throw error;
+  });
+
+  const content = result.choices[0]?.message?.content;
+  const raw = extractJson(typeof content === "string" ? content : "") as { clusters?: unknown } | null;
+  const clusters = Array.isArray(raw?.clusters)
+    ? raw.clusters
+        .map((c) => (c && typeof c === "object" ? (c as { theme?: unknown; count?: unknown }) : null))
+        .filter((c): c is { theme?: unknown; count?: unknown } => !!c)
+        .map((c) => ({
+          theme: typeof c.theme === "string" ? c.theme.trim().slice(0, 200) : "",
+          count: typeof c.count === "number" && Number.isFinite(c.count) ? Math.max(0, Math.round(c.count)) : 0,
+        }))
+        .filter((c) => c.theme)
+        .slice(0, 8)
+    : [];
+  if (!clusters.length) throw new AppError("AI_INVALID_OUTPUT");
+  store.useAiUnits(scope.workspaceId, 1);
+  return { clusters, reviewedCount };
 }
 
 /** Throws NOT_FOUND unless the submission belongs to a task of this workspace. */

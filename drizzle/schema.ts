@@ -865,11 +865,34 @@ export const taskSubmissions = mysqlTable(
     feedbackReleasedAt: timestamp("feedbackReleasedAt"),
     /** The AI pre-review text is shown to the student only when the teacher opts in on release. */
     aiFeedbackReleased: boolean("aiFeedbackReleased").notNull().default(false),
+    /** The student's answers to this task's quiz questions (see `taskQuizQuestions`), keyed by
+     *  questionId -- null/empty when the task has no quiz or the student skipped it. */
+    quizAnswers: json("quizAnswers").$type<Record<string, StudentAnswer>>(),
+    /** Auto-graded points earned/possible on the quiz part, computed at submit time with the same
+     *  `gradeQuestion` engine exams use. Both null when the task has no quiz questions. */
+    quizScore: double("quizScore"),
+    quizMaxScore: double("quizMaxScore"),
   },
   (t) => [
     uniqueIndex("task_submissions_task_student_unique").on(t.taskId, t.studentId),
     index("task_submissions_task_first_idx").on(t.taskId, t.firstSubmittedAt),
   ],
+);
+
+/**
+ * Which bank questions (the same `questions` table exams draw from) make up a task's optional
+ * auto-graded quiz. A join table, exactly like `assessmentQuestions` -- a question's type, content,
+ * answer key, points and flagged state all live on `questions` already, so nothing here duplicates
+ * that; task-specific info (student answers, score) lives on `taskSubmissions` instead.
+ */
+export const taskQuizQuestions = mysqlTable(
+  "task_quiz_questions",
+  {
+    taskId: id("taskId").notNull(),
+    questionId: id("questionId").notNull(),
+    position: int("position").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.taskId, t.questionId] }), index("task_quiz_questions_task_idx").on(t.taskId)],
 );
 
 export const SUBMISSION_AI_REVIEW_STATUSES = ["PENDING", "DONE", "FAILED", "SKIPPED"] as const;

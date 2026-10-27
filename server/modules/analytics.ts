@@ -28,6 +28,7 @@ import {
 } from "./engine";
 import { visibilityForResults } from "./attempts";
 import { activeStudentIdsOfGroups, assertGroupOwner, assertTeacherHasStudent } from "./groups";
+import { rosterStudentIds } from "./taskAccess";
 import * as tasksModule from "./tasks";
 import type { TeacherScope } from "./access";
 
@@ -531,6 +532,51 @@ export async function tasksAnalytics(scope: TeacherScope) {
   };
 
   return { summary, tasks: taskRows };
+}
+
+/**
+ * A single task's score-based analytics (teacher-only) -- the per-task counterpart to
+ * `assessmentAnalytics` for exams. `tasksAnalytics` above is the cross-task delivery/timing
+ * summary (submission rate, on-time rate, grading hours); this is the per-task score view: who's
+ * reached, who's graded, the score distribution, and which students scored lowest.
+ */
+export async function taskSubmissionStats(scope: TeacherScope, taskId: string) {
+  const db = requireDb();
+  const task = await tasksModule.assignmentOf(scope, taskId);
+  const groupMemberIds = await activeStudentIdsOfGroups(task.groupIds, db);
+  const assignedIds = rosterStudentIds(task, groupMemberIds);
+
+  const subs = await db
+    .select({ s: taskSubmissions, studentName: users.name })
+    .from(taskSubmissions)
+    .innerJoin(users, eq(users.id, taskSubmissions.studentId))
+    .where(eq(taskSubmissions.taskId, taskId));
+
+  const submittedCount = subs.filter((r) => r.s.status === "SUBMITTED" || r.s.status === "LATE" || r.s.status === "REVIEWED").length;
+  // Released = the grade (teacher's own, or auto-released) is final and visible to the student --
+  // the same gate `studentSubmissionView` uses. An AI suggestion awaiting teacher review (score set,
+  // feedbackReleasedAt still null) isn't counted as "graded" here.
+  const graded = subs.filter((r) => r.s.feedbackReleasedAt !== null && r.s.score !== null);
+  const scores = graded.map((r) => r.s.score as number);
+  const stats = summarizeScores(scores);
+
+  const lowestScoringStudents = [...graded]
+    .sort((a, b) => (a.s.score as number) - (b.s.score as number))
+    .slice(0, 5)
+    .map((r) => ({ studentId: r.s.studentId, studentName: r.studentName, score: r.s.score as number }));
+
+  return {
+    assignedCount: assignedIds.length,
+    submittedCount,
+    gradedCount: graded.length,
+    submissionRate: assignedIds.length ? round1((submittedCount / assignedIds.length) * 100) : 0,
+    averageScore: stats.average,
+    medianScore: stats.median,
+    highestScore: stats.highest,
+    lowestScore: stats.lowest,
+    distribution: scoreDistribution(scores),
+    lowestScoringStudents,
+  };
 }
 
 export async function teacherOverview(scope: TeacherScope) {

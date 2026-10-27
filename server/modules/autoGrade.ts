@@ -4,7 +4,7 @@ import { serverLocale } from "../_core/locale";
 import { requireDb } from "../db";
 import { dispatch, setSendGuard } from "../notifications/dispatcher";
 import { isMissingTable } from "../notifications/preferences";
-import { cleanAiFeedback, formatAiGradeFeedback } from "../notifications/templates";
+import { cleanAiFeedback, formatAiGradeFeedback, formatQuizOnlyFeedback } from "../notifications/templates";
 import type { TeacherScope } from "./access";
 import { AppError } from "./errors";
 import { recordAnnouncedScore } from "./gradeEmail";
@@ -47,6 +47,33 @@ export function autoGradeBlockedBy(review: ReviewForGrading): AutoGradeBlock | n
   if (!review.feedback?.trim()) return "NO_FEEDBACK";
   if (review.needsTeacherReview) return "AI_ASKED_TEACHER";
   return null;
+}
+
+/**
+ * Score and block reason for a submission, accounting for a task's optional auto-graded quiz
+ * (see taskQuiz.ts). A task with no quiz (`quizMaxScore === null`) behaves exactly as before --
+ * score and block come from the AI review alone -- which keeps every existing task's grading
+ * unchanged. A task WITH a quiz blends the quiz's own 0-100 percentage equally with the AI
+ * review's score for the free-text/file part; when the student had nothing else to submit (a
+ * quiz-only task), the free-text review is skipped entirely and the quiz score stands alone.
+ */
+export function quizAwareAutoScore(input: {
+  quizScore: number | null;
+  quizMaxScore: number | null;
+  hasFreeContent: boolean;
+  review: ReviewForGrading | null;
+}): { score: number | null; block: AutoGradeBlock | null } {
+  const hasQuiz = input.quizMaxScore !== null && input.quizMaxScore > 0;
+  if (!hasQuiz) {
+    if (!input.review) return { score: null, block: "AI_NOT_DONE" };
+    return { score: input.review.suggestedScore, block: autoGradeBlockedBy(input.review) };
+  }
+  const quizPct = clampScore(((input.quizScore ?? 0) / input.quizMaxScore!) * 100);
+  if (!input.hasFreeContent) return { score: quizPct, block: null };
+  if (!input.review) return { score: null, block: "AI_NOT_DONE" };
+  const block = autoGradeBlockedBy(input.review);
+  if (block || input.review.suggestedScore === null) return { score: null, block: block ?? "AI_NOT_DONE" };
+  return { score: clampScore((quizPct + input.review.suggestedScore) / 2), block: null };
 }
 
 export type GradeOwner = "NONE" | "AI" | "TEACHER";
@@ -185,18 +212,26 @@ export async function applyAutoGrade(submissionId: string, runId: string): Promi
 
   const details = (review.details ?? {}) as { strengths?: unknown; improvements?: unknown; needsTeacherReview?: unknown };
   const ai = { feedback: review.feedback ?? "", strengths: strings(details.strengths), improvements: strings(details.improvements) };
-  const action = planAutoGrade({
-    enabled: setting.enabled,
-    owner: gradeOwner(sub),
-    block: autoGradeBlockedBy({
+  const hasFreeContent = Boolean(sub.comment?.trim()) || sub.files.length > 0;
+  const quizAware = quizAwareAutoScore({
+    quizScore: sub.quizScore,
+    quizMaxScore: sub.quizMaxScore,
+    hasFreeContent,
+    review: {
       status: review.status,
       checks: (review.checks ?? []) as ReviewForGrading["checks"],
       feedback: review.feedback,
       suggestedScore: review.suggestedScore,
       needsTeacherReview: details.needsTeacherReview === true,
-    }),
+    },
+  });
+  const isQuizOnly = sub.quizMaxScore !== null && sub.quizMaxScore > 0 && !hasFreeContent;
+  const action = planAutoGrade({
+    enabled: setting.enabled,
+    owner: gradeOwner(sub),
+    block: quizAware.block,
     currentScore: sub.score,
-    aiScore: review.suggestedScore,
+    aiScore: quizAware.score,
   });
 
   if (action.kind === "NEEDS_TEACHER") {
@@ -207,7 +242,7 @@ export async function applyAutoGrade(submissionId: string, runId: string): Promi
   if (!(await gradingTableReady())) return { kind: "SKIP", why: "UNAVAILABLE" };
 
   const now = new Date();
-  const feedback = formatAiGradeFeedback(serverLocale(row.locale), ai);
+  const feedback = isQuizOnly ? formatQuizOnlyFeedback(serverLocale(row.locale), sub.quizScore ?? 0, sub.quizMaxScore ?? 0) : formatAiGradeFeedback(serverLocale(row.locale), ai);
   const t = taskSubmissions;
   const [updated] =
     action.kind === "RELEASE"

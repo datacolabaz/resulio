@@ -9,6 +9,7 @@ import { StatusBadge, toneSurface } from "@/components/StatusBadge";
 import { ContinueLearning } from "@/components/syllabus/CrossLinks";
 import { MyJoinRequests } from "@/components/syllabus/MyJoinRequests";
 import { MaterialLinkButton, MaterialMeta } from "@/components/materials/MaterialMeta";
+import { QuestionRenderer } from "@/components/QuestionRenderer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -32,10 +33,21 @@ import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { fileDownloadUrl, type UploadedFile } from "@/lib/uploadFile";
 import { safeReturnPath } from "@/lib/syllabusLearn";
 import { CoachHomeCard } from "./coach/CoachHomeCard";
+import type { StudentAnswer } from "@shared/assessment";
 import { ArrowLeft, CheckCircle2, Clock, History, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useParams, useSearch } from "wouter";
+
+/** Mirrors StudentSession.tsx's own local `isAnswered` -- true once the student has put
+ *  something in this answer, used only to decide whether "Göndər" should be enabled. */
+function quizIsAnswered(v: StudentAnswer | undefined) {
+  if (v === undefined || v === null) return false;
+  if (typeof v === "string") return v.trim().length > 0;
+  if (Array.isArray(v)) return v.some((x) => String(x).trim().length > 0);
+  if (typeof v === "object") return Object.keys(v).length > 0;
+  return true;
+}
 
 type AssessmentType = "EXAM" | "KSQ" | "BSQ";
 
@@ -578,6 +590,7 @@ function ReleasedGrade({ grade }: { grade: ReleasedGradeData }) {
         <div><StatusBadge tone="info"><Sparkles className="mr-1 inline h-3 w-3" aria-hidden />{t("student.gradedByAi")}</StatusBadge></div>
       )}
       {grade.score !== null && <p className="font-semibold">{t("student.taskScore", { score: grade.score })}</p>}
+      {grade.quiz && <p className="text-xs text-muted-foreground">{t("student.quizScoreValue", { score: grade.quiz.score ?? 0, max: grade.quiz.maxScore })}</p>}
       {!!grade.feedback && <p className="whitespace-pre-wrap break-words">{grade.feedback}</p>}
       {grade.ai && (
         <div className="space-y-1 rounded-lg bg-muted/40 p-2 text-xs">
@@ -602,6 +615,7 @@ export function StudentTasks() {
   });
   const [files, setFiles] = useState<Record<string, UploadedFile | null>>({});
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [quizAnswers, setQuizAnswers] = useState<Record<string, Record<string, StudentAnswer>>>({});
   const submit = trpc.student.submitTask.useMutation({
     onSuccess: () => { toast.success(t("student.taskSubmitted")); void utils.student.tasks.invalidate(); },
     onError: (e) => toast.error(errorText(e)),
@@ -653,6 +667,12 @@ export function StudentTasks() {
                   {!!a.submission.answerText && (
                     <p className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-muted/40 p-2 text-sm">{a.submission.answerText}</p>
                   )}
+                  {a.quiz.length > 0 && (
+                    <div className="space-y-2 rounded-lg border border-border p-2">
+                      <p className="text-xs font-medium text-foreground-secondary">{t("student.quizTitle")}</p>
+                      {a.quiz.map((q) => <QuestionRenderer key={q.id} q={q} value={a.submission?.quizAnswers?.[q.id]} onChange={() => {}} disabled />)}
+                    </div>
+                  )}
                   {a.submission.grade ? (
                     <ReleasedGrade grade={a.submission.grade} />
                   ) : a.submission.pending === "AI_CHECKING" ? (
@@ -670,14 +690,31 @@ export function StudentTasks() {
                     <Textarea rows={4} className="mt-1" maxLength={20000} placeholder={t("student.answerPlaceholder")} value={answers[a.id] ?? ""} onChange={(e) => setAnswers({ ...answers, [a.id]: e.target.value })} />
                   </label>
                   <SingleFileUpload context="submission" taskId={a.id} value={files[a.id] ?? null} onChange={(file) => setFiles({ ...files, [a.id]: file })} />
+                  {a.quiz.length > 0 && (
+                    <div className="space-y-2 rounded-lg border border-border p-2">
+                      <p className="text-xs font-medium text-foreground-secondary">{t("student.quizTitle")}</p>
+                      {a.quiz.map((q) => (
+                        <QuestionRenderer
+                          key={q.id}
+                          q={q}
+                          value={quizAnswers[a.id]?.[q.id]}
+                          onChange={(v) => setQuizAnswers({ ...quizAnswers, [a.id]: { ...quizAnswers[a.id], [q.id]: v } })}
+                        />
+                      ))}
+                    </div>
+                  )}
                   <Button
-                    disabled={(!files[a.id] && !(answers[a.id] ?? "").trim()) || submit.isPending}
+                    disabled={
+                      (!files[a.id] && !(answers[a.id] ?? "").trim() && !Object.values(quizAnswers[a.id] ?? {}).some(quizIsAnswered)) ||
+                      submit.isPending
+                    }
                     onClick={() => {
                       const file = files[a.id];
                       submit.mutate({
                         assignmentId: a.id,
                         files: file ? [{ fileId: file.fileId, name: file.name, size: file.size }] : [],
                         answerText: answers[a.id] ?? "",
+                        quizAnswers: quizAnswers[a.id],
                       });
                     }}
                   >
