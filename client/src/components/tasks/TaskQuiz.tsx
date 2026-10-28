@@ -1,3 +1,4 @@
+import { AiSourcePicker } from "@/components/AiSourcePicker";
 import { Loading, Pill } from "@/components/AppShell";
 import { draftFromQuestion, QuestionEditor } from "@/components/QuestionEditor";
 import { QuestionPreview } from "@/components/questionBank/QuestionPreview";
@@ -10,16 +11,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { t } from "@/i18n/messages";
 import { errorText, questionTypeLabel } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
-import { formatFileSize, uploadFile, UploadError, type UploadedFile } from "@/lib/uploadFile";
-import { ArrowDown, ArrowUp, FileUp, Pencil, Sparkles, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { type UploadedFile } from "@/lib/uploadFile";
+import { ArrowDown, ArrowUp, Pencil, Sparkles, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 const fieldLabel = "text-foreground-secondary";
 const selectClass = "mt-1 w-full rounded-lg border border-input bg-card px-3 py-2 text-foreground";
 const filterCls = "rounded-lg border border-input bg-card px-2 text-sm text-foreground";
-/** Formats `sourceMaterialFromFile` (server/modules/ai.ts) can actually read as source material. */
-const AI_SOURCE_ACCEPT = ".pdf,.docx,.pptx,.csv,.xlsx,.txt,.png,.jpg,.jpeg";
 /** The six auto-gradable question types -- the only ones a task's quiz can use (see server's
  *  `QUIZ_QUESTION_TYPES` in taskQuiz.ts / `AI_QUESTION_TYPES` in ai.ts). */
 const QUIZ_TYPES = ["MULTIPLE_CHOICE", "MULTIPLE_SELECT", "TRUE_FALSE", "SHORT_ANSWER", "FILL_BLANK", "NUMERIC"] as const;
@@ -32,32 +31,21 @@ const QUIZ_TYPES = ["MULTIPLE_CHOICE", "MULTIPLE_SELECT", "TRUE_FALSE", "SHORT_A
  */
 export function TaskAiTextDialog({ open, onOpenChange, onApply }: { open: boolean; onOpenChange: (v: boolean) => void; onApply: (r: { title: string; description: string; instructions: string }) => void }) {
   const [form, setForm] = useState({ topic: "", grade: "", language: "az" as "az" | "ru" | "en" | "de" });
-  const [sourceFile, setSourceFile] = useState<UploadedFile | null>(null);
-  const [sourceUploading, setSourceUploading] = useState(false);
+  const [sourceFiles, setSourceFiles] = useState<UploadedFile[]>([]);
   const [sourceText, setSourceText] = useState("");
+  // Empty string means "not set" -- the field is optional, and `openQuestionCount` is only sent
+  // to the server when the teacher actually typed a count (see the server's field doc comment:
+  // when set, `instructions` becomes N numbered open questions instead of a free-form assignment).
+  const [openQuestionCount, setOpenQuestionCount] = useState<number | "">("");
   const [edited, setEdited] = useState<{ title: string; description: string; instructions: string } | null>(null);
-  const sourceInput = useRef<HTMLInputElement>(null);
-  const pickSource = async (picked: File | undefined) => {
-    if (!picked) return;
-    setSourceUploading(true);
-    try {
-      setSourceFile(await uploadFile(picked, "ai-source"));
-      setSourceText("");
-    } catch (e) {
-      const code = e instanceof UploadError ? e.code : "UPLOAD_FAILED";
-      toast.error(code === "FILE_TOO_LARGE" ? t("files.tooLarge") : code === "FILE_TYPE_NOT_ALLOWED" ? t("error.AI_SOURCE_FILE_TYPE") : t("files.uploadFailed"));
-    } finally {
-      setSourceUploading(false);
-    }
-  };
   const usage = trpc.teacher.ai.usage.useQuery(undefined, { enabled: open });
   const generate = trpc.teacher.ai.generateTaskText.useMutation({
     onSuccess: (r) => { setEdited(r); void usage.refetch(); },
     onError: (e) => toast.error(errorText(e)),
   });
-  const reset = () => { generate.reset(); setEdited(null); setSourceFile(null); setSourceText(""); };
+  const reset = () => { generate.reset(); setEdited(null); setSourceFiles([]); setSourceText(""); setOpenQuestionCount(""); };
   useEffect(() => { if (!open) reset(); }, [open]);
-  const source = sourceFile ? { fileId: sourceFile.fileId } : sourceText.trim() ? { text: sourceText.trim() } : undefined;
+  const source = sourceFiles.length ? { fileIds: sourceFiles.map((f) => f.fileId) } : sourceText.trim() ? { text: sourceText.trim() } : undefined;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -72,35 +60,31 @@ export function TaskAiTextDialog({ open, onOpenChange, onApply }: { open: boolea
                 {(["az", "ru", "en", "de"] as const).map((l) => <option key={l} value={l}>{t(`builder.aiLang.${l}`)}</option>)}
               </select>
             </label>
-            <div className="space-y-1.5 sm:col-span-2">
-              <span className={fieldLabel}>{t("builder.aiSourceLabel")}</span>
-              <div className="flex flex-wrap items-center gap-2">
-                <input ref={sourceInput} type="file" accept={AI_SOURCE_ACCEPT} className="sr-only" aria-label={t("builder.aiSourceAttach")} disabled={sourceUploading} onChange={(e) => void pickSource(e.target.files?.[0])} />
-                <Button type="button" variant="outline" size="sm" disabled={sourceUploading} onClick={() => sourceInput.current?.click()}>
-                  <FileUp className="mr-1 h-4 w-4" aria-hidden />
-                  {sourceUploading ? t("builder.aiSourceUploading") : t("builder.aiSourceAttach")}
-                </Button>
-                {sourceFile && (
-                  <span className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border bg-muted px-2.5 py-1.5 text-sm">
-                    <span className="min-w-0 truncate">{sourceFile.name}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground">({formatFileSize(sourceFile.size)})</span>
-                    <button type="button" aria-label={t("builder.aiSourceRemove")} onClick={() => setSourceFile(null)}>
-                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-                    </button>
-                  </span>
-                )}
-              </div>
-              {!sourceFile && (
-                <>
-                  <div className="text-xs text-muted-foreground">{t("builder.aiSourceOr")}</div>
-                  <Textarea rows={3} value={sourceText} onChange={(e) => setSourceText(e.target.value)} placeholder={t("builder.aiSourceTextPlaceholder")} />
-                </>
-              )}
-              <p className="text-xs text-muted-foreground">{t("builder.aiSourceHint")}</p>
+            <div className="sm:col-span-2">
+              <AiSourcePicker files={sourceFiles} onFilesChange={setSourceFiles} text={sourceText} onTextChange={setSourceText} />
             </div>
+            <label className="text-sm sm:col-span-2">
+              <span className={fieldLabel}>{t("builder.aiOpenQuestionsLabel")}</span>
+              <Input
+                type="number"
+                min={1}
+                max={20}
+                value={openQuestionCount}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  setOpenQuestionCount(e.target.value === "" ? "" : Math.min(20, Math.max(1, n || 1)));
+                }}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">{t("builder.aiOpenQuestionsHint")}</p>
+            </label>
             <div className="flex flex-wrap items-center justify-between gap-2 sm:col-span-2">
               <span className="text-xs text-muted-foreground">{t("builder.aiUsage", { used: usage.data?.used ?? 0, limit: usage.data?.limit ?? 100 })}</span>
-              <Button disabled={form.topic.trim().length < 2 || generate.isPending} onClick={() => generate.mutate({ ...form, source })}>{generate.isPending ? t("builder.aiGenerating") : t("builder.aiGenerate")}</Button>
+              <Button
+                disabled={form.topic.trim().length < 2 || generate.isPending}
+                onClick={() => generate.mutate({ ...form, source, openQuestionCount: openQuestionCount === "" ? undefined : openQuestionCount })}
+              >
+                {generate.isPending ? t("builder.aiGenerating") : t("builder.aiGenerate")}
+              </Button>
             </div>
           </DialogBody>
         ) : (
@@ -188,23 +172,8 @@ function TaskQuizAiDialog({ open, onOpenChange, taskId }: { open: boolean; onOpe
   const [form, setForm] = useState({ topic: "", grade: "", language: "az" as "az" | "ru" | "en" | "de", difficulty: "MEDIUM" as "EASY" | "MEDIUM" | "HARD", questionType: "MULTIPLE_CHOICE" as (typeof QUIZ_TYPES)[number], count: 5, points: 1 });
   const [picked, setPicked] = useState<string[]>([]);
   const [sectionId, setSectionId] = useState("");
-  const [sourceFile, setSourceFile] = useState<UploadedFile | null>(null);
-  const [sourceUploading, setSourceUploading] = useState(false);
+  const [sourceFiles, setSourceFiles] = useState<UploadedFile[]>([]);
   const [sourceText, setSourceText] = useState("");
-  const sourceInput = useRef<HTMLInputElement>(null);
-  const pickSource = async (picked: File | undefined) => {
-    if (!picked) return;
-    setSourceUploading(true);
-    try {
-      setSourceFile(await uploadFile(picked, "ai-source"));
-      setSourceText("");
-    } catch (e) {
-      const code = e instanceof UploadError ? e.code : "UPLOAD_FAILED";
-      toast.error(code === "FILE_TOO_LARGE" ? t("files.tooLarge") : code === "FILE_TYPE_NOT_ALLOWED" ? t("error.AI_SOURCE_FILE_TYPE") : t("files.uploadFailed"));
-    } finally {
-      setSourceUploading(false);
-    }
-  };
   const usage = trpc.teacher.ai.usage.useQuery(undefined, { enabled: open });
   const utils = trpc.useUtils();
   const invalidate = () => void utils.teacher.tasks.quizList.invalidate({ id: taskId });
@@ -216,7 +185,7 @@ function TaskQuizAiDialog({ open, onOpenChange, taskId }: { open: boolean; onOpe
     onSuccess: (rows) => {
       toast.success(t("builder.aiAdded", { count: rows.length }));
       generate.reset();
-      setSourceFile(null);
+      setSourceFiles([]);
       setSourceText("");
       invalidate();
       onOpenChange(false);
@@ -224,7 +193,7 @@ function TaskQuizAiDialog({ open, onOpenChange, taskId }: { open: boolean; onOpe
     onError: (e) => toast.error(errorText(e)),
   });
   const draft = generate.data;
-  const source = sourceFile ? { fileId: sourceFile.fileId } : sourceText.trim() ? { text: sourceText.trim() } : undefined;
+  const source = sourceFiles.length ? { fileIds: sourceFiles.map((f) => f.fileId) } : sourceText.trim() ? { text: sourceText.trim() } : undefined;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -251,31 +220,8 @@ function TaskQuizAiDialog({ open, onOpenChange, taskId }: { open: boolean; onOpe
             </label>
             <label className="text-sm"><span className={fieldLabel}>{t("builder.aiCount")}</span><Input type="number" min={1} max={10} value={form.count} onChange={(e) => setForm({ ...form, count: Math.min(10, Math.max(1, Number(e.target.value) || 1)) })} /></label>
             <label className="text-sm"><span className={fieldLabel}>{t("builder.aiPoints")}</span><Input type="number" min={0.5} step={0.5} value={form.points} onChange={(e) => setForm({ ...form, points: Number(e.target.value) || 1 })} /></label>
-            <div className="space-y-1.5 sm:col-span-2">
-              <span className={fieldLabel}>{t("builder.aiSourceLabel")}</span>
-              <div className="flex flex-wrap items-center gap-2">
-                <input ref={sourceInput} type="file" accept={AI_SOURCE_ACCEPT} className="sr-only" aria-label={t("builder.aiSourceAttach")} disabled={sourceUploading} onChange={(e) => void pickSource(e.target.files?.[0])} />
-                <Button type="button" variant="outline" size="sm" disabled={sourceUploading} onClick={() => sourceInput.current?.click()}>
-                  <FileUp className="mr-1 h-4 w-4" aria-hidden />
-                  {sourceUploading ? t("builder.aiSourceUploading") : t("builder.aiSourceAttach")}
-                </Button>
-                {sourceFile && (
-                  <span className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border bg-muted px-2.5 py-1.5 text-sm">
-                    <span className="min-w-0 truncate">{sourceFile.name}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground">({formatFileSize(sourceFile.size)})</span>
-                    <button type="button" aria-label={t("builder.aiSourceRemove")} onClick={() => setSourceFile(null)}>
-                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-                    </button>
-                  </span>
-                )}
-              </div>
-              {!sourceFile && (
-                <>
-                  <div className="text-xs text-muted-foreground">{t("builder.aiSourceOr")}</div>
-                  <Textarea rows={3} value={sourceText} onChange={(e) => setSourceText(e.target.value)} placeholder={t("builder.aiSourceTextPlaceholder")} />
-                </>
-              )}
-              <p className="text-xs text-muted-foreground">{t("builder.aiSourceHint")}</p>
+            <div className="sm:col-span-2">
+              <AiSourcePicker files={sourceFiles} onFilesChange={setSourceFiles} text={sourceText} onTextChange={setSourceText} />
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2 sm:col-span-2">
               <span className="text-xs text-muted-foreground">{t("builder.aiUsage", { used: usage.data?.used ?? 0, limit: usage.data?.limit ?? 100 })}</span>
