@@ -115,22 +115,15 @@ export function CameraCapture({ open, onOpenChange, onDone }: { open: boolean; o
           {error ? (
             <p className="text-sm text-destructive">{t("builder.aiCameraError")}</p>
           ) : (
-            <div className="overflow-hidden rounded-lg bg-sidebar">
+            // Capped with max-h (not left to grow from the 3:4 aspect ratio alone): on a short phone
+            // viewport an uncapped aspect-ratio box can grow tall enough to push the shoot button
+            // below the fold. The controls row below is also pinned outside this scrollable body
+            // (see the shrink-0 div below), so it stays reachable even if the preview still scrolls.
+            <div className="mx-auto max-h-[38vh] w-full max-w-sm overflow-hidden rounded-lg bg-sidebar">
               {/* eslint-disable-next-line jsx-a11y/media-has-caption -- live camera preview, nothing to caption */}
-              <video ref={videoRef} autoPlay playsInline muted className="aspect-[3/4] w-full object-cover" />
+              <video ref={videoRef} autoPlay playsInline muted className="aspect-[3/4] max-h-[38vh] w-full object-cover" />
             </div>
           )}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => setFacing((f) => (f === "environment" ? "user" : "environment"))}>
-              <RotateCcw className="mr-1 h-4 w-4" aria-hidden />
-              {t("builder.aiCameraFlip")}
-            </Button>
-            <Button type="button" disabled={error} onClick={shoot}>
-              <CameraIcon className="mr-1 h-4 w-4" aria-hidden />
-              {t("builder.aiCameraShoot")}
-            </Button>
-            <span className="text-sm text-muted-foreground">{t("builder.aiCameraCount", { count: shots.length })}</span>
-          </div>
           {shots.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {shots.map((s, i) => (
@@ -150,6 +143,20 @@ export function CameraCapture({ open, onOpenChange, onDone }: { open: boolean; o
             </div>
           )}
         </DialogBody>
+        {/* A direct child of DialogContent other than DialogBody is shrink-0 by default (see
+           dialog.tsx), so this stays visible above the footer no matter how tall the preview or
+           thumbnail strip above it gets -- the shoot action must never require scrolling to reach. */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+          <Button type="button" variant="outline" size="sm" onClick={() => setFacing((f) => (f === "environment" ? "user" : "environment"))}>
+            <RotateCcw className="mr-1 h-4 w-4" aria-hidden />
+            {t("builder.aiCameraFlip")}
+          </Button>
+          <Button type="button" disabled={error} onClick={shoot}>
+            <CameraIcon className="mr-1 h-4 w-4" aria-hidden />
+            {t("builder.aiCameraShoot")}
+          </Button>
+          <span className="text-sm text-muted-foreground">{t("builder.aiCameraCount", { count: shots.length })}</span>
+        </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
           <Button type="button" disabled={!shots.length} onClick={finish}>{t("builder.aiCameraDone", { count: shots.length })}</Button>
