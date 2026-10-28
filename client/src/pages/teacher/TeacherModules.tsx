@@ -11,6 +11,7 @@ import { ShareBox, ShareFunnelSummary } from "@/components/ShareBox";
 import { MaterialUsageBadge, useMaterialSyllabusUsage } from "@/components/syllabus/CrossLinks";
 import { SubmissionReview } from "@/components/SubmissionReview";
 import { TaskEngagementList } from "@/components/TaskEngagementList";
+import { TaskAiTextDialog, TaskQuizSection } from "@/components/tasks/TaskQuiz";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -106,6 +107,7 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
     setKeyFromAi(false);
     setNotifyStudents(true);
   }, [open]);
+  const [aiTextOpen, setAiTextOpen] = useState(false);
   const saveKey = trpc.teacher.tasks.saveAnswerKey.useMutation();
   const draftKey = trpc.teacher.tasks.draftAnswerKey.useMutation({
     onSuccess: (r) => {
@@ -151,7 +153,10 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
-        <DialogHeader><DialogTitle>{initial ? t("modules.editTaskTitle") : t("modules.newTaskTitle")}</DialogTitle></DialogHeader>
+        <DialogHeader className="flex-row items-center justify-between gap-2">
+          <DialogTitle>{initial ? t("modules.editTaskTitle") : t("modules.newTaskTitle")}</DialogTitle>
+          <Button type="button" size="sm" variant="outline" onClick={() => setAiTextOpen(true)}><Sparkles className="h-4 w-4" aria-hidden /> {t("modules.aiTextButton")}</Button>
+        </DialogHeader>
         <DialogBody className="grid content-start gap-3">
           <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("common.name") })}</span><Input required value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></label>
           <label className="text-sm"><span className={fieldLabel}>{t("common.description")}</span><Textarea rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
@@ -202,6 +207,7 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
               </>
             )}
           </div>
+          {initial ? <TaskQuizSection taskId={initial.id} /> : <p className="text-xs text-muted-foreground">{t("modules.quizSaveFirst")}</p>}
           <AccessModePicker value={f.accessMode} onChange={(accessMode) => setF({ ...f, accessMode })} />
           <GroupStudentPicker
             groups={targets.groups}
@@ -232,6 +238,11 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
           </Button>
         </DialogFooter>
       </DialogContent>
+      <TaskAiTextDialog
+        open={aiTextOpen}
+        onOpenChange={setAiTextOpen}
+        onApply={(r) => setF({ ...f, title: r.title, description: r.description, instructions: r.instructions })}
+      />
     </Dialog>
   );
 }

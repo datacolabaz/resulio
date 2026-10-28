@@ -12,6 +12,7 @@ import { guardBankTables, ownedSection } from "../questionBank/topics";
 import { store } from "../resulioStore";
 import { extractDocument, renderDoc } from "./textExtract";
 import { addQuestionToAssessment, ownedAssessment } from "./assessments";
+import { addQuestionToTaskQuiz } from "./taskQuiz";
 import type { TeacherScope } from "./access";
 import { providerAlertFor, sendAiAlert } from "./aiAlerts";
 import { AppError } from "./errors";
@@ -212,8 +213,76 @@ export async function generateQuestions(scope: TeacherScope, input: AiGenerateIn
   }
 }
 
-/** Accepted AI questions are filed in a bank section (source AI) and optionally added to a draft assessment. */
-export async function acceptAiQuestions(scope: TeacherScope, draftId: string, tempIds: string[], sectionId: string, assessmentId?: string) {
+export const aiTaskTextSchema = z.object({
+  topic: z.string().trim().min(2).max(200),
+  grade: z.string().trim().max(40).default(""),
+  language: z.enum(["az", "ru", "en", "de"]).default("az"),
+  source: aiSourceSchema.optional(),
+});
+export type AiTaskTextInput = z.infer<typeof aiTaskTextSchema>;
+
+/**
+ * Drafts a free-form task's title/description/instructions from a topic (and, grounded, a source
+ * file/text) -- the counterpart of `generateQuestions` for Tapşırıqlar's "sərbəst tapşırıq" mode.
+ * Returns plain text for the teacher to review and edit in the task form; nothing is persisted
+ * here, so (unlike AI questions) there is no separate accept step -- the task's own save action
+ * already is the teacher's explicit approval.
+ */
+export async function generateTaskText(scope: TeacherScope, input: AiTaskTextInput) {
+  if (!ENV.llmConfigured) throw new AppError("AI_UNAVAILABLE");
+  const usage = store.usageOf(scope.workspaceId);
+  if (usage.used + 1 > usage.limit) throw new AppError("AI_USAGE_LIMIT_REACHED");
+  await assertAiAllowed(scope.userId);
+
+  const material = await sourceMaterialOf(scope, input.source);
+  const instruction =
+    `Write a free-form student assignment (not a multiple-choice test) about "${input.topic}"` +
+    (input.grade ? ` for grade/level ${input.grade}` : "") +
+    `, in ${LANGUAGE_NAMES[input.language]}.` +
+    (material ? " Base it strictly on the MATERIAL below/attached." : "");
+  const userContent: MessageContent[] | string = !material
+    ? instruction
+    : material.kind === "text"
+      ? [{ type: "text", text: `${instruction}\n\nMATERIAL:\n${material.text}` }]
+      : [{ type: "text", text: instruction }, ...material.parts];
+
+  const result = await withAiUsage({ feature: "TASK_TEXT_GENERATE", userId: scope.userId, workspaceId: scope.workspaceId }, () => invokeLLM({
+    messages: [
+      {
+        role: "system",
+        content:
+          "You write student assignments for teachers. Reply with JSON only: " +
+          '{"title":"...","description":"...","instructions":"..."}. ' +
+          "title is short (under 255 characters); description explains what the assignment is about; " +
+          "instructions tells the student exactly what to do and submit." +
+          (material ? GROUNDING_RULE : ""),
+      },
+      { role: "user", content: userContent },
+    ],
+    responseFormat: { type: "json_object" },
+  })).catch(async (error: unknown) => {
+    const alert = providerAlertFor(error);
+    if (alert) await sendAiAlert(scope.workspaceId, alert);
+    throw error;
+  });
+  const content = result.choices[0]?.message?.content;
+  const raw = extractJson(typeof content === "string" ? content : "") as { title?: unknown; description?: unknown; instructions?: unknown } | null;
+  const title = typeof raw?.title === "string" ? raw.title.trim().slice(0, 255) : "";
+  if (!title) throw new AppError("AI_INVALID_OUTPUT");
+  store.useAiUnits(scope.workspaceId, 1);
+  return {
+    title,
+    description: typeof raw?.description === "string" ? raw.description.trim().slice(0, 5000) : "",
+    instructions: typeof raw?.instructions === "string" ? raw.instructions.trim().slice(0, 5000) : "",
+  };
+}
+
+/**
+ * Accepted AI questions are filed in a bank section (source AI) and optionally added to a draft
+ * assessment or a task's quiz -- at most one of the two, same draft/accept flow either way, so a
+ * generated question is never published anywhere without this explicit teacher step.
+ */
+export async function acceptAiQuestions(scope: TeacherScope, draftId: string, tempIds: string[], sectionId: string, assessmentId?: string, taskId?: string) {
   await guardBankTables(() => ownedSection(scope, sectionId));
   if (assessmentId) {
     const a = await ownedAssessment(scope, assessmentId);
@@ -229,6 +298,7 @@ export async function acceptAiQuestions(scope: TeacherScope, draftId: string, te
   for (const q of selected) {
     const row = await createBankQuestion(scope, q, { sectionId, source: "AI" });
     if (assessmentId) await addQuestionToAssessment(scope, assessmentId, row.id);
+    if (taskId) await addQuestionToTaskQuiz(scope, taskId, row.id);
     created.push(row);
   }
   return created;

@@ -428,6 +428,13 @@
       "when": 1793129510647,
       "tag": "0064_group_exam_stats_visible",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "5",
+      "when": 1793133641654,
+      "tag": "0065_task_quiz_questions",
+      "breakpoints": true
     }
   ]
 }

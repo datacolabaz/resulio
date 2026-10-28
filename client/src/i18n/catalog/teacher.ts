@@ -613,6 +613,32 @@ export const teacher = {
     "Ключ ответов заработает после обновления базы данных.",
   ],
   "modules.answerKeySaveFailed": ["Tapşırıq saxlandı, amma cavab açarı saxlanmadı.", "The task was saved, but the answer key was not.", "Задание сохранено, но ключ ответов — нет."],
+  "modules.aiTextButton": ["AI ilə yarat", "Generate with AI", "Создать с AI"],
+  "modules.aiTextTitle": ["AI ilə tapşırıq mətni yarat", "Generate assignment text with AI", "Создать текст задания с AI"],
+  "modules.aiTextReview": ["Mətni yoxlayın və lazım gəldikdə redaktə edin.", "Review the text and edit it if needed.", "Проверьте текст и при необходимости отредактируйте его."],
+  "modules.aiTextApply": ["Formaya əlavə et", "Use in form", "Использовать в форме"],
+  "modules.quizHint": [
+    "Quiz əlavə etsəniz, tələbənin cavabları avtomatik qiymətləndirilir və AI rəyi ilə birlikdə yekun qiymətə daxil edilir.",
+    "If you add a quiz, the student's answers are auto-graded and blended with the AI review into the final grade.",
+    "Если добавить квиз, ответы студента оцениваются автоматически и объединяются с рецензией AI в итоговую оценку.",
+  ],
+  "modules.quizEmpty": ["Bu tapşırıqda hələ quiz sualı yoxdur.", "This task has no quiz questions yet.", "В этом задании пока нет вопросов квиза."],
+  "modules.quizSaveFirst": [
+    "Quiz sualları əlavə etmək üçün əvvəlcə tapşırığı yadda saxlayın.",
+    "Save the task first to add quiz questions.",
+    "Сначала сохраните задание, чтобы добавить вопросы квиза.",
+  ],
+  "modules.quizRemoveConfirm": [
+    "Sualı quizdən çıxarmaq istəyirsiniz? (Sual bankında qalır)",
+    "Remove this question from the quiz? (It stays in the question bank.)",
+    "Убрать вопрос из квиза? (Он останется в банке вопросов.)",
+  ],
+  "modules.quizRemoveN": ["Sual {n}: quizdən çıxar", "Question {n}: remove from quiz", "Вопрос {n}: убрать из квиза"],
+  "modules.quizAiReview": [
+    "Sualları yoxlayın. Yalnız seçdikləriniz sual bankına və bu quizə əlavə olunacaq.",
+    "Review the questions. Only the ones you select are added to the bank and this quiz.",
+    "Проверьте вопросы. В банк и квиз добавятся только выбранные.",
+  ],
   "modules.noGroups": ["Qrup yoxdur", "No groups", "Групп нет"],
   "modules.materialGroupWhole": [
     "Qrupa sonradan qoşulanlar da materialı avtomatik görür.",
@@ -715,4 +741,18 @@ export const teacher = {
   "analytics.hours": ["{count} saat", "{count} h", "{count} ч"],
   "analytics.noTasks": ["Hələ tapşırıq yoxdur.", "No tasks yet.", "Заданий пока нет."],
   "analytics.col.graded": ["Qiymətləndirilib", "Graded", "Проверено"],
+  "analytics.lowestScoring": ["Ən aşağı bal alanlar", "Lowest-scoring students", "Самые низкие баллы"],
+  "analytics.commonMistakes": ["Tez-tez rast gəlinən səhvlər", "Common mistakes", "Частые ошибки"],
+  "analytics.commonMistakesHint": [
+    "AI mövcud rəylərdəki qeydləri mövzulara görə qruplaşdıracaq.",
+    "AI will group the notes from existing reviews into common themes.",
+    "ИИ сгруппирует заметки из существующих рецензий по общим темам.",
+  ],
+  "analytics.noCommonMistakes": [
+    "Hələ qruplaşdırmaq üçün kifayət qədər AI rəyi yoxdur.",
+    "Not enough AI reviews yet to group.",
+    "Пока недостаточно рецензий ИИ для группировки.",
+  ],
+  "analytics.analyzeMistakes": ["Analiz et", "Analyze", "Анализировать"],
+  "analytics.mistakeCount": ["{count} halda", "{count} {count|case|cases}", "{count} {count|случай|случая|случаев}"],
 } as const satisfies Record<string, Entry>;

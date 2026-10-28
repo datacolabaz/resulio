@@ -21,6 +21,7 @@ import {
   clampScore,
   gradeOwner,
   planAutoGrade,
+  quizAwareAutoScore,
   type ReviewForGrading,
 } from "./modules/autoGrade";
 import { gradeEmailKind } from "./modules/gradeEmail";
@@ -47,6 +48,36 @@ describe("when the AI grade may be released automatically", () => {
     expect(autoGradeBlockedBy({ ...clean, suggestedScore: null })).toBe("AI_NOT_DONE");
     expect(autoGradeBlockedBy({ ...clean, feedback: "   " })).toBe("NO_FEEDBACK");
     expect(autoGradeBlockedBy({ ...clean, needsTeacherReview: true })).toBe("AI_ASKED_TEACHER");
+  });
+});
+
+describe("quizAwareAutoScore", () => {
+  const base = { quizScore: null as number | null, quizMaxScore: null as number | null, hasFreeContent: true, review: clean };
+
+  it("behaves exactly as the plain AI review for a task with no quiz (backward compatibility)", () => {
+    expect(quizAwareAutoScore(base)).toEqual({ score: 85, block: null });
+    // planAutoGrade ignores `score` whenever `block` is set, same as it always has for the plain review path.
+    expect(quizAwareAutoScore({ ...base, review: { ...clean, checks: [{ code: "NO_CONTENT", level: "fail" }] } })).toEqual({ score: 85, block: "EMPTY" });
+  });
+
+  it("scores a quiz-only submission (no free content) on the quiz alone, skipping the AI review entirely", () => {
+    // The review itself would be SKIPPED/NO_CONTENT here since there's nothing to review, but it must not block release.
+    const skippedReview = { ...clean, status: "SKIPPED", suggestedScore: null, checks: [{ code: "NO_CONTENT", level: "fail" }] };
+    expect(quizAwareAutoScore({ quizScore: 7, quizMaxScore: 10, hasFreeContent: false, review: skippedReview })).toEqual({ score: 70, block: null });
+  });
+
+  it("blends the quiz percentage and the AI review score equally when both the quiz and free content exist", () => {
+    // quiz 8/10 = 80%, AI review suggests 60 -> (80+60)/2 = 70
+    expect(quizAwareAutoScore({ quizScore: 8, quizMaxScore: 10, hasFreeContent: true, review: { ...clean, suggestedScore: 60 } })).toEqual({ score: 70, block: null });
+  });
+
+  it("still blocks on the free-text review's own problems even when the quiz part is fine", () => {
+    const blocked = { ...clean, checks: [{ code: "INJECTION_SUSPECTED", level: "warn" }] };
+    expect(quizAwareAutoScore({ quizScore: 10, quizMaxScore: 10, hasFreeContent: true, review: blocked })).toEqual({ score: null, block: "INJECTION_SUSPECTED" });
+  });
+
+  it("treats a zero-question quiz (quizMaxScore 0) the same as no quiz at all", () => {
+    expect(quizAwareAutoScore({ quizScore: 0, quizMaxScore: 0, hasFreeContent: true, review: clean })).toEqual({ score: 85, block: null });
   });
 });
 
@@ -174,7 +205,7 @@ function fakeDb(opts: { row?: object; autoGrade?: boolean; missing?: unknown[]; 
 }
 
 const reviewRow = (over: { sub?: object; review?: object } = {}) => ({
-  sub: { id: "s1", taskId: "t1", studentId: 7, score: null, gradedAt: null, gradedByUserId: null, ...over.sub },
+  sub: { id: "s1", taskId: "t1", studentId: 7, score: null, gradedAt: null, gradedByUserId: null, comment: "My essay", files: [], quizScore: null, quizMaxScore: null, ...over.sub },
   taskTitle: "Essay",
   locale: "az",
   review: { status: "DONE", checks: [], feedback: "Yaxşı iş", suggestedScore: 85, details: { strengths: ["Aydın"], improvements: [], needsTeacherReview: false }, ...over.review },

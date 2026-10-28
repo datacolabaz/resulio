@@ -69,6 +69,7 @@ import * as shareTracking from "./modules/shareTracking";
 import { assertAccessGroups, assertRecipients } from "./modules/recipients";
 import { canSeeTaskContent } from "./modules/taskAccess";
 import * as tasks from "./modules/tasks";
+import * as taskQuiz from "./modules/taskQuiz";
 import * as taskNotify from "./modules/taskNotify";
 import * as workspaces from "./modules/workspaces";
 import { CHANNELS, EVENT_TYPES } from "./notifications/events";
@@ -615,8 +616,21 @@ const teacherAiRouter = router({
     .input(ai.aiGenerateSchema)
     .mutation(({ ctx, input }) => ai.generateQuestions(ctx.scope, input)),
   accept: teacherProcedure
-    .input(z.object({ draftId: z.string().min(1).max(32), tempIds: z.array(z.string().min(1).max(32)).min(1).max(50), assessmentId: assessmentId.optional(), sectionId: entityId }))
-    .mutation(({ ctx, input }) => ai.acceptAiQuestions(ctx.scope, input.draftId, input.tempIds, input.sectionId, input.assessmentId)),
+    .input(
+      z.object({
+        draftId: z.string().min(1).max(32),
+        tempIds: z.array(z.string().min(1).max(32)).min(1).max(50),
+        assessmentId: assessmentId.optional(),
+        taskId: entityId.optional(),
+        sectionId: entityId,
+      }),
+    )
+    .mutation(({ ctx, input }) => ai.acceptAiQuestions(ctx.scope, input.draftId, input.tempIds, input.sectionId, input.assessmentId, input.taskId)),
+  /** "AI ilə yarat" for a free-form task's title/description/instructions -- plain text, no draft/accept, the task's own save is the approval. */
+  generateTaskText: teacherProcedure
+    .use(rateLimit("aiGenerate", 10, MINUTE))
+    .input(ai.aiTaskTextSchema)
+    .mutation(({ ctx, input }) => ai.generateTaskText(ctx.scope, input)),
 });
 
 const recipients = {
@@ -743,6 +757,22 @@ const teacherTasksRouter = router({
   }),
   /** Who among the students this task reaches has opened it (submission status comes separately, from `list`). */
   activity: teacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => activity.taskActivity(ctx.scope, input.id)),
+  /** A task's optional auto-graded quiz -- an ordered subset of the same question bank exams use. */
+  quizList: teacherProcedure
+    .input(z.object({ id: entityId }))
+    .query(async ({ ctx, input }) => bank.withPlacements(ctx.scope, await taskQuiz.taskQuizRows(input.id))),
+  quizAddQuestion: teacherProcedure
+    .input(z.object({ id: entityId, questionId: entityId }))
+    .mutation(({ ctx, input }) => taskQuiz.addQuestionToTaskQuiz(ctx.scope, input.id, input.questionId)),
+  quizCreateQuestion: teacherProcedure
+    .input(z.object({ id: entityId, question: questionInputSchema, sectionId: entityId }))
+    .mutation(({ ctx, input }) => taskQuiz.createInTaskQuiz(ctx.scope, input.id, input.question, input.sectionId)),
+  quizRemoveQuestion: teacherProcedure
+    .input(z.object({ id: entityId, questionId: entityId }))
+    .mutation(({ ctx, input }) => taskQuiz.removeQuestionFromTaskQuiz(ctx.scope, input.id, input.questionId)),
+  quizReorder: teacherProcedure
+    .input(z.object({ id: entityId, questionIds: z.array(entityId).min(1).max(100) }))
+    .mutation(({ ctx, input }) => taskQuiz.reorderTaskQuiz(ctx.scope, input.id, input.questionIds)),
   materials: teacherProcedure.query(({ ctx }) => tasks.listMaterialsForWorkspace(ctx.scope.workspaceId)),
   createMaterial: teacherProcedure
     .input(materialInput.extend(materialSaveInput))
@@ -784,6 +814,13 @@ const teacherTasksRouter = router({
     const row = await tasks.assignmentOf(ctx.scope, input.id);
     return shareTracking.shareFunnel("TASK", row.shareCode, { excludeUserIds: [ctx.user.id, row.createdBy] });
   }),
+  /** This task's score analytics (teacher-only) -- average/median/distribution, completion, lowest-scoring students. */
+  analytics: teacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => analytics.taskSubmissionStats(ctx.scope, input.id)),
+  /** "Tez-tez rast gəlinən səhvlər": AI groups this task's existing per-submission AI review notes into common-mistake themes. Stateless, re-run on demand. */
+  clusterMistakes: teacherProcedure
+    .use(rateLimit("clusterTaskMistakes", 10, MINUTE))
+    .input(z.object({ taskId: entityId }))
+    .mutation(({ ctx, input }) => aiReview.clusterTaskMistakes(ctx.scope, input.taskId)),
   /** AI pre-reviews of this task's submissions (advisory) plus the workspace's AI quota. */
   reviews: teacherProcedure.input(z.object({ taskId: entityId })).query(({ ctx, input }) => aiReview.reviewsForTask(ctx.scope, input.taskId)),
   rerunReview: teacherProcedure
@@ -1005,11 +1042,12 @@ const studentRouter = router({
           .max(10)
           .default([]),
         answerText: z.string().max(tasks.MAX_ANSWER_TEXT).default(""),
+        quizAnswers: z.record(entityId, studentAnswerSchema).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const groupIds = await groups.activeGroupIdsOfStudent(ctx.user.id);
-      return tasks.submitAssignment(ctx.user.id, groupIds, input.assignmentId, input.files, input.answerText);
+      return tasks.submitAssignment(ctx.user.id, groupIds, input.assignmentId, input.files, input.answerText, input.quizAnswers);
     }),
   materials: studentProcedure.query(async ({ ctx }) => {
     // Only visible materials are listed, so drafts and scheduled ones are never marked "viewed".

@@ -24,6 +24,16 @@ class ResulioStore {
     return this.aiUsage[workspaceId] ?? { used: 0, limit: 100 };
   }
 
+  /** Counts `n` units against the same per-workspace daily quota `addAiDraft` uses, for AI
+   *  generation that doesn't produce `QuestionInput[]` drafts (task description/instructions text). */
+  useAiUnits(workspaceId: string, n: number) {
+    const usage = this.usageOf(workspaceId);
+    if (usage.used + n > usage.limit) throw new Error("AI_USAGE_LIMIT_REACHED");
+    usage.used += n;
+    this.aiUsage[workspaceId] = usage;
+    return usage;
+  }
+
   addAiDraft(workspaceId: string, questions: QuestionInput[]) {
     const usage = this.usageOf(workspaceId);
     if (usage.used + questions.length > usage.limit) throw new Error("AI_USAGE_LIMIT_REACHED");

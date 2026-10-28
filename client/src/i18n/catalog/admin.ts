@@ -229,6 +229,8 @@ export const admin = {
   "admin.ai.feature.ANSWER_KEY_DRAFT": ["Cavab açarı", "Answer key draft", "Черновик ключа ответов"],
   "admin.ai.feature.TOPIC_SUMMARY": ["Mövzu konspekti", "Topic summary", "Конспект темы"],
   "admin.ai.feature.OTHER": ["Digər", "Other", "Другое"],
+  "admin.ai.feature.TASK_TEXT_GENERATE": ["Tapşırıq mətni yaratma", "Task text generation", "Генерация текста задания"],
+  "admin.ai.feature.TASK_MISTAKE_CLUSTER": ["Tapşırıq səhv analizi", "Task mistake clustering", "Анализ ошибок по заданию"],
   "admin.ai.status.OK": ["Uğurlu", "OK", "Успешно"],
   "admin.ai.status.ERROR": ["Xəta", "Error", "Ошибка"],
   "admin.ai.status.RATE_LIMITED": ["Limit (429)", "Rate limited", "Лимит (429)"],

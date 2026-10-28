@@ -86,6 +86,8 @@ export const student = {
   "student.teacherReviewPending": ["Müəllim yoxlaması gözləyir", "Waiting for teacher review", "Ожидает проверки преподавателем"],
   "student.gradedByAi": ["AI tərəfindən qiymətləndirilib", "Graded by AI", "Оценено ИИ"],
   "student.taskScore": ["Bal: {score}/100", "Score: {score}/100", "Балл: {score}/100"],
+  "student.quizTitle": ["Quiz suallar", "Quiz questions", "Вопросы квиза"],
+  "student.quizScoreValue": ["Quiz: {score}/{max} bal", "Quiz: {score}/{max} pts", "Квиз: {score}/{max} б."],
   "student.aiFeedbackTitle": ["AI köməkçisinin şərhi (müəllim təsdiqləyib)", "AI assistant's comment (approved by your teacher)", "Комментарий ИИ-помощника (одобрен преподавателем)"],
   "student.noTasks": ["Tapşırıq yoxdur", "No assignments", "Заданий нет"],
   "student.noTasksBody": ["Müəlliminiz tapşırıq göndərdikdə burada görünəcək.", "Assignments appear here when your teacher sends them.", "Задания появятся, когда преподаватель их отправит."],

@@ -1,7 +1,8 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { files, submissionAiReviews, taskSubmissions, tasks, type SubmissionAiReview, type Task, type TaskAccessMode, type TaskSubmission } from "../../drizzle/schema";
+import { files, submissionAiReviews, taskSubmissions, tasks, type QuestionRow, type SubmissionAiReview, type Task, type TaskAccessMode, type TaskSubmission } from "../../drizzle/schema";
 import type { MaterialDetails } from "../../shared/materialTemplates";
+import type { StudentAnswer } from "../../shared/assessment";
 import { sendEmailInBackground } from "../_core/email";
 import { deleteMeta, saveMeta } from "../materials/meta";
 import { requireDb } from "../db";
@@ -10,6 +11,7 @@ import { managedWorkspaces, type TeacherScope } from "./access";
 import { scheduleAiReview, STALE_PENDING_MS, submissionInScope } from "./aiReview";
 import { aiOverrideNeedsNotice, autoGradeEnabledForTasks, clampScore, gradeOwner, recordTeacherGrade } from "./autoGrade";
 import { AppError } from "./errors";
+import { gradeAttempt, toStudentQuestion, type FrozenQuestion, type StudentQuestion } from "./engine";
 import { deliverGradeEmail, gradeEmailKind } from "./gradeEmail";
 import { activeGroupIdsOfStudent } from "./groups";
 import { emitLearningEvent } from "./learningEvents";
@@ -17,6 +19,7 @@ import * as notifications from "./notifications";
 import { syllabusContainerTaskIds } from "./syllabusLinks";
 import { canSeeTaskContent, taskReachesStudent, taskViewerAccess, type TaskAccessSubject, type TaskViewerAccess } from "./taskAccess";
 import { notifyTaskSaved } from "./taskNotify";
+import { quizRowsForTasks, taskQuizRows } from "./taskQuiz";
 import { workspaceOwnerId } from "./workspaces";
 
 /**
@@ -151,13 +154,16 @@ export function studentSubmissionView(
     ? { feedback: review.feedback, strengths: review.details?.strengths ?? [], improvements: review.details?.improvements ?? [] }
     : null;
   const source = gradeOwner(s) === "AI" ? ("AI" as const) : ("TEACHER" as const);
+  const quiz = s.quizMaxScore !== null ? { score: s.quizScore, maxScore: s.quizMaxScore } : null;
   return {
     id: s.id,
     status: s.status,
     files: s.files,
     submittedAt: s.submittedAt,
     answerText: s.comment ?? "",
-    grade: released ? { score: s.score, feedback: s.teacherFeedback ?? "", releasedAt: s.feedbackReleasedAt, source, ai } : null,
+    /** The student's own last-submitted quiz answers, so the form can restore them before grading -- never gated by release, it's their own input. */
+    quizAnswers: s.quizAnswers ?? null,
+    grade: released ? { score: s.score, feedback: s.teacherFeedback ?? "", releasedAt: s.feedbackReleasedAt, source, ai, quiz } : null,
     pending: released ? null : pending,
   };
 }
@@ -187,12 +193,14 @@ export async function studentAssignments(studentId: number, groupIds: string[]) 
   const reviewBySub = new Map(reviews.map((r) => [r.submissionId, r]));
   const autoGraded = await autoGradeEnabledForTasks(subs.filter((s) => !s.feedbackReleasedAt).map((s) => s.taskId));
   const byTask = new Map(subs.map((s) => [s.taskId, s]));
+  const quizByTask = await quizRowsForTasks(relevant.map((t) => t.id), db);
   const now = Date.now();
   return relevant.map((t) => {
+    const quiz = quizForStudent(quizByTask.get(t.id) ?? [], t.id);
     const s = byTask.get(t.id);
-    if (!s) return { ...t, submission: undefined };
+    if (!s) return { ...t, submission: undefined, quiz };
     const review = reviewBySub.get(s.id);
-    return { ...t, submission: studentSubmissionView(s, review, pendingState(s, review, autoGraded.has(t.id), now)) };
+    return { ...t, submission: studentSubmissionView(s, review, pendingState(s, review, autoGraded.has(t.id), now)), quiz };
   });
 }
 
@@ -208,15 +216,53 @@ export async function submitAssignment(
   assignmentId: string,
   fileRefs: Array<{ fileId: string }>,
   answerText = "",
+  quizAnswers?: Record<string, StudentAnswer>,
 ) {
   const [task] = await requireDb().select().from(tasks).where(eq(tasks.id, assignmentId)).limit(1);
   if (!task) throw new AppError("NOT_FOUND");
   if (!taskReachesStudent(task, studentId, groupIds)) throw new AppError(task.accessMode === "GROUPS" ? "TASK_NO_ACCESS" : "NOT_FOUND");
-  return submitToTask(studentId, task, fileRefs, answerText);
+  return submitToTask(studentId, task, fileRefs, answerText, quizAnswers);
+}
+
+/** Live bank rows -> the exam engine's own question shape, in quiz order. Tasks have no version
+ *  freezing (unlike exams), so a bank question edited after a student submits is graded/shown
+ *  with its current content/answer key going forward -- an accepted trade-off for the simpler,
+ *  always-live task model (see taskQuiz.ts). */
+function freezeQuizQuestions(rows: QuestionRow[]): FrozenQuestion[] {
+  return rows.map((q, i) => ({
+    id: q.id,
+    position: i + 1,
+    type: q.type,
+    text: q.text,
+    points: q.points,
+    topic: q.topic,
+    skill: q.skill ?? "",
+    difficulty: q.difficulty,
+    explanation: q.explanation,
+    imageUrl: q.imageUrl,
+    content: q.content,
+    answerKey: q.answerKey,
+  }));
+}
+
+/** Auto-scores a student's quiz answers against the task's quiz questions, if it has any, by
+ *  running the exam engine's own grader against the live bank rows. Returns null/null when the
+ *  task has no quiz. */
+export async function gradeTaskQuiz(taskId: string, answers: Record<string, StudentAnswer> | null | undefined): Promise<{ quizScore: number | null; quizMaxScore: number | null }> {
+  const quiz = await taskQuizRows(taskId);
+  if (!quiz.length) return { quizScore: null, quizMaxScore: null };
+  const { earnedPoints, totalPoints } = gradeAttempt(freezeQuizQuestions(quiz), answers ?? {});
+  return { quizScore: earnedPoints, quizMaxScore: totalPoints };
+}
+
+/** A task's quiz, student-facing (same answer-key-free projection exams use for a live attempt --
+ *  see `toStudentQuestion`). Empty when the task has no quiz. */
+function quizForStudent(rows: QuestionRow[], taskId: string): StudentQuestion[] {
+  return freezeQuizQuestions(rows).map((q) => toStudentQuestion(q, `${taskId}:${q.id}`));
 }
 
 /** The write half of a submission; callers have already decided the student may submit to `task`. */
-export async function submitToTask(studentId: number, task: Task, fileRefs: Array<{ fileId: string }>, answerText = "") {
+export async function submitToTask(studentId: number, task: Task, fileRefs: Array<{ fileId: string }>, answerText = "", quizAnswers?: Record<string, StudentAnswer>) {
   const db = requireDb();
   const assignmentId = task.id;
   const text = answerText.trim().slice(0, MAX_ANSWER_TEXT);
@@ -227,7 +273,9 @@ export async function submitToTask(studentId: number, task: Task, fileRefs: Arra
   }
   const byId = new Map(owned.map((f) => [f.id, f]));
   const filesJson = ids.map((id) => ({ fileId: id, name: byId.get(id)!.fileName, size: byId.get(id)!.sizeBytes }));
-  if (!filesJson.length && !text) throw new AppError("SUBMISSION_EMPTY");
+  const { quizScore, quizMaxScore } = await gradeTaskQuiz(assignmentId, quizAnswers);
+  const quizAnswered = quizMaxScore !== null && quizAnswers && Object.keys(quizAnswers).length > 0;
+  if (!filesJson.length && !text && !quizAnswered) throw new AppError("SUBMISSION_EMPTY");
 
   const status = task.deadline.getTime() < Date.now() ? ("LATE" as const) : ("SUBMITTED" as const);
   const [existing] = await db
@@ -237,13 +285,14 @@ export async function submitToTask(studentId: number, task: Task, fileRefs: Arra
     .limit(1);
   if (existing?.gradedAt) throw new AppError("SUBMISSION_ALREADY_GRADED");
   const now = new Date();
+  const quizPatch = { quizAnswers: quizAnswers && Object.keys(quizAnswers).length ? quizAnswers : null, quizScore, quizMaxScore };
   if (existing) {
     await db
       .update(taskSubmissions)
-      .set({ status, files: filesJson, comment: text || null, submittedAt: now, firstSubmittedAt: existing.firstSubmittedAt ?? existing.submittedAt ?? now })
+      .set({ status, files: filesJson, comment: text || null, submittedAt: now, firstSubmittedAt: existing.firstSubmittedAt ?? existing.submittedAt ?? now, ...quizPatch })
       .where(eq(taskSubmissions.id, existing.id));
   } else {
-    await db.insert(taskSubmissions).values({ id: nanoid(), taskId: assignmentId, studentId, status, files: filesJson, comment: text || null, submittedAt: now, firstSubmittedAt: now });
+    await db.insert(taskSubmissions).values({ id: nanoid(), taskId: assignmentId, studentId, status, files: filesJson, comment: text || null, submittedAt: now, firstSubmittedAt: now, ...quizPatch });
   }
   const ownerId = await workspaceOwnerId(task.providerWorkspaceId);
   if (ownerId) await notifications.notify(ownerId, "Yeni təslim", "Tələbə tapşırıq göndərdi");
