@@ -1,7 +1,8 @@
 import { PlaceBadge } from "@/components/ActivityBlocks";
 import { AppShell, EmptyState, Loading, Panel, Pill } from "@/components/AppShell";
 import { MultiFileUpload } from "@/components/FileUpload";
-import { GroupStudentPicker, useGroupStudentTargets } from "@/components/GroupStudentPicker";
+import { CompactGroupStudentPicker, useGroupStudentTargets } from "@/components/GroupStudentPicker";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { MaterialFormDialog, type MaterialInitial } from "@/components/materials/MaterialFormDialog";
 import { MaterialLinkButton, MaterialMeta } from "@/components/materials/MaterialMeta";
 import { SummaryDialog } from "@/components/questionBank/SummaryDialog";
@@ -123,6 +124,18 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
   const keyNeedsSave = keyAvailable && (keyText.trim() !== (keyQ.data?.text ?? "").trim() || keyQ.data?.source === "AI_DRAFT");
   const deadline = fromLocalInput(f.deadline);
   const missingGroups = groupsOnly && !targets.selection.groupIds.length;
+  // Advanced section stays collapsed on a brand-new task (nothing to review yet), opens by itself
+  // when editing one that already has something worth seeing in it, and is forced open the moment
+  // AI-generated text lands in "Təlimat" below, so a teacher who just used the AI dialog (e.g. to
+  // generate a set number of open questions) actually sees what was produced instead of it hiding.
+  const hasAdvancedContent = !!initial || keyAvailable || !notifyStudents || f.instructions.trim().length > 0;
+  const [advancedOpen, setAdvancedOpen] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (hasAdvancedContent) setAdvancedOpen("advanced");
+  }, [hasAdvancedContent]);
+  useEffect(() => {
+    if (!open) setAdvancedOpen(undefined);
+  }, [open]);
   const submit = async () => {
     if (!deadline) return;
     const attachments = f.attachments.map(({ fileId, name, size }) => ({ fileId, name, size }));
@@ -159,74 +172,96 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
         </DialogHeader>
         <DialogBody className="grid content-start gap-3">
           <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("common.name") })}</span><Input required value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></label>
-          <label className="text-sm"><span className={fieldLabel}>{t("common.description")}</span><Textarea rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
-          <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("modules.deadline") })}</span><Input required type="datetime-local" value={f.deadline} onChange={(e) => setF({ ...f, deadline: e.target.value })} /></label>
           <div>
             <p className={`mb-1 text-sm ${fieldLabel}`}>{t("modules.attachments")}</p>
             <MultiFileUpload context="task-attachment" value={f.attachments} onChange={(attachments) => setF({ ...f, attachments })} />
           </div>
-          <div className="text-sm">
-            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-              <label htmlFor="task-answer-key" className={fieldLabel}>{t("modules.answerKey")}</label>
-              {showAiDraftBadge && <StatusBadge tone="warning">{t("modules.answerKeyAiDraftBadge")}</StatusBadge>}
-            </div>
-            <Textarea
-              id="task-answer-key"
-              rows={5}
-              maxLength={8000}
-              disabled={!keyAvailable || draftKey.isPending}
-              placeholder={t("modules.answerKeyPlaceholder")}
-              value={keyText}
-              onChange={(e) => setAnswerKey(e.target.value)}
+          <label className="text-sm"><span className={fieldLabel}>{t("common.description")}</span><Textarea rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
+          <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("modules.deadline") })}</span><Input required type="datetime-local" value={f.deadline} onChange={(e) => setF({ ...f, deadline: e.target.value })} /></label>
+
+          <div className="grid gap-2 rounded-lg border p-3">
+            <AccessModePicker value={f.accessMode} onChange={(accessMode) => setF({ ...f, accessMode })} />
+            <CompactGroupStudentPicker
+              groups={targets.groups}
+              students={targets.students}
+              value={targets.selection}
+              onChange={targets.setSelection}
+              groupsOnly={groupsOnly}
+              keptCount={targets.kept.length}
+              hints={groupsOnly ? { whole: t("modules.taskGroupsOnlyHint"), partial: t("modules.taskGroupsOnlyHint") } : { whole: t("modules.taskGroupWhole"), partial: t("modules.taskGroupPartial") }}
             />
-            {keyQ.data && !keyAvailable && <p className="mt-1 text-xs text-muted-foreground">{t("modules.answerKeyUnavailable")}</p>}
-            {keyAvailable && (
-              <>
-                <p className="mt-1 text-xs text-muted-foreground">{t("modules.answerKeyHelp")}</p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={!keyQ.data?.aiEnabled || f.title.trim().length < 2 || draftKey.isPending}
-                    onClick={() => {
-                      if (keyText.trim() && !confirm(t("modules.answerKeyReplaceConfirm"))) return;
-                      draftKey.mutate({
-                        title: f.title,
-                        description: [f.description, f.instructions].filter(Boolean).join("\n\n"),
-                        attachments: f.attachments.map(({ fileId, name }) => ({ fileId, name })),
-                      });
-                    }}
-                  >
-                    <Sparkles className="mr-1 h-4 w-4" />
-                    {draftKey.isPending ? t("modules.answerKeyAiWorking") : t("modules.answerKeyAi")}
-                  </Button>
-                  {!keyQ.data?.aiEnabled && <span className="text-xs text-muted-foreground">{t("aiReview.disabledNote")}</span>}
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">{t("modules.answerKeyDatasetNote")}</p>
-              </>
-            )}
+            {missingGroups && <p role="alert" className="text-xs text-destructive">{t("modules.accessGroupsRequired")}</p>}
           </div>
-          {initial ? <TaskQuizSection taskId={initial.id} /> : <p className="text-xs text-muted-foreground">{t("modules.quizSaveFirst")}</p>}
-          <AccessModePicker value={f.accessMode} onChange={(accessMode) => setF({ ...f, accessMode })} />
-          <GroupStudentPicker
-            groups={targets.groups}
-            students={targets.students}
-            value={targets.selection}
-            onChange={targets.setSelection}
-            groupsOnly={groupsOnly}
-            keptCount={targets.kept.length}
-            hints={groupsOnly ? { whole: t("modules.taskGroupsOnlyHint"), partial: t("modules.taskGroupsOnlyHint") } : { whole: t("modules.taskGroupWhole"), partial: t("modules.taskGroupPartial") }}
-            summary
-          />
-          {missingGroups && <p role="alert" className="text-xs text-destructive">{t("modules.accessGroupsRequired")}</p>}
-          <label className="flex items-start gap-2 text-sm">
-            <input type="checkbox" className="mt-0.5 accent-link" checked={notifyStudents} onChange={(e) => setNotifyStudents(e.target.checked)} />
-            <span className="min-w-0">
-              <span className="block">{t("modules.notifyStudents")}</span>
-              <span className="mt-0.5 block text-xs text-muted-foreground">{t(initial ? "modules.notifyStudentsHintEdit" : "modules.notifyStudentsHint")}</span>
-            </span>
-          </label>
+
+          <Accordion type="single" collapsible value={advancedOpen} onValueChange={(v) => setAdvancedOpen(v || undefined)}>
+            <AccordionItem value="advanced" className="rounded-lg border px-3 last:border-b">
+              <AccordionTrigger className="py-3">
+                <span className="text-left">
+                  <span className="block text-sm font-medium">{t("modules.advancedOptions")}</span>
+                  <span className="block text-xs font-normal text-muted-foreground">{t("modules.taskAdvancedOptionsHint")}</span>
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="grid gap-4">
+                <label className="text-sm">
+                  <span className={fieldLabel}>{t("modules.instructionsField")}</span>
+                  <Textarea rows={3} value={f.instructions} onChange={(e) => setF({ ...f, instructions: e.target.value })} />
+                </label>
+
+                <div className="text-sm">
+                  <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                    <label htmlFor="task-answer-key" className={fieldLabel}>{t("modules.answerKey")}</label>
+                    {showAiDraftBadge && <StatusBadge tone="warning">{t("modules.answerKeyAiDraftBadge")}</StatusBadge>}
+                  </div>
+                  <Textarea
+                    id="task-answer-key"
+                    rows={5}
+                    maxLength={8000}
+                    disabled={!keyAvailable || draftKey.isPending}
+                    placeholder={t("modules.answerKeyPlaceholder")}
+                    value={keyText}
+                    onChange={(e) => setAnswerKey(e.target.value)}
+                  />
+                  {keyQ.data && !keyAvailable && <p className="mt-1 text-xs text-muted-foreground">{t("modules.answerKeyUnavailable")}</p>}
+                  {keyAvailable && (
+                    <>
+                      <p className="mt-1 text-xs text-muted-foreground">{t("modules.answerKeyHelp")}</p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={!keyQ.data?.aiEnabled || f.title.trim().length < 2 || draftKey.isPending}
+                          onClick={() => {
+                            if (keyText.trim() && !confirm(t("modules.answerKeyReplaceConfirm"))) return;
+                            draftKey.mutate({
+                              title: f.title,
+                              description: [f.description, f.instructions].filter(Boolean).join("\n\n"),
+                              attachments: f.attachments.map(({ fileId, name }) => ({ fileId, name })),
+                            });
+                          }}
+                        >
+                          <Sparkles className="mr-1 h-4 w-4" />
+                          {draftKey.isPending ? t("modules.answerKeyAiWorking") : t("modules.answerKeyAi")}
+                        </Button>
+                        {!keyQ.data?.aiEnabled && <span className="text-xs text-muted-foreground">{t("aiReview.disabledNote")}</span>}
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">{t("modules.answerKeyDatasetNote")}</p>
+                    </>
+                  )}
+                </div>
+
+                {initial ? <TaskQuizSection taskId={initial.id} /> : <p className="text-xs text-muted-foreground">{t("modules.quizSaveFirst")}</p>}
+
+                <label className="flex items-start gap-2 text-sm">
+                  <input type="checkbox" className="mt-0.5 accent-link" checked={notifyStudents} onChange={(e) => setNotifyStudents(e.target.checked)} />
+                  <span className="min-w-0">
+                    <span className="block">{t("modules.notifyStudents")}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">{t(initial ? "modules.notifyStudentsHintEdit" : "modules.notifyStudentsHint")}</span>
+                  </span>
+                </label>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
@@ -234,7 +269,7 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
             disabled={f.title.trim().length < 2 || !deadline || missingGroups || !targets.ready || create.isPending || update.isPending || saveKey.isPending || draftKey.isPending}
             onClick={() => void submit()}
           >
-            {t("common.save")}
+            {t("modules.saveAndShare")}
           </Button>
         </DialogFooter>
       </DialogContent>

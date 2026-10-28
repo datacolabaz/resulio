@@ -263,6 +263,7 @@ export function CompactGroupStudentPicker({
   onChange,
   hints,
   keptCount = 0,
+  groupsOnly = false,
 }: {
   groups: readonly PickerGroup[];
   students: readonly PickerStudent[];
@@ -270,6 +271,10 @@ export function CompactGroupStudentPicker({
   onChange: (next: Selection) => void;
   hints: { whole: string; partial: string };
   keptCount?: number;
+  /** The target only supports whole groups (e.g. a group-restricted task): members are listed
+   *  read-only, no per-student picking and no individual-student search. Mirrors `GroupStudentPicker`'s
+   *  `groupsOnly`. */
+  groupsOnly?: boolean;
 }) {
   const [groupQuery, setGroupQuery] = useState("");
   const [groupsOpen, setGroupsOpen] = useState(false);
@@ -291,10 +296,10 @@ export function CompactGroupStudentPicker({
   const selectedGroups = groups.filter((g) => value.groupIds.includes(g.id));
   const q = groupQuery.trim().toLocaleLowerCase("az");
   const shownGroups = q ? groups.filter((g) => g.name.toLocaleLowerCase("az").includes(q)) : groups;
-  const picked = value.extra.flatMap((id) => students.filter((s) => s.id === id && !s.groupIds.some((g) => value.groupIds.includes(g))));
-  const results = searchStudents(students, studentQuery);
+  const picked = groupsOnly ? [] : value.extra.flatMap((id) => students.filter((s) => s.id === id && !s.groupIds.some((g) => value.groupIds.includes(g))));
+  const results = groupsOnly ? [] : searchStudents(students, studentQuery);
   const check = (s: PickStudent, v: boolean) => onChange(setStudentChecked(value, s, v));
-  const showSearch = searchOpen || picked.length > 0;
+  const showSearch = !groupsOnly && (searchOpen || picked.length > 0);
 
   return (
     <div className="grid min-w-0 gap-3">
@@ -360,90 +365,112 @@ export function CompactGroupStudentPicker({
 
       <fieldset className="min-w-0">
         <legend className={legend}>{t("common.students")}</legend>
-        {!selectedGroups.length && !showSearch && <p className="text-sm text-muted-foreground">{t("picker.groupFirst")}</p>}
+        {!selectedGroups.length && !showSearch && <p className="text-sm text-muted-foreground">{t(groupsOnly ? "picker.pickGroup" : "picker.groupFirst")}</p>}
 
-        {selectedGroups.length > 0 && (
-          <div className="rounded-lg border">
-            <button
-              type="button"
-              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm"
-              aria-expanded={studentsOpen}
-              onClick={() => setStudentsOpen((v) => !v)}
-            >
-              <span className="min-w-0">
-                <span className="block font-medium">{t("picker.someStudentsOnly")}</span>
-                <span className="block text-xs text-muted-foreground">
-                  {unchecked ? t("picker.uncheckedCount", { count: unchecked }) : t("picker.allChecked")}
-                </span>
-              </span>
-              <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${studentsOpen ? "rotate-180" : ""}`} aria-hidden />
-            </button>
-            {studentsOpen && (
-              <div className="max-h-72 space-y-3 overflow-y-auto border-t p-2">
-                {selectedGroups.map((g) => {
-                  const members = membersOf(g.id, students).sort(byName);
-                  const partial = plan.partialGroupIds.includes(g.id);
-                  return (
-                    <section key={g.id} aria-label={g.name}>
-                      <h3 className="mb-1 break-words text-sm font-semibold text-foreground-secondary">{g.name}</h3>
-                      {members.map((s) => (
-                        <StudentRow key={s.id} student={s} checked={isChecked(value, s)} locked={false} onChange={(v) => check(s, v)} />
-                      ))}
-                      {!members.length && <p className="text-xs text-muted-foreground">{t("picker.groupEmpty")}</p>}
-                      {partial ? (
-                        <p className="mt-1 rounded-md border border-warning/40 bg-warning-surface px-2 py-1 text-xs text-warning">{hints.partial}</p>
-                      ) : (
-                        <p className="mt-1 text-xs text-muted-foreground">{hints.whole}</p>
-                      )}
-                    </section>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {picked.length > 0 && (
-          <div className="mt-2">
-            <p className="mb-1 text-xs font-medium text-foreground-secondary">{t("picker.picked")}</p>
-            <ul className="flex flex-wrap gap-1.5">
-              {picked.map((s) => (
-                <Chip key={s.id} label={studentName(s)} removeLabel={t("picker.unpick", { name: studentName(s) })} onRemove={() => check(s, false)} />
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {showSearch ? (
-          <div className="mt-2">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-              <Input
-                type="search"
-                className="pl-8"
-                value={studentQuery}
-                autoFocus={searchOpen && !picked.length}
-                onChange={(e) => setStudentQuery(e.target.value)}
-                placeholder={t("picker.search")}
-                aria-label={t("picker.search")}
-              />
+        {groupsOnly ? (
+          selectedGroups.length > 0 && (
+            <div className="space-y-3 rounded-lg border p-2">
+              {selectedGroups.map((g) => {
+                const members = membersOf(g.id, students).sort(byName);
+                return (
+                  <section key={g.id} aria-label={g.name}>
+                    <h3 className="mb-1 break-words text-sm font-semibold text-foreground-secondary">{g.name}</h3>
+                    <ul className="space-y-0.5 text-sm">
+                      {members.map((s) => <li key={s.id} className="break-words">{studentName(s)}</li>)}
+                    </ul>
+                    {!members.length && <p className="text-xs text-muted-foreground">{t("picker.groupEmpty")}</p>}
+                    <p className="mt-1 text-xs text-muted-foreground">{hints.whole}</p>
+                  </section>
+                );
+              })}
             </div>
-            {!!studentQuery.trim() && (
-              <div className="mt-1 max-h-56 overflow-y-auto rounded-lg border p-2">
-                {results.map((s) => (
-                  <StudentRow key={s.id} student={s} checked={isChecked(value, s)} locked={false} sub={s.groups.join(", ")} onChange={(v) => check(s, v)} />
-                ))}
-                {!results.length && <p className="text-xs text-muted-foreground">{t("picker.noMatches")}</p>}
+          )
+        ) : (
+          <>
+            {selectedGroups.length > 0 && (
+              <div className="rounded-lg border">
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm"
+                  aria-expanded={studentsOpen}
+                  onClick={() => setStudentsOpen((v) => !v)}
+                >
+                  <span className="min-w-0">
+                    <span className="block font-medium">{t("picker.someStudentsOnly")}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {unchecked ? t("picker.uncheckedCount", { count: unchecked }) : t("picker.allChecked")}
+                    </span>
+                  </span>
+                  <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${studentsOpen ? "rotate-180" : ""}`} aria-hidden />
+                </button>
+                {studentsOpen && (
+                  <div className="max-h-72 space-y-3 overflow-y-auto border-t p-2">
+                    {selectedGroups.map((g) => {
+                      const members = membersOf(g.id, students).sort(byName);
+                      const partial = plan.partialGroupIds.includes(g.id);
+                      return (
+                        <section key={g.id} aria-label={g.name}>
+                          <h3 className="mb-1 break-words text-sm font-semibold text-foreground-secondary">{g.name}</h3>
+                          {members.map((s) => (
+                            <StudentRow key={s.id} student={s} checked={isChecked(value, s)} locked={false} onChange={(v) => check(s, v)} />
+                          ))}
+                          {!members.length && <p className="text-xs text-muted-foreground">{t("picker.groupEmpty")}</p>}
+                          {partial ? (
+                            <p className="mt-1 rounded-md border border-warning/40 bg-warning-surface px-2 py-1 text-xs text-warning">{hints.partial}</p>
+                          ) : (
+                            <p className="mt-1 text-xs text-muted-foreground">{hints.whole}</p>
+                          )}
+                        </section>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        ) : (
-          <button type="button" className="mt-2 text-sm text-link underline-offset-2 hover:underline" onClick={() => setSearchOpen(true)}>
-            {selectedGroups.length ? t("picker.addOther") : t("picker.searchUngrouped")}
-          </button>
+
+            {picked.length > 0 && (
+              <div className="mt-2">
+                <p className="mb-1 text-xs font-medium text-foreground-secondary">{t("picker.picked")}</p>
+                <ul className="flex flex-wrap gap-1.5">
+                  {picked.map((s) => (
+                    <Chip key={s.id} label={studentName(s)} removeLabel={t("picker.unpick", { name: studentName(s) })} onRemove={() => check(s, false)} />
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {showSearch ? (
+              <div className="mt-2">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+                  <Input
+                    type="search"
+                    className="pl-8"
+                    value={studentQuery}
+                    autoFocus={searchOpen && !picked.length}
+                    onChange={(e) => setStudentQuery(e.target.value)}
+                    placeholder={t("picker.search")}
+                    aria-label={t("picker.search")}
+                  />
+                </div>
+                {!!studentQuery.trim() && (
+                  <div className="mt-1 max-h-56 overflow-y-auto rounded-lg border p-2">
+                    {results.map((s) => (
+                      <StudentRow key={s.id} student={s} checked={isChecked(value, s)} locked={false} sub={s.groups.join(", ")} onChange={(v) => check(s, v)} />
+                    ))}
+                    {!results.length && <p className="text-xs text-muted-foreground">{t("picker.noMatches")}</p>}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button type="button" className="mt-2 text-sm text-link underline-offset-2 hover:underline" onClick={() => setSearchOpen(true)}>
+                {selectedGroups.length ? t("picker.addOther") : t("picker.searchUngrouped")}
+              </button>
+            )}
+          </>
         )}
       </fieldset>
-      {keptCount > 0 && <p className="text-xs text-muted-foreground">{t("picker.kept", { count: keptCount })}</p>}
+      {keptCount > 0 && !groupsOnly && <p className="text-xs text-muted-foreground">{t("picker.kept", { count: keptCount })}</p>}
       <ShareSummaryLine groups={groups} students={students} value={value} keptCount={keptCount} />
     </div>
   );

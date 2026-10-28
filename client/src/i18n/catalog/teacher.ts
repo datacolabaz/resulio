@@ -553,7 +553,7 @@ export const teacher = {
   "modules.engagementSummaryViewed": ["{count} nəfər görüb", "{count} viewed", "Посмотрели: {count}"],
   "modules.engagementSummaryDownloaded": ["{count} nəfər yükləyib", "{count} downloaded", "Скачали: {count}"],
   "modules.engagementSummaryNone": ["Hələ heç kim baxmayıb", "No one has viewed it yet", "Пока никто не смотрел"],
-  "modules.accessTitle": ["Kimin girişi var", "Who has access", "Кто имеет доступ"],
+  "modules.accessTitle": ["Kimlərə verilir?", "Who is it for?", "Кому назначено?"],
   "modules.accessPublic": ["Linki olan hər kəs", "Anyone with the link", "Все, у кого есть ссылка"],
   "modules.accessPublicHint": [
     "Linki açan hər kəs tapşırığı görə və faylları yükləyə bilər.",
@@ -685,6 +685,13 @@ export const teacher = {
   "modules.materialSharing": ["Paylaşım", "Sharing", "Доступ"],
   "modules.advancedOptions": ["Ətraflı seçimlər", "More options", "Дополнительно"],
   "modules.advancedOptionsHint": ["Əlavə sahələr, təsvir, kim aça bilər, paylaşım vaxtı, bildiriş", "More fields, description, who can open it, when to share, notifications", "Дополнительные поля, описание, доступ, время публикации, уведомления"],
+  "modules.taskAdvancedOptionsHint": [
+    "Təlimat, cavab açarı, quiz və bildiriş ayarları",
+    "Instructions, answer key, quiz and notification settings",
+    "Инструкция, ключ ответов, квиз и настройки уведомлений",
+  ],
+  "modules.instructionsField": ["Təlimat (istəyə bağlı)", "Instructions (optional)", "Инструкция (необязательно)"],
+  "modules.saveAndShare": ["Yadda saxla və paylaş", "Save and share", "Сохранить и поделиться"],
   "modules.plan": ["Paket", "Plan", "Тариф"],
   "modules.planNote": [
     "Paket bu tədris məkanına aiddir, şəxsi hesabınıza deyil. Beta müddətində bütün əsas funksiyalar pulsuzdur.",
