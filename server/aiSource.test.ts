@@ -1,7 +1,8 @@
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { combineSourceMaterials, sourceMaterialFromFile, type SourceMaterial } from "./modules/ai";
+import { aiGenerateErrorOf, combineSourceMaterials, sourceMaterialFromFile, type SourceMaterial } from "./modules/ai";
 import { AppError } from "./modules/errors";
+import { LlmHttpError } from "./_core/llm";
 
 /**
  * `sourceMaterialFromFile` is the extension-dispatch core behind the AI test generator's
@@ -168,5 +169,32 @@ describe("combineSourceMaterials", () => {
     const r = combineSourceMaterials([photo(1), photo(2), photo(3)]);
     expect(r.kind).toBe("parts");
     if (r.kind === "parts") expect(r.parts).toHaveLength(3);
+  });
+});
+
+/**
+ * `aiGenerateErrorOf` is what keeps a failed `invokeLLM` call (a bad key, a renamed model, a
+ * quota hit, a transient network error) from reaching the client as the generic, unactionable
+ * "unexpected error" fallback -- see the comment above its definition in modules/ai.ts. Each case
+ * here mirrors a real provider response shape (Gemini answers a bad key with 400, not 401/403).
+ */
+describe("aiGenerateErrorOf", () => {
+  it("maps a 401/403 (or Gemini's 400 'api key' body) to AI_KEY_INVALID", () => {
+    expect(aiGenerateErrorOf(new LlmHttpError(401, "LLM invoke failed: 401 Unauthorized"))).toEqual(new AppError("AI_KEY_INVALID"));
+    expect(aiGenerateErrorOf(new LlmHttpError(400, "LLM invoke failed: 400 – API key not valid"))).toEqual(new AppError("AI_KEY_INVALID"));
+  });
+
+  it("maps a 404 (or Gemini's 400 'model is not found' body) to AI_NOT_FOUND", () => {
+    expect(aiGenerateErrorOf(new LlmHttpError(404, "LLM invoke failed: 404 Not Found"))).toEqual(new AppError("AI_NOT_FOUND"));
+    expect(aiGenerateErrorOf(new LlmHttpError(400, "LLM invoke failed: 400 – models/gemini-3.8-flash is not found"))).toEqual(new AppError("AI_NOT_FOUND"));
+  });
+
+  it("maps a 429 to AI_QUOTA", () => {
+    expect(aiGenerateErrorOf(new LlmHttpError(429, "LLM invoke failed: 429 Too Many Requests"))).toEqual(new AppError("AI_QUOTA"));
+  });
+
+  it("maps a generic/transient failure (5xx, network error, timeout) to AI_REQUEST_FAILED", () => {
+    expect(aiGenerateErrorOf(new LlmHttpError(503, "LLM invoke failed: 503 Service Unavailable"))).toEqual(new AppError("AI_REQUEST_FAILED"));
+    expect(aiGenerateErrorOf(new Error("fetch failed"))).toEqual(new AppError("AI_REQUEST_FAILED"));
   });
 });
