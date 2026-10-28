@@ -1,3 +1,4 @@
+import { AiSourcePicker } from "@/components/AiSourcePicker";
 import { AppShell, ChoiceChip, ErrorNote, Loading, Panel, Pill } from "@/components/AppShell";
 import { GroupStudentPicker, useGroupStudentTargets } from "@/components/GroupStudentPicker";
 import { draftFromQuestion, QuestionEditor } from "@/components/QuestionEditor";
@@ -14,7 +15,7 @@ import { t, type MessageKey } from "@/i18n/messages";
 import { errorText, fmtDuration, fromLocalInput, questionTypeLabel, releaseLabel, reviewLabel, toLocalInput, typeLabel } from "@/lib/format";
 import { recipientsPayload } from "@/lib/groupStudentSelection";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
-import { formatFileSize, uploadFile, UploadError, type UploadedFile } from "@/lib/uploadFile";
+import { type UploadedFile } from "@/lib/uploadFile";
 import { CLOSED_QUESTION_TYPES, DEFAULT_WRONG_PENALTY, QUESTION_TYPES, type AssessmentType, type QuestionType } from "@shared/assessment";
 import { builderPath, safeSyllabusEditorPath } from "@/lib/syllabusLearn";
 import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Check, FileUp, Library, Pencil, Replace, Sparkles, Trash2 } from "lucide-react";
@@ -599,8 +600,6 @@ function BankDialog({ open, onOpenChange, assessmentId, existing }: { open: bool
 }
 
 const AI_TYPES = ["MULTIPLE_CHOICE", "MULTIPLE_SELECT", "TRUE_FALSE", "SHORT_ANSWER", "FILL_BLANK", "NUMERIC"] as const;
-/** Formats `sourceMaterialFromFile` (server/modules/ai.ts) can actually read as source material. */
-const AI_SOURCE_ACCEPT = ".pdf,.docx,.pptx,.csv,.xlsx,.txt,.png,.jpg,.jpeg";
 
 function AiDialog({
   open,
@@ -617,25 +616,11 @@ function AiDialog({
   const [form, setForm] = useState({ topic: initialTopic ?? "", grade: "", language: "az" as "az" | "ru" | "en" | "de", difficulty: "MEDIUM" as "EASY" | "MEDIUM" | "HARD", questionType: "MULTIPLE_CHOICE" as (typeof AI_TYPES)[number], count: 5, points: 1 });
   const [picked, setPicked] = useState<string[]>([]);
   const [sectionId, setSectionId] = useState("");
-  // Source material (point A of the approved plan): a file the teacher attaches, or pasted text.
-  // At most one is sent -- the file wins if both are set (see sourceMaterialOf server-side).
-  const [sourceFile, setSourceFile] = useState<UploadedFile | null>(null);
-  const [sourceUploading, setSourceUploading] = useState(false);
+  // Source material (point A of the approved plan): files the teacher attaches (picked,
+  // dragged-and-dropped, or photographed with the in-app camera), or pasted text. At most one of
+  // the two is sent -- files win if both are set (see sourceMaterialOf server-side).
+  const [sourceFiles, setSourceFiles] = useState<UploadedFile[]>([]);
   const [sourceText, setSourceText] = useState("");
-  const sourceInput = useRef<HTMLInputElement>(null);
-  const pickSource = async (picked: File | undefined) => {
-    if (!picked) return;
-    setSourceUploading(true);
-    try {
-      setSourceFile(await uploadFile(picked, "ai-source"));
-      setSourceText("");
-    } catch (e) {
-      const code = e instanceof UploadError ? e.code : "UPLOAD_FAILED";
-      toast.error(code === "FILE_TOO_LARGE" ? t("files.tooLarge") : code === "FILE_TYPE_NOT_ALLOWED" ? t("error.AI_SOURCE_FILE_TYPE") : t("files.uploadFailed"));
-    } finally {
-      setSourceUploading(false);
-    }
-  };
   const usage = trpc.teacher.ai.usage.useQuery(undefined, { enabled: open });
   const invalidate = useInvalidateDetail(assessmentId);
   const generate = trpc.teacher.ai.generate.useMutation({
@@ -646,7 +631,7 @@ function AiDialog({
     onSuccess: (rows) => {
       toast.success(t("builder.aiAdded", { count: rows.length }));
       generate.reset();
-      setSourceFile(null);
+      setSourceFiles([]);
       setSourceText("");
       void invalidate();
       onOpenChange(false);
@@ -654,7 +639,7 @@ function AiDialog({
     onError: (e) => toast.error(errorText(e)),
   });
   const draft = generate.data;
-  const source = sourceFile ? { fileId: sourceFile.fileId } : sourceText.trim() ? { text: sourceText.trim() } : undefined;
+  const source = sourceFiles.length ? { fileIds: sourceFiles.map((f) => f.fileId) } : sourceText.trim() ? { text: sourceText.trim() } : undefined;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -681,31 +666,8 @@ function AiDialog({
             </label>
             <label className="text-sm"><span className={fieldLabel}>{t("builder.aiCount")}</span><Input type="number" min={1} max={10} value={form.count} onChange={(e) => setForm({ ...form, count: Math.min(10, Math.max(1, Number(e.target.value) || 1)) })} /></label>
             <label className="text-sm"><span className={fieldLabel}>{t("builder.aiPoints")}</span><Input type="number" min={0.5} step={0.5} value={form.points} onChange={(e) => setForm({ ...form, points: Number(e.target.value) || 1 })} /></label>
-            <div className="space-y-1.5 sm:col-span-2">
-              <span className={fieldLabel}>{t("builder.aiSourceLabel")}</span>
-              <div className="flex flex-wrap items-center gap-2">
-                <input ref={sourceInput} type="file" accept={AI_SOURCE_ACCEPT} className="sr-only" aria-label={t("builder.aiSourceAttach")} disabled={sourceUploading} onChange={(e) => void pickSource(e.target.files?.[0])} />
-                <Button type="button" variant="outline" size="sm" disabled={sourceUploading} onClick={() => sourceInput.current?.click()}>
-                  <FileUp className="mr-1 h-4 w-4" aria-hidden />
-                  {sourceUploading ? t("builder.aiSourceUploading") : t("builder.aiSourceAttach")}
-                </Button>
-                {sourceFile && (
-                  <span className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border bg-muted px-2.5 py-1.5 text-sm">
-                    <span className="min-w-0 truncate">{sourceFile.name}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground">({formatFileSize(sourceFile.size)})</span>
-                    <button type="button" aria-label={t("builder.aiSourceRemove")} onClick={() => setSourceFile(null)}>
-                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-                    </button>
-                  </span>
-                )}
-              </div>
-              {!sourceFile && (
-                <>
-                  <div className="text-xs text-muted-foreground">{t("builder.aiSourceOr")}</div>
-                  <Textarea rows={3} value={sourceText} onChange={(e) => setSourceText(e.target.value)} placeholder={t("builder.aiSourceTextPlaceholder")} />
-                </>
-              )}
-              <p className="text-xs text-muted-foreground">{t("builder.aiSourceHint")}</p>
+            <div className="sm:col-span-2">
+              <AiSourcePicker files={sourceFiles} onFilesChange={setSourceFiles} text={sourceText} onTextChange={setSourceText} />
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2 sm:col-span-2">
               <span className="text-xs text-muted-foreground">{t("builder.aiUsage", { used: usage.data?.used ?? 0, limit: usage.data?.limit ?? 100 })}</span>

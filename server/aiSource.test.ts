@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import { describe, expect, it } from "vitest";
-import { sourceMaterialFromFile } from "./modules/ai";
+import { combineSourceMaterials, sourceMaterialFromFile, type SourceMaterial } from "./modules/ai";
 import { AppError } from "./modules/errors";
 
 /**
@@ -67,5 +67,57 @@ describe("sourceMaterialFromFile", () => {
     // llmFileParts.pdfInputMode) -- a native PDF part would be `kind: "parts"` instead.
     expect(r.kind).toBe("text");
     if (r.kind === "text") expect(r.text).toContain("Mars");
+  });
+});
+
+/**
+ * `combineSourceMaterials` merges several per-file `sourceMaterialOf` results (one per photo in a
+ * multi-shot phone capture, or several picked files) into the single `SourceMaterial` the rest of
+ * ai.ts already knows how to spread into the model's message content -- pure logic, no DB/network.
+ */
+describe("combineSourceMaterials", () => {
+  it("passes a single material through unchanged", () => {
+    const m: SourceMaterial = { kind: "text", text: "Mars dördüncü planetdir." };
+    expect(combineSourceMaterials([m])).toEqual(m);
+  });
+
+  it("joins several text materials into one text block, in order", () => {
+    const r = combineSourceMaterials([
+      { kind: "text", text: "Birinci səhifə." },
+      { kind: "text", text: "İkinci səhifə." },
+    ]);
+    expect(r.kind).toBe("text");
+    if (r.kind === "text") {
+      expect(r.text.indexOf("Birinci")).toBeLessThan(r.text.indexOf("İkinci"));
+    }
+  });
+
+  it("truncates the joined text to the shared character cap", () => {
+    const r = combineSourceMaterials([
+      { kind: "text", text: "x".repeat(15_000) },
+      { kind: "text", text: "y".repeat(15_000) },
+    ]);
+    expect(r.kind).toBe("text");
+    if (r.kind === "text") expect(r.text.length).toBe(20_000);
+  });
+
+  it("flattens text + image materials into one parts array, preserving order", () => {
+    const r = combineSourceMaterials([
+      { kind: "text", text: "Bağlı mətn." },
+      { kind: "parts", parts: [{ type: "image_url", image_url: { url: "data:image/png;base64,AA==" } }] },
+    ]);
+    expect(r.kind).toBe("parts");
+    if (r.kind === "parts") {
+      expect(r.parts).toHaveLength(2);
+      expect(r.parts[0]).toMatchObject({ type: "text", text: "Bağlı mətn." });
+      expect(r.parts[1]).toMatchObject({ type: "image_url" });
+    }
+  });
+
+  it("flattens several image materials (a multi-photo capture) into one parts array", () => {
+    const photo = (n: number): SourceMaterial => ({ kind: "parts", parts: [{ type: "image_url", image_url: { url: `data:image/png;base64,${n}` } }] });
+    const r = combineSourceMaterials([photo(1), photo(2), photo(3)]);
+    expect(r.kind).toBe("parts");
+    if (r.kind === "parts") expect(r.parts).toHaveLength(3);
   });
 });

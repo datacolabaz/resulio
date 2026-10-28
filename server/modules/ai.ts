@@ -19,10 +19,11 @@ import { AppError } from "./errors";
 
 export const AI_QUESTION_TYPES = ["MULTIPLE_CHOICE", "MULTIPLE_SELECT", "TRUE_FALSE", "SHORT_ANSWER", "FILL_BLANK", "NUMERIC"] as const;
 
-/** An uploaded file (PDF/Word/PowerPoint/CSV/Excel/image) or pasted text to ground generation in --
- *  see `sourceMaterialOf`. At most one of the two is used; `fileId` wins if both are sent. */
+/** One or more uploaded files (PDF/Word/PowerPoint/CSV/Excel/image) or pasted text to ground
+ *  generation in -- see `sourceMaterialOf`. At most one of the two is used; `fileIds` wins if both
+ *  are sent. Several files (e.g. a multi-photo phone capture) are merged by `combineSourceMaterials`. */
 export const aiSourceSchema = z.object({
-  fileId: z.string().trim().min(1).max(32).optional(),
+  fileIds: z.array(z.string().trim().min(1).max(32)).min(1).max(15).optional(),
   text: z.string().trim().max(20_000).optional(),
 });
 export type AiSourceInput = z.infer<typeof aiSourceSchema>;
@@ -85,19 +86,46 @@ export async function sourceMaterialFromFile(fileName: string, bytes: Buffer): P
 }
 
 /**
+ * Merges several per-file `SourceMaterial` results (e.g. one per photo of a multi-page capture)
+ * into the single `SourceMaterial` the rest of ai.ts already knows how to consume. A single
+ * material passes through unchanged. All-text materials are joined into one text block. As soon as
+ * any material carries `parts` (an image/native-PDF), the whole result becomes one flattened
+ * `{kind:"parts"}` -- text materials are turned into `{type:"text"}` parts so ordering (and which
+ * text belongs near which image) is preserved for the model.
+ */
+export function combineSourceMaterials(materials: SourceMaterial[]): SourceMaterial {
+  if (materials.length === 1) return materials[0];
+  if (materials.every((m) => m.kind === "text")) {
+    const text = materials
+      .map((m) => (m as { kind: "text"; text: string }).text)
+      .join("\n\n---\n\n")
+      .slice(0, MAX_SOURCE_CHARS);
+    return { kind: "text", text };
+  }
+  const parts: MessageContent[] = [];
+  for (const m of materials) parts.push(...(m.kind === "text" ? [{ type: "text" as const, text: m.text }] : m.parts));
+  return { kind: "parts", parts };
+}
+
+/**
  * Resolves `AiGenerateInput["source"]` into something to hand the model. Returns null when no
  * source was given, so `generateQuestions` can fall back to its original topic-only prompt
- * unchanged. Pasted text needs no file lookup; a `fileId` must belong to the teacher's own
- * workspace (the same ownership check question import uses) before anything is read from it.
+ * unchanged. Pasted text needs no file lookup; every `fileIds` entry must belong to the teacher's
+ * own workspace (the same ownership check question import uses) before anything is read from it.
  */
 export async function sourceMaterialOf(scope: TeacherScope, source: AiSourceInput | undefined): Promise<SourceMaterial | null> {
   if (!source) return null;
   if (source.text) return { kind: "text", text: source.text.slice(0, MAX_SOURCE_CHARS) };
-  if (!source.fileId) return null;
+  const fileIds = source.fileIds?.filter(Boolean) ?? [];
+  if (!fileIds.length) return null;
 
-  const file = await fileRow(source.fileId);
-  if (!file || file.workspaceId !== scope.workspaceId) throw new AppError("FILE_NOT_FOUND");
-  return sourceMaterialFromFile(file.fileName, await fileBytes(file));
+  const materials: SourceMaterial[] = [];
+  for (const fileId of fileIds) {
+    const file = await fileRow(fileId);
+    if (!file || file.workspaceId !== scope.workspaceId) throw new AppError("FILE_NOT_FOUND");
+    materials.push(await sourceMaterialFromFile(file.fileName, await fileBytes(file)));
+  }
+  return combineSourceMaterials(materials);
 }
 
 const SHAPES: Record<(typeof AI_QUESTION_TYPES)[number], string> = {
@@ -218,12 +246,19 @@ export const aiTaskTextSchema = z.object({
   grade: z.string().trim().max(40).default(""),
   language: z.enum(["az", "ru", "en", "de"]).default("az"),
   source: aiSourceSchema.optional(),
+  /** When set, instead of a free-form assignment the model writes exactly this many numbered open
+   *  (non-auto-gradable) questions grounded in the material, into `instructions` -- e.g. photographing
+   *  a few pages of a question bank and turning them into open questions for students. No new storage:
+   *  this is plain text in the same `instructions` field, so grading/deadline/submission are untouched. */
+  openQuestionCount: z.number().int().min(1).max(20).optional(),
 });
 export type AiTaskTextInput = z.infer<typeof aiTaskTextSchema>;
 
 /**
  * Drafts a free-form task's title/description/instructions from a topic (and, grounded, a source
  * file/text) -- the counterpart of `generateQuestions` for Tapşırıqlar's "sərbəst tapşırıq" mode.
+ * When `openQuestionCount` is set, `instructions` becomes a numbered list of open questions drawn
+ * from the material instead of a general instruction paragraph (see the field's doc comment).
  * Returns plain text for the teacher to review and edit in the task form; nothing is persisted
  * here, so (unlike AI questions) there is no separate accept step -- the task's own save action
  * already is the teacher's explicit approval.
@@ -235,11 +270,16 @@ export async function generateTaskText(scope: TeacherScope, input: AiTaskTextInp
   await assertAiAllowed(scope.userId);
 
   const material = await sourceMaterialOf(scope, input.source);
-  const instruction =
-    `Write a free-form student assignment (not a multiple-choice test) about "${input.topic}"` +
-    (input.grade ? ` for grade/level ${input.grade}` : "") +
-    `, in ${LANGUAGE_NAMES[input.language]}.` +
-    (material ? " Base it strictly on the MATERIAL below/attached." : "");
+  const openQuestions = input.openQuestionCount;
+  const instruction = openQuestions
+    ? `Write exactly ${openQuestions} open-ended (non-multiple-choice) questions about "${input.topic}"` +
+      (input.grade ? ` for grade/level ${input.grade}` : "") +
+      `, in ${LANGUAGE_NAMES[input.language]}.` +
+      (material ? " Each question must be answerable only from the MATERIAL below/attached -- its own content." : "")
+    : `Write a free-form student assignment (not a multiple-choice test) about "${input.topic}"` +
+      (input.grade ? ` for grade/level ${input.grade}` : "") +
+      `, in ${LANGUAGE_NAMES[input.language]}.` +
+      (material ? " Base it strictly on the MATERIAL below/attached." : "");
   const userContent: MessageContent[] | string = !material
     ? instruction
     : material.kind === "text"
@@ -250,12 +290,17 @@ export async function generateTaskText(scope: TeacherScope, input: AiTaskTextInp
     messages: [
       {
         role: "system",
-        content:
-          "You write student assignments for teachers. Reply with JSON only: " +
-          '{"title":"...","description":"...","instructions":"..."}. ' +
-          "title is short (under 255 characters); description explains what the assignment is about; " +
-          "instructions tells the student exactly what to do and submit." +
-          (material ? GROUNDING_RULE : ""),
+        content: openQuestions
+          ? "You write open-ended questions for teachers to send to students (often from photographed material, e.g. textbook/test-bank pages). Reply with JSON only: " +
+            '{"title":"...","description":"...","instructions":"..."}. ' +
+            "title is short (under 255 characters) and names the topic; description briefly says what the material covers; " +
+            `instructions is a numbered list ("1. ...", "2. ...", etc.) of exactly ${openQuestions} open-ended questions a student must answer in free text -- no multiple-choice options, no answer key.` +
+            (material ? GROUNDING_RULE : "")
+          : "You write student assignments for teachers. Reply with JSON only: " +
+            '{"title":"...","description":"...","instructions":"..."}. ' +
+            "title is short (under 255 characters); description explains what the assignment is about; " +
+            "instructions tells the student exactly what to do and submit." +
+            (material ? GROUNDING_RULE : ""),
       },
       { role: "user", content: userContent },
     ],
