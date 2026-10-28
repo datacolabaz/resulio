@@ -70,6 +70,10 @@ export const format = {
   "error.AI_USAGE_LIMIT_REACHED": ["AI istifadə limiti bitib.", "The AI usage limit has been reached.", "Лимит использования AI исчерпан."],
   "error.AI_SOURCE_FILE_TYPE": ["Bu fayl formatı mənbə kimi dəstəklənmir.", "This file format isn't supported as a source.", "Этот формат файла не поддерживается как источник."],
   "error.AI_SOURCE_UNREADABLE": ["Fayl oxuna bilmədi. Başqa fayl sınayın.", "The file couldn't be read. Try a different file.", "Не удалось прочитать файл. Попробуйте другой файл."],
+  "error.AI_KEY_INVALID": ["AI açarı etibarsızdır. Administratora müraciət edin.", "The AI key is invalid. Contact the administrator.", "Неверный ключ ИИ. Обратитесь к администратору."],
+  "error.AI_NOT_FOUND": ["AI modeli tapılmadı. Administratora müraciət edin.", "The AI model was not found. Contact the administrator.", "Модель ИИ не найдена. Обратитесь к администратору."],
+  "error.AI_QUOTA": ["AI provayderinin limiti dolub. Bir az sonra yenidən cəhd edin.", "The AI provider's quota is exhausted. Try again later.", "Исчерпана квота ИИ-провайдера. Попробуйте позже."],
+  "error.AI_REQUEST_FAILED": ["AI sorğusu uğursuz oldu. Bir az sonra yenidən cəhd edin.", "The AI request failed. Try again in a moment.", "Запрос к ИИ не удался. Повторите попытку чуть позже."],
   "error.AI_TEACHER_MONTHLY_LIMIT": [
     "Bu ay üçün AI limitiniz bitib. Limit {date} tarixində yenilənir.",
     "Your AI limit for this month is used up. It resets on {date}.",

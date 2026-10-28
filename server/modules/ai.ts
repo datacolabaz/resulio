@@ -2,7 +2,7 @@ import { z } from "zod";
 import { DIFFICULTIES, questionInputSchema, type QuestionInput } from "../../shared/assessment";
 import { isGeminiUrl } from "../_core/aiConfig";
 import { ENV } from "../_core/env";
-import { invokeLLM, type MessageContent } from "../_core/llm";
+import { invokeLLM, llmFailureReason, type MessageContent } from "../_core/llm";
 import { withAiUsage } from "../aiUsage/context";
 import { assertAiAllowed } from "../aiUsage/limits";
 import { ALLOWED_FILE_TYPES, extensionOf, fileBytes, fileRow } from "./files";
@@ -151,6 +151,21 @@ const SHAPES: Record<(typeof AI_QUESTION_TYPES)[number], string> = {
 
 const LANGUAGE_NAMES = { az: "Azerbaijani", ru: "Russian", en: "English", de: "German" } as const;
 
+/**
+ * Turns a raw `invokeLLM` failure (an `LlmHttpError`, a network error, ...) into a stable,
+ * localized AppError instead of letting it reach `toTrpcError`'s unknown-error fallback, which
+ * would show the teacher a mystery "unexpected error" with no way to tell a bad provider key from
+ * a renamed model from a transient outage (see questionBank/importJobs.ts and answerKey.ts, which
+ * already surface `llmFailureReason` this way for their own features).
+ */
+export function aiGenerateErrorOf(error: unknown): AppError {
+  const reason = llmFailureReason(error);
+  if (reason === "AI_KEY_INVALID") return new AppError("AI_KEY_INVALID");
+  if (reason === "AI_NOT_FOUND") return new AppError("AI_NOT_FOUND");
+  if (reason === "AI_QUOTA") return new AppError("AI_QUOTA");
+  return new AppError("AI_REQUEST_FAILED");
+}
+
 export function extractJson(text: string): unknown {
   const cleaned = text.replace(/```json|```/g, "").trim();
   try {
@@ -238,7 +253,7 @@ export async function generateQuestions(scope: TeacherScope, input: AiGenerateIn
   })).catch(async (error: unknown) => {
     const alert = providerAlertFor(error);
     if (alert) await sendAiAlert(scope.workspaceId, alert);
-    throw error;
+    throw aiGenerateErrorOf(error);
   });
   const content = result.choices[0]?.message?.content;
   const text = typeof content === "string" ? content : "";
@@ -320,7 +335,7 @@ export async function generateTaskText(scope: TeacherScope, input: AiTaskTextInp
   })).catch(async (error: unknown) => {
     const alert = providerAlertFor(error);
     if (alert) await sendAiAlert(scope.workspaceId, alert);
-    throw error;
+    throw aiGenerateErrorOf(error);
   });
   const content = result.choices[0]?.message?.content;
   const raw = extractJson(typeof content === "string" ? content : "") as { title?: unknown; description?: unknown; instructions?: unknown } | null;

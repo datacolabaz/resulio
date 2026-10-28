@@ -33,6 +33,10 @@ export type AppErrorCode =
   | "AI_USAGE_LIMIT_REACHED"
   | "AI_SOURCE_FILE_TYPE"
   | "AI_SOURCE_UNREADABLE"
+  | "AI_KEY_INVALID"
+  | "AI_NOT_FOUND"
+  | "AI_QUOTA"
+  | "AI_REQUEST_FAILED"
   | "AI_REVIEW_IN_PROGRESS"
   | "AI_REVIEW_DAILY_LIMIT"
   | "AI_ANSWER_KEY_FAILED"
@@ -202,6 +206,13 @@ const HTTP: Partial<Record<AppErrorCode, TRPCError["code"]>> = {
   AI_USAGE_LIMIT_REACHED: "TOO_MANY_REQUESTS",
   AI_SOURCE_FILE_TYPE: "BAD_REQUEST",
   AI_SOURCE_UNREADABLE: "BAD_REQUEST",
+  // A bad key or a renamed/unavailable model is an admin-side config problem, not a transient
+  // failure -- same treatment as AI_UNAVAILABLE. Quota is retry-later; a generic provider failure
+  // (network, timeout, 5xx) is the only one left unmapped to a cause, same as AI_INVALID_OUTPUT.
+  AI_KEY_INVALID: "PRECONDITION_FAILED",
+  AI_NOT_FOUND: "PRECONDITION_FAILED",
+  AI_QUOTA: "TOO_MANY_REQUESTS",
+  AI_REQUEST_FAILED: "INTERNAL_SERVER_ERROR",
   AI_REVIEW_IN_PROGRESS: "CONFLICT",
   AI_REVIEW_DAILY_LIMIT: "TOO_MANY_REQUESTS",
   AI_ANSWER_KEY_FAILED: "INTERNAL_SERVER_ERROR",
