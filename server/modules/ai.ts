@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DIFFICULTIES, questionInputSchema, type QuestionInput } from "../../shared/assessment";
+import { isGeminiUrl } from "../_core/aiConfig";
 import { ENV } from "../_core/env";
 import { invokeLLM, type MessageContent } from "../_core/llm";
 import { withAiUsage } from "../aiUsage/context";
@@ -67,12 +68,23 @@ export async function sourceMaterialFromFile(fileName: string, bytes: Buffer): P
     return { kind: "parts", parts: [filePart(ALLOWED_FILE_TYPES[ext], new Uint8Array(bytes), fileName, ENV.llm)] };
   }
   if (ext === ".pdf") {
-    if (pdfInputMode(ENV.llm, "") === "native") {
+    // Gemini's OpenAI-compatibility endpoint has no documented support for a PDF file part --
+    // `filePart` sends it as an `image_url` data: URI, a community workaround Google has never
+    // confirmed (see https://discuss.ai.google.dev/t/openai-compatibility-for-pdf-file/77388),
+    // and it fails unpredictably. Our own text extraction below is fast, free and reliable (it
+    // correctly reads Azerbaijani-script PDFs with a real text layer), so for Gemini we always
+    // try it first instead of trusting that workaround for every PDF.
+    const geminiPdfWorkaround = isGeminiUrl(ENV.llm.baseUrl);
+    if (pdfInputMode(ENV.llm, "") === "native" && !geminiPdfWorkaround) {
       return { kind: "parts", parts: [filePart("application/pdf", new Uint8Array(bytes), fileName, ENV.llm)] };
     }
     const pages = await pdfPageTexts(new Uint8Array(bytes));
-    if (!pages.some((p) => p.trim())) throw new AppError("AI_SOURCE_UNREADABLE");
-    return { kind: "text", text: pages.join("\n\n").slice(0, MAX_SOURCE_CHARS) };
+    const text = pages.join("\n\n").slice(0, MAX_SOURCE_CHARS);
+    if (text.trim()) return { kind: "text", text };
+    // No text layer at all (a genuinely scanned PDF): for Gemini, fall back to the same workaround
+    // as a last resort rather than failing outright -- it may still work for some models/pages.
+    if (geminiPdfWorkaround) return { kind: "parts", parts: [filePart("application/pdf", new Uint8Array(bytes), fileName, ENV.llm)] };
+    throw new AppError("AI_SOURCE_UNREADABLE");
   }
   if (TEXT_EXTRACT_EXTENSIONS.has(ext)) {
     const result = extractDocument(fileName, bytes);

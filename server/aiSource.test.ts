@@ -1,5 +1,5 @@
 import { PDFDocument, StandardFonts } from "pdf-lib";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { combineSourceMaterials, sourceMaterialFromFile, type SourceMaterial } from "./modules/ai";
 import { AppError } from "./modules/errors";
 
@@ -67,6 +67,55 @@ describe("sourceMaterialFromFile", () => {
     // llmFileParts.pdfInputMode) -- a native PDF part would be `kind: "parts"` instead.
     expect(r.kind).toBe("text");
     if (r.kind === "text") expect(r.text).toContain("Mars");
+  });
+
+  describe("with Gemini configured as the AI provider (AI_API_URL pointed at Gemini's OpenAI-compat endpoint)", () => {
+    // Gemini's OpenAI-compatibility endpoint has no documented support for a PDF file part --
+    // `filePart` sends it as an `image_url` data: URI, an unconfirmed community workaround that
+    // fails unpredictably (see the comment in modules/ai.ts). These tests pin down the fix: for a
+    // PDF with a real text layer, Gemini must still get our own reliable text extraction, not the
+    // risky native workaround -- while a genuinely textless (scanned) PDF still falls back to it
+    // as a last resort, rather than failing outright.
+    const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai";
+    let prevUrl: string | undefined;
+    let prevKey: string | undefined;
+
+    beforeEach(() => {
+      prevUrl = process.env.AI_API_URL;
+      prevKey = process.env.AI_API_KEY;
+      process.env.AI_API_URL = GEMINI_URL;
+      process.env.AI_API_KEY = "test-key";
+    });
+
+    afterEach(() => {
+      if (prevUrl === undefined) delete process.env.AI_API_URL;
+      else process.env.AI_API_URL = prevUrl;
+      if (prevKey === undefined) delete process.env.AI_API_KEY;
+      else process.env.AI_API_KEY = prevKey;
+    });
+
+    it("still extracts text directly for a PDF with a real text layer, instead of the unreliable native workaround", async () => {
+      const doc = await PDFDocument.create();
+      const font = await doc.embedFont(StandardFonts.Helvetica);
+      const page = doc.addPage();
+      page.drawText("Mars dördüncü planetdir.", { x: 50, y: 700, size: 14, font });
+      const bytes = await doc.save();
+      const r = await sourceMaterialFromFile("mars.pdf", Buffer.from(bytes));
+      expect(r.kind).toBe("text");
+      if (r.kind === "text") expect(r.text).toContain("Mars");
+    });
+
+    it("falls back to the native image_url workaround for a textless (scanned) PDF, rather than throwing", async () => {
+      const doc = await PDFDocument.create();
+      doc.addPage();
+      const bytes = await doc.save();
+      const r = await sourceMaterialFromFile("blank.pdf", Buffer.from(bytes));
+      expect(r.kind).toBe("parts");
+      if (r.kind === "parts") {
+        expect(r.parts).toHaveLength(1);
+        expect(r.parts[0]).toMatchObject({ type: "image_url" });
+      }
+    });
   });
 });
 
