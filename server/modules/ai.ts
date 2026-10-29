@@ -157,9 +157,15 @@ const LANGUAGE_NAMES = { az: "Azerbaijani", ru: "Russian", en: "English", de: "G
  * would show the teacher a mystery "unexpected error" with no way to tell a bad provider key from
  * a renamed model from a transient outage (see questionBank/importJobs.ts and answerKey.ts, which
  * already surface `llmFailureReason` this way for their own features).
+ *
+ * Logs the real error here: once this returns an AppError, `toTrpcError` recognizes the code and
+ * maps it silently -- it never reaches the unknown-error branch that otherwise would have logged
+ * it. Without this, the teacher gets a clean message but the actual HTTP status/provider response
+ * (in `error.message` for an `LlmHttpError`, see llmFileParts.ts's `providerError`) is lost.
  */
 export function aiGenerateErrorOf(error: unknown): AppError {
   const reason = llmFailureReason(error);
+  console.error("[ai] generate request failed", reason, error instanceof Error ? `${error.name}: ${error.message}` : error);
   if (reason === "AI_KEY_INVALID") return new AppError("AI_KEY_INVALID");
   if (reason === "AI_NOT_FOUND") return new AppError("AI_NOT_FOUND");
   if (reason === "AI_QUOTA") return new AppError("AI_QUOTA");
