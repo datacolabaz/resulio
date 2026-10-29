@@ -243,7 +243,9 @@ export async function groupAnalytics(scope: TeacherScope, groupId: string) {
   return {
     group: { id: group.id, name: group.name, subject: group.subject, grade: group.grade },
     studentCount: memberIds.length,
-    averageScore: allScores.length ? round1(allScores.reduce((s, a) => s + a.averageScore, 0) / allScores.length) : 0,
+    // null (not 0) when the group has no completed exam yet -- same convention taskProgress's own
+    // averageScore already uses, so callers can tell "no results" from "a real 0% average" apart.
+    averageScore: allScores.length ? round1(allScores.reduce((s, a) => s + a.averageScore, 0) / allScores.length) : null,
     history: byAssessment,
     ranking: studentRanking,
     weakQuestions: questionRows
