@@ -570,7 +570,7 @@ function GroupExamStatsPanel({ groupId }: { groupId: string }) {
   return (
     <div className="mt-2 space-y-3 rounded-lg bg-muted/40 p-3">
       <div className="grid grid-cols-2 gap-2">
-        <StatCard label={t("student.groupExamAverage")} value={`${s.data.averageScore}%`} />
+        <StatCard label={t("student.groupExamAverage")} value={s.data.averageScore == null ? "—" : `${s.data.averageScore}%`} />
         <StatCard label={t("common.student")} value={s.data.studentCount} />
       </div>
       <div>

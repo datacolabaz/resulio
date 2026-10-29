@@ -63,4 +63,13 @@ describe("groupExamStatsView", () => {
     const text = JSON.stringify(v);
     for (const secret of ["questionId", "sourceQuestionId", "flagged"]) expect(text).not.toContain(secret);
   });
+
+  // groupAnalytics() reports `averageScore: null` (not 0) for a group with no completed exam yet,
+  // so a teacher/student can't mistake "no results" for a real 0% average -- see the comment above
+  // its definition in modules/analytics.ts. This pins down that the redaction boundary passes that
+  // `null` through unchanged rather than coercing it to 0 or dropping the field.
+  it("ON: passes a null averageScore through unchanged (no completed exam yet, not a real 0%)", () => {
+    const v = groupExamStatsView(group, true, { ...full, averageScore: null });
+    expect(v.averageScore).toBeNull();
+  });
 });

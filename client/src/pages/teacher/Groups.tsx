@@ -174,7 +174,7 @@ export function GroupsPage() {
                   <dl className="mt-4 grid grid-cols-3 gap-2 text-center text-sm">
                     <div className="flex flex-col-reverse"><dt className="text-xs text-muted-foreground">{t("groups.statStudents")}</dt><dd className="text-lg font-semibold">{g.studentCount}</dd></div>
                     <div className="flex flex-col-reverse"><dt className="text-xs text-muted-foreground">{t("groups.statExams")}</dt><dd className="text-lg font-semibold">{o?.examCount ?? 0}</dd></div>
-                    <div className="flex flex-col-reverse"><dt className="text-xs text-muted-foreground">{t("groups.statAverage")}</dt><dd className="text-lg font-semibold">{o ? `${o.averageScore}%` : "—"}</dd></div>
+                    <div className="flex flex-col-reverse"><dt className="text-xs text-muted-foreground">{t("groups.statAverage")}</dt><dd className="text-lg font-semibold">{o?.averageScore == null ? "—" : `${o.averageScore}%`}</dd></div>
                   </dl>
                   {!!o?.taskCount && (
                     <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 border-t pt-3 text-center text-sm">
@@ -1012,7 +1012,7 @@ export function GroupDetailPage() {
           </div>
           <div className="grid gap-4 sm:grid-cols-3">
             <StatCard label={t("common.students")} value={active.length} hint={pending.length ? t("groups.pendingHint", { count: pending.length }) : undefined} />
-            <StatCard label={t("home.averageScore")} value={ga ? `${ga.averageScore}%` : "—"} />
+            <StatCard label={t("home.averageScore")} value={ga?.averageScore == null ? "—" : `${ga.averageScore}%`} />
             <StatCard label={t("common.exams")} value={ga?.history.length ?? 0} />
           </div>
           <GroupSyllabiPanel groupId={id} />
