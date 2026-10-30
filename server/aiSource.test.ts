@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { aiGenerateErrorOf, combineSourceMaterials, sourceMaterialFromFile, type SourceMaterial } from "./modules/ai";
+import { aiGenerateErrorOf, combineSourceMaterials, parseTaskTextOutput, sourceMaterialFromFile, type SourceMaterial } from "./modules/ai";
 import { AppError } from "./modules/errors";
 import { LlmHttpError } from "./_core/llm";
 
@@ -196,5 +196,37 @@ describe("aiGenerateErrorOf", () => {
   it("maps a generic/transient failure (5xx, network error, timeout) to AI_REQUEST_FAILED", () => {
     expect(aiGenerateErrorOf(new LlmHttpError(503, "LLM invoke failed: 503 Service Unavailable"))).toEqual(new AppError("AI_REQUEST_FAILED"));
     expect(aiGenerateErrorOf(new Error("fetch failed"))).toEqual(new AppError("AI_REQUEST_FAILED"));
+  });
+});
+
+/**
+ * `parseTaskTextOutput` turns the model's raw JSON reply into {title, description, instructions}
+ * for `generateTaskText` -- see a teacher reporting the "Açıq sualların sayı" (open-question count)
+ * flow coming back with title/description filled but "Təlimat" (instructions) completely empty
+ * even though a count was requested. gpt-4o-mini was the provider in that report.
+ */
+describe("parseTaskTextOutput", () => {
+  it("reads title/description/instructions straight through when the model replies as asked", () => {
+    const content = JSON.stringify({ title: "Mars", description: "Planet haqqında", instructions: "1. Sual bir\n2. Sual iki" });
+    expect(parseTaskTextOutput(content, 2)).toEqual({ title: "Mars", description: "Planet haqqında", instructions: "1. Sual bir\n2. Sual iki" });
+  });
+
+  it("joins instructions into a numbered-list string when the model sends an array of questions instead", () => {
+    const content = JSON.stringify({ title: "Mars", description: "Planet haqqında", instructions: ["1. Sual bir", "2. Sual iki"] });
+    expect(parseTaskTextOutput(content, 2)).toEqual({ title: "Mars", description: "Planet haqqında", instructions: "1. Sual bir\n2. Sual iki" });
+  });
+
+  it("falls back to an empty instructions string (not a crash) when the model omits the field entirely", () => {
+    const content = JSON.stringify({ title: "Mars", description: "Planet haqqında" });
+    expect(parseTaskTextOutput(content, 2)).toEqual({ title: "Mars", description: "Planet haqqında", instructions: "" });
+  });
+
+  it("returns an empty title (the caller then rejects it as AI_INVALID_OUTPUT) when the reply isn't usable JSON", () => {
+    expect(parseTaskTextOutput("not json at all", undefined)).toEqual({ title: "", description: "", instructions: "" });
+  });
+
+  it("does not require instructions when no open-question count was requested (free-form assignment mode)", () => {
+    const content = JSON.stringify({ title: "Mars", description: "Planet haqqında", instructions: "" });
+    expect(parseTaskTextOutput(content, undefined)).toEqual({ title: "Mars", description: "Planet haqqında", instructions: "" });
   });
 });
