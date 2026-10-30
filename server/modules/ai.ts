@@ -287,6 +287,36 @@ export const aiTaskTextSchema = z.object({
 });
 export type AiTaskTextInput = z.infer<typeof aiTaskTextSchema>;
 
+/** A model asked for one JSON string field sometimes returns a JSON array of strings instead
+ *  (seen from gpt-4o-mini with `response_format: json_object` when the field is explicitly meant
+ *  to hold a numbered list) -- join it the same way a human would paste the items one per line,
+ *  rather than silently dropping the whole field to "". */
+function textField(v: unknown): string {
+  if (typeof v === "string") return v.trim();
+  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string").join("\n").trim();
+  return "";
+}
+
+/**
+ * The JSON-parsing core of `generateTaskText`, pulled out so it's testable without a DB or a real
+ * model call: given the model's raw reply text, decide the title/description/instructions it
+ * drafted. Pure and exported for that reason (see `sourceMaterialFromFile` and `aiGenerateErrorOf`
+ * above for the same pattern).
+ */
+export function parseTaskTextOutput(content: string, openQuestions: number | undefined): { title: string; description: string; instructions: string } {
+  const raw = extractJson(content) as { title?: unknown; description?: unknown; instructions?: unknown } | null;
+  const title = textField(raw?.title).slice(0, 255);
+  const instructions = textField(raw?.instructions).slice(0, 5000);
+  if (title && openQuestions && !instructions) {
+    // The teacher asked for N open questions from their material; an empty instructions field
+    // means there's nothing to send the student even though generation "succeeded" (a title/
+    // description came back) -- log the model's actual reply so this is diagnosable from Railway
+    // logs instead of silently handing back a blank task body.
+    console.error("[ai] generateTaskText: model returned no usable instructions for an open-question request", { openQuestions, reply: content.slice(0, 1000) });
+  }
+  return { title, description: textField(raw?.description).slice(0, 5000), instructions };
+}
+
 /**
  * Drafts a free-form task's title/description/instructions from a topic (and, grounded, a source
  * file/text) -- the counterpart of `generateQuestions` for Tapşırıqlar's "sərbəst tapşırıq" mode.
@@ -344,15 +374,10 @@ export async function generateTaskText(scope: TeacherScope, input: AiTaskTextInp
     throw aiGenerateErrorOf(error);
   });
   const content = result.choices[0]?.message?.content;
-  const raw = extractJson(typeof content === "string" ? content : "") as { title?: unknown; description?: unknown; instructions?: unknown } | null;
-  const title = typeof raw?.title === "string" ? raw.title.trim().slice(0, 255) : "";
-  if (!title) throw new AppError("AI_INVALID_OUTPUT");
+  const parsed = parseTaskTextOutput(typeof content === "string" ? content : "", openQuestions);
+  if (!parsed.title) throw new AppError("AI_INVALID_OUTPUT");
   store.useAiUnits(scope.workspaceId, 1);
-  return {
-    title,
-    description: typeof raw?.description === "string" ? raw.description.trim().slice(0, 5000) : "",
-    instructions: typeof raw?.instructions === "string" ? raw.instructions.trim().slice(0, 5000) : "",
-  };
+  return parsed;
 }
 
 /**
