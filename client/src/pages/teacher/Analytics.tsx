@@ -73,7 +73,16 @@ function GroupsTab() {
             { key: "students", header: t("common.students"), cell: (r) => r.studentCount },
             { key: "exams", header: t("common.exams"), cell: (r) => r.examCount },
             { key: "participation", header: t("common.participation"), cell: (r) => `${r.participation}%` },
-            { key: "average", header: t("common.average"), tdClassName: "font-semibold", cell: (r) => `${r.averageScore}%`, cardCell: (r) => <span className="font-semibold">{r.averageScore}%</span> },
+            {
+              key: "average",
+              header: t("common.average"),
+              tdClassName: "font-semibold",
+              // r.averageScore is null (not 0) when the group has no completed exam yet -- show "—"
+              // instead of the literal "null%" this used to render (same fix as the Qruplar page's
+              // own group cards; this table was the one spot that bug fix missed).
+              cell: (r) => (r.averageScore == null ? "—" : `${r.averageScore}%`),
+              cardCell: (r) => <span className="font-semibold">{r.averageScore == null ? "—" : `${r.averageScore}%`}</span>,
+            },
             { key: "weak", header: t("analytics.col.weakTopics"), tdClassName: "break-words text-muted-foreground", cell: (r) => r.weakTopics.join(", ") || "—" },
           ]}
         />
