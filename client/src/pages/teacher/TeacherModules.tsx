@@ -26,7 +26,7 @@ import { recipientsPayload } from "@/lib/groupStudentSelection";
 import { fileDownloadUrl } from "@/lib/uploadFile";
 import { trpc } from "@/lib/trpc";
 import { QUESTION_TYPES } from "@shared/assessment";
-import { Download, Eye, FileUp, FolderTree, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Eye, FileUp, FolderTree, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
@@ -524,6 +524,10 @@ function QuestionBankTab() {
   const [newSection, setNewSection] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [topicsOpen, setTopicsOpen] = useState(false);
+  // Collapsed by default -- a bank of 10-15 questions used to mean 10-15 screens of options to
+  // scroll past just to find one. Each row now shows only its stem + tags until clicked open.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggleExpanded = (id: string) => setExpanded((cur) => { const next = new Set(cur); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const done = () => {
     setEditing(null);
     void utils.teacher.questions.bank.invalidate();
@@ -613,13 +617,35 @@ function QuestionBankTab() {
                   <div className="flex items-start gap-3">
                     <input type="checkbox" className="mt-1 accent-link" aria-label={t("qbank.selectQuestion")} checked={selected.has(q.id)} onChange={(e) => toggle(q.id, e.target.checked)} />
                     <div className="min-w-0 flex-1">
-                      <div className="text-xs font-medium text-link">{bankLabel(topicList, q) ?? t("qbank.unsorted")}</div>
-                      <QuestionPreview q={q} onChangeAnswer={() => setEditing(q.id)} />
-                      <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                      <button
+                        type="button"
+                        className="flex w-full min-w-0 items-start gap-2 text-left"
+                        aria-expanded={expanded.has(q.id)}
+                        onClick={() => toggleExpanded(q.id)}
+                      >
+                        {expanded.has(q.id) ? (
+                          <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                        ) : (
+                          <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-xs font-medium text-link">{bankLabel(topicList, q) ?? t("qbank.unsorted")}</span>
+                          {/* Always clamped to one line -- this is the row's title bar, not the full
+                             question; QuestionPreview below shows the untruncated text once expanded,
+                             so showing it unclamped here too would just repeat it. */}
+                          <span className="line-clamp-1 block break-words text-sm">{q.text}</span>
+                        </span>
+                      </button>
+                      <div className="mt-1 flex flex-wrap gap-2 pl-6 text-xs text-muted-foreground">
                         <span>{questionTypeLabel(q.type)}</span><span>· {t("common.points", { count: q.points })}</span>
                         {!q.sectionId && q.topic && <span>· {q.topic}</span>}{q.skill && <span>· {q.skill}</span>}
                         {q.source === "AI" && <StatusBadge tone="info" icon={Sparkles}>AI</StatusBadge>}
                       </div>
+                      {expanded.has(q.id) && (
+                        <div className="mt-2 border-t border-border pl-6 pt-2">
+                          <QuestionPreview q={q} onChangeAnswer={() => setEditing(q.id)} />
+                        </div>
+                      )}
                     </div>
                     <Button size="sm" variant="outline" onClick={() => setEditing(q.id)}>{t("common.edit")}</Button>
                   </div>
