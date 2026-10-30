@@ -81,12 +81,17 @@ interface AssignmentInitial {
   accessMode: TaskAccessMode;
 }
 
-function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; onOpenChange: (v: boolean) => void; initial?: AssignmentInitial }) {
+/** Prefilled text for a brand-new task, handed over from the standalone AI chooser flow
+ *  (see TaskCreateChooser) -- distinct from `initial`, which means "editing an existing task"
+ *  and carries an id, groups, attachments, etc. A draft only ever carries these three fields. */
+type AssignmentDraft = { title: string; description: string; instructions: string };
+
+function AssignmentFormDialog({ open, onOpenChange, initial, draft }: { open: boolean; onOpenChange: (v: boolean) => void; initial?: AssignmentInitial; draft?: AssignmentDraft }) {
   const utils = trpc.useUtils();
   const [f, setF] = useState({
-    title: initial?.title ?? "",
-    description: initial?.description ?? "",
-    instructions: initial?.instructions ?? "",
+    title: initial?.title ?? draft?.title ?? "",
+    description: initial?.description ?? draft?.description ?? "",
+    instructions: initial?.instructions ?? draft?.instructions ?? "",
     deadline: initial ? toLocalInput(initial.deadline) : "",
     attachments: (initial?.attachments ?? []).map((a) => ({ ...a, mimeType: "" })),
     accessMode: initial?.accessMode ?? ("PUBLIC" as TaskAccessMode),
@@ -168,7 +173,10 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
       <DialogContent className="max-w-2xl">
         <DialogHeader className="flex-row items-center justify-between gap-2">
           <DialogTitle>{initial ? t("modules.editTaskTitle") : t("modules.newTaskTitle")}</DialogTitle>
-          <Button type="button" size="sm" variant="outline" onClick={() => setAiTextOpen(true)}><Sparkles className="h-4 w-4" aria-hidden /> {t("modules.aiTextButton")}</Button>
+          {/* An already-existing task can still ask AI to rewrite its text in place. A brand-new
+             one picks AI vs. manual up front in TaskCreateChooser, so this button isn't repeated
+             here -- that was the second AI/upload entry point teachers found confusing. */}
+          {initial && <Button type="button" size="sm" variant="outline" onClick={() => setAiTextOpen(true)}><Sparkles className="h-4 w-4" aria-hidden /> {t("modules.aiTextButton")}</Button>}
         </DialogHeader>
         <DialogBody className="grid content-start gap-3">
           <label className="text-sm"><span className={fieldLabel}>{t("common.required", { label: t("common.name") })}</span><Input required value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></label>
@@ -273,11 +281,48 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
           </Button>
         </DialogFooter>
       </DialogContent>
-      <TaskAiTextDialog
-        open={aiTextOpen}
-        onOpenChange={setAiTextOpen}
-        onApply={(r) => setF({ ...f, title: r.title, description: r.description, instructions: r.instructions })}
-      />
+      {initial && (
+        <TaskAiTextDialog
+          open={aiTextOpen}
+          onOpenChange={setAiTextOpen}
+          onApply={(r) => setF({ ...f, title: r.title, description: r.description, instructions: r.instructions })}
+        />
+      )}
+    </Dialog>
+  );
+}
+
+/**
+ * Shown the moment a teacher clicks "Yeni tapşırıq", before the real form opens. Teachers found
+ * the old flow confusing: the plain creation form itself had a small "AI ilə yarat" button buried
+ * in its header, on top of the form's own file-attachment field right below it -- two unrelated
+ * upload/AI touchpoints in one screen. This splits them into two separate first steps instead:
+ * pick AI or manual up front, and the form you land on afterwards only has the one you chose.
+ */
+function TaskCreateChooser({ open, onOpenChange, onPickAi, onPickManual }: { open: boolean; onOpenChange: (v: boolean) => void; onPickAi: () => void; onPickManual: () => void }) {
+  const options: Array<{ icon: typeof Sparkles; label: string; hint: string; onClick: () => void }> = [
+    { icon: Sparkles, label: t("modules.createChooserAiOption"), hint: t("modules.createChooserAiHint"), onClick: onPickAi },
+    { icon: FileUp, label: t("modules.createChooserManualOption"), hint: t("modules.createChooserManualHint"), onClick: onPickManual },
+  ];
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>{t("modules.createChooserTitle")}</DialogTitle></DialogHeader>
+        <DialogBody className="grid gap-3 sm:grid-cols-2">
+          {options.map((o) => (
+            <button
+              key={o.label}
+              type="button"
+              className="flex flex-col items-start gap-2 rounded-lg border border-border p-4 text-left text-sm transition-colors hover:border-link hover:bg-muted"
+              onClick={o.onClick}
+            >
+              <o.icon className="h-5 w-5 text-link" aria-hidden />
+              <span className="font-medium">{o.label}</span>
+              <span className="text-xs text-muted-foreground">{o.hint}</span>
+            </button>
+          ))}
+        </DialogBody>
+      </DialogContent>
     </Dialog>
   );
 }
@@ -303,6 +348,9 @@ export function AssignmentsPage() {
   const engagementSummaryQ = trpc.teacher.tasks.engagementSummary.useQuery();
   const engagementSummaryOf = new Map((engagementSummaryQ.data ?? []).map((s) => [s.taskId, s]));
   const [open, setOpen] = useState(false);
+  const [createChooserOpen, setCreateChooserOpen] = useState(false);
+  const [aiCreateOpen, setAiCreateOpen] = useState(false);
+  const [createDraft, setCreateDraft] = useState<AssignmentDraft | null>(null);
   const [editing, setEditing] = useState<AssignmentInitial | null>(null);
   const [shareId, setShareId] = useState<string | null>(null);
   const [submissionsId, setSubmissionsId] = useState<string | null>(null);
@@ -335,7 +383,7 @@ export function AssignmentsPage() {
     <AppShell area="teaching">
       <div className="space-y-5">
         <div className="flex flex-wrap items-center justify-end gap-3">
-          <Button onClick={() => setOpen(true)}>{t("modules.newTask")}</Button>
+          <Button onClick={() => setCreateChooserOpen(true)}>{t("modules.newTask")}</Button>
         </div>
         {list.isLoading ? <Loading /> : !list.data?.length ? (
           <EmptyState title={t("modules.noTasks")} body={t("modules.noTasksBody")} />
@@ -485,7 +533,18 @@ export function AssignmentsPage() {
           </div>
         )}
       </div>
-      {open && <AssignmentFormDialog open onOpenChange={setOpen} />}
+      <TaskCreateChooser
+        open={createChooserOpen}
+        onOpenChange={setCreateChooserOpen}
+        onPickManual={() => { setCreateChooserOpen(false); setCreateDraft(null); setOpen(true); }}
+        onPickAi={() => { setCreateChooserOpen(false); setAiCreateOpen(true); }}
+      />
+      <TaskAiTextDialog
+        open={aiCreateOpen}
+        onOpenChange={setAiCreateOpen}
+        onApply={(r) => { setCreateDraft(r); setAiCreateOpen(false); setOpen(true); }}
+      />
+      {open && <AssignmentFormDialog open onOpenChange={(v) => { setOpen(v); if (!v) setCreateDraft(null); }} draft={createDraft ?? undefined} />}
       {editing && <AssignmentFormDialog open onOpenChange={(v) => !v && setEditing(null)} initial={editing} />}
     </AppShell>
   );
