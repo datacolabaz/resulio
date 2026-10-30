@@ -617,6 +617,11 @@ export const teacher = {
   "modules.aiTextTitle": ["AI ilə tapşırıq mətni yarat", "Generate assignment text with AI", "Создать текст задания с AI"],
   "modules.aiTextReview": ["Mətni yoxlayın və lazım gəldikdə redaktə edin.", "Review the text and edit it if needed.", "Проверьте текст и при необходимости отредактируйте его."],
   "modules.aiTextApply": ["Formaya əlavə et", "Use in form", "Использовать в форме"],
+  "modules.createChooserTitle": ["Tapşırığı necə hazırlayırsınız?", "How will you create the assignment?", "Как вы создадите задание?"],
+  "modules.createChooserAiOption": ["AI ilə yarat", "Generate with AI", "Создать с AI"],
+  "modules.createChooserAiHint": ["Mövzu və ya yüklədiyiniz materialdan AI tapşırığın mətnini hazırlasın.", "Let AI draft the assignment text from a topic or a source file you upload.", "Пусть AI составит текст задания по теме или загруженному материалу."],
+  "modules.createChooserManualOption": ["Əl ilə / fayl yüklə", "Write manually / upload a file", "Вручную / загрузить файл"],
+  "modules.createChooserManualHint": ["Başlığı, təsviri və tapşırığa aid faylları özünüz doldurun.", "Fill in the title, description and the task's own attachments yourself.", "Заполните название, описание и вложения задания сами."],
   "modules.quizHint": [
     "Quiz əlavə etsəniz, tələbənin cavabları avtomatik qiymətləndirilir və AI rəyi ilə birlikdə yekun qiymətə daxil edilir.",
     "If you add a quiz, the student's answers are auto-graded and blended with the AI review into the final grade.",
