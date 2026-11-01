@@ -172,6 +172,13 @@ export const admin = {
   "admin.settings.editLink": ["Tənzimləmələrdə dəyiş", "Change in Settings", "Изменить в настройках"],
   "admin.settings.notSet": ["Təyin edilməyib", "Not set", "Не задано"],
   "admin.limits.storage": ["Yaddaş: {size}", "Storage: {size}", "Хранилище: {size}"],
+  "admin.limits.activity": [
+    "{groups} qrup · {students} tələbə · {exams} imtahan · {tasks} tapşırıq · {materials} material",
+    "{groups} groups · {students} students · {exams} exams · {tasks} tasks · {materials} materials",
+    "{groups} групп · {students} студентов · {exams} экзаменов · {tasks} заданий · {materials} материалов",
+  ],
+  "admin.limits.lastSeen": ["Son aktivlik: {date}", "Last active: {date}", "Последняя активность: {date}"],
+  "admin.limits.neverActive": ["Heç vaxt daxil olmayıb", "Never logged in", "Никогда не заходил"],
 
   "admin.common.estimated": ["təxmini", "estimated", "оценка"],
   "admin.common.unlimited": ["Limitsiz", "Unlimited", "Без лимита"],

@@ -282,6 +282,18 @@ export default function AiLimitsPage() {
                       {t("admin.ai.col.cost")}: {fmtUsd(row.costUsd)} · {t("admin.common.requests")}: {fmtNumber(row.requests)}
                     </div>
                     <div className="text-xs text-muted-foreground">{t("admin.limits.storage", { size: formatFileSize(row.storageBytes) })}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {t("admin.limits.activity", {
+                        groups: fmtNumber(row.groupCount),
+                        students: fmtNumber(row.studentCount),
+                        exams: fmtNumber(row.examCount),
+                        tasks: fmtNumber(row.taskCount),
+                        materials: fmtNumber(row.materialCount),
+                      })}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {row.lastSeenAt ? t("admin.limits.lastSeen", { date: fmtDateTime(row.lastSeenAt) }) : t("admin.limits.neverActive")}
+                    </div>
                     {row.override?.usageResetAt && <div className="text-xs text-muted-foreground">{t("admin.limits.resetAt", { date: fmtDateTime(row.override.usageResetAt) })}</div>}
                     {row.mcpConnector && (
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
