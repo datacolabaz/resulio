@@ -647,6 +647,16 @@ export function StudentTasks() {
               ) : undefined}
             >
               <p className="break-words text-sm text-foreground-secondary">{a.description}</p>
+              {/* The teacher's "Təlimat" field (free text, or AI-drafted questions when the task has no
+                  structured quiz) -- this was being saved and sent to students correctly but never
+                  actually rendered here, so a task built from plain-text instructions reached students
+                  as an empty submission box with no visible questions. */}
+              {a.instructions && (
+                <div className="mt-2 whitespace-pre-wrap break-words rounded-lg border border-border bg-muted/30 p-2 text-sm">
+                  <p className="mb-1 text-xs font-medium text-foreground-secondary">{t("student.instructions")}</p>
+                  {a.instructions}
+                </div>
+              )}
               <p className="mt-2 text-xs text-muted-foreground">{t("modules.deadlineValue", { date: fmtDateTime(a.deadline) })}</p>
               {a.attachments.length > 0 && (
                 <ul className="mt-2 flex flex-wrap gap-1.5">
