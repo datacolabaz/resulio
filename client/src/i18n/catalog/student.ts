@@ -24,6 +24,7 @@ export const student = {
   "student.questionCount": ["Sual sayı", "Questions", "Вопросов"],
   "student.totalPoints": ["Ümumi bal", "Total points", "Всего баллов"],
   "student.instructions": ["Təlimat", "Instructions", "Инструкция"],
+  "student.taskInstructions": ["Tapşırıq", "Task", "Задание"],
   "student.resumeTitle": ["Siz bu imtahana əvvəllər başlamısınız.", "You have already started this exam.", "Вы уже начинали этот экзамен."],
   "student.resumeAnswered": ["Cavablandırılan suallar: {done} / {total}", "Answered questions: {done} / {total}", "Отвечено вопросов: {done} / {total}"],
   "student.resumeRemaining": ["Qalan vaxt: {time}", "Time left: {time}", "Осталось времени: {time}"],

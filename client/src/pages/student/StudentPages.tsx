@@ -650,10 +650,12 @@ export function StudentTasks() {
               {/* The teacher's "Təlimat" field (free text, or AI-drafted questions when the task has no
                   structured quiz) -- this was being saved and sent to students correctly but never
                   actually rendered here, so a task built from plain-text instructions reached students
-                  as an empty submission box with no visible questions. */}
+                  as an empty submission box with no visible questions. Labelled "Tapşırıq" (not
+                  "Təlimat", the exam page's label for the same field) because here it just as often
+                  holds the actual questions, not generic guidance -- "Təlimat" read as misleading. */}
               {a.instructions && (
                 <div className="mt-2 whitespace-pre-wrap break-words rounded-lg border border-border bg-muted/30 p-2 text-sm">
-                  <p className="mb-1 text-xs font-medium text-foreground-secondary">{t("student.instructions")}</p>
+                  <p className="mb-1 text-xs font-medium text-foreground-secondary">{t("student.taskInstructions")}</p>
                   {a.instructions}
                 </div>
               )}
