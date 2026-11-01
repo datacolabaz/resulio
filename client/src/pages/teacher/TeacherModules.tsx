@@ -18,6 +18,7 @@ import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTi
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { QuestionPreview } from "@/components/questionBank/QuestionPreview";
 import { bankLabel, SectionPicker, SectionSelect, TopicManagerDialog, TopicSelect, useTopics } from "@/components/questionBank/Topics";
 import { t } from "@/i18n/messages";
@@ -282,6 +283,43 @@ function AssignmentFormDialog({ open, onOpenChange, initial }: { open: boolean; 
   );
 }
 
+/**
+ * Hover card on the card-level "N nəfər görüb" badge: who, by name. Lazily fetches the full
+ * per-student engagement breakdown only once the tooltip actually opens (not one query per card
+ * up front -- `engagementSummaryQ` above already covers the glance-level count for every card).
+ */
+function TaskViewersTooltip({ taskId, children }: { taskId: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const engagementQ = trpc.teacher.tasks.engagement.useQuery({ id: taskId }, { enabled: open });
+  const viewers = (engagementQ.data?.students ?? []).filter((s) => s.openedAt);
+  const names = viewers.map((s) => s.name ?? s.email ?? `#${s.studentId}`);
+  const shown = names.slice(0, 8);
+  const more = names.length - shown.length;
+  const anonymousOpens = engagementQ.data?.anonymous.opens ?? 0;
+  return (
+    <Tooltip open={open} onOpenChange={setOpen}>
+      <TooltipTrigger asChild>
+        <span className="cursor-default">{children}</span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-[16rem]">
+        {!engagementQ.data ? (
+          <span>{t("modules.viewersLoading")}</span>
+        ) : (
+          <div className="space-y-0.5">
+            {shown.length === 0 && anonymousOpens === 0 ? (
+              <div>{t("modules.engagementSummaryNone")}</div>
+            ) : (
+              shown.map((name, i) => <div key={i} className="break-words">{name}</div>)
+            )}
+            {more > 0 && <div className="opacity-70">{t("modules.viewersMore", { count: more })}</div>}
+            {anonymousOpens > 0 && <div className="opacity-70">{t("modules.viewersAnonymous", { count: anonymousOpens })}</div>}
+          </div>
+        )}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 /** Places 1–3 by first submission time (resubmissions don't count). */
 function submissionPlaces(subs: Array<{ id: string; firstSubmittedAt: Date | null; submittedAt: Date | null }>) {
   const timed = subs
@@ -375,10 +413,12 @@ export function AssignmentsPage() {
                   }
                   return (
                     <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Eye className="h-3.5 w-3.5" aria-hidden />
-                        {t("modules.engagementSummaryViewed", { count: summary.viewedCount })}
-                      </span>
+                      <TaskViewersTooltip taskId={a.id}>
+                        <span className="flex items-center gap-1">
+                          <Eye className="h-3.5 w-3.5" aria-hidden />
+                          {t("modules.engagementSummaryViewed", { count: summary.viewedCount })}
+                        </span>
+                      </TaskViewersTooltip>
                       {summary.downloadCount > 0 && (
                         <span className="flex items-center gap-1">
                           <Download className="h-3.5 w-3.5" aria-hidden />
