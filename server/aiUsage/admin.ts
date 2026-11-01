@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, inArray, like, lt, or, sql, type SQL } from "drizzle-orm";
 import { AI_PRICE_FALLBACK_MODEL, MICRO_USD, nextPeriodStart, periodStart, type AiCallStatus, type AiFeature } from "../../shared/aiUsage";
-import { aiModelPrices, aiRequestLogs, aiTeacherLimits, files, providerWorkspaces, users } from "../../drizzle/schema";
+import { aiModelPrices, aiRequestLogs, aiTeacherLimits, assessments, files, groupMembers, groups, materials, providerWorkspaces, tasks, users } from "../../drizzle/schema";
 import { ENV } from "../_core/env";
 import { isGeminiUrl } from "../_core/aiConfig";
 import { requireDb, type Tx } from "../db";
@@ -224,7 +224,7 @@ export async function teacherLimits(input: { query?: string; limit?: number }, n
   const db = requireDb();
   const needle = input.query?.trim();
   const teachers = await db
-    .selectDistinct({ id: users.id, name: users.name, email: users.email, accountStatus: users.accountStatus })
+    .selectDistinct({ id: users.id, name: users.name, email: users.email, accountStatus: users.accountStatus, lastSeenAt: users.lastSeenAt })
     .from(providerWorkspaces)
     .innerJoin(users, eq(users.id, providerWorkspaces.ownerUserId))
     .where(needle ? or(like(users.name, `%${needle}%`), like(users.email, `%${needle}%`)) : undefined)
@@ -256,9 +256,51 @@ export async function teacherLimits(input: { query?: string; limit?: number }, n
     .innerJoin(providerWorkspaces, eq(providerWorkspaces.id, files.workspaceId))
     .where(inArray(providerWorkspaces.ownerUserId, ids))
     .groupBy(providerWorkspaces.ownerUserId);
+  // Product-usage counts (separate from the AI usage above): how much of the app a teacher has
+  // actually built out, not just their AI spend. Each is grouped by the same `providerWorkspaces.ownerUserId`
+  // the storage query above uses, so a teacher who owns more than one workspace is still one row,
+  // summed across all of them -- matching `stored`'s own precedent instead of assuming one workspace per teacher.
+  const groupCounts = await db
+    .select({ userId: providerWorkspaces.ownerUserId, count: sql<number>`count(*)` })
+    .from(groups)
+    .innerJoin(providerWorkspaces, eq(providerWorkspaces.id, groups.providerWorkspaceId))
+    .where(inArray(providerWorkspaces.ownerUserId, ids))
+    .groupBy(providerWorkspaces.ownerUserId);
+  // Distinct students, not memberships -- a student in two of the same teacher's groups counts once,
+  // same as a human reading "how many students has this teacher invited" would expect.
+  const studentCounts = await db
+    .select({ userId: providerWorkspaces.ownerUserId, count: sql<number>`count(distinct ${groupMembers.userId})` })
+    .from(groupMembers)
+    .innerJoin(groups, eq(groups.id, groupMembers.groupId))
+    .innerJoin(providerWorkspaces, eq(providerWorkspaces.id, groups.providerWorkspaceId))
+    .where(and(inArray(providerWorkspaces.ownerUserId, ids), eq(groupMembers.status, "ACTIVE"), eq(groupMembers.membershipRole, "STUDENT")))
+    .groupBy(providerWorkspaces.ownerUserId);
+  const examCounts = await db
+    .select({ userId: providerWorkspaces.ownerUserId, count: sql<number>`count(*)` })
+    .from(assessments)
+    .innerJoin(providerWorkspaces, eq(providerWorkspaces.id, assessments.providerWorkspaceId))
+    .where(inArray(providerWorkspaces.ownerUserId, ids))
+    .groupBy(providerWorkspaces.ownerUserId);
+  const taskCounts = await db
+    .select({ userId: providerWorkspaces.ownerUserId, count: sql<number>`count(*)` })
+    .from(tasks)
+    .innerJoin(providerWorkspaces, eq(providerWorkspaces.id, tasks.providerWorkspaceId))
+    .where(inArray(providerWorkspaces.ownerUserId, ids))
+    .groupBy(providerWorkspaces.ownerUserId);
+  const materialCounts = await db
+    .select({ userId: providerWorkspaces.ownerUserId, count: sql<number>`count(*)` })
+    .from(materials)
+    .innerJoin(providerWorkspaces, eq(providerWorkspaces.id, materials.providerWorkspaceId))
+    .where(inArray(providerWorkspaces.ownerUserId, ids))
+    .groupBy(providerWorkspaces.ownerUserId);
   const storedBy = new Map(stored.map((s) => [s.userId, n(s.bytes)]));
   const usageBy = new Map(usage.map((u) => [u.userId, u]));
   const overrideBy = new Map(overrides.map((o) => [o.userId, o]));
+  const groupCountBy = new Map(groupCounts.map((g) => [g.userId, n(g.count)]));
+  const studentCountBy = new Map(studentCounts.map((s) => [s.userId, n(s.count)]));
+  const examCountBy = new Map(examCounts.map((e) => [e.userId, n(e.count)]));
+  const taskCountBy = new Map(taskCounts.map((t2) => [t2.userId, n(t2.count)]));
+  const materialCountBy = new Map(materialCounts.map((m) => [m.userId, n(m.count)]));
   const rows = teachers.map((t) => {
     const u = usageBy.get(t.id);
     const o = overrideBy.get(t.id) ?? null;
@@ -271,6 +313,11 @@ export async function teacherLimits(input: { query?: string; limit?: number }, n
       requests: n(u?.requests),
       todayOperations: n(u?.todayOps),
       storageBytes: storedBy.get(t.id) ?? 0,
+      groupCount: groupCountBy.get(t.id) ?? 0,
+      studentCount: studentCountBy.get(t.id) ?? 0,
+      examCount: examCountBy.get(t.id) ?? 0,
+      taskCount: taskCountBy.get(t.id) ?? 0,
+      materialCount: materialCountBy.get(t.id) ?? 0,
       override: o ? { monthlyTokenQuota: o.monthlyTokenQuota, dailyRequestCap: o.dailyRequestCap, usageResetAt: o.usageResetAt } : null,
       effective,
       monthRatio: effective.monthlyTokenQuota ? n(u?.countedTokens) / effective.monthlyTokenQuota : null,
