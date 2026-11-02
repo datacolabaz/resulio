@@ -30,11 +30,16 @@ function wasChosen(): boolean {
   }
 }
 
+/**
+ * Default is always "az" on a first visit, on any device -- a visitor's own stored choice (this
+ * browser) or signed-in profile preference (handled separately, below) still wins, but the
+ * device/browser language is never used to guess it. Previously fell back to `navigator.language`,
+ * which opened the site in English for anyone whose phone's system language was English even
+ * though they'd never chosen that for Resulio -- inconsistent with desktop, where the browser
+ * language more often happened to be az/ru already.
+ */
 function detectLocale(): Locale {
-  const saved = readStored();
-  if (saved) return saved;
-  const browser = navigator.language.toLowerCase().split("-")[0];
-  return isLocale(browser) ? browser : "az";
+  return readStored() ?? "az";
 }
 
 export function LocaleProvider({ children }: { children: React.ReactNode }) {
