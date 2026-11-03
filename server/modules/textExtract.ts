@@ -380,7 +380,7 @@ export function extractDocument(fileName: string, buf: Buffer): DocResult {
   const ext = extensionOf(fileName);
   try {
     const text = () => buf.toString("utf8").replace(/^\uFEFF/, "");
-    if (ext === ".txt") return { ok: true, doc: { kind: "text", text: text() } };
+    if (ext === ".txt" || ext === ".sql") return { ok: true, doc: { kind: "text", text: text() } };
     if (ext === ".csv") return { ok: true, doc: { kind: "sheets", sheets: [csvSheet(text())] } };
     if (ext === ".xlsx") return { ok: true, doc: { kind: "sheets", sheets: xlsxSheets(buf) } };
     if (ext === ".docx" || ext === ".pptx") return { ok: true, doc: { kind: "text", text: officeText(buf, ext) } };
