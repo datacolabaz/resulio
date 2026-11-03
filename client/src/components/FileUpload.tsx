@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 /** Extensions accepted by server/modules/files.ts's ALLOWED_FILE_TYPES, kept in sync by hand since
  *  that map lives server-side and the client only needs the extension list for the file picker. */
-const ACCEPT = ".xlsx,.xls,.csv,.pdf,.pptx,.ppt,.docx,.doc,.txt,.png,.jpg,.jpeg";
+const ACCEPT = ".xlsx,.xls,.csv,.pdf,.pptx,.ppt,.docx,.doc,.txt,.sql,.png,.jpg,.jpeg";
 
 function uploadErrorText(code: string) {
   if (code === "FILE_TOO_LARGE") return t("files.tooLarge");

@@ -34,6 +34,7 @@ export const ALLOWED_FILE_TYPES: Record<string, string> = {
   ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   ".doc": "application/msword",
   ".txt": "text/plain",
+  ".sql": "application/sql",
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
