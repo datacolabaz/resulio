@@ -163,6 +163,14 @@ export const ENV = {
     const n = Number.parseInt(envString("QUESTION_IMPORT_DAILY_LIMIT"), 10);
     return Number.isFinite(n) && n >= 0 ? n : 60;
   },
+  /**
+   * Two-stage extraction: a pure verbatim transcription pass (buildRawTranscriptionMessages) before
+   * the existing structuring pass, which then reads that transcript instead of the original file --
+   * so a digit or wording mismatch is visible in review (question_import_items.rawText) instead of
+   * silently baked into the structured question. Off by default: it roughly doubles the model calls
+   * (cost and latency) per chunk, so turn it on with QUESTION_IMPORT_TWO_STAGE=1 once validated.
+   */
+  get questionImportTwoStage() { return envString("QUESTION_IMPORT_TWO_STAGE") === "1"; },
   /** Syllabus import from a file or text runs only when the LLM is configured and SYLLABUS_IMPORT_DISABLED is not "1". */
   get syllabusImportEnabled() { return this.llmConfigured && envString("SYLLABUS_IMPORT_DISABLED") !== "1"; },
   /** Optional model for syllabus import; empty = QUESTION_IMPORT_MODEL, then AI_MODEL / the provider default. */

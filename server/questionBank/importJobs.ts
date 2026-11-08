@@ -12,9 +12,9 @@ import {
   type ImportIssue,
   type ImportJobError,
 } from "../../shared/questionImport";
-import { isGeminiUrl } from "../_core/aiConfig";
+import { isGeminiUrl, type LlmConfig } from "../_core/aiConfig";
 import { ENV } from "../_core/env";
-import { invokeLLM, LlmHttpError, llmFailureReason } from "../_core/llm";
+import { invokeLLM, LlmHttpError, llmFailureReason, type Message, type MessageContent } from "../_core/llm";
 import { withAiUsage } from "../aiUsage/context";
 import { assertAiAllowed } from "../aiUsage/limits";
 import { requireDb } from "../db";
@@ -24,7 +24,19 @@ import { AppError } from "../modules/errors";
 import { extensionOf, fileBytes, fileRow, MAX_FILE_BYTES } from "../modules/files";
 import { filePart, pdfInputMode, type InputMode } from "../modules/llmFileParts";
 import { createBankQuestion } from "./bank";
-import { buildExtractionMessages, findDuplicates, normalizeItem, parseExtraction, planChunks, type ImportDraft, type SectionContext } from "./extraction";
+import {
+  buildExtractionMessages,
+  buildRawTranscriptionMessages,
+  findDuplicates,
+  matchRawText,
+  normalizeItem,
+  parseExtraction,
+  parseRawTranscription,
+  planChunks,
+  type ImportDraft,
+  type RawTranscriptItem,
+  type SectionContext,
+} from "./extraction";
 import { pdfPageCount, pdfPageTexts, pdfSlice } from "./pdf";
 import { ensureTopic, ownedSection, topicsOf } from "./topics";
 
@@ -186,7 +198,35 @@ interface Chunk {
   pageOffset: number;
 }
 
-/** Reads one chunk with the model; falls back from the native PDF to its text once if the provider refuses the file. */
+/** The chunk's content as the shared {parts, documentText} shape either stage's prompt builder takes. */
+async function contentFor(
+  ctx: { job: QuestionImportJob; bytes: Uint8Array; pageTexts: () => Promise<string[]> },
+  chunk: Chunk,
+  isPdf: boolean,
+  config: LlmConfig,
+  m: InputMode,
+): Promise<{ parts: MessageContent[] | null; documentText?: string }> {
+  if (!isPdf) return { parts: [filePart(ctx.job.mimeType, ctx.bytes, ctx.job.fileName, config)] };
+  const range = chunk.range!;
+  if (m === "native") {
+    const slice = range.from === 1 && range.to === (ctx.job.pageCount ?? range.to) ? ctx.bytes : await pdfSlice(ctx.bytes, range.from, range.to);
+    return { parts: [filePart("application/pdf", slice, ctx.job.fileName, config)] };
+  }
+  const texts = (await ctx.pageTexts()).slice(range.from - 1, range.to);
+  const documentText = texts.map((t, i) => `--- page ${i + 1} ---\n${t}`).join("\n\n");
+  if (!texts.some((t) => t.trim().length > 20)) throw new ChunkError("NO_TEXT");
+  return { parts: null, documentText };
+}
+
+/**
+ * Reads one chunk with the model; falls back from the native PDF to its text once if the provider
+ * refuses the file. With ENV.questionImportTwoStage on, the file/image is read only by Stage A (a
+ * pure verbatim transcription, buildRawTranscriptionMessages) -- Stage B (buildExtractionMessages,
+ * the existing structuring prompt) then reads that transcript as plain text, never the file itself,
+ * and each final item gets back the exact block it was structured from (matchRawText) so review can
+ * show the two side by side. The native/text fallback-on-refusal applies to whichever stage actually
+ * sends the raw file: Stage A in two-stage mode, Stage B (as before) otherwise.
+ */
 async function readChunk(
   ctx: { job: QuestionImportJob; bytes: Uint8Array; sections: SectionContext; mode: InputMode; pageTexts: () => Promise<string[]> },
   chunk: Chunk,
@@ -195,39 +235,55 @@ async function readChunk(
   const nonce = randomBytes(6).toString("hex");
   const isPdf = ctx.job.mimeType === "application/pdf";
   let mode = ctx.mode;
-  const messagesFor = async (m: InputMode) => {
-    if (!isPdf) return buildExtractionMessages({ parts: [filePart(ctx.job.mimeType, ctx.bytes, ctx.job.fileName, config)], pageRange: null, sections: ctx.sections, nonce });
-    const range = chunk.range!;
-    if (m === "native") {
-      const slice = range.from === 1 && range.to === (ctx.job.pageCount ?? range.to) ? ctx.bytes : await pdfSlice(ctx.bytes, range.from, range.to);
-      return buildExtractionMessages({ parts: [filePart("application/pdf", slice, ctx.job.fileName, config)], pageRange: range, sections: ctx.sections, nonce });
-    }
-    const texts = (await ctx.pageTexts()).slice(range.from - 1, range.to);
-    const documentText = texts.map((t, i) => `--- page ${i + 1} ---\n${t}`).join("\n\n");
-    if (!texts.some((t) => t.trim().length > 20)) throw new ChunkError("NO_TEXT");
-    return buildExtractionMessages({ parts: null, documentText, pageRange: range, sections: ctx.sections, nonce });
-  };
-  const call = async (m: InputMode) =>
+  const range = isPdf ? chunk.range : null;
+
+  const callLLM = (messages: Message[]) =>
     invokeLLM({
-      messages: await messagesFor(m),
+      messages,
       responseFormat: { type: "json_object" },
       maxTokens: isGeminiUrl(config.baseUrl) ? 32_768 : 16_000,
       model: ENV.questionImportModel || undefined,
       timeoutMs: CHUNK_TIMEOUT_MS,
     });
+  const textOf = (content: unknown) => (typeof content === "string" ? content : "");
+
+  let rawItems: RawTranscriptItem[] = [];
+  const structuringMessages = async (m: InputMode): Promise<Message[]> => {
+    if (!ENV.questionImportTwoStage) {
+      const content = await contentFor(ctx, chunk, isPdf, config, m);
+      return buildExtractionMessages({ ...content, pageRange: range, sections: ctx.sections, nonce });
+    }
+    const content = await contentFor(ctx, chunk, isPdf, config, m);
+    const transcript = await callLLM(buildRawTranscriptionMessages({ ...content, pageRange: range, nonce }));
+    const parsed = parseRawTranscription(textOf(transcript.choices[0]?.message?.content));
+    if (!parsed || !parsed.items.length) throw new ChunkError("AI_OUTPUT");
+    rawItems = parsed.items;
+    const joined = rawItems
+      .map((r, i) => `--- question ${i + 1}${r.number !== null && r.number !== undefined ? ` (#${r.number})` : ""} ---\n${r.text}`)
+      .join("\n\n");
+    return buildExtractionMessages({ parts: null, documentText: joined, pageRange: range, sections: ctx.sections, nonce });
+  };
+
   let result;
   try {
-    result = await call(mode);
+    result = await callLLM(await structuringMessages(mode));
   } catch (error) {
-    const providerRefusedFile = isPdf && mode === "native" && !ENV.questionImportPdfMode && error instanceof LlmHttpError && (error.status === 400 || error.status === 415);
+    // In two-stage mode, !rawItems.length tells "the file itself was refused" (Stage A never got a
+    // parsed result) apart from "Stage A succeeded but Stage B then failed for an unrelated reason"
+    // (rawItems already set) -- only the former is actually fixed by resending as text. In
+    // single-stage mode rawItems is never set, so this is always true there, unchanged from before.
+    const providerRefusedFile = isPdf && mode === "native" && !rawItems.length && !ENV.questionImportPdfMode && error instanceof LlmHttpError && (error.status === 400 || error.status === 415);
     if (!providerRefusedFile || llmFailureReason(error) === "AI_KEY_INVALID") throw error;
     mode = "text";
-    result = await call(mode);
+    result = await callLLM(await structuringMessages(mode));
   }
-  const content = result.choices[0]?.message?.content;
-  const parsed = parseExtraction(typeof content === "string" ? content : "");
+  const parsed = parseExtraction(textOf(result.choices[0]?.message?.content));
   if (!parsed) throw new ChunkError("AI_OUTPUT");
   const drafts = parsed.items.map((raw) => normalizeItem(raw, { sections: ctx.sections, pageOffset: chunk.pageOffset }));
+  if (rawItems.length) {
+    const matched = matchRawText(parsed.items, rawItems);
+    drafts.forEach((d, i) => (d.rawText = matched[i] ?? null));
+  }
   return { drafts, mode };
 }
 
@@ -282,6 +338,10 @@ export async function runImport(jobId: string, runId: string) {
       failures.push("DAILY_LIMIT");
       break;
     }
+    // One usage event per chunk, same bookkeeping as the existing native->text fallback retry
+    // (which already makes a second, unaccounted model call on occasion): with
+    // ENV.questionImportTwoStage on, a "chunk" is two real model calls (Stage A then Stage B)
+    // rather than one, so this undercounts actual provider usage by design, not by oversight.
     await db.insert(aiUsageEvents).values({ workspaceId: job.providerWorkspaceId, kind: IMPORT_USAGE_KIND, refId: jobId });
     try {
       const out = await readChunk(ctx, chunk);
@@ -349,6 +409,7 @@ async function buildItems(scope: TeacherScope, job: QuestionImportJob, drafts: I
       confidence: d.confidence,
       sourcePage: d.sourcePage,
       sourceNumber: d.sourceNumber,
+      rawText: d.rawText,
       duplicateOfQuestionId: dups[i].duplicateOfQuestionId,
     };
   });
@@ -421,6 +482,7 @@ export function itemView(item: QuestionImportItem) {
     confidence: item.confidence,
     sourcePage: item.sourcePage,
     sourceNumber: item.sourceNumber,
+    rawText: item.rawText,
     duplicateOfQuestionId: item.duplicateOfQuestionId,
     questionId: item.questionId,
   };

@@ -68,7 +68,7 @@ export function parseExtraction(text: string): { items: RawItem[]; rejected: num
 // ---------------------------------------------------------------------------
 
 /**
- * Stage A of the two-stage import (not yet wired into the running job -- see importJobs.ts):
+ * Stage A of the two-stage import (importJobs.ts's readChunk, behind ENV.questionImportTwoStage):
  * a pure, verbatim transcription with no typing or structuring decision at all. The model's only
  * job is getting the exact words, numbers, labels and layout of each question onto the page
  * faithfully, one block of text per question, marking anything it cannot read with confidence
@@ -226,6 +226,8 @@ export interface ImportDraft {
   sourcePage: number | null;
   /** The number printed in the file; provenance only, never the bank number. */
   sourceNumber: string | null;
+  /** Stage A's verbatim transcript this question was structured from (two-stage import only); null otherwise. */
+  rawText: string | null;
 }
 
 const TYPE_ALIASES: Record<string, ImportQuestionType> = {
@@ -477,7 +479,34 @@ export function normalizeItem(raw: RawItem, ctx: { sections: SectionContext; pag
     ...suggestSection(raw, ctx.sections),
     sourcePage: Number.isFinite(page) && page >= 1 ? page + ctx.pageOffset : ctx.pageOffset ? ctx.pageOffset + 1 : null,
     sourceNumber,
+    // Set by the caller (importJobs.ts, matchRawText below) when this came from a two-stage run;
+    // normalizeItem itself has no access to Stage A's transcript.
+    rawText: null,
   };
+}
+
+/**
+ * Two-stage import only: pairs Stage B's final items back to the Stage-A block each most likely
+ * came from, so normalizeItem's drafts can carry the verbatim text they were structured from.
+ * Matches by printed number when both sides give one and it is unambiguous (the common case: most
+ * exam questions are numbered); otherwise falls back to position, since Stage B is fed Stage A's
+ * blocks in that same order and told not to reorder, merge or split them. Returns one entry per
+ * `finalItems`, or null where nothing lines up (more final items than raw blocks, say).
+ */
+export function matchRawText(finalItems: Pick<RawItem, "number">[], rawItems: RawTranscriptItem[]): (string | null)[] {
+  const byNumber = new Map<string, string>();
+  const ambiguous = new Set<string>();
+  for (const r of rawItems) {
+    const key = r.number === null || r.number === undefined ? "" : String(r.number).trim();
+    if (!key) continue;
+    if (byNumber.has(key)) ambiguous.add(key);
+    else byNumber.set(key, r.text);
+  }
+  return finalItems.map((f, i) => {
+    const key = f.number === null || f.number === undefined ? "" : String(f.number).trim();
+    if (key && !ambiguous.has(key) && byNumber.has(key)) return byNumber.get(key) ?? null;
+    return rawItems[i]?.text ?? null;
+  });
 }
 
 /**
