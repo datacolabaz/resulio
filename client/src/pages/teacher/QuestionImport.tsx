@@ -343,6 +343,12 @@ function ReviewItem({
               ))}
             </ul>
           )}
+          {item.rawText && (
+            <details className="rounded-lg border border-border bg-muted/50 p-2 text-xs">
+              <summary className="cursor-pointer select-none font-medium text-muted-foreground">{t("qimport.rawTextToggle")}</summary>
+              <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed">{item.rawText}</pre>
+            </details>
+          )}
           {duplicateText && <p className="text-xs text-muted-foreground">{t("qimport.duplicateOf", { text: duplicateText })}</p>}
           {pending && !editing && <ItemSection item={item} topics={topics} disabled={busy} onChange={(patch) => update.mutate({ id: item.id, ...patch })} />}
         </div>

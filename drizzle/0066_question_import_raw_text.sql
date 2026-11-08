@@ -1,0 +1,1 @@
+ALTER TABLE `question_import_items` ADD `rawText` text;

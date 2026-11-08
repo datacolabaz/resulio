@@ -2047,6 +2047,14 @@ export const questionImportItems = mysqlTable(
     position: int("position").notNull(),
     status: mysqlEnum("status", IMPORT_ITEM_STATUSES).notNull().default("PENDING"),
     question: json("question").$type<Record<string, unknown>>().notNull(),
+    /**
+     * The model's verbatim transcription of just this one question (Stage A, before any typing or
+     * structuring decision) -- kept so the teacher's review can show the structured question next
+     * to exactly what the model read off the page, and so a digit or wording mismatch between the
+     * two is visible without re-opening the original file. Null for items from a job run before
+     * this column existed, and for the rare item a two-stage run could not match back to one block.
+     */
+    rawText: text("rawText"),
     issues: json("issues").$type<ImportIssue[]>().notNull(),
     /** Where the question will be filed: the job's section unless the teacher changed it. */
     sectionId: id("sectionId").notNull(),
