@@ -622,6 +622,12 @@ function QuestionBankTab() {
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const [newSection, setNewSection] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Changing any filter changes which rows are even on screen, so a selection made under the old
+  // filter must not silently carry over to the new one -- the teacher could tick "select all" while
+  // filtered to one section, narrow the filter to a different section expecting a fresh checklist,
+  // and still act on the FIRST section's ids without that filtered view ever showing them again.
+  // Clearing on every filter change keeps "what's selected" always matching "what's currently shown".
+  useEffect(() => setSelected(new Set()), [search, type, source, topicId]);
   const [topicsOpen, setTopicsOpen] = useState(false);
   // Collapsed by default -- a bank of 10-15 questions used to mean 10-15 screens of options to
   // scroll past just to find one. Each row now shows only its stem + tags until clicked open.
@@ -660,6 +666,11 @@ function QuestionBankTab() {
   });
   const rows = bank.data ?? [];
   const toggle = (id: string, on: boolean) => setSelected((cur) => { const next = new Set(cur); if (on) next.add(id); else next.delete(id); return next; });
+  // Belt-and-suspenders on top of clearing `selected` on every filter change above: the actual
+  // move/delete calls act on this intersection with the CURRENTLY rendered rows, never on `selected`
+  // directly, so a bulk action can never reach a question that isn't part of what the teacher is
+  // looking at right now, even if some future change left a stale id in `selected`.
+  const visibleSelectedIds = rows.filter((q) => selected.has(q.id)).map((q) => q.id);
   return (
     <div className="space-y-4">
       {/* Actions on their own row, "+ Yeni sual" the one primary button -- previously these sat
@@ -685,14 +696,14 @@ function QuestionBankTab() {
           </select>
         </div>
       </div>
-      {selected.size > 0 && (
+      {visibleSelectedIds.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-muted p-3 text-sm">
-          <span>{t("qbank.selected", { count: selected.size })}</span>
+          <span>{t("qbank.selected", { count: visibleSelectedIds.length })}</span>
           <SectionSelect
             topics={topicList}
             value=""
             disabled={move.isPending}
-            onChange={(sectionId) => sectionId && move.mutate({ questionIds: [...selected], sectionId })}
+            onChange={(sectionId) => sectionId && move.mutate({ questionIds: visibleSelectedIds, sectionId })}
             emptyLabel={t("qbank.moveTo")}
             ariaLabel={t("qbank.moveTo")}
             className={filterSelect}
@@ -703,7 +714,7 @@ function QuestionBankTab() {
             variant="ghost"
             className="text-destructive"
             disabled={removeSelected.isPending}
-            onClick={() => confirm(t("qbank.deleteConfirm", { count: selected.size })) && removeSelected.mutate({ ids: [...selected] })}
+            onClick={() => confirm(t("qbank.deleteConfirm", { count: visibleSelectedIds.length })) && removeSelected.mutate({ ids: visibleSelectedIds })}
           >
             <Trash2 className="mr-1 h-4 w-4" aria-hidden />
             {t("qbank.deleteSelected")}
