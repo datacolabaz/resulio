@@ -149,6 +149,22 @@ function InlineCreate({
  * Where a question goes: first the subject, then one of its sections. Either can be created on the
  * spot. `value` is the section id ("" while none is chosen).
  */
+const LAST_SECTION_KEY = "resulio:lastBankSectionId";
+function readLastSection(): string {
+  try {
+    return localStorage.getItem(LAST_SECTION_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+function writeLastSection(id: string) {
+  try {
+    if (id) localStorage.setItem(LAST_SECTION_KEY, id);
+  } catch {
+    /* private browsing / storage disabled -- the picker still works, it just won't remember */
+  }
+}
+
 export function SectionPicker({ value, onChange, className = "" }: { value: string; onChange: (sectionId: string) => void; className?: string }) {
   const topics = useTopics();
   const refresh = useRefreshTopics();
@@ -156,6 +172,25 @@ export function SectionPicker({ value, onChange, className = "" }: { value: stri
   const parentOf = (id: string) => list.find((x) => x.id === id)?.parentId ?? "";
   const [subjectId, setSubjectId] = useState(() => parentOf(value));
   const [creating, setCreating] = useState<"SUBJECT" | "SECTION" | null>(null);
+  const change = (id: string) => {
+    onChange(id);
+    writeLastSection(id);
+  };
+  // Every caller (bank "+ Yeni sual", file import, exam/task "+ Yeni sual") used to start this
+  // picker empty and make the teacher choose a subject and section from scratch every single time,
+  // even when they'd just filed several questions in the same section moments before. Default to
+  // last time's section instead -- only while the caller's own value is still empty (never overrides
+  // a value already set, e.g. editing an existing question) and only once that section is confirmed
+  // to still exist.
+  useEffect(() => {
+    if (value || !list.length) return;
+    const saved = readLastSection();
+    if (saved && list.some((x) => x.id === saved)) {
+      setSubjectId(parentOf(saved));
+      onChange(saved);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list.length]);
   useEffect(() => {
     const parent = parentOf(value);
     if (parent) setSubjectId(parent);
@@ -166,7 +201,7 @@ export function SectionPicker({ value, onChange, className = "" }: { value: stri
       refresh();
       if (row.parentId) {
         setSubjectId(row.parentId);
-        onChange(row.id);
+        change(row.id);
       } else {
         setSubjectId(row.id);
         onChange("");
@@ -218,7 +253,7 @@ export function SectionPicker({ value, onChange, className = "" }: { value: stri
             className={`mt-1 w-full ${topicSelectClass}`}
             value={value}
             disabled={!subjectId}
-            onChange={(e) => (e.target.value === NEW ? setCreating("SECTION") : onChange(e.target.value))}
+            onChange={(e) => (e.target.value === NEW ? setCreating("SECTION") : change(e.target.value))}
           >
             <option value="">{t("qbank.pickSection")}</option>
             {sections.map((x) => (
