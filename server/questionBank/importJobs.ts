@@ -9,6 +9,7 @@ import {
   IMPORT_EXTENSIONS,
   IMPORT_MAX_PAGES,
   IMPORT_MAX_QUESTIONS,
+  IMPORT_MIME_BY_EXT,
   type ImportIssue,
   type ImportJobError,
 } from "../../shared/questionImport";
@@ -42,8 +43,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const IMPORT_STALE_MS = 20 * 60 * 1000;
 const CHUNK_TIMEOUT_MS = 180_000;
 const BANK_SCAN_LIMIT = 5000;
-
-const MIME_BY_EXT: Record<string, string> = { ".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg" };
 
 // Re-exported for existing importers of this module (coach/ocr.ts, questionImport.test.ts) --
 // the implementation moved to modules/llmFileParts.ts so modules/ai.ts can use it too without a cycle.
@@ -91,7 +90,7 @@ async function ownedJob(scope: TeacherScope, id: string): Promise<QuestionImport
 async function loadFile(workspaceId: string, fileId: string) {
   const file = await fileRow(fileId);
   if (!file || file.workspaceId !== workspaceId) throw new AppError("FILE_NOT_FOUND");
-  const mimeType = MIME_BY_EXT[extensionOf(file.fileName)];
+  const mimeType = IMPORT_MIME_BY_EXT[extensionOf(file.fileName)];
   if (!mimeType) throw new AppError("IMPORT_FILE_TYPE");
   return { file, mimeType, bytes: new Uint8Array(await fileBytes(file)) };
 }

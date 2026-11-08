@@ -236,6 +236,21 @@ describe("model input", () => {
       file: { filename: "a.pdf", file_data: "data:application/pdf;base64,AQID" },
     });
     expect(filePart("image/png", bytes, "a.png", { source: "manus", baseUrl: "https://forge.example" })).toMatchObject({ type: "image_url" });
+    // WEBP is a photo format too (some phone cameras save in it by default); filePart treats any
+    // image/* the same way, so it needs no case of its own -- this just pins that down.
+    expect(filePart("image/webp", bytes, "a.webp", { source: "ai", baseUrl: "https://api.openai.com" })).toEqual({
+      type: "image_url",
+      image_url: { url: "data:image/webp;base64,AQID", detail: "high" },
+    });
+  });
+
+  it("accepts .webp alongside the other photo/PDF formats, in both the extension list and the upload mime map", async () => {
+    const { IMPORT_EXTENSIONS, IMPORT_MIME_BY_EXT, IMPORT_MIME_TYPES } = await import("../shared/questionImport");
+    expect(IMPORT_EXTENSIONS).toContain(".webp");
+    expect(IMPORT_MIME_BY_EXT[".webp"]).toBe("image/webp");
+    expect(IMPORT_MIME_TYPES).toContain("image/webp");
+    // Every extension must resolve to a mime type and back, so nothing in the list is a dead end.
+    for (const ext of IMPORT_EXTENSIONS) expect(IMPORT_MIME_TYPES).toContain(IMPORT_MIME_BY_EXT[ext]);
   });
 
   it("fences the section list and document text as data", () => {

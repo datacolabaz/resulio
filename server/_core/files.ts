@@ -7,6 +7,7 @@ import type { User } from "../../drizzle/schema";
 import { tasks } from "../../drizzle/schema";
 import { requireDb } from "../db";
 import { MATERIAL_UPLOAD_TYPES } from "../../shared/materialTemplates";
+import { IMPORT_MIME_BY_EXT } from "../../shared/questionImport";
 import { assertCoachEnabled } from "../coach/availability";
 import { assertUploadAllowed, COACH_FILE_TYPES, coachWorkspaceId } from "../coach/materials";
 import { assertConsent } from "../coach/store";
@@ -121,7 +122,11 @@ export function registerFileRoutes(app: Express) {
 
         let workspaceId: string;
         let isPublic = false;
-        let allowedTypes = context === "material" ? MATERIAL_UPLOAD_TYPES : undefined;
+        // "question-import" has its own, narrower allow-list (shared/questionImport.ts) -- the
+        // generic default (ALLOWED_FILE_TYPES below) has no .webp, so a photo in that format used
+        // to upload fine here only to be rejected later, confusingly, when the import job itself
+        // started reading the file (importJobs.ts's own mime check against the same source).
+        let allowedTypes = context === "material" ? MATERIAL_UPLOAD_TYPES : context === "question-import" ? IMPORT_MIME_BY_EXT : undefined;
         if (context === "coach") {
           // A student's own study material: private workspace id no provider workspace has.
           await assertCoachEnabled(user.id);

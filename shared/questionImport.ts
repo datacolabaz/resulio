@@ -25,8 +25,21 @@ export function needsAnswerCheck(meta: { answerSource: AnswerSource | null; aiCo
 export const IMPORT_QUESTION_TYPES = ["MULTIPLE_CHOICE", "MULTIPLE_SELECT", "TRUE_FALSE", "SHORT_ANSWER", "LONG_ANSWER", "FILL_BLANK", "NUMERIC"] as const;
 export type ImportQuestionType = (typeof IMPORT_QUESTION_TYPES)[number];
 
-export const IMPORT_MIME_TYPES = ["application/pdf", "image/png", "image/jpeg"] as const;
-export const IMPORT_EXTENSIONS = [".pdf", ".png", ".jpg", ".jpeg"] as const;
+/**
+ * Extension -> MIME type for files the importer accepts; the single source of truth for both the
+ * upload allow-list (server/_core/files.ts) and the import job's own mime detection
+ * (server/questionBank/importJobs.ts) -- so a format added here is accepted at upload time too,
+ * never rejected first at upload and only later, confusingly, when the job itself starts.
+ */
+export const IMPORT_MIME_BY_EXT: Record<string, string> = {
+  ".pdf": "application/pdf",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+};
+export const IMPORT_EXTENSIONS = Object.keys(IMPORT_MIME_BY_EXT);
+export const IMPORT_MIME_TYPES = [...new Set(Object.values(IMPORT_MIME_BY_EXT))];
 
 /** Pages read per import; longer PDFs are refused rather than silently truncated. */
 export const IMPORT_MAX_PAGES = 40;
