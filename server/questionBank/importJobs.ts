@@ -22,7 +22,7 @@ import type { TeacherScope } from "../modules/access";
 import { providerAlertFor, sendAiAlert } from "../modules/aiAlerts";
 import { AppError } from "../modules/errors";
 import { extensionOf, fileBytes, fileRow, MAX_FILE_BYTES } from "../modules/files";
-import { filePart, pdfInputMode, type InputMode } from "../modules/llmFileParts";
+import { filePart, pdfInputMode, supportsOriginalDetail, type InputMode } from "../modules/llmFileParts";
 import { createBankQuestion } from "./bank";
 import {
   buildExtractionMessages,
@@ -59,7 +59,7 @@ const MIME_BY_EXT: Record<string, string> = { ".pdf": "application/pdf", ".png":
 
 // Re-exported for existing importers of this module (coach/ocr.ts, questionImport.test.ts) --
 // the implementation moved to modules/llmFileParts.ts so modules/ai.ts can use it too without a cycle.
-export { filePart, pdfInputMode, type InputMode };
+export { filePart, pdfInputMode, supportsOriginalDetail, type InputMode };
 
 // ---------------------------------------------------------------------------
 // Usage cap
@@ -205,8 +205,9 @@ async function contentFor(
   isPdf: boolean,
   config: LlmConfig,
   m: InputMode,
+  imageDetail: "high" | "original",
 ): Promise<{ parts: MessageContent[] | null; documentText?: string }> {
-  if (!isPdf) return { parts: [filePart(ctx.job.mimeType, ctx.bytes, ctx.job.fileName, config)] };
+  if (!isPdf) return { parts: [filePart(ctx.job.mimeType, ctx.bytes, ctx.job.fileName, config, imageDetail)] };
   const range = chunk.range!;
   if (m === "native") {
     const slice = range.from === 1 && range.to === (ctx.job.pageCount ?? range.to) ? ctx.bytes : await pdfSlice(ctx.bytes, range.from, range.to);
@@ -235,6 +236,9 @@ async function readChunk(
   const nonce = randomBytes(6).toString("hex");
   const isPdf = ctx.job.mimeType === "application/pdf";
   let mode = ctx.mode;
+  // "original" (see llmFileParts.ts) only when it's an image, read by OpenAI -- dropped to "high"
+  // below if the provider itself rejects it.
+  let imageDetail: "high" | "original" = !isPdf && supportsOriginalDetail(config) ? "original" : "high";
   const range = isPdf ? chunk.range : null;
 
   const callLLM = (messages: Message[]) =>
@@ -250,10 +254,10 @@ async function readChunk(
   let rawItems: RawTranscriptItem[] = [];
   const structuringMessages = async (m: InputMode): Promise<Message[]> => {
     if (!ENV.questionImportTwoStage) {
-      const content = await contentFor(ctx, chunk, isPdf, config, m);
+      const content = await contentFor(ctx, chunk, isPdf, config, m, imageDetail);
       return buildExtractionMessages({ ...content, pageRange: range, sections: ctx.sections, nonce });
     }
-    const content = await contentFor(ctx, chunk, isPdf, config, m);
+    const content = await contentFor(ctx, chunk, isPdf, config, m, imageDetail);
     const transcript = await callLLM(buildRawTranscriptionMessages({ ...content, pageRange: range, nonce }));
     const parsed = parseRawTranscription(textOf(transcript.choices[0]?.message?.content));
     if (!parsed || !parsed.items.length) throw new ChunkError("AI_OUTPUT");
@@ -270,11 +274,17 @@ async function readChunk(
   } catch (error) {
     // In two-stage mode, !rawItems.length tells "the file itself was refused" (Stage A never got a
     // parsed result) apart from "Stage A succeeded but Stage B then failed for an unrelated reason"
-    // (rawItems already set) -- only the former is actually fixed by resending as text. In
-    // single-stage mode rawItems is never set, so this is always true there, unchanged from before.
-    const providerRefusedFile = isPdf && mode === "native" && !rawItems.length && !ENV.questionImportPdfMode && error instanceof LlmHttpError && (error.status === 400 || error.status === 415);
-    if (!providerRefusedFile || llmFailureReason(error) === "AI_KEY_INVALID") throw error;
-    mode = "text";
+    // (rawItems already set) -- only the former is actually fixed by resending as text, or resending
+    // the image at "high" detail -- both retries below share that same guard.
+    const status = error instanceof LlmHttpError ? error.status : null;
+    const providerRefusedFile = isPdf && mode === "native" && !rawItems.length && !ENV.questionImportPdfMode && (status === 400 || status === 415);
+    // OpenAI's own docs don't say what an unsupported model does with an unrecognized `detail`
+    // value (see llmFileParts.ts) -- treat a 400 the same way a refused PDF is treated, and fall
+    // back to the "high" detail every model accepts.
+    const providerRejectedImageDetail = !isPdf && imageDetail === "original" && !rawItems.length && status === 400;
+    if ((!providerRefusedFile && !providerRejectedImageDetail) || llmFailureReason(error) === "AI_KEY_INVALID") throw error;
+    if (providerRefusedFile) mode = "text";
+    if (providerRejectedImageDetail) imageDetail = "high";
     result = await callLLM(await structuringMessages(mode));
   }
   const parsed = parseExtraction(textOf(result.choices[0]?.message?.content));

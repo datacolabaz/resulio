@@ -22,7 +22,7 @@ import {
   type RawTranscriptItem,
   type SectionContext,
 } from "./questionBank/extraction";
-import { filePart, pdfInputMode } from "./questionBank/importJobs";
+import { filePart, pdfInputMode, supportsOriginalDetail } from "./questionBank/importJobs";
 import { pdfPageCount, pdfPageTexts, pdfSlice } from "./questionBank/pdf";
 import { pickFromSections } from "./questionBank/bank";
 import { planNumbers } from "./questionBank/topics";
@@ -282,6 +282,23 @@ describe("model input", () => {
       file: { filename: "a.pdf", file_data: "data:application/pdf;base64,AQID" },
     });
     expect(filePart("image/png", bytes, "a.png", { source: "manus", baseUrl: "https://forge.example" })).toMatchObject({ type: "image_url" });
+  });
+
+  it("defaults an image part to \"high\" detail, but sends \"original\" when the caller opts in", () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    const openai = { source: "ai" as const, baseUrl: "https://api.openai.com" };
+    expect(filePart("image/png", bytes, "a.png", openai)).toMatchObject({ image_url: { detail: "high" } });
+    expect(filePart("image/png", bytes, "a.png", openai, "original")).toMatchObject({ image_url: { detail: "original" } });
+    expect(filePart("image/png", bytes, "a.png", openai, "high")).toMatchObject({ image_url: { detail: "high" } });
+  });
+
+  it("only opts into \"original\" detail for OpenAI itself, never Gemini, Manus or another provider", () => {
+    expect(supportsOriginalDetail({ source: "ai", baseUrl: "https://api.openai.com" })).toBe(true);
+    expect(supportsOriginalDetail({ source: "ai", baseUrl: "https://api.deepseek.com" })).toBe(false);
+    expect(supportsOriginalDetail({ source: "ai", baseUrl: "https://generativelanguage.googleapis.com" })).toBe(false);
+    expect(supportsOriginalDetail({ source: "manus", baseUrl: "https://api.openai.com" })).toBe(false);
+    expect(supportsOriginalDetail({ source: null, baseUrl: "https://api.openai.com" })).toBe(false);
+    expect(supportsOriginalDetail({ source: "ai", baseUrl: "not a url" })).toBe(false);
   });
 
   it("fences the section list and document text as data", () => {

@@ -12,7 +12,8 @@ export type ImageContent = {
   type: "image_url";
   image_url: {
     url: string;
-    detail?: "auto" | "low" | "high";
+    /** "original" is OpenAI-specific and only supported by some models -- see llmFileParts.ts. */
+    detail?: "auto" | "low" | "high" | "original";
   };
 };
 
