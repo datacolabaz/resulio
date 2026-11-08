@@ -210,12 +210,27 @@ export function validateAiQuestions(raw: unknown, input: AiGenerateInput): Quest
   return out;
 }
 
-/** Added to the system prompt only when `source` material was given -- the default (no source)
- *  prompt below is untouched, so existing topic-only generation behaves exactly as before. */
+/**
+ * Added to the system prompt only when `source` material was given -- the default (no source)
+ * prompt below is untouched, so existing topic-only generation behaves exactly as before.
+ *
+ * Teachers mostly attach MATERIAL that is itself a photo/scan of an already-written exam question
+ * (often shot with the in-app camera), expecting the question to come back unchanged -- not a new
+ * one merely "inspired by" it. Without the transcription rule below, the model treated every
+ * MATERIAL as background reading and freely rewrote/simplified a ready-made question into a
+ * different one: e.g. a question whose stem contains its own numbered sub-list (1) ... 2) ... 3) ...)
+ * with separate lettered choices that are each a COMBINATION of those numbers (e.g. "B) 1, 2, 4")
+ * was flattened into a plain single-choice question whose options were just the sub-list's raw
+ * items -- changing both the structure and the correct answer. The rule below makes transcription
+ * the default whenever MATERIAL already has ready-made questions, and only falls back to writing
+ * new ones when it doesn't (or there are too few to reach the requested count).
+ */
 const GROUNDING_RULE =
-  " The teacher has attached MATERIAL for you to write these questions from. " +
-  "Use ONLY facts, statements, numbers and names that literally appear in that MATERIAL -- never your own outside knowledge for the content, the correct answer, or the explanation. " +
-  "If the MATERIAL doesn't contain enough distinct content for the requested count, return fewer correct questions instead of inventing content to reach it.";
+  " The teacher has attached MATERIAL for these questions. " +
+  "If MATERIAL already contains ready-made exam questions (a stem plus answer choices), your job is to TRANSCRIBE them faithfully, not to invent new or simplified ones: keep the exact wording of the stem, keep every answer choice in the same order and count as printed, and keep the same correct answer (as marked in MATERIAL, or -- if none is marked -- the one you solve for independently). " +
+  "Some questions embed their own numbered sub-list inside the stem (e.g. \"1) ...\", \"2) ...\", \"3) ...\") that is part of the question text, not the answer choices -- keep that sub-list verbatim inside \"text\". The real answer choices are the separate lettered ones (A, B, C, ...) that follow; transcribe those letter-for-letter as the options even when each one is itself a combination referring to the sub-list's numbers (e.g. option B's text is literally \"1, 2, 4\") -- never replace them with the sub-list's own items. " +
+  "Only write a new question yourself when MATERIAL has no ready-made question to transcribe for a given slot (e.g. it is general reference text, or has fewer ready-made questions than the requested count) -- then use ONLY facts, statements, numbers and names that literally appear in MATERIAL, never your own outside knowledge. " +
+  "If MATERIAL doesn't contain enough content (ready-made or otherwise) for the requested count, return fewer correct questions instead of inventing content to reach it.";
 
 function userInstruction(input: AiGenerateInput, grounded: boolean) {
   return (
