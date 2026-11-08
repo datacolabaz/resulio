@@ -27,7 +27,7 @@ import { recipientsPayload } from "@/lib/groupStudentSelection";
 import { fileDownloadUrl } from "@/lib/uploadFile";
 import { trpc } from "@/lib/trpc";
 import { QUESTION_TYPES } from "@shared/assessment";
-import { ChevronDown, ChevronRight, Download, Eye, FileUp, FolderTree, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Eye, FileUp, FolderTree, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
@@ -649,6 +649,15 @@ function QuestionBankTab() {
     },
     onError: (e) => toast.error(errorText(e)),
   });
+  const removeSelected = trpc.teacher.questions.remove.useMutation({
+    onSuccess: (r) => {
+      if (r.deleted) toast.success(t("qbank.deleted", { count: r.deleted }));
+      if (r.inUse) toast.error(t("qbank.deleteSkipped", { count: r.inUse }));
+      setSelected(new Set());
+      done();
+    },
+    onError: (e) => toast.error(errorText(e)),
+  });
   const rows = bank.data ?? [];
   const toggle = (id: string, on: boolean) => setSelected((cur) => { const next = new Set(cur); if (on) next.add(id); else next.delete(id); return next; });
   return (
@@ -689,6 +698,16 @@ function QuestionBankTab() {
             className={filterSelect}
           />
           <span className="text-xs text-muted-foreground">{t("qbank.moveNote")}</span>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-destructive"
+            disabled={removeSelected.isPending}
+            onClick={() => confirm(t("qbank.deleteConfirm", { count: selected.size })) && removeSelected.mutate({ ids: [...selected] })}
+          >
+            <Trash2 className="mr-1 h-4 w-4" aria-hidden />
+            {t("qbank.deleteSelected")}
+          </Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>{t("common.cancel")}</Button>
         </div>
       )}

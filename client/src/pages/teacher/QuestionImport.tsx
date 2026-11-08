@@ -1,4 +1,5 @@
 import { AiQuotaNote } from "@/components/AiQuotaNote";
+import { AiSourcePicker, AI_SOURCE_MAX_FILES } from "@/components/AiSourcePicker";
 import { AppShell, ErrorNote, Loading, Panel } from "@/components/AppShell";
 import { draftFromQuestion, QuestionEditor } from "@/components/QuestionEditor";
 import { QuestionPreview } from "@/components/questionBank/QuestionPreview";
@@ -8,10 +9,10 @@ import { Button } from "@/components/ui/button";
 import { isMessageKey, t, type MessageKey } from "@/i18n/messages";
 import { errorText, fmtDateTime, questionTypeLabel } from "@/lib/format";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
-import { formatFileSize, uploadFile, UploadError, type UploadedFile } from "@/lib/uploadFile";
+import { formatFileSize, type UploadedFile } from "@/lib/uploadFile";
 import { BLOCKING_ISSUES, IMPORT_EXTENSIONS, type ImportIssue } from "@shared/questionImport";
-import { ArrowLeft, FileUp, RotateCcw, Sparkles, Trash2 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { ArrowLeft, RotateCcw, Sparkles, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useParams } from "wouter";
 
@@ -54,33 +55,44 @@ function Progress({ job }: { job: Pick<Job, "chunksDone" | "chunkCount"> }) {
 
 function UploadPanel() {
   const [, nav] = useLocation();
+  const utils = trpc.useUtils();
   const availability = trpc.teacher.questionImport.availability.useQuery(undefined, { retry: false });
-  const [file, setFile] = useState<UploadedFile | null>(null);
+  const [files, setFiles] = useState<UploadedFile[]>([]);
   const [sectionId, setSectionId] = useState("");
-  const [uploading, setUploading] = useState(false);
-  const input = useRef<HTMLInputElement>(null);
-  const start = trpc.teacher.questionImport.start.useMutation({
-    onSuccess: (job) => nav(`${LIST_PATH}/${job.id}`),
-    onError: (e) => toast.error(errorText(e)),
-  });
+  const [starting, setStarting] = useState(false);
+  const start = trpc.teacher.questionImport.start.useMutation();
 
-  const pick = async (picked: File | undefined) => {
-    if (!picked) return;
-    setUploading(true);
-    try {
-      setFile(await uploadFile(picked, "question-import"));
-    } catch (e) {
-      const code = e instanceof UploadError ? e.code : "";
-      toast.error(code === "FILE_TOO_LARGE" ? t("files.tooLarge") : code === "FILE_TYPE_NOT_ALLOWED" ? t("error.IMPORT_FILE_TYPE") : t("files.uploadFailed"));
-    } finally {
-      setUploading(false);
-      if (input.current) input.current.value = "";
+  // One import job per attached file (a multi-photo phone capture of an exam becomes several jobs,
+  // each reviewed on its own) -- the backend already supports only a single fileId per job, and
+  // every file here needs its own chunk/page accounting anyway, so looping client-side needs no
+  // server change. Files that fail individually (e.g. a bad page count) are reported but don't stop
+  // the rest; a shared daily-quota error would fail every remaining call the same way, so it still
+  // surfaces per file rather than silently swallowing the batch.
+  const startAll = async () => {
+    if (!files.length || !sectionId) return;
+    setStarting(true);
+    const createdIds: string[] = [];
+    for (const f of files) {
+      try {
+        const job = await start.mutateAsync({ fileId: f.fileId, sectionId });
+        createdIds.push(job.id);
+      } catch (e) {
+        toast.error(`${f.name}: ${errorText(e)}`);
+      }
     }
+    setStarting(false);
+    void utils.teacher.questionImport.list.invalidate();
+    if (createdIds.length === 1) nav(`${LIST_PATH}/${createdIds[0]}`);
+    else if (createdIds.length > 1) setFiles([]);
   };
 
   if (availability.isLoading) return <Loading />;
   if (availability.error) return <ErrorNote error={availability.error} />;
   const a = availability.data!;
+  // Each file below becomes its own `start` call; stay under that mutation's own rate limit
+  // (`rateLimit("questionImportStart", 10, MINUTE)` in questionBank/router.ts) so attaching a full
+  // batch at once never trips it, and under today's remaining quota too.
+  const maxFiles = Math.min(AI_SOURCE_MAX_FILES, 10, Math.max(1, a.remainingToday));
   return (
     <Panel title={t("qimport.title")}>
       <p className="mb-3 text-sm text-muted-foreground">{t("qimport.intro")}</p>
@@ -88,20 +100,17 @@ function UploadPanel() {
         <p role="status" className="rounded-xl border border-warning/40 bg-warning-surface p-3 text-sm">{t("qimport.unavailable")}</p>
       ) : (
         <div className="space-y-4">
-          <div className="space-y-1.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <input ref={input} type="file" accept={ACCEPT} className="sr-only" aria-label={t("qimport.chooseFile")} disabled={uploading} onChange={(e) => void pick(e.target.files?.[0])} />
-              <Button type="button" variant="outline" disabled={uploading} onClick={() => input.current?.click()}>
-                <FileUp className="mr-1 h-4 w-4" aria-hidden />
-                {uploading ? t("qimport.uploading") : file ? t("files.replace") : t("qimport.chooseFile")}
-              </Button>
-              {file && (
-                <span className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border bg-muted px-2.5 py-1.5 text-sm">
-                  <span className="min-w-0 truncate">{file.name}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">({formatFileSize(file.size)})</span>
-                </span>
-              )}
-            </div>
+          <div className="max-w-xl space-y-1.5">
+            <AiSourcePicker
+              files={files}
+              onFilesChange={setFiles}
+              accept={ACCEPT}
+              context="question-import"
+              label={t("qimport.chooseFile")}
+              hint={t("qimport.sourceHint", { max: maxFiles })}
+              max={maxFiles}
+              allowText={false}
+            />
             <p className="text-xs text-muted-foreground">
               {t("qimport.limits", { size: formatFileSize(a.maxBytes), pages: a.maxPages, left: a.remainingToday })}
             </p>
@@ -111,8 +120,8 @@ function UploadPanel() {
             <SectionPicker value={sectionId} onChange={setSectionId} />
             <p className="text-xs text-muted-foreground">{t("qimport.sectionHelp")}</p>
           </div>
-          <Button disabled={!file || !sectionId || start.isPending || a.remainingToday <= 0} onClick={() => file && sectionId && start.mutate({ fileId: file.fileId, sectionId })}>
-            {start.isPending ? t("qimport.starting") : t("qimport.start")}
+          <Button disabled={!files.length || !sectionId || starting || a.remainingToday <= 0} onClick={() => void startAll()}>
+            {starting ? (files.length > 1 ? t("qimport.startingN", { count: files.length }) : t("qimport.starting")) : t("qimport.start")}
           </Button>
         </div>
       )}
