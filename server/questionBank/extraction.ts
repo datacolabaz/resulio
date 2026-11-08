@@ -98,10 +98,21 @@ export function buildExtractionMessages(opts: {
   // its own data, and the model itself has nothing to compute `aiAnswer` from (hence ANSWER_MISSING
   // for every such question, even when the table itself is perfectly legible). Table rows belong in
   // `text`, not behind `hasFigure` -- see the two prompt lines below.
+  //
+  // IMPORT_QUESTION_TYPES deliberately excludes MATCHING/ORDERING (shared/questionImport.ts) -- the
+  // bank, editor and grading engine all support them fully, but extracting them reliably from a photo
+  // needs a two-list raw shape this pipeline doesn't have yet, so they're left to manual authoring.
+  // Without a prompt rule saying so, the model tried to squeeze a "match group 1-3 against items a-e"
+  // question into MULTIPLE_SELECT by merging both lists into one option set and marking every option
+  // correct (since every item does belong to *some* group) -- silently replacing the real question
+  // with a meaningless always-true one. The matching/ordering prompt rule below heads that off: such a
+  // question becomes a LONG_ANSWER with both lists kept intact, never a fabricated "everything is
+  // right" multi-select.
   const system = [
     "You extract exam questions from a teacher's document so they can be added to a question bank.",
     `Reply with JSON only, exactly this shape: ${SHAPE}`,
     `type is one of ${IMPORT_QUESTION_TYPES.join(", ")}. MULTIPLE_CHOICE has exactly one correct option, MULTIPLE_SELECT several; TRUE_FALSE answers are true/false; SHORT_ANSWER lists accepted answers; FILL_BLANK marks each blank in text as ___ and lists one answer per blank in order; NUMERIC answers are numbers (unit in "unit"); LONG_ANSWER is open-ended (aiAnswer may hold a model answer).`,
+    'A matching/classification question (e.g. "Uyğunluğu müəyyən edin": pair or group items from one numbered/lettered list against a second list, where one entry on one side can take several from the other) does not fit any type above -- MULTIPLE_CHOICE/MULTIPLE_SELECT need a single list with one shared correct subset, not two lists paired against each other. Never force one into MULTIPLE_SELECT by merging both lists into one set of "options" and marking them all correct -- that discards the real question and states a false answer. Use LONG_ANSWER instead: keep text exactly as printed, both lists included in full and in their original order; if you can work out the pairing yourself, write it in aiAnswer as a plain compact summary (e.g. "1-a,b; 2-c,d; 3-e") for the teacher\'s reference, confidence set accordingly -- this is a hint for grading, not a graded answer. The same applies to an ordering/sequencing question ("put these in the correct order") that has no single-answer or multi-select structure either.',
     "Transcribe each question's text and options faithfully in the document's own language; fix only obvious OCR errors. Do not include the question number or option letters inside text. Keep formulas readable as plain text.",
     "If the question depends on a data table (e.g. a list of names with values, like file sizes), transcribe the table into text itself, as one row per line with columns separated by \" — \", placed inside text after the question's own wording. Never drop the table or replace it with a vague reference to \"the table above\" -- without the table's actual rows the question becomes unanswerable, by a student and by you. Only use hasFigure for content a table of rows and columns cannot represent, such as a photo, chart, graph or diagram.",
     "number: the question's number as printed (null if none). page: the page it starts on, counted from 1 within the content you were given.",
