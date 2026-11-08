@@ -2,9 +2,9 @@ import { CameraCapture } from "@/components/CameraCapture";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { t } from "@/i18n/messages";
-import { formatFileSize, uploadFile, UploadError, type UploadedFile } from "@/lib/uploadFile";
+import { formatFileSize, uploadFile, UploadError, type UploadContext, type UploadedFile } from "@/lib/uploadFile";
 import { Camera, FileUp, Trash2 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 /** Formats `sourceMaterialFromFile` (server/modules/ai.ts) can actually read as source material. */
@@ -13,14 +13,17 @@ export const AI_SOURCE_ACCEPT = ".pdf,.docx,.pptx,.csv,.xlsx,.txt,.png,.jpg,.jpe
 export const AI_SOURCE_MAX_FILES = 15;
 
 /**
- * The teacher's "ground this generation in material" input -- shared by ExamBuilder's `AiDialog`
- * and TaskQuiz's `TaskAiTextDialog`/`TaskQuizAiDialog`, which previously each had their own copy of
- * a single-file picker. Lets the teacher attach several files at once, by clicking, dragging-and-
- * dropping, or shooting photos with the in-app camera (`CameraCapture`, built for a phone in hand),
- * or fall back to pasted text when no files are attached (file and text are mutually exclusive, as
- * before -- attaching a file clears any pasted text). `files`/`onFilesChange` and
- * `text`/`onTextChange` are controlled so callers build the `{ fileIds }` / `{ text }` source object
- * exactly as before, just with `fileIds` now plural.
+ * The teacher's "attach files/photos" input -- shared by ExamBuilder's `AiDialog`, TaskQuiz's
+ * `TaskAiTextDialog`/`TaskQuizAiDialog` (grounding AI question generation in material), and
+ * QuestionImport's `UploadPanel` (uploading a PDF/photo of an exam to extract bank questions
+ * from), which previously each had, or would have needed, their own copy of a single-file picker.
+ * Lets the teacher attach several files at once, by clicking, dragging-and-dropping, or shooting
+ * photos with the in-app camera (`CameraCapture`, built for a phone in hand), or -- when `allowText`
+ * is left at its default -- fall back to pasted text when no files are attached (file and text are
+ * mutually exclusive, as before -- attaching a file clears any pasted text). `files`/`onFilesChange`
+ * and `text`/`onTextChange` are controlled so callers building a "ground this in material" source
+ * build the `{ fileIds }` / `{ text }` object exactly as before; a caller with no text fallback
+ * (QuestionImport, where a file is mandatory) can omit `text`/`onTextChange` entirely.
  */
 export function AiSourcePicker({
   files,
@@ -28,12 +31,29 @@ export function AiSourcePicker({
   text,
   onTextChange,
   max = AI_SOURCE_MAX_FILES,
+  accept = AI_SOURCE_ACCEPT,
+  context = "ai-source",
+  label,
+  hint,
+  allowText = true,
 }: {
   files: UploadedFile[];
   onFilesChange: (v: UploadedFile[]) => void;
-  text: string;
-  onTextChange: (v: string) => void;
+  text?: string;
+  onTextChange?: (v: string) => void;
   max?: number;
+  /** The `accept` attribute of the file input; defaults to everything `sourceMaterialFromFile` reads. */
+  accept?: string;
+  /** Tags the upload for the server the way `uploadFile` expects; defaults to the AI-grounding context. */
+  context?: UploadContext;
+  /** Overrides the "Source material (optional)" header -- callers where a file is mandatory and not
+   *  specifically "source material" (e.g. QuestionImport) pass their own wording. */
+  label?: ReactNode;
+  /** Overrides the "questions will be generated only from its content" footer hint, which doesn't
+   *  describe a non-generation caller like QuestionImport. */
+  hint?: ReactNode;
+  /** false hides the "or paste text" fallback entirely, for a caller that only ever accepts files. */
+  allowText?: boolean;
 }) {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -53,9 +73,9 @@ export function AiSourcePicker({
     setUploading(true);
     try {
       const uploaded: UploadedFile[] = [];
-      for (const file of slice) uploaded.push(await uploadFile(file, "ai-source"));
+      for (const file of slice) uploaded.push(await uploadFile(file, context));
       onFilesChange([...files, ...uploaded]);
-      if (uploaded.length) onTextChange("");
+      if (uploaded.length) onTextChange?.("");
     } catch (e) {
       const code = e instanceof UploadError ? e.code : "UPLOAD_FAILED";
       toast.error(code === "FILE_TOO_LARGE" ? t("files.tooLarge") : code === "FILE_TYPE_NOT_ALLOWED" ? t("error.AI_SOURCE_FILE_TYPE") : t("files.uploadFailed"));
@@ -67,7 +87,7 @@ export function AiSourcePicker({
 
   return (
     <div className="space-y-1.5">
-      <span className="text-foreground-secondary text-sm">{t("builder.aiSourceLabel")}</span>
+      <span className="text-foreground-secondary text-sm">{label ?? t("builder.aiSourceLabel")}</span>
       <div
         className={`flex flex-col items-center gap-2 rounded-lg border-2 border-dashed p-3 text-center transition-colors ${dragOver ? "border-link bg-muted" : "border-border"}`}
         onDragOver={(e) => {
@@ -85,7 +105,7 @@ export function AiSourcePicker({
         <input
           ref={inputRef}
           type="file"
-          accept={AI_SOURCE_ACCEPT}
+          accept={accept}
           multiple
           className="sr-only"
           aria-label={t("builder.aiSourceAttach")}
@@ -118,13 +138,13 @@ export function AiSourcePicker({
           ))}
         </div>
       )}
-      {!files.length && (
+      {allowText && !files.length && (
         <>
           <div className="text-xs text-muted-foreground">{t("builder.aiSourceOr")}</div>
-          <Textarea rows={3} value={text} onChange={(e) => onTextChange(e.target.value)} placeholder={t("builder.aiSourceTextPlaceholder")} />
+          <Textarea rows={3} value={text ?? ""} onChange={(e) => onTextChange?.(e.target.value)} placeholder={t("builder.aiSourceTextPlaceholder")} />
         </>
       )}
-      <p className="text-xs text-muted-foreground">{t("builder.aiSourceHint", { max })}</p>
+      <p className="text-xs text-muted-foreground">{hint ?? t("builder.aiSourceHint", { max })}</p>
       <CameraCapture open={cameraOpen} onOpenChange={setCameraOpen} onDone={(shots) => void addFiles(shots)} />
     </div>
   );

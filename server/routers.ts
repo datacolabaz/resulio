@@ -487,6 +487,10 @@ const teacherQuestionsRouter = router({
   confirmAnswers: teacherProcedure
     .input(z.object({ ids: z.array(entityId).min(1).max(200) }))
     .mutation(({ ctx, input }) => bank.confirmBankAnswers(ctx.scope, input.ids)),
+  /** Skips (never force-removes) any selected question currently used in an exam or task quiz. */
+  remove: teacherProcedure
+    .input(z.object({ ids: z.array(entityId).min(1).max(200) }))
+    .mutation(({ ctx, input }) => bank.deleteBankQuestions(ctx.scope, input.ids)),
   /** Marks (or clears) a question as doubtful, so it's excluded from "hardest question" rankings. */
   setFlagged: teacherProcedure
     .input(z.object({ id: entityId, flagged: z.boolean() }))

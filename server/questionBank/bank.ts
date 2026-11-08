@@ -1,6 +1,6 @@
 import { randomInt } from "node:crypto";
-import { and, asc, eq } from "drizzle-orm";
-import { questionMeta, questions } from "../../drizzle/schema";
+import { and, asc, eq, inArray } from "drizzle-orm";
+import { assessmentQuestions, questionMeta, questions, taskQuizQuestions } from "../../drizzle/schema";
 import type { QuestionInput } from "../../shared/assessment";
 import { requireDb, type DbOrTx } from "../db";
 import type { TeacherScope } from "../modules/access";
@@ -35,6 +35,42 @@ export async function updateBankQuestion(scope: TeacherScope, id: string, input:
 /** The teacher checked the stored answers (an AI-chosen or disputed import answer) and keeps them. */
 export async function confirmBankAnswers(scope: TeacherScope, ids: string[]) {
   return { confirmed: await confirmAnswers(scope.workspaceId, ids) };
+}
+
+/**
+ * Deletes bank questions the teacher selected, skipping (never force-removing) any that are
+ * currently attached to an exam draft/version or a task quiz (`assessmentQuestions` /
+ * `taskQuizQuestions` both point at the same live `questions` row -- there is no separate
+ * published-snapshot copy -- so deleting one of those out from under a published assessment or an
+ * already-assigned task would corrupt it for students mid-attempt or break their stored results).
+ * Teachers wanting to remove a question from an exam/task do that there first; this only ever
+ * clears bank clutter that isn't in use anywhere. Returns how many were actually deleted vs. kept
+ * because they're in use, so the caller can tell the teacher both numbers.
+ */
+export async function deleteBankQuestions(scope: TeacherScope, ids: string[]) {
+  if (!ids.length) return { deleted: 0, inUse: 0 };
+  const db = requireDb();
+  const owned = await db
+    .select({ id: questions.id })
+    .from(questions)
+    .where(and(eq(questions.providerWorkspaceId, scope.workspaceId), inArray(questions.id, ids)));
+  const ownedIds = owned.map((r) => r.id);
+  if (!ownedIds.length) return { deleted: 0, inUse: 0 };
+
+  const [inExam, inTask] = await Promise.all([
+    db.select({ id: assessmentQuestions.questionId }).from(assessmentQuestions).where(inArray(assessmentQuestions.questionId, ownedIds)),
+    db.select({ id: taskQuizQuestions.questionId }).from(taskQuizQuestions).where(inArray(taskQuizQuestions.questionId, ownedIds)),
+  ]);
+  const inUseIds = new Set([...inExam.map((r) => r.id), ...inTask.map((r) => r.id)]);
+  const deletableIds = ownedIds.filter((id) => !inUseIds.has(id));
+
+  if (deletableIds.length) {
+    await db.transaction(async (tx) => {
+      await tx.delete(questionMeta).where(inArray(questionMeta.questionId, deletableIds));
+      await tx.delete(questions).where(inArray(questions.id, deletableIds));
+    });
+  }
+  return { deleted: deletableIds.length, inUse: inUseIds.size };
 }
 
 export async function createInAssessment(scope: TeacherScope, assessmentId: string, input: QuestionInput, sectionId: string) {
