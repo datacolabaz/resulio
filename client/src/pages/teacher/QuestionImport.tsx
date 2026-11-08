@@ -319,8 +319,19 @@ function ReviewItem({
             <span>{questionTypeLabel(q.type)}</span>
             {item.sourcePage && <span>· {t("qimport.sourcePage", { page: item.sourcePage })}</span>}
             {item.sourceNumber && <span>· {t("qimport.sourceNumber", { number: item.sourceNumber })}</span>}
-            <StatusBadge tone={item.answerSource === "SOURCE" ? "success" : item.answerSource === "TEACHER" ? "neutral" : "info"}>{t(`qimport.answerSource.${item.answerSource}`)}</StatusBadge>
-            {item.answerSource !== "TEACHER" && <StatusBadge tone={item.confidence === "HIGH" ? "success" : item.confidence === "MEDIUM" ? "warning" : "danger"}>{t(`qimport.confidence.${item.confidence}`)}</StatusBadge>}
+            {/* When no answer could be determined at all (ANSWER_MISSING, shown as its own red badge
+                below), `answerSource` still reads "AI" and `confidence` still reads "LOW" -- decideAnswer
+                (extraction.ts) falls back to those labels for bookkeeping even though there is no actual
+                answer behind them. Showing "Cavabı AI təyin edib" / "Etibarlılıq: aşağı" next to "Düzgün
+                cavab müəyyən edilmədi" wrongly implied the AI had produced a (merely shaky) answer, when
+                it had produced none -- hide both badges in that one case; the red issue badge already
+                says everything there is to say. */}
+            {!issues.includes("ANSWER_MISSING") && (
+              <>
+                <StatusBadge tone={item.answerSource === "SOURCE" ? "success" : item.answerSource === "TEACHER" ? "neutral" : "info"}>{t(`qimport.answerSource.${item.answerSource}`)}</StatusBadge>
+                {item.answerSource !== "TEACHER" && <StatusBadge tone={item.confidence === "HIGH" ? "success" : item.confidence === "MEDIUM" ? "warning" : "danger"}>{t(`qimport.confidence.${item.confidence}`)}</StatusBadge>}
+              </>
+            )}
             {item.status !== "PENDING" && <StatusBadge tone={item.status === "ACCEPTED" ? "success" : "neutral"}>{t(`qimport.itemStatus.${item.status}`)}</StatusBadge>}
           </div>
           {issues.length > 0 && (
@@ -379,6 +390,12 @@ function ReviewList({ detail }: { detail: Detail }) {
   const visible = useMemo(() => detail.items.filter((i) => matches(i, filter)), [detail.items, filter]);
   const acceptable = detail.items.filter((i) => i.status === "PENDING" && !i.blocking);
   const chosen = [...selected].filter((id) => detail.items.some((i) => i.id === id && i.status === "PENDING"));
+  // "Seçilənləri qəbul et" used to count/send every selected PENDING item, blocking ones included --
+  // but accept() silently skips blocking items (no determined answer, or an incomplete question), so
+  // a selection of e.g. 3 all-blocking items showed "(3)" and did nothing when clicked. Scoping both
+  // the count and the ids sent to the non-blocking subset keeps the number on the button honest and
+  // matches "Hamısını qəbul et", which already only counts `acceptable`.
+  const acceptableChosen = chosen.filter((id) => acceptable.some((i) => i.id === id));
   const after = () => {
     setSelected(new Set());
     void utils.teacher.questionImport.detail.invalidate({ id: jobId });
@@ -427,8 +444,8 @@ function ReviewList({ detail }: { detail: Detail }) {
               <Button variant="outline" disabled={reject.isPending} onClick={() => reject.mutate({ ids: chosen, rejected: true })}>
                 {t("qimport.rejectSelected")}
               </Button>
-              <Button variant="outline" disabled={accept.isPending} onClick={() => accept.mutate({ jobId, ids: chosen, skipDuplicates })}>
-                {t("qimport.acceptSelected", { count: chosen.length })}
+              <Button variant="outline" disabled={!acceptableChosen.length || accept.isPending} onClick={() => accept.mutate({ jobId, ids: acceptableChosen, skipDuplicates })}>
+                {t("qimport.acceptSelected", { count: acceptableChosen.length })}
               </Button>
             </>
           )}
