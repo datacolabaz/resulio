@@ -69,7 +69,14 @@ export function questionPreview(q: Loose): QuestionPreview {
   const key = record(q.answerKey);
   if (CHOICE_TYPES.has(q.type)) {
     const correct = new Set(Array.isArray(key.correct) ? strings(key.correct) : typeof key.correct === "string" ? [key.correct] : []);
-    const options = entries(content.options).map((o, i) => ({ ...o, letter: LETTERS[i] ?? o.key, correct: correct.has(o.key) }));
+    // `letter` used to be forced to the option's position in LETTERS (A, B, C...) regardless of its
+    // actual stored `key` -- so an imported question numbered "1) ... 2) ..." in its own source still
+    // showed as "A) ... B) ..." here, out of step with both the stored data and what students actually
+    // see (QuestionRenderer, the student-facing view, already renders `key` directly, never a
+    // positional letter). Showing `key` itself keeps this teacher-only preview honest about what's
+    // stored; a manually-created question's keys are still assigned A, B, C... by QuestionEditor, so
+    // nothing changes for those.
+    const options = entries(content.options).map((o) => ({ ...o, letter: o.key, correct: correct.has(o.key) }));
     const letters = options.filter((o) => o.correct).map((o) => o.letter);
     return { options, answer: letters.length ? { kind: "choice", letters } : null };
   }

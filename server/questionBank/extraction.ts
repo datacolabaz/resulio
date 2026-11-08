@@ -333,9 +333,15 @@ export function normalizeItem(raw: RawItem, ctx: { sections: SectionContext; pag
         ai = resolveChoice(raw.aiAnswer, options);
       }
       decided = decideAnswer<number[]>({ marked, ai }, sameList, aiConfidence);
+      // Keyed by the label printed in the source (cleanOptions already captured it, falling back to
+      // A, B, C... only when the source gave none) -- not re-lettered positionally. A source numbered
+      // "1) ... 2) ..." keeps "1"/"2" as its option keys end to end: QuestionRenderer (the student's
+      // exam view) and engine.ts's grading already just echo/compare `key` as an opaque string, so
+      // nothing downstream assumed A-Z. Only the teacher-side preview (questionPreview.ts) used to
+      // override this with a positional letter regardless of the stored key -- fixed alongside this.
       const kept = options.slice(0, 10);
-      content = { options: kept.map((o, i) => ({ key: String.fromCharCode(65 + i), text: o.text.slice(0, 2000) })) };
-      const keys = ((decided.answer as number[] | null) ?? []).filter((i) => i < kept.length).map((i) => String.fromCharCode(65 + i));
+      content = { options: kept.map((o) => ({ key: o.label, text: o.text.slice(0, 2000) })) };
+      const keys = ((decided.answer as number[] | null) ?? []).filter((i) => i < kept.length).map((i) => kept[i].label);
       answerKey = type === "MULTIPLE_CHOICE" ? { correct: keys[0] ?? "" } : { correct: keys };
       break;
     }
