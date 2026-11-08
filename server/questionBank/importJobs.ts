@@ -12,9 +12,9 @@ import {
   type ImportIssue,
   type ImportJobError,
 } from "../../shared/questionImport";
-import { isGeminiUrl, type LlmConfig } from "../_core/aiConfig";
+import { isGeminiUrl, isOpenAiUrl, type LlmConfig } from "../_core/aiConfig";
 import { ENV } from "../_core/env";
-import { invokeLLM, LlmHttpError, llmFailureReason, type Message, type MessageContent } from "../_core/llm";
+import { invokeLLM, LlmHttpError, llmFailureReason, type JsonSchema, type Message, type MessageContent } from "../_core/llm";
 import { withAiUsage } from "../aiUsage/context";
 import { assertAiAllowed } from "../aiUsage/limits";
 import { requireDb } from "../db";
@@ -27,12 +27,14 @@ import { createBankQuestion } from "./bank";
 import {
   buildExtractionMessages,
   buildRawTranscriptionMessages,
+  EXTRACTION_SCHEMA,
   findDuplicates,
   matchRawText,
   normalizeItem,
   parseExtraction,
   parseRawTranscription,
   planChunks,
+  RAW_TRANSCRIPTION_SCHEMA,
   type ImportDraft,
   type RawTranscriptItem,
   type SectionContext,
@@ -241,14 +243,27 @@ async function readChunk(
   let imageDetail: "high" | "original" = !isPdf && supportsOriginalDetail(config) ? "original" : "high";
   const range = isPdf ? chunk.range : null;
 
-  const callLLM = (messages: Message[]) =>
-    invokeLLM({
-      messages,
-      responseFormat: { type: "json_object" },
-      maxTokens: isGeminiUrl(config.baseUrl) ? 32_768 : 16_000,
-      model: ENV.questionImportModel || undefined,
-      timeoutMs: CHUNK_TIMEOUT_MS,
-    });
+  // Strict Structured Outputs instead of plain json_object, again only for api.openai.com itself --
+  // an OpenAI-compatible gateway accepting the request shape doesn't mean it enforces (or even
+  // supports) a strict schema the same way, so this is never assumed for Gemini/Manus/others.
+  // Downgraded to json_object, for the rest of this chunk's calls, the first time the provider
+  // answers a schema'd request with 400 -- a model that doesn't support strict outputs, not any of
+  // the other reasons a request can 400 (those are handled by the retries below, unaffected by this).
+  let useStrictSchema = config.source === "ai" && isOpenAiUrl(config.baseUrl);
+  const callLLM = async (messages: Message[], schema: JsonSchema) => {
+    const maxTokens = isGeminiUrl(config.baseUrl) ? 32_768 : 16_000;
+    const model = ENV.questionImportModel || undefined;
+    if (!useStrictSchema) {
+      return invokeLLM({ messages, responseFormat: { type: "json_object" }, maxTokens, model, timeoutMs: CHUNK_TIMEOUT_MS });
+    }
+    try {
+      return await invokeLLM({ messages, responseFormat: { type: "json_schema", json_schema: schema }, maxTokens, model, timeoutMs: CHUNK_TIMEOUT_MS });
+    } catch (error) {
+      if (!(error instanceof LlmHttpError) || error.status !== 400) throw error;
+      useStrictSchema = false;
+      return invokeLLM({ messages, responseFormat: { type: "json_object" }, maxTokens, model, timeoutMs: CHUNK_TIMEOUT_MS });
+    }
+  };
   const textOf = (content: unknown) => (typeof content === "string" ? content : "");
 
   let rawItems: RawTranscriptItem[] = [];
@@ -258,7 +273,7 @@ async function readChunk(
       return buildExtractionMessages({ ...content, pageRange: range, sections: ctx.sections, nonce });
     }
     const content = await contentFor(ctx, chunk, isPdf, config, m, imageDetail);
-    const transcript = await callLLM(buildRawTranscriptionMessages({ ...content, pageRange: range, nonce }));
+    const transcript = await callLLM(buildRawTranscriptionMessages({ ...content, pageRange: range, nonce }), RAW_TRANSCRIPTION_SCHEMA);
     const parsed = parseRawTranscription(textOf(transcript.choices[0]?.message?.content));
     if (!parsed || !parsed.items.length) throw new ChunkError("AI_OUTPUT");
     rawItems = parsed.items;
@@ -270,7 +285,7 @@ async function readChunk(
 
   let result;
   try {
-    result = await callLLM(await structuringMessages(mode));
+    result = await callLLM(await structuringMessages(mode), EXTRACTION_SCHEMA);
   } catch (error) {
     // In two-stage mode, !rawItems.length tells "the file itself was refused" (Stage A never got a
     // parsed result) apart from "Stage A succeeded but Stage B then failed for an unrelated reason"
@@ -285,7 +300,7 @@ async function readChunk(
     if ((!providerRefusedFile && !providerRejectedImageDetail) || llmFailureReason(error) === "AI_KEY_INVALID") throw error;
     if (providerRefusedFile) mode = "text";
     if (providerRejectedImageDetail) imageDetail = "high";
-    result = await callLLM(await structuringMessages(mode));
+    result = await callLLM(await structuringMessages(mode), EXTRACTION_SCHEMA);
   }
   const parsed = parseExtraction(textOf(result.choices[0]?.message?.content));
   if (!parsed) throw new ChunkError("AI_OUTPUT");

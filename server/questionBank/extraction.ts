@@ -8,7 +8,7 @@ import {
   type ImportIssue,
   type ImportQuestionType,
 } from "../../shared/questionImport";
-import type { Message, MessageContent } from "../_core/llm";
+import type { JsonSchema, Message, MessageContent } from "../_core/llm";
 import { extractJson } from "../modules/ai";
 import { sanitizeForPrompt } from "../modules/aiContext";
 
@@ -101,6 +101,39 @@ export function parseRawTranscription(text: string): { items: RawTranscriptItem[
 
 const RAW_SHAPE = `{"questions":[{"number":"12","page":1,"text":"..."}]}`;
 
+/**
+ * Strict Structured Outputs schema for the shape above -- used instead of plain `json_object` only
+ * when ENV.llm talks to api.openai.com itself (see questionBank/importJobs.ts), since strict
+ * schema support can't be assumed from an OpenAI-compatible gateway (Gemini, Manus, others) just
+ * because it accepts the same request shape. Strict mode requires every object to set
+ * additionalProperties:false and list every property as required; a field the model may omit is
+ * made nullable (an anyOf branch with "null") instead of left out of required.
+ */
+export const RAW_TRANSCRIPTION_SCHEMA: JsonSchema = {
+  name: "raw_transcription",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      questions: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            number: { anyOf: [{ type: "string" }, { type: "number" }, { type: "null" }] },
+            page: { anyOf: [{ type: "number" }, { type: "string" }, { type: "null" }] },
+            text: { type: "string" },
+          },
+          required: ["number", "page", "text"],
+        },
+      },
+    },
+    required: ["questions"],
+  },
+};
+
 export function buildRawTranscriptionMessages(opts: {
   /** The file part(s), or null when `documentText` carries the content. */
   parts: MessageContent[] | null;
@@ -150,6 +183,58 @@ export interface SectionContext {
 }
 
 const SHAPE = `{"questions":[{"number":"12","page":1,"type":"MULTIPLE_CHOICE","text":"...","options":[{"label":"A","text":"..."},{"label":"B","text":"..."}],"markedAnswer":["B"],"aiAnswer":["B"],"confidence":"high","sectionId":null,"section":null,"explanation":"...","unit":null,"hasFigure":false}]}`;
+
+// Building blocks for EXTRACTION_SCHEMA below, mirroring rawItemSchema's zod unions (scalar,
+// answerValue, rawOption) one-for-one -- see the strict-mode note above RAW_TRANSCRIPTION_SCHEMA.
+const SCALAR_SCHEMA = { anyOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }] };
+const ANSWER_VALUE_SCHEMA = { anyOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }, { type: "array", items: SCALAR_SCHEMA }, { type: "null" }] };
+const RAW_OPTION_SCHEMA = {
+  anyOf: [
+    { type: "string" },
+    {
+      type: "object",
+      additionalProperties: false,
+      properties: { label: { anyOf: [{ type: "string" }, { type: "number" }, { type: "null" }] }, text: { type: "string" } },
+      required: ["label", "text"],
+    },
+  ],
+};
+
+/** Strict Structured Outputs schema for the shape above -- see the note above RAW_TRANSCRIPTION_SCHEMA. */
+export const EXTRACTION_SCHEMA: JsonSchema = {
+  name: "extracted_questions",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      questions: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            number: { anyOf: [{ type: "string" }, { type: "number" }, { type: "null" }] },
+            page: { anyOf: [{ type: "number" }, { type: "string" }, { type: "null" }] },
+            type: { anyOf: [{ type: "string" }, { type: "null" }] },
+            text: { type: "string" },
+            options: { anyOf: [{ type: "array", items: RAW_OPTION_SCHEMA }, { type: "null" }] },
+            markedAnswer: ANSWER_VALUE_SCHEMA,
+            aiAnswer: ANSWER_VALUE_SCHEMA,
+            confidence: { anyOf: [{ type: "string" }, { type: "null" }] },
+            sectionId: { anyOf: [{ type: "string" }, { type: "null" }] },
+            section: { anyOf: [{ type: "string" }, { type: "null" }] },
+            explanation: { anyOf: [{ type: "string" }, { type: "null" }] },
+            unit: { anyOf: [{ type: "string" }, { type: "null" }] },
+            hasFigure: { anyOf: [{ type: "boolean" }, { type: "null" }] },
+          },
+          required: ["number", "page", "type", "text", "options", "markedAnswer", "aiAnswer", "confidence", "sectionId", "section", "explanation", "unit", "hasFigure"],
+        },
+      },
+    },
+    required: ["questions"],
+  },
+};
 
 export function buildExtractionMessages(opts: {
   /** The file part(s), or null when `documentText` carries the content. */

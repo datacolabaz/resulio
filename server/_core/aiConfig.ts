@@ -25,6 +25,15 @@ export function isGeminiUrl(baseUrl: string): boolean {
   }
 }
 
+/** True only for OpenAI's own endpoint -- never a Gemini/Manus/other OpenAI-compatible gateway, whose support for an OpenAI-only feature (an image's "original" detail, strict Structured Outputs) can't be assumed just because they speak the same wire format. */
+export function isOpenAiUrl(baseUrl: string): boolean {
+  try {
+    return new URL(baseUrl.trim()).hostname === "api.openai.com";
+  } catch {
+    return false;
+  }
+}
+
 function defaultModelFor(baseUrl: string): string {
   return isGeminiUrl(baseUrl) ? DEFAULT_GEMINI_MODEL : DEFAULT_AI_MODEL;
 }

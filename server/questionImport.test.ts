@@ -9,12 +9,14 @@ import {
   buildExtractionMessages,
   buildRawTranscriptionMessages,
   cleanOptions,
+  EXTRACTION_SCHEMA,
   findDuplicates,
   matchRawText,
   normalizeItem,
   parseExtraction,
   parseRawTranscription,
   planChunks,
+  RAW_TRANSCRIPTION_SCHEMA,
   resolveChoice,
   splitLeadingNumber,
   suggestSection,
@@ -331,6 +333,32 @@ describe("model input", () => {
     expect(sys).toContain("[?...?]");
     expect(sys).toMatch(/copy it through exactly as-is/);
     expect(sys).toContain("Azerbaijani, Turkish, Russian or English");
+  });
+
+  it("builds strict-mode-valid Structured Outputs schemas for both stages", () => {
+    // OpenAI's strict mode (server/_core/llm.ts's normalizeResponseFormat passes `strict` through
+    // as-is) requires every object node to set additionalProperties:false and list every one of
+    // its own properties in `required` -- a property the model may still omit is made nullable
+    // instead. A schema missing either of those is silently rejected by the API's own validation,
+    // not caught by this codebase, so this walks every object node in both schemas and checks both
+    // invariants itself.
+    function assertStrict(node: unknown, path: string): void {
+      if (typeof node !== "object" || node === null) return;
+      const n = node as Record<string, unknown>;
+      if (n.type === "object") {
+        expect(n.additionalProperties, `${path}.additionalProperties`).toBe(false);
+        const props = (n.properties ?? {}) as Record<string, unknown>;
+        expect(n.required, `${path}.required`).toEqual(Object.keys(props));
+        for (const [key, value] of Object.entries(props)) assertStrict(value, `${path}.properties.${key}`);
+      }
+      if (n.type === "array") assertStrict(n.items, `${path}.items`);
+      if (Array.isArray(n.anyOf)) n.anyOf.forEach((branch, i) => assertStrict(branch, `${path}.anyOf[${i}]`));
+    }
+    for (const [label, schema] of [["RAW_TRANSCRIPTION_SCHEMA", RAW_TRANSCRIPTION_SCHEMA] as const, ["EXTRACTION_SCHEMA", EXTRACTION_SCHEMA] as const]) {
+      expect(schema.strict, label).toBe(true);
+      expect(schema.name, label).toMatch(/^[a-zA-Z0-9_-]+$/);
+      assertStrict(schema.schema, label);
+    }
   });
 });
 

@@ -1,4 +1,4 @@
-import { isGeminiUrl } from "../_core/aiConfig";
+import { isGeminiUrl, isOpenAiUrl } from "../_core/aiConfig";
 import type { MessageContent } from "../_core/llm";
 
 /**
@@ -29,12 +29,7 @@ export function pdfInputMode(config: { source: "ai" | "manus" | null; baseUrl: s
  * caller keeps using "high" by never passing the parameter, so this alone changes nothing for them.
  */
 export function supportsOriginalDetail(config: { source: "ai" | "manus" | null; baseUrl: string }): boolean {
-  if (config.source !== "ai") return false;
-  try {
-    return new URL(config.baseUrl).hostname === "api.openai.com";
-  } catch {
-    return false;
-  }
+  return config.source === "ai" && isOpenAiUrl(config.baseUrl);
 }
 
 export function filePart(
