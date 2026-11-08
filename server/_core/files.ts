@@ -18,6 +18,7 @@ import * as filesModule from "../modules/files";
 import { activeGroupIdsOfStudent } from "../modules/groups";
 import { taskReachesStudent } from "../modules/taskAccess";
 import { practiceUploadAllowed } from "../syllabus/learning";
+import { ENV } from "./env";
 import { hitRateLimit } from "./rateLimit";
 import { sdk } from "./sdk";
 
@@ -187,17 +188,31 @@ export function registerFileRoutes(app: Express) {
       if (user) await filesModule.recordDownload(file, user.id);
       const share = shareDownloadParams(req);
       if (share) await filesModule.recordShareDownload(file, share, user?.id ?? null);
+      // ?inline=1 (used by the question-import review screen to show the original photo/PDF next
+      // to the extracted question, client/src/pages/teacher/QuestionImport.tsx) renders in the
+      // browser instead of downloading, and allows framing by this app's own frontend origin --
+      // never by anywhere else. The access check above is unchanged either way: this only affects
+      // how a request that already passed it gets displayed, never who may make that request.
+      const inline = req.query.inline === "1";
+      // Left undefined (rather than "attachment") on the default path so every existing caller's
+      // signedGetUrl/contentDisposition call shape is byte-for-byte unchanged — both already
+      // default to "attachment" on their own when this is omitted.
+      const disposition = inline ? "inline" : undefined;
+      if (inline) {
+        res.removeHeader("X-Frame-Options");
+        if (ENV.frontendUrl) res.setHeader("Content-Security-Policy", `frame-ancestors 'self' ${ENV.frontendUrl}`);
+      }
       const stored = await filesModule.storedObjectOf(file);
       if (stored && r2DownloadMode() === "redirect") {
         // Access was checked above; the signed URL is short-lived and names this one object.
         const publicUrl = access === "OPEN" ? stored.store.publicUrl(stored.key) : null;
         res.setHeader("Cache-Control", "no-store");
-        res.redirect(302, publicUrl ?? (await stored.store.signedGetUrl(stored.key, { fileName: file.fileName, contentType: file.mimeType })));
+        res.redirect(302, publicUrl ?? (await stored.store.signedGetUrl(stored.key, { fileName: file.fileName, contentType: file.mimeType, disposition })));
         return;
       }
       const buffer = stored ? await stored.store.get(stored.key) : Buffer.from(file.dataBase64, "base64");
       res.setHeader("Content-Type", file.mimeType);
-      res.setHeader("Content-Disposition", contentDisposition(file.fileName));
+      res.setHeader("Content-Disposition", contentDisposition(file.fileName, disposition));
       res.setHeader("Cache-Control", "private, max-age=0, no-cache");
       res.send(buffer);
     } catch (error) {

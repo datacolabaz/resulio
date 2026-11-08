@@ -102,14 +102,14 @@ export interface ObjectStore {
   /** Size and ETag (the MD5 hex for single-part uploads), or null when the object does not exist. */
   stat(key: string): Promise<{ size: number; etag: string | null } | null>;
   remove(key: string): Promise<void>;
-  signedGetUrl(key: string, opts: { fileName: string; contentType: string; expiresIn?: number }): Promise<string>;
+  signedGetUrl(key: string, opts: { fileName: string; contentType: string; expiresIn?: number; disposition?: "inline" | "attachment" }): Promise<string>;
   publicUrl(key: string): string | null;
 }
 
-/** RFC 6266 attachment header with an ASCII fallback, same as the MySQL-backed download. */
-export function contentDisposition(fileName: string) {
+/** RFC 6266 attachment (default) or inline header with an ASCII fallback, same as the MySQL-backed download. */
+export function contentDisposition(fileName: string, disposition: "inline" | "attachment" = "attachment") {
   const asciiName = fileName.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "'");
-  return `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
+  return `${disposition}; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
 }
 
 type Presign = (client: S3Like, command: GetObjectCommand, opts: { expiresIn: number }) => Promise<string>;
@@ -154,7 +154,7 @@ export function createR2Store(config: R2Config, client?: S3Like, presign?: Presi
       await s3.send(new DeleteObjectCommand({ Bucket, Key: key }));
     },
     signedGetUrl(key, opts) {
-      const command = new GetObjectCommand({ Bucket, Key: key, ResponseContentDisposition: contentDisposition(opts.fileName), ResponseContentType: opts.contentType });
+      const command = new GetObjectCommand({ Bucket, Key: key, ResponseContentDisposition: contentDisposition(opts.fileName, opts.disposition), ResponseContentType: opts.contentType });
       return sign(s3, command, { expiresIn: opts.expiresIn ?? SIGNED_URL_TTL_SECONDS });
     },
     publicUrl(key) {

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { isMessageKey, t, type MessageKey } from "@/i18n/messages";
 import { errorText, fmtDateTime, questionTypeLabel } from "@/lib/format";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
-import { formatFileSize, type UploadedFile } from "@/lib/uploadFile";
+import { fileDownloadUrl, formatFileSize, type UploadedFile } from "@/lib/uploadFile";
 import { BLOCKING_ISSUES, IMPORT_EXTENSIONS, type ImportIssue } from "@shared/questionImport";
 import { ArrowLeft, RotateCcw, Sparkles, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -254,6 +254,29 @@ function ItemSection({ item, topics, disabled, onChange }: { item: Item; topics:
   );
 }
 
+/**
+ * The job's original upload, scoped to this one item's page: an image shows as-is, a PDF opens the
+ * browser's own viewer jumped to that page (#page=N) -- no new library needed for either. Collapsed
+ * by default since it's a (cheap) re-render per item, not the default view.
+ */
+function OriginalFile({ fileId, mimeType, page }: { fileId: string; mimeType: string; page: number | null }) {
+  const url = fileDownloadUrl(fileId);
+  return (
+    <details className="rounded-lg border border-border bg-muted/50 p-2 text-xs">
+      <summary className="cursor-pointer select-none font-medium text-muted-foreground">{t("qimport.showOriginal")}</summary>
+      {mimeType.startsWith("image/") ? (
+        <img src={url} alt="" className="mt-2 max-h-[480px] w-auto rounded-lg border border-border" />
+      ) : (
+        // PDF: the browser's own viewer, jumped to this item's page. `inline=1` asks the server to
+        // serve it for on-page viewing (server/_core/files.ts) instead of as a download -- without
+        // it, Content-Disposition: attachment keeps a plain <a href> download working everywhere
+        // else fileDownloadUrl() is used, so that default stays untouched for every other caller.
+        <iframe src={`${url}?inline=1#page=${page ?? 1}`} title={t("qimport.showOriginal")} className="mt-2 h-[480px] w-full rounded-lg border border-border bg-background" />
+      )}
+    </details>
+  );
+}
+
 function ReviewItem({
   item,
   topics,
@@ -261,6 +284,8 @@ function ReviewItem({
   selected,
   onSelect,
   jobId,
+  fileId,
+  mimeType,
 }: {
   item: Item;
   topics: TopicRow[];
@@ -268,6 +293,8 @@ function ReviewItem({
   selected: boolean;
   onSelect: (v: boolean) => void;
   jobId: string;
+  fileId: string;
+  mimeType: string;
 }) {
   const utils = trpc.useUtils();
   const [editing, setEditing] = useState(false);
@@ -343,12 +370,15 @@ function ReviewItem({
               ))}
             </ul>
           )}
-          {item.rawText && (
-            <details className="rounded-lg border border-border bg-muted/50 p-2 text-xs">
-              <summary className="cursor-pointer select-none font-medium text-muted-foreground">{t("qimport.rawTextToggle")}</summary>
-              <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed">{item.rawText}</pre>
-            </details>
-          )}
+          <div className="flex flex-wrap gap-2">
+            <OriginalFile fileId={fileId} mimeType={mimeType} page={item.sourcePage} />
+            {item.rawText && (
+              <details className="rounded-lg border border-border bg-muted/50 p-2 text-xs">
+                <summary className="cursor-pointer select-none font-medium text-muted-foreground">{t("qimport.rawTextToggle")}</summary>
+                <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed">{item.rawText}</pre>
+              </details>
+            )}
+          </div>
           {duplicateText && <p className="text-xs text-muted-foreground">{t("qimport.duplicateOf", { text: duplicateText })}</p>}
           {pending && !editing && <ItemSection item={item} topics={topics} disabled={busy} onChange={(patch) => update.mutate({ id: item.id, ...patch })} />}
         </div>
@@ -469,6 +499,8 @@ function ReviewList({ detail }: { detail: Detail }) {
               key={item.id}
               item={item}
               jobId={jobId}
+              fileId={detail.job.fileId}
+              mimeType={detail.job.mimeType}
               topics={topics.data ?? []}
               duplicateText={item.duplicateOfQuestionId ? detail.duplicates[item.duplicateOfQuestionId] : undefined}
               selected={selected.has(item.id)}

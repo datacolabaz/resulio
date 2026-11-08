@@ -139,6 +139,16 @@ describe("R2 driver", () => {
     expect(command.input).toMatchObject({ Bucket: "resulio-files", ResponseContentType: "application/pdf", ResponseContentDisposition: contentDisposition("Plan.pdf") });
   });
 
+  it("defaults the disposition to attachment, but signs inline on request (the question-import preview)", async () => {
+    expect(contentDisposition("Plan.pdf")).toContain("attachment;");
+    expect(contentDisposition("Plan.pdf", "inline")).toContain("inline;");
+    expect(contentDisposition("Plan.pdf", "inline")).not.toContain("attachment");
+    const presign = vi.fn(async (_c: S3Like, command: GetObjectCommand) => `https://signed/${command.input.Key}`);
+    const store = createR2Store(CONFIG, fake().client, presign);
+    await store.signedGetUrl("files/ws/a.pdf", { fileName: "Plan.pdf", contentType: "application/pdf", disposition: "inline" });
+    expect(presign.mock.calls[0][1].input).toMatchObject({ ResponseContentDisposition: contentDisposition("Plan.pdf", "inline") });
+  });
+
   it("only offers public URLs when a public base is configured", () => {
     expect(createR2Store(CONFIG, fake().client).publicUrl("files/ws/a b.pdf")).toBeNull();
     expect(createR2Store({ ...CONFIG, publicBaseUrl: "https://cdn.x" }, fake().client).publicUrl("files/ws/a b.pdf")).toBe("https://cdn.x/files/ws/a%20b.pdf");

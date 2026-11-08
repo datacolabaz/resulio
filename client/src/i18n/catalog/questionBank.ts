@@ -263,6 +263,7 @@ export const questionBank = {
   "qimport.sourcePage": ["səh. {page}", "p. {page}", "стр. {page}"],
   "qimport.sourceNumber": ["mənbədə № {number}", "source no. {number}", "в источнике № {number}"],
   "qimport.rawTextToggle": ["Orijinal mətn (OCR) ilə müqayisə et", "Compare against the original OCR text", "Сравнить с исходным текстом (OCR)"],
+  "qimport.showOriginal": ["Orijinal faylı göstər", "Show the original file", "Показать исходный файл"],
   "qimport.answerSource.SOURCE": ["Cavab mənbədən", "Answer from the source", "Ответ из источника"],
   "qimport.answerSource.AI": ["Cavabı AI təyin edib", "Answer set by AI", "Ответ определён ИИ"],
   "qimport.answerSource.TEACHER": ["Cavabı siz təyin etmisiniz", "Answer set by you", "Ответ задан вами"],
