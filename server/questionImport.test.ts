@@ -139,7 +139,7 @@ describe("correct answer", () => {
 });
 
 describe("options, numbers and section", () => {
-  it("keeps the source order of options, re-keyed A, B, C…, and the printed number only as provenance", () => {
+  it("keeps the source order of options, keyed as printed, and the printed number only as provenance", () => {
     const d = normalizeItem(mc({ text: "7) What is the capital of France?" }), ctx);
     expect((d.question as Q).content.options).toEqual([
       { key: "A", text: "Berlin" },
@@ -149,6 +149,30 @@ describe("options, numbers and section", () => {
     ]);
     expect(d.question).toMatchObject({ text: "What is the capital of France?", topic: "Paytaxtlar", difficulty: "MEDIUM" });
     expect(d.sourceNumber).toBe("7");
+  });
+
+  it("keeps the source's own option labels (e.g. 1, 2, 3...) instead of re-lettering them A, B, C", () => {
+    const d = normalizeItem(
+      mc({
+        options: [
+          { label: "1", text: "Berlin" },
+          { label: "2", text: "Paris" },
+          { label: "3", text: "Madrid" },
+          { label: "4", text: "Rome" },
+        ],
+        markedAnswer: ["2"],
+        aiAnswer: ["2"],
+      }),
+      ctx,
+    );
+    expect((d.question as Q).content.options).toEqual([
+      { key: "1", text: "Berlin" },
+      { key: "2", text: "Paris" },
+      { key: "3", text: "Madrid" },
+      { key: "4", text: "Rome" },
+    ]);
+    expect((d.question as Q).answerKey).toEqual({ correct: "2" });
+    expect(questionInputSchema.safeParse(d.question).success).toBe(true);
   });
 
   it("files every question under the chosen section; the model only suggests another one", () => {

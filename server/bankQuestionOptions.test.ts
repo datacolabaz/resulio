@@ -87,6 +87,31 @@ describe("an imported closed question, from bank to exam", () => {
   });
 });
 
+describe("an imported question numbered 1, 2, 3... in its own source", () => {
+  it("keeps that numbering end to end: bank storage, student view and teacher preview all show 1/2/3, never A/B/C", () => {
+    const { question } = imported({
+      options: ["1) 1221", "2) 1664", "3) 11475", "4) 7556", "5) 13667"].map((text, i) => ({ label: String(i + 1), text })),
+      markedAnswer: null,
+      aiAnswer: "2",
+    });
+    expect((question.content as { options: { key: string }[] }).options.map((o) => o.key)).toEqual(["1", "2", "3", "4", "5"]);
+    expect(question.answerKey).toMatchObject({ correct: "2" });
+
+    const student = toStudentQuestion(freeze(question, "q1"), "attempt:q1");
+    expect(student.options?.map((o) => o.key)).toEqual(["1", "2", "3", "4", "5"]);
+    expect(gradeQuestion(freeze(question, "q1"), "2").status).toBe("CORRECT");
+
+    const p = questionPreview(question);
+    expect(p.options.map((o) => [o.letter, o.correct])).toEqual([
+      ["1", false],
+      ["2", true],
+      ["3", false],
+      ["4", false],
+      ["5", false],
+    ]);
+  });
+});
+
 describe("teacher preview", () => {
   it("letters the options and names the correct one", () => {
     const p = questionPreview(imported().question);
@@ -94,12 +119,14 @@ describe("teacher preview", () => {
     expect(p.answer).toEqual({ kind: "choice", letters: ["B"] });
   });
 
-  it("letters by position even when stored keys are not letters, and tolerates loose JSON", () => {
+  it("shows each option's own stored key as its letter -- never re-lettered by position -- and tolerates loose JSON", () => {
+    // An imported question keeps whatever label its source used (extraction.ts); this preview must
+    // show that label as printed, not silently relabel it A, B, C by position.
     const p = questionPreview({ type: "MULTIPLE_SELECT", content: { options: [{ key: "a", text: "x" }, { key: "b", text: "y" }, "z"] }, answerKey: { correct: ["b", "C"] } });
     expect(p.options.map((o) => [o.letter, o.text, o.correct])).toEqual([
-      ["A", "x", false],
-      ["B", "y", true],
-      ["C", "z", true],
+      ["a", "x", false],
+      ["b", "y", true],
+      ["C", "z", true], // a bare string option carries no key of its own, so `entries()` falls back to its position
     ]);
     expect(questionPreview({ type: "MULTIPLE_CHOICE", content: null, answerKey: null })).toEqual({ options: [], answer: null });
   });
