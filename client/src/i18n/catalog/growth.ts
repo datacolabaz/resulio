@@ -8,7 +8,13 @@ export const growth = {
 
   "growth.tab.topics": ["Mövzu bağlantıları", "Topic mapping", "Привязка тем"],
   "growth.recompute": ["Yenidən hesabla", "Recalculate", "Пересчитать"],
-  "growth.recomputeQueued": ["{count} tələbə yenidən hesablanma növbəsinə əlavə olundu.", "{count} students were queued for recalculation.", "Студентов в очереди на пересчёт: {count}."],
+  "growth.recomputeHint": [
+    "Mövzu statistikasını, risk balını və mənimsəmə göstəricilərini bütün sinif üçün yeniləyir.",
+    "Refreshes topic stats, risk score and mastery for the whole class.",
+    "Обновляет статистику по темам, оценку риска и уровень усвоения для всего класса.",
+  ],
+  "growth.recomputeDone": ["{count} tələbə üçün yeniləndi.", "Updated for {count} students.", "Обновлено для {count} учеников."],
+  "growth.recomputeQueued": ["{count} tələbə yenidən hesablanma növbəsinə əlavə olundu, bir neçə dəqiqəyə yenilənəcək.", "{count} students were queued and will update within a few minutes.", "Студентов в очереди на пересчёт: {count}, обновится в течение нескольких минут."],
   "growth.topics.intro": [
     "Nəticələrdə sərbəst yazılmış mövzuları sual bankının bölmələrinə bağlayın. Belə olduqda eyni mövzu bir yerdə hesablanır və bölmənin adı dəyişsə də tarixçə itmir.",
     "Map free-text topics from results to question bank sections. The same topic is then counted in one place, and history survives section renames.",
@@ -99,7 +105,14 @@ export const growth = {
     "Балл риска складывается из четырёх сигналов: падение результата, повторные ошибки по теме, пропущенные экзамены и критически слабые темы. Веса фиксированы; у каждой причины указано, сколько баллов она даёт.",
   ],
   "growth.risk.off": ["Risk radarı söndürülüb. Onu Ayarlar bölməsindən yandıra bilərsiniz.", "The risk radar is off. You can turn it on in Settings.", "Радар риска отключён. Его можно включить в настройках."],
-  "growth.risk.empty": ["Hazırda risk altında tələbə yoxdur.", "No students are at risk right now.", "Сейчас нет студентов в зоне риска."],
+  "growth.risk.empty": ["Hazırda risk altında tələbə yoxdur — {noRisk} tələbə üçün hesablanıb və risk tapılmayıb.", "No students are at risk right now — computed for {noRisk} students, none flagged.", "Сейчас нет студентов в зоне риска — рассчитано для {noRisk} учеников, риск не обнаружен."],
+  "growth.risk.emptyNotComputed": ["Risk balı hələ heç bir tələbə üçün hesablanmayıb. \"Yenidən hesabla\" düyməsini sınayın.", "The risk score hasn't been computed for any student yet. Try \"Recalculate\".", "Балл риска пока не рассчитан ни для одного ученика. Нажмите «Пересчитать»."],
+  "growth.risk.emptyMixed": [
+    "Risk altında tələbə yoxdur. {notYetComputed} tələbə üçün hələ hesablanmayıb, {insufficientData} tələbə üçün kifayət qədər məlumat yoxdur (məs. ən azı 2 qiymətləndirilmiş imtahan nəticəsi).",
+    "No students are at risk. {notYetComputed} not computed yet, {insufficientData} don't have enough data yet (e.g. at least 2 graded exam results).",
+    "Нет студентов в зоне риска. Для {notYetComputed} ещё не рассчитано, для {insufficientData} недостаточно данных (например, нужно минимум 2 проверенных результата).",
+  ],
+  "growth.risk.emptyError": ["{count} tələbə üçün son hesablama cəhdi xəta ilə bitdi; sistem avtomatik təkrar cəhd edəcək.", "The last computation attempt failed for {count} students; it will retry automatically.", "Последняя попытка расчёта завершилась ошибкой для {count} учеников; будет повторена автоматически."],
   "growth.risk.allGroups": ["Bütün qruplar", "All groups", "Все группы"],
   "growth.risk.colScore": ["Bal", "Score", "Балл"],
   "growth.risk.colReasons": ["Səbəblər", "Reasons", "Причины"],

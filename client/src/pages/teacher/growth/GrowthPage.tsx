@@ -41,13 +41,26 @@ export function GrowthPage() {
   );
 }
 
+/**
+ * Recomputes the whole Growth module for the workspace: topic stats, mastery, risk and released XP
+ * together, not topic health alone (see topicHealth.recomputeWorkspace). Most students are processed
+ * before the mutation resolves, so the risk/weakness/topic queries are invalidated right after.
+ */
 function RecomputeButton() {
+  const utils = trpc.useUtils();
   const recompute = trpc.teacher.growth.recompute.useMutation({
-    onSuccess: (r) => toast.success(t("growth.recomputeQueued", { count: r.queued })),
+    onSuccess: (r) => {
+      toast.success(r.processed >= r.queued ? t("growth.recomputeDone", { count: r.processed }) : t("growth.recomputeQueued", { count: r.queued - r.processed }));
+      void utils.teacher.growth.riskList.invalidate();
+      void utils.teacher.growth.riskDetail.invalidate();
+      void utils.teacher.growth.groupWeakness.invalidate();
+      void utils.teacher.growth.studentWeakness.invalidate();
+      void utils.teacher.growth.topicHealth.invalidate();
+    },
     onError: (e) => toast.error(errorText(e)),
   });
   return (
-    <Button variant="outline" size="sm" disabled={recompute.isPending} onClick={() => recompute.mutate()}>
+    <Button variant="outline" size="sm" title={t("growth.recomputeHint")} disabled={recompute.isPending} onClick={() => recompute.mutate()}>
       <RefreshCw className="mr-1.5 h-4 w-4" aria-hidden />
       {t("growth.recompute")}
     </Button>

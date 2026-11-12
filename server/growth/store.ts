@@ -204,6 +204,26 @@ export async function reconcileGrowth(limit = 50): Promise<number> {
 }
 
 /**
+ * Same as reconcileGrowth, but scoped to one workspace and run inline by the caller (the "Yenidən
+ * hesabla"/recompute-workspace action) instead of waiting up to RECONCILE_MS for the periodic
+ * sweeper. Every queued student's full pipeline (stats -> mastery -> risk -> released XP, via the
+ * same `steps` registered with onStudentRecomputed) runs before this returns, so a manual recompute
+ * reflects the whole Growth module immediately, not just topic stats. Any student left over a large
+ * workspace's bound is still picked up by the regular background sweeper, same as before.
+ */
+export async function reconcileWorkspaceNow(workspaceId: string, limit = 300): Promise<number> {
+  let queued: { workspaceId: string; studentId: number; dirtyAt: Date }[];
+  try {
+    queued = await requireDb().select().from(growthDirty).where(eq(growthDirty.workspaceId, workspaceId)).orderBy(asc(growthDirty.dirtyAt)).limit(limit);
+  } catch (error) {
+    if (isSchemaBehind(error)) return 0;
+    throw error;
+  }
+  for (const row of queued) await processDirty(row);
+  return queued.length;
+}
+
+/**
  * Students of the workspace with a counted result that has no stats yet (new data, or the backfill
  * after the flag was turned on). Results whose items have no topic still get their untagged row, so
  * nothing is picked up twice.
