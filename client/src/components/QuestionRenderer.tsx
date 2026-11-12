@@ -120,17 +120,20 @@ export function QuestionRenderer({
       )}
 
       {q.type === "NUMERIC" && (
-        <div className="flex items-center gap-2">
-          <Input
-            aria-labelledby={promptId}
-            disabled={disabled}
-            inputMode="decimal"
-            className="max-w-xs"
-            value={typeof value === "string" ? value : ""}
-            onChange={(e) => onChange(e.target.value.replace(/[^\d.,\-+eE]/g, ""))}
-            placeholder={t("renderer.numberPlaceholder")}
-          />
-          {q.unit && <span className="text-sm text-muted-foreground">{q.unit}</span>}
+        <div className="grid gap-1.5">
+          <div className="flex items-center gap-2">
+            <Input
+              aria-labelledby={`${promptId} ${hintId}`}
+              disabled={disabled}
+              inputMode="decimal"
+              className="max-w-xs"
+              value={typeof value === "string" ? value : ""}
+              onChange={(e) => onChange(e.target.value.replace(/[^\d.,\-+eE]/g, ""))}
+              placeholder={t("renderer.numberPlaceholder")}
+            />
+            {q.unit && <span className="text-sm text-muted-foreground">{q.unit}</span>}
+          </div>
+          <div id={hintId} className="text-xs text-muted-foreground">{t("renderer.numericHint")}</div>
         </div>
       )}
 
@@ -157,7 +160,8 @@ export function QuestionRenderer({
       )}
 
       {q.type === "MATCHING" && (
-        <div role="group" aria-labelledby={promptId} className="grid gap-2">
+        <div role="group" aria-labelledby={`${promptId} ${hintId}`} className="grid gap-2">
+          <div id={hintId} className="text-xs text-muted-foreground">{t("renderer.matchingHint")}</div>
           {(q.left ?? []).map((l) => {
             const map = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, string>) : {};
             return (
