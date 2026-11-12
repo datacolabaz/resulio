@@ -1,6 +1,7 @@
 import { and, desc, eq, gt, inArray, isNotNull, ne } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
+  growthDirty,
   questionMeta,
   questions,
   resultItems,
@@ -37,18 +38,46 @@ export async function logAction(scope: TeacherScope, studentId: number, type: Ri
   await requireDb().insert(riskActions).values({ id: nanoid(), workspaceId: scope.workspaceId, studentId, type, refId, createdBy: scope.userId });
 }
 
+/**
+ * Why the "no risk shown" list can be empty, for students whose level isn't WATCH/MEDIUM/HIGH -- the
+ * teacher sees an identical empty row either way otherwise, which reads as "nothing to see" even when
+ * nothing has been computed yet. Read-only classification over what's already stored; does not touch
+ * risk.ts's scoring, weights or the SCORE_DROP eligibility rule.
+ *   - NOT_YET_COMPUTED: no student_risk row at all (new student, or the flag/backfill hasn't reached them).
+ *   - COMPUTATION_ERROR: queued in growth_dirty with reason "retry" -- the last recompute attempt threw.
+ *   - INSUFFICIENT_DATA: a row exists, level is NONE, and none of the four signals had enough evidence
+ *     to register any points (an approximation: a few real "all clear" students can legitimately have
+ *     zero reasons too, so this reads as "likely too little data" rather than a guarantee).
+ *   - NO_RISK: a row exists, level is NONE, and at least one signal was actually measured.
+ */
+export type NoRiskReason = "NOT_YET_COMPUTED" | "COMPUTATION_ERROR" | "INSUFFICIENT_DATA" | "NO_RISK";
+
 export async function riskList(scope: TeacherScope, groupId: string | null) {
   const settings = await growthSettingsOf(scope.workspaceId);
-  if (!settings.riskEnabled) return { enabled: false, rows: [], dismissed: 0 };
+  if (!settings.riskEnabled) return { enabled: false, rows: [], dismissed: 0, noRisk: {} as Record<NoRiskReason, number> };
   const students = new Map(
     (await teacherStudents(scope)).filter((s) => !groupId || s.groupIds.includes(groupId)).map((s) => [s.id, { name: s.name ?? "", groups: s.groups }]),
   );
   const now = new Date();
-  const risks = (await risksOf(scope.workspaceId, [...students.keys()])).filter((r) => r.level !== "NONE");
+  const allRisks = await risksOf(scope.workspaceId, [...students.keys()]);
+  const risksByStudent = new Map(allRisks.map((r) => [r.studentId, r]));
+  const retrying = new Set(
+    (await requireDb().select({ studentId: growthDirty.studentId }).from(growthDirty).where(and(eq(growthDirty.workspaceId, scope.workspaceId), eq(growthDirty.reason, "retry"))))
+      .map((r) => r.studentId),
+  );
+  const noRisk: Record<NoRiskReason, number> = { NOT_YET_COMPUTED: 0, COMPUTATION_ERROR: 0, INSUFFICIENT_DATA: 0, NO_RISK: 0 };
+  for (const studentId of students.keys()) {
+    const r = risksByStudent.get(studentId);
+    if (r && r.level !== "NONE") continue; // shown as an active risk row below, not part of the "no risk" breakdown
+    const reason: NoRiskReason = retrying.has(studentId) ? "COMPUTATION_ERROR" : !r ? "NOT_YET_COMPUTED" : r.reasons.length === 0 ? "INSUFFICIENT_DATA" : "NO_RISK";
+    noRisk[reason]++;
+  }
+  const risks = allRisks.filter((r) => r.level !== "NONE");
   const visible = risks.filter((r) => !isDismissed(r, now));
   return {
     enabled: true,
     dismissed: risks.length - visible.length,
+    noRisk,
     rows: visible
       .map((r) => ({ ...r, name: students.get(r.studentId)?.name ?? "", groups: students.get(r.studentId)?.groups ?? [] }))
       .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name)),

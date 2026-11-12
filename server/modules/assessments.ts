@@ -34,6 +34,16 @@ import { AppError } from "./errors";
 import { activeGroupIdsOfStudent, activeStudentIdsOfGroups, teacherStudentIds } from "./groups";
 import { syllabusAssignmentIds } from "./syllabusLinks";
 
+/**
+ * Used by createAssessment() for every brand-new exam. showCorrectAnswers/showExplanations default
+ * to true here (students see what they got right/wrong unless the teacher turns it off in the exam's
+ * "Vaxt və nəticə qaydaları" step). This literal always wins over assessmentSettingsSchema's own zod
+ * default, so both are kept in sync -- see the comment there. Existing assessments already have their
+ * own `settings` row in the DB and are completely unaffected by this default; the student-facing
+ * reveal is additionally frozen per published version (engine.ts resultVisibility reads
+ * `version.settings`), so even republishing an existing exam never changes an already-submitted
+ * attempt's visibility -- only attempts taken under the new version see the new setting.
+ */
 export const DEFAULT_SETTINGS: AssessmentSettings = {
   title: "Yeni imtahan",
   description: "",
@@ -44,8 +54,8 @@ export const DEFAULT_SETTINGS: AssessmentSettings = {
   randomize: false,
   releaseMode: "IMMEDIATE",
   reviewMode: "FULL",
-  showCorrectAnswers: false,
-  showExplanations: false,
+  showCorrectAnswers: true,
+  showExplanations: true,
   wrongPenalty: DEFAULT_WRONG_PENALTY,
   emailResults: false,
 };

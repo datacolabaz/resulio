@@ -4,7 +4,7 @@ import { TEXT_KEY_PREFIX, UNTAGGED_TOPIC_KEY, isSectionKey } from "../../shared/
 import { requireDb } from "../db";
 import type { TeacherScope } from "../modules/access";
 import { AppError } from "../modules/errors";
-import { markMissingStats, markWorkspaceDirty } from "./store";
+import { markMissingStats, markWorkspaceDirty, reconcileWorkspaceNow } from "./store";
 import { sectionLabel, topicNameKey } from "./topics";
 
 /**
@@ -103,8 +103,18 @@ export async function removeAlias(scope: TeacherScope, aliasKey: string) {
   return { ok: true };
 }
 
+/**
+ * The teacher's "Yenidən hesabla" action. Despite the module name, this recomputes the whole Growth
+ * pipeline for the workspace -- topic stats, mastery, risk and released XP -- not only topic health;
+ * every queued student runs through the same per-student steps the event-driven trigger and the
+ * nightly pass use (see onStudentRecomputed in store.ts). Marking dirty alone only queues the work
+ * for the periodic background sweeper (up to RECONCILE_MS later); reconcileWorkspaceNow also runs it
+ * inline here (bounded) so a teacher who just clicked the button sees fresh results right away for
+ * workspaces within the bound, with any remainder still safely picked up by the sweeper.
+ */
 export async function recomputeWorkspace(scope: TeacherScope) {
   const missing = await markMissingStats(scope.workspaceId);
   const queued = await markWorkspaceDirty(scope.workspaceId, "manual");
-  return { queued: queued + missing };
+  const processed = await reconcileWorkspaceNow(scope.workspaceId);
+  return { queued: queued + missing, processed };
 }
