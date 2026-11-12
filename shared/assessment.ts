@@ -260,8 +260,17 @@ export const assessmentSettingsSchema = z.object({
   randomize: z.boolean().default(false),
   releaseMode: z.enum(RELEASE_MODES).default("IMMEDIATE"),
   reviewMode: z.enum(REVIEW_MODES).default("FULL"),
-  showCorrectAnswers: z.boolean().default(false),
-  showExplanations: z.boolean().default(false),
+  /**
+   * Default true for new assessments (students should see what they got right/wrong by default).
+   * This is a *creation-time* default only -- it is read once when an assessment's settings object
+   * is first built (see DEFAULT_SETTINGS in server/modules/assessments.ts, which already pins its own
+   * literal `true` and so never falls through to this zod default anyway) and then frozen per-version
+   * at publish time (server/modules/engine.ts resultVisibility() reads `version.settings`, not the
+   * live assessment row). Changing this default never alters an existing assessment's stored settings
+   * or any already-published version's frozen settings; the teacher can still turn it off per exam.
+   */
+  showCorrectAnswers: z.boolean().default(true),
+  showExplanations: z.boolean().default(true),
   wrongPenalty: wrongPenaltySchema.default(DEFAULT_WRONG_PENALTY),
   /** E-mail each student their result once it is final and released. */
   emailResults: z.boolean().default(false),
