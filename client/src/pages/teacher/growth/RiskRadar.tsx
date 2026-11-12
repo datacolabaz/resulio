@@ -35,6 +35,32 @@ function Reasons({ reasons }: { reasons: RiskReason[] }) {
   );
 }
 
+/**
+ * The "no active risk" panel used to say the same thing whether risk had never been computed, had
+ * too little data, or was genuinely computed as safe -- a teacher with real exam data could see the
+ * exact empty message the audit found, with no way to tell those apart. Picks the clearest message
+ * for the actual breakdown instead of one generic line.
+ */
+function EmptyRiskNote({ noRisk }: { noRisk: Partial<Record<"NOT_YET_COMPUTED" | "COMPUTATION_ERROR" | "INSUFFICIENT_DATA" | "NO_RISK", number>> }) {
+  const notYetComputed = noRisk.NOT_YET_COMPUTED ?? 0;
+  const computationError = noRisk.COMPUTATION_ERROR ?? 0;
+  const insufficientData = noRisk.INSUFFICIENT_DATA ?? 0;
+  const noRiskCount = noRisk.NO_RISK ?? 0;
+  const total = notYetComputed + computationError + insufficientData + noRiskCount;
+  return (
+    <div className="space-y-1">
+      {computationError > 0 && <p className="text-sm text-warning">{t("growth.risk.emptyError", { count: computationError })}</p>}
+      {total === 0 || (notYetComputed === total && !computationError) ? (
+        <p className="text-sm text-muted-foreground">{t("growth.risk.emptyNotComputed")}</p>
+      ) : notYetComputed > 0 || insufficientData > 0 ? (
+        <p className="text-sm text-muted-foreground">{t("growth.risk.emptyMixed", { notYetComputed, insufficientData })}</p>
+      ) : (
+        <p className="text-sm text-muted-foreground">{t("growth.risk.empty", { noRisk: noRiskCount })}</p>
+      )}
+    </div>
+  );
+}
+
 export function RiskRadarTab() {
   const groups = trpc.teacher.groups.list.useQuery();
   const [groupId, setGroupId] = useState("");
@@ -54,7 +80,7 @@ export function RiskRadarTab() {
       </label>
       <Panel>
         {!list.data.rows.length ? (
-          <p className="text-sm text-muted-foreground">{t("growth.risk.empty")}</p>
+          <EmptyRiskNote noRisk={list.data.noRisk} />
         ) : (
           <ul className="divide-y">
             {list.data.rows.map((r) => (
