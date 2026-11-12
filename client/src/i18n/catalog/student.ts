@@ -141,9 +141,9 @@ export const student = {
   "renderer.longPlaceholder": ["Cavabınızı yazın", "Write your answer", "Напишите ответ"],
   "renderer.numberPlaceholder": ["Rəqəm", "Number", "Число"],
   "renderer.numericHint": [
-    "Ondalık ədədlər üçün vergül (,) və ya nöqtədən (.) istifadə edə bilərsiniz, məsələn: 2,5 və ya 2.5",
-    "For decimals you can use a comma (,) or a dot (.), e.g. 2,5 or 2.5",
-    "Для десятичных дробей можно использовать запятую (,) или точку (.), например: 2,5 или 2.5",
+    "Tam ədədi birbaşa yazın (məsələn: 16). Kəsr hissəsi üçün vergül (,) və ya nöqtədən (.) istifadə edin (məsələn: 2,5 və ya 2.5) — diqqət, 16 ilə 1,6 fərqli ədədlərdir.",
+    "Enter whole numbers as they are (e.g. 16). For the fractional part use a comma (,) or a dot (.) (e.g. 2,5 or 2.5) — note that 16 and 1.6 are different numbers.",
+    "Целые числа вводите как есть (например: 16). Для дробной части используйте запятую (,) или точку (.) (например: 2,5 или 2.5) — обратите внимание, 16 и 1,6 — разные числа.",
   ],
   "renderer.answerLabel": ["Cavab", "Answer", "Ответ"],
   "renderer.blank": ["Boşluq {n}", "Blank {n}", "Пропуск {n}"],
