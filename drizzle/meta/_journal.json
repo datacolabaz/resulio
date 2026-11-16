@@ -442,6 +442,13 @@
       "when": 1794161496243,
       "tag": "0066_question_import_raw_text",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "5",
+      "when": 1794828779136,
+      "tag": "0067_sql_lab_foundation",
+      "breakpoints": true
     }
   ]
 }

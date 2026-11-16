@@ -922,6 +922,61 @@ export const submissionAiReviews = mysqlTable(
   (t) => [index("submission_ai_reviews_task_idx").on(t.taskId)],
 );
 
+// ---------------------------------------------------------------------------
+// SQL Practice Lab
+//
+// A task-level add-on (see `tasks`/`taskSubmissions`): the teacher attaches a CSV dataset
+// (reused `files` upload) and a reference SQL query; the student writes and runs SQL entirely in
+// their own browser (DuckDB-Wasm) against that CSV, then submits a query. Grading never trusts the
+// browser's reported result: on submit the server re-runs the student's query text, independently,
+// inside the same isolated sandbox executor used for the one-time reference-query run (see
+// server/modules/sqlSandbox.ts) -- never against production MySQL. See the SQL Practice Lab audit
+// doc for the full design and the resource limits (memory/CPU/network/timeout) that sandbox runs in.
+// ---------------------------------------------------------------------------
+
+export const SQL_LAB_GRADE_MODES = ["EXACT_ORDERED", "EXACT_UNORDERED", "ROW_COUNT_ONLY"] as const;
+export type SqlLabGradeMode = (typeof SQL_LAB_GRADE_MODES)[number];
+
+export const sqlLabConfigs = mysqlTable(
+  "sql_lab_configs",
+  {
+    id: id("id").primaryKey(),
+    taskId: id("taskId").notNull().unique(),
+    datasetFileId: id("datasetFileId").notNull(),
+    datasetColumns: json("datasetColumns").$type<string[]>().notNull(),
+    referenceQuery: text("referenceQuery").notNull(),
+    gradeMode: mysqlEnum("gradeMode", SQL_LAB_GRADE_MODES).notNull().default("EXACT_UNORDERED"),
+    expectedColumns: json("expectedColumns").$type<string[]>().notNull(),
+    expectedRows: json("expectedRows").$type<unknown[][]>().notNull(),
+    createdBy: int("createdBy").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [index("sql_lab_configs_task_idx").on(t.taskId)],
+);
+
+export const SQL_LAB_SUBMISSION_STATUSES = ["CORRECT", "WRONG", "ERROR", "PENDING_REVIEW"] as const;
+export type SqlLabSubmissionStatus = (typeof SQL_LAB_SUBMISSION_STATUSES)[number];
+
+export const sqlLabSubmissions = mysqlTable(
+  "sql_lab_submissions",
+  {
+    id: id("id").primaryKey(),
+    submissionId: id("submissionId").notNull().unique(),
+    taskId: id("taskId").notNull(),
+    studentId: int("studentId").notNull(),
+    queryText: text("queryText").notNull(),
+    status: mysqlEnum("status", SQL_LAB_SUBMISSION_STATUSES).notNull(),
+    resultColumns: json("resultColumns").$type<string[] | null>(),
+    resultRowsPreview: json("resultRowsPreview").$type<unknown[][] | null>(),
+    resultRowCount: int("resultRowCount"),
+    errorMessage: text("errorMessage"),
+    autoScore: double("autoScore"),
+    executionMs: int("executionMs").notNull(),
+    serverExecutedAt: timestamp("serverExecutedAt").defaultNow().notNull(),
+  },
+  (t) => [index("sql_lab_submissions_task_idx").on(t.taskId)],
+);
+
 /** Append-only log of paid AI calls, used for the per-workspace daily cap. */
 export const aiUsageEvents = mysqlTable(
   "ai_usage_events",
