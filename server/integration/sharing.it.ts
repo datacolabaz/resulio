@@ -3,7 +3,7 @@ import { resetRateLimits } from "../_core/rateLimit";
 import * as filesModule from "../modules/files";
 import * as shareTracking from "../modules/shareTracking";
 import * as tasks from "../modules/tasks";
-import { caller, makeTeacher, makeUser } from "./fixtures";
+import { caller, makeGroup, makeTeacher, makeUser } from "./fixtures";
 
 beforeEach(() => resetRateLimits());
 
@@ -73,6 +73,59 @@ describe("public task page: file access for recipients", () => {
     const stranger = await makeUser("Yad tələbə");
     const file = await filesModule.fileRow(saved.id);
     await expect(filesModule.assertCanDownload(file!, stranger.id)).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+});
+
+// Audit: a task's openness is driven entirely by the TASK's own accessMode, never by the fact
+// that it has an attachment at all. fileOpenToAnyone()/downloadAccess() (server/modules/taskAccess.ts,
+// server/modules/files.ts) already carry this rule -- these lock it in for both directions (PUBLIC
+// stays open, as the tests above already cover; GROUPS stays closed, which had no coverage before).
+describe("PUBLIC vs GROUPS: a task's attachment is open only when the task itself is PUBLIC", () => {
+  async function groupTaskWithAttachment(scope: Awaited<ReturnType<typeof makeTeacher>>["scope"], groupId: string) {
+    const saved = await filesModule.saveFile({
+      workspaceId: scope.workspaceId,
+      uploadedBy: scope.userId,
+      fileName: "dataset.csv",
+      buffer: Buffer.from("name,score\nAli,90\n"),
+      isPublic: true, // same upload-time flag every task-attachment gets; accessMode decides openness, not this
+    });
+    const task = await tasks.createAssignment(scope, {
+      title: "Qrup üçün tapşırıq",
+      description: "",
+      instructions: "",
+      deadline: new Date(Date.now() + 86_400_000),
+      groupIds: [groupId],
+      studentIds: [],
+      attachments: [{ fileId: saved.id, name: saved.name, size: saved.size }],
+      accessMode: "GROUPS",
+    });
+    return { task, fileId: saved.id };
+  }
+
+  it("denies an anonymous visitor and a signed-in stranger, but allows the task's own group member", async () => {
+    const teacher = await makeTeacher("Qrup müəllimi 2");
+    const member = await makeUser("Qrup üzvü");
+    const stranger = await makeUser("Yad tələbə");
+    const group = await makeGroup(teacher.scope, [member]);
+    const { fileId } = await groupTaskWithAttachment(teacher.scope, group.id);
+    const file = await filesModule.fileRow(fileId);
+
+    expect(await filesModule.downloadAccess(file!, null)).toBe("SIGN_IN_REQUIRED");
+    expect(await filesModule.downloadAccess(file!, stranger.id)).toBe("DENIED");
+    await expect(filesModule.assertCanDownload(file!, member.id)).resolves.toBeUndefined();
+  });
+
+  it("denies a student who belongs to a group in a different workspace", async () => {
+    const teacher = await makeTeacher("Qrup müəllimi 3");
+    const group = await makeGroup(teacher.scope, []);
+    const { fileId } = await groupTaskWithAttachment(teacher.scope, group.id);
+
+    const otherTeacher = await makeTeacher("Başqa müəllim");
+    const otherStudent = await makeUser("Başqa işçi otağının tələbəsi");
+    await makeGroup(otherTeacher.scope, [otherStudent]);
+
+    const file = await filesModule.fileRow(fileId);
+    expect(await filesModule.downloadAccess(file!, otherStudent.id)).toBe("DENIED");
   });
 });
 

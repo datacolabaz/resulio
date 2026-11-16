@@ -1,11 +1,11 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { files, submissionAiReviews, taskSubmissions, tasks, type QuestionRow, type SubmissionAiReview, type Task, type TaskAccessMode, type TaskSubmission } from "../../drizzle/schema";
+import { files, groups, submissionAiReviews, taskSubmissions, tasks, type QuestionRow, type SubmissionAiReview, type Task, type TaskAccessMode, type TaskSubmission } from "../../drizzle/schema";
 import type { MaterialDetails } from "../../shared/materialTemplates";
 import type { StudentAnswer } from "../../shared/assessment";
 import { sendEmailInBackground } from "../_core/email";
 import { deleteMeta, saveMeta } from "../materials/meta";
-import { requireDb } from "../db";
+import { requireDb, type DbOrTx } from "../db";
 import { dispatch } from "../notifications/dispatcher";
 import { managedWorkspaces, type TeacherScope } from "./access";
 import { scheduleAiReview, STALE_PENDING_MS, submissionInScope } from "./aiReview";
@@ -168,11 +168,31 @@ export function studentSubmissionView(
   };
 }
 
+/**
+ * Tasks reaching this student, filtered in SQL (same pattern as
+ * server/materials/access.ts's materialsReachingStudent): those of the workspaces of the
+ * student's own groups (indexed) plus any task individually listing them (JSON_CONTAINS) --
+ * narrowing what would otherwise be a platform-wide `tasks` table scan down to just the
+ * workspaces/tasks that could possibly reach this student. `taskReachesStudent` still makes the
+ * final per-row call (it alone enforces the PUBLIC/GROUPS distinction), so this is a safe,
+ * narrowing-only optimization: it can only shrink the candidate set, never wrongly admit a task.
+ */
+export async function tasksReachingStudent(studentId: number, groupIds: readonly string[], db: DbOrTx = requireDb()): Promise<Task[]> {
+  const workspaceIds = groupIds.length
+    ? (await db.selectDistinct({ id: groups.providerWorkspaceId }).from(groups).where(inArray(groups.id, [...groupIds]))).map((r) => r.id)
+    : [];
+  const listed = sql`json_contains(${tasks.studentIds}, ${String(studentId)})`;
+  const rows = await db
+    .select()
+    .from(tasks)
+    .where(workspaceIds.length ? or(inArray(tasks.providerWorkspaceId, workspaceIds), listed) : listed);
+  return rows.filter((t) => taskReachesStudent(t, studentId, [...groupIds]));
+}
+
 /** Assignments reaching this student (by group membership or direct targeting), each with its own submission if any. */
 export async function studentAssignments(studentId: number, groupIds: string[]) {
   const db = requireDb();
-  const rows = await db.select().from(tasks);
-  const relevant = rows.filter((t) => taskReachesStudent(t, studentId, groupIds));
+  const relevant = await tasksReachingStudent(studentId, groupIds, db);
   if (!relevant.length) return [];
   const subs = await db
     .select()
