@@ -977,6 +977,9 @@ export const sqlLabSubmissions = mysqlTable(
   (t) => [index("sql_lab_submissions_task_idx").on(t.taskId)],
 );
 
+export type SqlLabConfig = typeof sqlLabConfigs.$inferSelect;
+export type SqlLabSubmission = typeof sqlLabSubmissions.$inferSelect;
+
 /** Append-only log of paid AI calls, used for the per-workspace daily cap. */
 export const aiUsageEvents = mysqlTable(
   "ai_usage_events",

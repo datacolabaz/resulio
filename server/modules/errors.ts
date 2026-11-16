@@ -169,7 +169,10 @@ export type AppErrorCode =
   | "ORG_CANNOT_REMOVE_ROLE"
   | "ORG_CANNOT_INVITE_SELF"
   | "ORG_DEPARTMENT_NOT_FOUND"
-  | "ORG_DEPARTMENT_NAME_EXISTS";
+  | "ORG_DEPARTMENT_NAME_EXISTS"
+  | "SQL_LAB_NOT_CONFIGURED"
+  | "SQL_LAB_DATASET_INVALID"
+  | "SQL_LAB_REFERENCE_QUERY_FAILED";
 
 export class AppError extends Error {
   constructor(public readonly code: AppErrorCode) {
@@ -347,6 +350,9 @@ const HTTP: Partial<Record<AppErrorCode, TRPCError["code"]>> = {
   ORG_CANNOT_INVITE_SELF: "CONFLICT",
   ORG_DEPARTMENT_NOT_FOUND: "NOT_FOUND",
   ORG_DEPARTMENT_NAME_EXISTS: "CONFLICT",
+  SQL_LAB_NOT_CONFIGURED: "NOT_FOUND",
+  SQL_LAB_DATASET_INVALID: "BAD_REQUEST",
+  SQL_LAB_REFERENCE_QUERY_FAILED: "BAD_REQUEST",
 };
 
 /** Where an unexpected error happened, for the server log only (never sent to the client). */

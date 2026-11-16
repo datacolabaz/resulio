@@ -24,7 +24,7 @@ import { clearNamedCookie } from "./_core/cookies";
 import { ENV } from "./_core/env";
 import { requestMeta } from "./_core/requestMeta";
 import { systemRouter } from "./_core/systemRouter";
-import { GROUP_FORMATS, PROVIDER_TYPES, PUSH_PLATFORMS, TASK_ACCESS_MODES, UI_CONTEXTS } from "../drizzle/schema";
+import { GROUP_FORMATS, PROVIDER_TYPES, PUSH_PLATFORMS, SQL_LAB_GRADE_MODES, TASK_ACCESS_MODES, UI_CONTEXTS } from "../drizzle/schema";
 import { JOIN_POLICIES } from "../shared/groupJoinPolicy";
 import { adminRouter } from "./adminRouter";
 import { myAiQuota } from "./aiUsage/limits";
@@ -67,6 +67,7 @@ import * as passwordAuth from "./modules/passwordAuth";
 import * as referrals from "./modules/referrals";
 import * as shareTracking from "./modules/shareTracking";
 import { assertAccessGroups, assertRecipients } from "./modules/recipients";
+import * as sqlLab from "./modules/sqlLab";
 import { canSeeTaskContent } from "./modules/taskAccess";
 import * as tasks from "./modules/tasks";
 import * as taskQuiz from "./modules/taskQuiz";
@@ -777,6 +778,14 @@ const teacherTasksRouter = router({
   quizReorder: teacherProcedure
     .input(z.object({ id: entityId, questionIds: z.array(entityId).min(1).max(100) }))
     .mutation(({ ctx, input }) => taskQuiz.reorderTaskQuiz(ctx.scope, input.id, input.questionIds)),
+  /** A task's optional SQL Practice Lab: a CSV dataset + reference query, validated and run through
+   *  the sandbox at save time (never trusts the client) -- see server/modules/sqlLab.ts. */
+  sqlLabConfig: teacherProcedure.input(z.object({ id: entityId })).query(({ ctx, input }) => sqlLab.sqlLabConfigOf(ctx.scope, input.id)),
+  sqlLabSaveConfig: teacherProcedure
+    .use(rateLimit("sqlLabSaveConfig", 20, MINUTE))
+    .input(z.object({ id: entityId, datasetFileId: entityId, referenceQuery: z.string().trim().min(1).max(sqlLab.MAX_SQL_LAB_QUERY_CHARS), gradeMode: z.enum(SQL_LAB_GRADE_MODES) }))
+    .mutation(({ ctx, input }) => sqlLab.saveSqlLabConfig(ctx.scope, input.id, { datasetFileId: input.datasetFileId, referenceQuery: input.referenceQuery, gradeMode: input.gradeMode })),
+  sqlLabRemoveConfig: teacherProcedure.input(z.object({ id: entityId })).mutation(({ ctx, input }) => sqlLab.removeSqlLabConfig(ctx.scope, input.id)),
   materials: teacherProcedure.query(({ ctx }) => tasks.listMaterialsForWorkspace(ctx.scope.workspaceId)),
   createMaterial: teacherProcedure
     .input(materialInput.extend(materialSaveInput))
@@ -1052,6 +1061,15 @@ const studentRouter = router({
     .mutation(async ({ ctx, input }) => {
       const groupIds = await groups.activeGroupIdsOfStudent(ctx.user.id);
       return tasks.submitAssignment(ctx.user.id, groupIds, input.assignmentId, input.files, input.answerText, input.quizAnswers);
+    }),
+  /** "Göndər" on a task's SQL Practice Lab: only the query text is sent -- the server independently
+   *  re-executes it in the sandbox and grades that result, never the student's own browser preview. */
+  submitSqlLabQuery: studentProcedure
+    .use(rateLimit("submitSqlLabQuery", 30, MINUTE))
+    .input(z.object({ taskId: entityId, queryText: z.string().trim().min(1).max(sqlLab.MAX_SQL_LAB_QUERY_CHARS) }))
+    .mutation(async ({ ctx, input }) => {
+      const groupIds = await groups.activeGroupIdsOfStudent(ctx.user.id);
+      return sqlLab.submitSqlLabQuery(ctx.user.id, groupIds, input.taskId, input.queryText);
     }),
   materials: studentProcedure.query(async ({ ctx }) => {
     // Only visible materials are listed, so drafts and scheduled ones are never marked "viewed".
