@@ -237,3 +237,34 @@ describe("partner, outsider and pending member", () => {
     expect(await outcome(caller(shared).teacher.groups.list())).toBe(NO_WORKSPACE);
   });
 });
+
+// studentAssignments() used to read the whole platform's `tasks` table and filter in app code --
+// these lock in the SQL-level narrowing (server/modules/tasks.ts::tasksReachingStudent) against
+// both ways it could go wrong: too narrow (breaking the no-group, directly-claimed task flow) and
+// too wide (still leaking an unrelated workspace's tasks).
+describe("student task list stays correct once candidate tasks are narrowed by workspace in SQL", () => {
+  it("a student with no group membership anywhere still sees a PUBLIC task they individually claimed", async () => {
+    const teacher = await makeTeacher("Fərdi tapşırıq müəllimi");
+    const lonely = await makeUser("Heç bir qrupda olmayan tələbə");
+    const task = await caller(teacher.user).teacher.tasks.create({ title: "Fərdi tapşırıq", deadline: new Date(Date.now() + 86_400_000), groupIds: [], studentIds: [] });
+    await caller(lonely).student.claimTask({ shareCode: task.shareCode });
+
+    expect((await caller(lonely).student.tasks()).map((t) => t.id)).toEqual([task.id]);
+  });
+
+  it("stays excluded from every other workspace's tasks even with several unrelated workspaces on the platform", async () => {
+    const mine = await makeTeacher("Mənim müəllimim");
+    const me = await makeUser("Mən");
+    const myGroup = await makeGroup(mine.scope, [me]);
+    const myTask = await caller(mine.user).teacher.tasks.create({ title: "Mənim tapşırığım", deadline: new Date(Date.now() + 86_400_000), groupIds: [myGroup.id] });
+
+    for (let i = 0; i < 3; i++) {
+      const other = await makeTeacher(`Uzaq müəllim ${i}`);
+      const otherGroup = await makeGroup(other.scope, []);
+      await caller(other.user).teacher.tasks.create({ title: `Uzaq tapşırıq ${i}`, deadline: new Date(Date.now() + 86_400_000), groupIds: [otherGroup.id] });
+      await caller(other.user).teacher.tasks.create({ title: `Uzaq fərdi tapşırıq ${i}`, deadline: new Date(Date.now() + 86_400_000), groupIds: [], studentIds: [] });
+    }
+
+    expect((await caller(me).student.tasks()).map((t) => t.id)).toEqual([myTask.id]);
+  });
+});
