@@ -14,6 +14,7 @@ import { SubmissionReview } from "@/components/SubmissionReview";
 import { TaskEngagementList } from "@/components/TaskEngagementList";
 import { SqlLabConfigSection } from "@/components/tasks/SqlLab";
 import { TaskAiTextDialog, TaskQuizSection } from "@/components/tasks/TaskQuiz";
+import { TaskTypeChooser } from "@/components/tasks/TaskTypeChooser";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -88,7 +89,29 @@ interface AssignmentInitial {
  *  and carries an id, groups, attachments, etc. A draft only ever carries these three fields. */
 type AssignmentDraft = { title: string; description: string; instructions: string };
 
-function AssignmentFormDialog({ open, onOpenChange, initial, draft }: { open: boolean; onOpenChange: (v: boolean) => void; initial?: AssignmentInitial; draft?: AssignmentDraft }) {
+function AssignmentFormDialog({
+  open,
+  onOpenChange,
+  initial,
+  draft,
+  taskTypeHint,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  initial?: AssignmentInitial;
+  draft?: AssignmentDraft;
+  /** Set only on a brand-new task started from TaskTypeChooser's Quiz/Kod cards -- narrows the
+   *  Advanced-options section below to just the matching one instead of showing both. Has no
+   *  effect once `initial` was already there to begin with (editing an existing task always
+   *  shows everything it has, whatever it mixes). */
+  taskTypeHint?: "QUIZ" | "CODE";
+  /** Fires once, right after a brand-new task's first save, instead of closing the dialog --
+   *  only when `taskTypeHint` is set. The parent then keeps this same dialog open and switches it
+   *  into "editing" that task, so the teacher lands directly on the quiz/SQL section with a real
+   *  taskId, instead of the dialog closing and having to be reopened from the list. */
+  onCreated?: (initial: AssignmentInitial) => void;
+}) {
   const utils = trpc.useUtils();
   const [f, setF] = useState({
     title: initial?.title ?? draft?.title ?? "",
@@ -135,7 +158,7 @@ function AssignmentFormDialog({ open, onOpenChange, initial, draft }: { open: bo
   // when editing one that already has something worth seeing in it, and is forced open the moment
   // AI-generated text lands in "Təlimat" below, so a teacher who just used the AI dialog (e.g. to
   // generate a set number of open questions) actually sees what was produced instead of it hiding.
-  const hasAdvancedContent = !!initial || keyAvailable || !notifyStudents || f.instructions.trim().length > 0;
+  const hasAdvancedContent = !!initial || keyAvailable || !notifyStudents || f.instructions.trim().length > 0 || !!taskTypeHint;
   const [advancedOpen, setAdvancedOpen] = useState<string | undefined>(undefined);
   useEffect(() => {
     if (hasAdvancedContent) setAdvancedOpen("advanced");
@@ -146,12 +169,13 @@ function AssignmentFormDialog({ open, onOpenChange, initial, draft }: { open: bo
   const submit = async () => {
     if (!deadline) return;
     const attachments = f.attachments.map(({ fileId, name, size }) => ({ fileId, name, size }));
+    const recipients = recipientsPayload(targets.selection, targets.students, { kept: targets.kept, groupsOnly });
     const payload = {
       title: f.title,
       description: f.description,
       instructions: f.instructions,
       deadline,
-      ...recipientsPayload(targets.selection, targets.students, { kept: targets.kept, groupsOnly }),
+      ...recipients,
       attachments,
       accessMode: f.accessMode,
     };
@@ -168,13 +192,26 @@ function AssignmentFormDialog({ open, onOpenChange, initial, draft }: { open: bo
         toast.error(t("modules.answerKeySaveFailed"));
       }
     }
+    // First save of a Quiz/Kod-tapşırığı task: hand the now-real taskId back instead of closing,
+    // so the parent can keep this dialog open, switched into editing that task -- landing the
+    // teacher directly on the section they picked the card for.
+    if (!initial && taskTypeHint && onCreated) {
+      onCreated({ id: row.id, title: f.title, description: f.description, instructions: f.instructions, deadline, groupIds: recipients.groupIds, studentIds: recipients.studentIds, attachments, accessMode: f.accessMode });
+      return;
+    }
     done();
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader className="flex-row items-center justify-between gap-2">
-          <DialogTitle>{initial ? t("modules.editTaskTitle") : t("modules.newTaskTitle")}</DialogTitle>
+          <DialogTitle>
+            {taskTypeHint && initial
+              ? t(taskTypeHint === "QUIZ" ? "modules.quizContinueTitle" : "modules.codeContinueTitle")
+              : initial
+                ? t("modules.editTaskTitle")
+                : t("modules.newTaskTitle")}
+          </DialogTitle>
           {/* An already-existing task can still ask AI to rewrite its text in place. A brand-new
              one picks AI vs. manual up front in TaskCreateChooser, so this button isn't repeated
              here -- that was the second AI/upload entry point teachers found confusing. */}
@@ -260,9 +297,11 @@ function AssignmentFormDialog({ open, onOpenChange, initial, draft }: { open: bo
                   )}
                 </div>
 
-                {initial ? <TaskQuizSection taskId={initial.id} /> : <p className="text-xs text-muted-foreground">{t("modules.quizSaveFirst")}</p>}
+                {(!taskTypeHint || taskTypeHint === "QUIZ") &&
+                  (initial ? <TaskQuizSection taskId={initial.id} /> : <p className="text-xs text-muted-foreground">{t("modules.quizSaveFirst")}</p>)}
 
-                {initial ? <SqlLabConfigSection taskId={initial.id} /> : <p className="text-xs text-muted-foreground">{t("modules.quizSaveFirst")}</p>}
+                {(!taskTypeHint || taskTypeHint === "CODE") &&
+                  (initial ? <SqlLabConfigSection taskId={initial.id} /> : <p className="text-xs text-muted-foreground">{t("modules.quizSaveFirst")}</p>)}
 
                 <label className="flex items-start gap-2 text-sm">
                   <input type="checkbox" className="mt-0.5 accent-link" checked={notifyStudents} onChange={(e) => setNotifyStudents(e.target.checked)} />
@@ -388,10 +427,15 @@ export function AssignmentsPage() {
   // query for the whole list instead of a per-card lazy fetch.
   const engagementSummaryQ = trpc.teacher.tasks.engagementSummary.useQuery();
   const engagementSummaryOf = new Map((engagementSummaryQ.data ?? []).map((s) => [s.taskId, s]));
-  const [open, setOpen] = useState(false);
+  const [typeChooserOpen, setTypeChooserOpen] = useState(false);
   const [createChooserOpen, setCreateChooserOpen] = useState(false);
   const [aiCreateOpen, setAiCreateOpen] = useState(false);
-  const [createDraft, setCreateDraft] = useState<AssignmentDraft | null>(null);
+  // A brand-new task in progress: `draft` from the AI chooser, `hint` from the Quiz/Kod cards
+  // (see TaskTypeChooser), and `initial` filled in by AssignmentFormDialog's onCreated once the
+  // first save has actually happened -- the same object just gains that field, so the dialog
+  // stays open and switches from "creating" to "editing" the task it just made.
+  const [creating, setCreating] = useState<{ draft?: AssignmentDraft; hint?: "QUIZ" | "CODE"; initial?: AssignmentInitial } | null>(null);
+  const [materialCreateOpen, setMaterialCreateOpen] = useState(false);
   const [editing, setEditing] = useState<AssignmentInitial | null>(null);
   const [shareId, setShareId] = useState<string | null>(null);
   const [submissionsId, setSubmissionsId] = useState<string | null>(null);
@@ -424,7 +468,7 @@ export function AssignmentsPage() {
     <AppShell area="teaching">
       <div className="space-y-5">
         <div className="flex flex-wrap items-center justify-end gap-3">
-          <Button onClick={() => setCreateChooserOpen(true)}>{t("modules.newTask")}</Button>
+          <Button onClick={() => setTypeChooserOpen(true)}>{t("modules.newTask")}</Button>
         </div>
         {list.isLoading ? <Loading /> : !list.data?.length ? (
           <EmptyState title={t("modules.noTasks")} body={t("modules.noTasksBody")} />
@@ -576,19 +620,40 @@ export function AssignmentsPage() {
           </div>
         )}
       </div>
+      <TaskTypeChooser
+        open={typeChooserOpen}
+        onOpenChange={setTypeChooserOpen}
+        onPick={(type) => {
+          setTypeChooserOpen(false);
+          if (type === "ADI") setCreateChooserOpen(true);
+          else if (type === "QUIZ") setCreating({ hint: "QUIZ" });
+          else if (type === "CODE") setCreating({ hint: "CODE" });
+          else setMaterialCreateOpen(true);
+        }}
+      />
       <TaskCreateChooser
         open={createChooserOpen}
         onOpenChange={setCreateChooserOpen}
-        onPickManual={() => { setCreateChooserOpen(false); setCreateDraft(null); setOpen(true); }}
+        onPickManual={() => { setCreateChooserOpen(false); setCreating({}); }}
         onPickAi={() => { setCreateChooserOpen(false); setAiCreateOpen(true); }}
       />
       <TaskAiTextDialog
         open={aiCreateOpen}
         onOpenChange={setAiCreateOpen}
-        onApply={(r) => { setCreateDraft(r); setAiCreateOpen(false); setOpen(true); }}
+        onApply={(r) => { setAiCreateOpen(false); setCreating({ draft: r }); }}
       />
-      {open && <AssignmentFormDialog open onOpenChange={(v) => { setOpen(v); if (!v) setCreateDraft(null); }} draft={createDraft ?? undefined} />}
+      {creating && (
+        <AssignmentFormDialog
+          open
+          onOpenChange={(v) => { if (!v) setCreating(null); }}
+          draft={creating.draft}
+          initial={creating.initial}
+          taskTypeHint={creating.hint}
+          onCreated={(created) => setCreating((c) => (c ? { ...c, initial: created } : c))}
+        />
+      )}
       {editing && <AssignmentFormDialog open onOpenChange={(v) => !v && setEditing(null)} initial={editing} />}
+      {materialCreateOpen && <MaterialFormDialog open onOpenChange={setMaterialCreateOpen} />}
     </AppShell>
   );
 }
