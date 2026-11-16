@@ -18,6 +18,7 @@ import { emitLearningEvent } from "./learningEvents";
 import * as notifications from "./notifications";
 import { syllabusContainerTaskIds } from "./syllabusLinks";
 import { canSeeTaskContent, taskReachesStudent, taskViewerAccess, type TaskAccessSubject, type TaskViewerAccess } from "./taskAccess";
+import { sqlLabConfigsForTasks, sqlLabSubmissionsForStudent } from "./sqlLab";
 import { notifyTaskSaved } from "./taskNotify";
 import { quizRowsForTasks, taskQuizRows } from "./taskQuiz";
 import { workspaceOwnerId } from "./workspaces";
@@ -194,13 +195,17 @@ export async function studentAssignments(studentId: number, groupIds: string[]) 
   const autoGraded = await autoGradeEnabledForTasks(subs.filter((s) => !s.feedbackReleasedAt).map((s) => s.taskId));
   const byTask = new Map(subs.map((s) => [s.taskId, s]));
   const quizByTask = await quizRowsForTasks(relevant.map((t) => t.id), db);
+  const taskIds = relevant.map((t) => t.id);
+  const [sqlLabByTask, sqlLabSubByTask] = await Promise.all([sqlLabConfigsForTasks(taskIds, db), sqlLabSubmissionsForStudent(studentId, taskIds, db)]);
   const now = Date.now();
   return relevant.map((t) => {
     const quiz = quizForStudent(quizByTask.get(t.id) ?? [], t.id);
+    const sqlLab = sqlLabByTask.get(t.id) ?? null;
+    const sqlLabSubmission = sqlLabSubByTask.get(t.id) ?? null;
     const s = byTask.get(t.id);
-    if (!s) return { ...t, submission: undefined, quiz };
+    if (!s) return { ...t, submission: undefined, quiz, sqlLab, sqlLabSubmission };
     const review = reviewBySub.get(s.id);
-    return { ...t, submission: studentSubmissionView(s, review, pendingState(s, review, autoGraded.has(t.id), now)), quiz };
+    return { ...t, submission: studentSubmissionView(s, review, pendingState(s, review, autoGraded.has(t.id), now)), quiz, sqlLab, sqlLabSubmission };
   });
 }
 

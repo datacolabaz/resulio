@@ -10,6 +10,7 @@ import { ContinueLearning } from "@/components/syllabus/CrossLinks";
 import { MyJoinRequests } from "@/components/syllabus/MyJoinRequests";
 import { MaterialLinkButton, MaterialMeta } from "@/components/materials/MaterialMeta";
 import { QuestionRenderer } from "@/components/QuestionRenderer";
+import { SqlLabStudentPanel } from "@/components/tasks/SqlLabStudent";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -671,6 +672,7 @@ export function StudentTasks() {
                   ))}
                 </ul>
               )}
+              {a.sqlLab && <SqlLabStudentPanel taskId={a.id} sqlLab={a.sqlLab} submission={a.sqlLabSubmission} />}
               {a.submission ? (
                 <div className="mt-3 space-y-2">
                   {a.submission.files.length > 0 && (

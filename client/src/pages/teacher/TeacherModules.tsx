@@ -12,6 +12,7 @@ import { ShareBox, ShareFunnelSummary } from "@/components/ShareBox";
 import { MaterialUsageBadge, useMaterialSyllabusUsage } from "@/components/syllabus/CrossLinks";
 import { SubmissionReview } from "@/components/SubmissionReview";
 import { TaskEngagementList } from "@/components/TaskEngagementList";
+import { SqlLabConfigSection } from "@/components/tasks/SqlLab";
 import { TaskAiTextDialog, TaskQuizSection } from "@/components/tasks/TaskQuiz";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -260,6 +261,8 @@ function AssignmentFormDialog({ open, onOpenChange, initial, draft }: { open: bo
                 </div>
 
                 {initial ? <TaskQuizSection taskId={initial.id} /> : <p className="text-xs text-muted-foreground">{t("modules.quizSaveFirst")}</p>}
+
+                {initial ? <SqlLabConfigSection taskId={initial.id} /> : <p className="text-xs text-muted-foreground">{t("modules.quizSaveFirst")}</p>}
 
                 <label className="flex items-start gap-2 text-sm">
                   <input type="checkbox" className="mt-0.5 accent-link" checked={notifyStudents} onChange={(e) => setNotifyStudents(e.target.checked)} />

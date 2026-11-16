@@ -642,6 +642,48 @@ export const teacher = {
     "Убрать вопрос из квиза? (Он останется в банке вопросов.)",
   ],
   "modules.quizRemoveN": ["Sual {n}: quizdən çıxar", "Question {n}: remove from quiz", "Вопрос {n}: убрать из квиза"],
+
+  "modules.sqlLab.title": ["SQL Təcrübə Laboratoriyası", "SQL Practice Lab", "Лаборатория SQL-практики"],
+  "modules.sqlLab.configured": ["Quraşdırılıb", "Configured", "Настроено"],
+  "modules.sqlLab.hint": [
+    "Tələbə SQL sorğusunu öz brauzerində yazıb sınayacaq, amma yekun qiymət həmişə serverdə, bu CSV üzərində, sorğunun müstəqil yenidən icrasına əsaslanır.",
+    "The student writes and tries SQL in their own browser, but the final grade always comes from the server independently re-running the query against this CSV.",
+    "Студент пишет и пробует SQL в своём браузере, но итоговая оценка всегда основана на независимом повторном выполнении запроса на сервере, по этому CSV.",
+  ],
+  "modules.sqlLab.dataset": ["CSV verilənlər bazası", "CSV dataset", "CSV-набор данных"],
+  "modules.sqlLab.referenceQuery": ["İstinad sorğusu (düzgün cavab)", "Reference query (the correct answer)", "Эталонный запрос (правильный ответ)"],
+  "modules.sqlLab.gradeModeLabel": ["Qiymətləndirmə növü", "Grading mode", "Режим оценивания"],
+  "modules.sqlLab.gradeMode.EXACT_ORDERED": ["Dəqiq, sıra ilə", "Exact, in order", "Точно, по порядку"],
+  "modules.sqlLab.gradeMode.EXACT_UNORDERED": ["Dəqiq, sırasız", "Exact, any order", "Точно, в любом порядке"],
+  "modules.sqlLab.gradeMode.ROW_COUNT_ONLY": ["Yalnız sətir sayı", "Row count only", "Только количество строк"],
+  "modules.sqlLab.gradeModeHint.EXACT_ORDERED": [
+    "Nəticə sütunları, sətirləri VƏ sətir sırası istinad sorğusu ilə tam üst-üstə düşməlidir (məs., ORDER BY tələb olunan tapşırıqlar üçün).",
+    "Columns, rows AND row order must match the reference query exactly (e.g. for tasks that require ORDER BY).",
+    "Столбцы, строки И порядок строк должны точно совпадать с эталонным запросом (например, для заданий с обязательным ORDER BY).",
+  ],
+  "modules.sqlLab.gradeModeHint.EXACT_UNORDERED": [
+    "Nəticə sütunları və sətirləri üst-üstə düşməlidir, sıra önəmli deyil.",
+    "Columns and rows must match the reference query; row order doesn't matter.",
+    "Столбцы и строки должны совпадать с эталонным запросом; порядок строк не важен.",
+  ],
+  "modules.sqlLab.gradeModeHint.ROW_COUNT_ONLY": [
+    "Yalnız qaytarılan sətirlərin sayı yoxlanılır -- sütun adları və məzmunu önəmli deyil.",
+    "Only the number of returned rows is checked -- column names and content don't matter.",
+    "Проверяется только количество возвращённых строк -- имена и содержимое столбцов не важны.",
+  ],
+  "modules.sqlLab.saving": ["Yadda saxlanılır...", "Saving...", "Сохранение..."],
+  "modules.sqlLab.referenceQueryPlaceholder": ["SELECT ...", "SELECT ...", "SELECT ..."],
+
+  "error.SQL_LAB_DATASET_INVALID": [
+    "CSV faylı boşdur və ya oxuna bilmir.",
+    "The CSV file is empty or unreadable.",
+    "CSV-файл пуст или не читается.",
+  ],
+  "error.SQL_LAB_REFERENCE_QUERY_FAILED": [
+    "İstinad sorğusu bu verilənlər üzərində işləmədi. SQL sintaksisini yoxlayın.",
+    "The reference query failed against this dataset. Check the SQL syntax.",
+    "Эталонный запрос не выполнился на этом наборе данных. Проверьте синтаксис SQL.",
+  ],
   "modules.quizAiReview": [
     "Sualları yoxlayın. Yalnız seçdikləriniz sual bankına və bu quizə əlavə olunacaq.",
     "Review the questions. Only the ones you select are added to the bank and this quiz.",
