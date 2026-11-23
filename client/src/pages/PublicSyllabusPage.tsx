@@ -9,16 +9,15 @@ import { CourseTimingPills, durationText } from "@/components/syllabus/Timing";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { startLogin } from "@/const";
+import { API_BASE, startLogin } from "@/const";
 import { t } from "@/i18n/messages";
 import { errorText, fmtDateTime, groupLanguageLabel } from "@/lib/format";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { GroupPreviewDetails } from "@/pages/PublicFlows";
 import { useSharePageMeta } from "@/seo/usePageMeta";
 import { JOIN_MESSAGE_MAX, syllabusPageTitle } from "@shared/syllabusJoin";
-import { ChevronDown, Printer } from "lucide-react";
+import { ChevronDown, Download } from "lucide-react";
 import { useEffect, useState } from "react";
-import { flushSync } from "react-dom";
 import { toast } from "sonner";
 import { Link, useParams } from "wouter";
 
@@ -80,18 +79,11 @@ function Programme({ s, code }: { s: Page["syllabus"]; code: string }) {
           {s.modules.length > 1 && (
             <ModuleToggleAll allOpen={modules.allOpen} noneOpen={modules.noneOpen} onOpenAll={modules.openAll} onCloseAll={modules.closeAll} />
           )}
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="print:hidden"
-            onClick={() => {
-              flushSync(() => modules.openAll());
-              window.print();
-            }}
-          >
-            <Printer className="mr-1.5 h-4 w-4" aria-hidden />
-            {t("sylShare.page.downloadPdf")}
+          <Button asChild size="sm" variant="outline" className="print:hidden">
+            <a href={`${API_BASE}/api/public/syllabus-pdf/${encodeURIComponent(code)}`}>
+              <Download className="mr-1.5 h-4 w-4" aria-hidden />
+              {t("sylShare.page.downloadPdf")}
+            </a>
           </Button>
         </div>
       </div>
