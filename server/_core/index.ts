@@ -40,6 +40,7 @@ import { resumeAnnouncements } from "../notifications/announcements";
 import { startNotificationWorker } from "../notifications/dispatcher";
 import { logWebPushStatus } from "../notifications/webPush";
 import { syllabusLinkPreview, syllabusPreviewRoute } from "../syllabus/linkPreview";
+import { syllabusPdfRoute } from "../syllabus/pdf";
 import { runModuleDetailsBackfills } from "../syllabus/moduleDetailsBackfill";
 import { runDailyDigest, runDailyRetention } from "../syllabus/analytics";
 import { flushDueNotices } from "../syllabus/notify";
@@ -231,6 +232,7 @@ async function startServer() {
     res.set("Cache-Control", "no-store").type("application/javascript").send(publicPlatformScript());
   });
   app.get("/api/public/syllabus-preview/:code", syllabusPreviewRoute);
+  app.get("/api/public/syllabus-pdf/:code", syllabusPdfRoute);
   app.get("/api/public/task-preview/:code", taskPreviewRoute);
   app.get("/api/public/material-preview/:code", materialPreviewRoute);
   app.get("/api/public/exam-preview/:code", examPreviewRoute);
