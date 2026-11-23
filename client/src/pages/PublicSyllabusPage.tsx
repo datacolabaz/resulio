@@ -16,8 +16,9 @@ import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { GroupPreviewDetails } from "@/pages/PublicFlows";
 import { useSharePageMeta } from "@/seo/usePageMeta";
 import { JOIN_MESSAGE_MAX, syllabusPageTitle } from "@shared/syllabusJoin";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Printer } from "lucide-react";
 import { useEffect, useState } from "react";
+import { flushSync } from "react-dom";
 import { toast } from "sonner";
 import { Link, useParams } from "wouter";
 
@@ -52,7 +53,7 @@ function Frame({ children }: { children: React.ReactNode }) {
       <div className="mx-auto w-full max-w-3xl space-y-5">
         <div className="flex items-start justify-between gap-3">
           <BrandMark size={44} className="rounded-xl" />
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 print:hidden">
             <LanguageSwitch />
             <ThemeToggle />
           </div>
@@ -75,16 +76,31 @@ function Programme({ s, code }: { s: Page["syllabus"]; code: string }) {
     <section aria-labelledby="programme" className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id="programme" className="text-lg font-semibold">{t("sylShare.page.programme")}</h2>
-        {s.modules.length > 1 && (
-          <ModuleToggleAll allOpen={modules.allOpen} noneOpen={modules.noneOpen} onOpenAll={modules.openAll} onCloseAll={modules.closeAll} />
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {s.modules.length > 1 && (
+            <ModuleToggleAll allOpen={modules.allOpen} noneOpen={modules.noneOpen} onOpenAll={modules.openAll} onCloseAll={modules.closeAll} />
+          )}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="print:hidden"
+            onClick={() => {
+              flushSync(() => modules.openAll());
+              window.print();
+            }}
+          >
+            <Printer className="mr-1.5 h-4 w-4" aria-hidden />
+            {t("sylShare.page.downloadPdf")}
+          </Button>
+        </div>
       </div>
       <ol className="space-y-3">
         {s.modules.map((m, i) => {
           const expanded = modules.isOpen(String(i));
           const panelId = `programme-module-${i}`;
           return (
-            <li key={i} className="rounded-2xl border border-border bg-card">
+            <li key={i} className="rounded-2xl border border-border bg-card print:break-inside-avoid">
               <h3>
                 <button
                   type="button"
@@ -399,7 +415,7 @@ export default function PublicSyllabusPage() {
   ].filter((f): f is { label: string; value: string } => !!f);
   return (
     <Frame>
-      {isOwner && <p role="status" className="rounded-2xl border border-info/40 bg-info-surface p-3 text-sm text-info">{t("sylShare.page.ownerBanner")}</p>}
+      {isOwner && <p role="status" className="print:hidden rounded-2xl border border-info/40 bg-info-surface p-3 text-sm text-info">{t("sylShare.page.ownerBanner")}</p>}
       <header className="rounded-3xl border bg-card p-5 sm:p-8">
         <div className="text-xs font-medium uppercase tracking-wide text-link">{t("sylShare.page.eyebrow")}</div>
         <h1 className="mt-1 break-words text-2xl font-semibold sm:text-3xl">{s.title}</h1>
@@ -423,7 +439,7 @@ export default function PublicSyllabusPage() {
             ))}
           </dl>
         )}
-        <div className="mt-6">
+        <div className="mt-6 print:hidden">
           <Button size="lg" className="w-full sm:w-auto" disabled={isOwner} onClick={() => (user ? scrollToJoin() : request({ type: "JOIN" }))}>
             {t("sylShare.page.cta")}
           </Button>
@@ -431,7 +447,9 @@ export default function PublicSyllabusPage() {
         </div>
       </header>
       <Programme s={s} code={code} />
-      <JoinSection page={page} onRequest={request} />
+      <div className="print:hidden">
+        <JoinSection page={page} onRequest={request} />
+      </div>
       <RequestDialog code={page.code} syllabusTitle={s.title} target={target} onClose={() => setTarget(null)} />
     </Frame>
   );

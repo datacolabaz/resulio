@@ -28,6 +28,7 @@ export const syllabusShare = {
   ],
   "sylShare.page.ownerCta": ["Öz proqramınıza müraciət göndərə bilməzsiniz.", "You can't send a request to your own programme.", "Нельзя подать заявку на собственную программу."],
   "sylShare.page.metaDescription": ["{title} — {teacher} tərəfindən kurs proqramı", "{title} — a course programme by {teacher}", "{title} — программа курса от {teacher}"],
+  "sylShare.page.downloadPdf": ["PDF yüklə", "Download PDF", "Скачать PDF"],
 
   // Joining
   "sylShare.join.title": ["Necə qoşulmaq olar", "How to join", "Как присоединиться"],
